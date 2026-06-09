@@ -3,8 +3,8 @@ from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector, sim_params, ms_well
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -57,8 +57,8 @@ class Model(CICDModel):
 
         # create physics
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      n_points=400, min_p=0, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
                                      extrapolation_flag=True)
         self.physics.add_property_region(property_container)

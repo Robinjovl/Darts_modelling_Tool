@@ -5,8 +5,8 @@ from darts.engines import sim_params, ms_well, value_vector
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
@@ -84,8 +84,8 @@ class Model(CICDModel):
         epsilon = self.zero / 10
 
         """ Define state specification and initialize physics object """
-        state_spec = Compositional.StateSpecification.P
-        self.physics = Compositional(components_names, phases_names, self.timer, state_spec=state_spec,
+        state_spec = PhysicsBase.StateSpecification.P
+        self.physics = PhysicsBase(components_names, phases_names, self.timer, state_spec=state_spec,
                                      n_points=10000, min_p=1, max_p=500, min_z=0, max_z=1, epsilon_z=epsilon,
                                      min_t=150, max_t=500)
 

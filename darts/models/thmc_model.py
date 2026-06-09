@@ -10,12 +10,12 @@ from darts.engines import (
     value_vector,
 )
 from darts.models.darts_model import DartsModel
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import SinglePhase
-from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 
 

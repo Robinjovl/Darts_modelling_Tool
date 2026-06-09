@@ -77,7 +77,7 @@ def input_data_default():
     idata.rock.heat_capacity = 2200. # [kJ/m3/K]
     idata.rock.conductivity = 181.44  # [kJ/m/day/K]
 
-    # Fluid properties are wired directly in Model.set_iapws_physics via Compositional + IAPWS.
+    # Fluid properties are wired directly in Model.set_iapws_physics via compositional + IAPWS.
 
     # well controls
     class InputDataWellControls():  # an empty class - to group custom well control input data

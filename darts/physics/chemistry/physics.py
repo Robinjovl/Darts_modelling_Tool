@@ -6,16 +6,15 @@ from darts.physics.base.operators_base import (
     ThermalVarOperator,
     WellCtrlOperators,
 )
-from darts.physics.base.physics_base import PhysicsBase
+from darts.physics.base.physics import PhysicsBase
 from darts.physics.chemistry.operator_evaluator import (
     ConversionOperators,
     ReservoirOperators,
 )
-from darts.physics.super.physics import Compositional
 
 
 # Define our own operator evaluator class
-class ElementBasedReactiveFlow(Compositional):
+class ElementBasedReactiveFlow(PhysicsBase):
     """
     This is the Physics class for element-based reactive flow.
     """

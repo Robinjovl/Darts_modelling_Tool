@@ -2,7 +2,7 @@ from darts.engines import *
 from darts.models.cicd_model import CICDModel
 
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
-from darts.physics.super.physics import Compositional
+from darts.physics.base.physics import PhysicsBase
 from property_container import PropertyContainer
 from operator_evaluator import AccFluxGravityEvaluator, AccFluxGravityWellEvaluator, RateEvaluator, PropertyEvaluator
 
@@ -82,7 +82,7 @@ class Model(CICDModel):
 
         """ Activate physics """
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         self.physics = CustomPhysics(components, phases, self.timer,
                                      n_points=200, min_p=1., max_p=1000., min_z=0., max_z=1., epsilon_z=eps_z,
                                      state_spec=state_spec, cache=False)
@@ -107,9 +107,9 @@ class Model(CICDModel):
                                                is_inj=False, target=85.)
 
 
-class CustomPhysics(Compositional):
+class CustomPhysics(PhysicsBase):
     def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t=None, max_t=None,
-                 state_spec = Compositional.StateSpecification.P, cache=False):
+                 state_spec = PhysicsBase.StateSpecification.P, cache=False):
         super().__init__(components, phases, timer, n_points, min_p, max_p, min_z, max_z, min_t, max_t, state_spec, cache)
 
     def set_operators(self, regions, output_properties=None):

@@ -157,7 +157,7 @@ and open-DARTS are presented in the following table.
 
 Physics are defined in the ``DartsModel.physics`` object,
 ```python
-    self.physics = Compositional(self.components, phases, timer=self.timer,
+    self.physics = PhysicsBase(self.components, phases, timer=self.timer,
                                      n_points=n_points, min_p=200, max_p=450,
                                      min_z=0., max_z=1., epsilon_z=self.zero/10, min_t=min_t, max_t=max_t,
                                      state_spec = state_spec,

@@ -1,16 +1,16 @@
 import numpy as np
 
 from darts.engines import *
+from darts.physics.base.operator_evaluator import *
 from darts.physics.base.operators_base import (
     PropertyOperators,
     ThermalVarOperator,
     WellCtrlOperators,
 )
-from darts.physics.super.operator_evaluator import *
-from darts.physics.super.physics import Compositional, PhysicsBase
+from darts.physics.base.physics import PhysicsBase
 
 
-class Poroelasticity(Compositional):
+class Poroelasticity(PhysicsBase):
     """
     This is the Physics class for compositional poroelastic simulation.
 
@@ -36,7 +36,7 @@ class Poroelasticity(Compositional):
         extrapolation_flag: bool = True,
         min_t: float = None,
         max_t: float = None,
-        state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
+        state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
         discretizer: str = 'mech_discretizer',
         axes_min=None,
@@ -44,7 +44,7 @@ class Poroelasticity(Compositional):
         n_axes_points=None,
     ):
         """
-        This is the constructor of the Compositional Physics class.
+        This is the constructor of the PhysicsBase Physics class.
 
         It defines the OBL grid for P-z or P-T-z compositional simulation.
 

@@ -17,8 +17,7 @@ from darts.engines import (
     well_control_iface,
 )
 from darts.physics.base.operators_base import PropertyOperators
-from darts.physics.base.physics_base import PhysicsBase
-from darts.physics.super.physics import Compositional
+from darts.physics.base.physics import PhysicsBase
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
@@ -174,7 +173,7 @@ class Output:
         * The declared interpolator is adaptive multilinear.
         """
 
-        if isinstance(self.physics, Compositional):
+        if isinstance(self.physics, PhysicsBase):
             phase_props_labels = [
                 "dens",
                 "densm",

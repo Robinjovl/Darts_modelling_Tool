@@ -27,7 +27,7 @@ class PropertyContainer(PropertyBase):
         n_history: int = 0,
     ):
         """
-        This is the PropertyContainer class for the Compositional engine.
+        This is the PropertyContainer class for the compositional engine.
 
         :param phases_name: List of phases
         :type phases_name: list[str]
@@ -148,7 +148,7 @@ class PropertyContainer(PropertyBase):
         Catches silent drift between :attr:`rel_perm_ev` and
         :attr:`capillary_pressure_ev` whose evaluators each build their own model from
         independent Corey/parameter sources. Call once after the container is fully
-        populated; :class:`~darts.physics.base.physics_base.PhysicsBase` invokes this
+        populated; :class:`~darts.physics.base.physics.PhysicsBase` invokes this
         from :meth:`init_physics`.
 
         :raises AssertionError: If two evaluators expose ``history_model`` instances of

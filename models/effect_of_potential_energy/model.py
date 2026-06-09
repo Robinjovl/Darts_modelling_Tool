@@ -2,9 +2,9 @@ import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
-from darts.physics.super.initialize import Initialize
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
+from darts.physics.base.initialize import Initialize
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
@@ -103,8 +103,8 @@ class Model(CICDModel):
                                            "yH2O": lambda: property_container.x[1, 0]
                                            }
 
-        state_spec = Compositional.StateSpecification.PT
-        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=600, min_z=0., max_z=1.,
+        state_spec = PhysicsBase.StateSpecification.PT
+        self.physics = PhysicsBase(components, phases, self.timer, n_points, min_p=1, max_p=600, min_z=0., max_z=1.,
                                      epsilon_z=epsilon, min_t=220, max_t=500, state_spec=state_spec, cache=False,
                                      extrapolation_flag=True)
         self.physics.add_property_region(property_container)

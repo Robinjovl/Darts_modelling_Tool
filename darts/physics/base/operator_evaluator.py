@@ -1,7 +1,7 @@
 import numpy as np
 
 from darts.physics.base.operators_base import OperatorsBase
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.property_container import PropertyContainer
 
 
 class OperatorsSuper(OperatorsBase):

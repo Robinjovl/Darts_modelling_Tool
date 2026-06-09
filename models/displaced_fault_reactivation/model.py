@@ -4,7 +4,7 @@ from reservoir import UnstructReservoir
 import numpy as np
 from darts.engines import vector_linear_solver_params, linear_solver_params
 
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm

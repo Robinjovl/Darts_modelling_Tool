@@ -50,7 +50,7 @@ In this example, hysteresis is controlled by the `hys` / `hysteresis` switch:
 - `hysteresis=False` (or `Model(hys=False)`) runs the same case in drainage-only mode
 
 At the framework level, hysteresis is enabled by passing non-empty
-`history_fields=[HistoryField(...)]` into `Compositional(...)`. If no history
+`history_fields=[HistoryField(...)]` into `PhysicsBase(...)`. If no history
 fields are declared, the model falls back to the standard primary-variable-only
 OBL state.
 

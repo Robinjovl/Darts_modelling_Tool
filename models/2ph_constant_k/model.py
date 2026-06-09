@@ -6,12 +6,12 @@ import numpy as np
 from scipy.interpolate import interp1d
 import os
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
-from darts.physics.super.initialize import Initialize
+from darts.physics.base.initialize import Initialize
 
 
 class Model(DartsModel):
@@ -294,8 +294,8 @@ class Model(DartsModel):
             axes_max[0] = max_p
 
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(self.components, phases, self.timer, state_spec=state_spec, n_points=self.obl_points,
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        self.physics = PhysicsBase(self.components, phases, self.timer, state_spec=state_spec, n_points=self.obl_points,
                                      min_p=40, max_p=max_p, min_z=0., max_z=1., epsilon_z=epsilon, cache=False,
                                      axes_max=axes_max, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
@@ -313,7 +313,7 @@ class Model(DartsModel):
                                                                   input_distribution=input_distribution)
         else:
             # run initialization over depth with specified GOC, pure liquid above, pure vapour under
-            from darts.physics.super.initialize import Initialize
+            from darts.physics.base.initialize import Initialize
             init = Initialize(physics=self.physics, algorithm=self.itor_type, mode=self.itor_mode,
                               is_barycentric=self.is_barycentric)
 

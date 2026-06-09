@@ -1,7 +1,7 @@
 from darts.input.input_data import InputData
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.property_container import PropertyContainer
 from darts.engines import ms_well
 
 from darts.physics.properties.black_oil import *

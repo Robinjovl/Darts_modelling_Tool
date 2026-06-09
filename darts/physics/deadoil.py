@@ -1,13 +1,13 @@
 import numpy as np
 
 from darts.input.input_data import FluidProps, InputData
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
 
 
-class DeadOilBase(Compositional):
+class DeadOilBase(PhysicsBase):
     def __init__(self, idata, timer):
         super().__init__(idata, timer, DeadOilProperties)
 
@@ -18,12 +18,12 @@ class DeadOilBase(Compositional):
         self.add_property_region(property_container)
 
 
-class DeadOil(Compositional):
+class DeadOil(PhysicsBase):
     def __init__(self, idata: InputData, timer, thermal):
         state_spec = (
-            Compositional.StateSpecification.PT
+            PhysicsBase.StateSpecification.PT
             if thermal
-            else Compositional.StateSpecification.P
+            else PhysicsBase.StateSpecification.P
         )
         super().__init__(
             components=idata.fluid.components,

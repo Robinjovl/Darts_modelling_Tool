@@ -3,8 +3,8 @@ import pandas as pd
 
 from darts.engines import value_vector, well_control_iface
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
@@ -22,7 +22,7 @@ class ModelGeothermal(Model_CPG):
 
     def set_physics(self):
         # single component, two phase. Pressure and enthalpy are the main variables.
-        # Uses Compositional engine in PH-flash mode with IAPWS EoS (drop-in replacement
+        # Uses compositional engine in PH-flash mode with IAPWS EoS (drop-in replacement
         # for the legacy Geothermal physics). State vector layout is [P, H] (n_vars=2).
         self.set_iapws_physics(
             n_points=self.idata.obl.n_points,
@@ -33,7 +33,7 @@ class ModelGeothermal(Model_CPG):
         )
 
     def set_iapws_physics(self, n_points, min_p, max_p, min_t, max_t, cache=False):
-        """Drop-in replacement for legacy Geothermal(...) using Compositional + IAPWS PT-flash.
+        """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PT-flash.
         Single-component water; phases are vapor ('V') and liquid ('L').
         State spec is PT so engine.X layout is [P, T, ...] and the OBL grid is sampled on (P, T).
         """
@@ -72,9 +72,9 @@ class ModelGeothermal(Model_CPG):
         # output_props exposes derived T (K) via the property interpolator
         pc.output_props = {'temperature': lambda: pc.temperature}
 
-        self.physics = Compositional(
+        self.physics = PhysicsBase(
             components, phases, self.timer,
-            state_spec=Compositional.StateSpecification.PT,
+            state_spec=PhysicsBase.StateSpecification.PT,
             n_points=n_points,
             min_p=min_p, max_p=max_p,
             min_z=zero, max_z=1.0 - zero, epsilon_z=zero,
@@ -146,7 +146,7 @@ class ModelGeothermal(Model_CPG):
         years = np.array(time_data['time'])[-1]/365.25
 
         rate_inj = rate_prd = temp_prd = temp_inj = 0.
-        # Compositional engine emits per-phase rate columns as "<name> : <phase> rate (m3/day)".
+        # compositional engine emits per-phase rate columns as "<name> : <phase> rate (m3/day)".
         # We use the liquid phase ('L') for water rate. Temperature column key is unchanged.
         if prd_well is not None:
             pr_col_name = time_data.filter(like=prd_well.name + ' : L rate').columns.to_list()
@@ -170,7 +170,7 @@ class ModelGeothermal(Model_CPG):
         set_input_data(self.idata, case)
 
         # Fluid evaluators are now wired directly inside set_iapws_physics() via the
-        # Compositional PropertyContainer; no idata.fluid assignment is required.
+        # compositional PropertyContainer; no idata.fluid assignment is required.
 
         if init_type== 'uniform': # uniform initial conditions
             self.idata.initial.initial_pressure = 200.  # bars
@@ -215,7 +215,7 @@ class ModelGeothermal(Model_CPG):
         self.idata.obl.n_points = 100
         self.idata.obl.min_p = 50.
         self.idata.obl.max_p = 400.
-        # min_e/max_e are ignored by the Compositional PH-flash physics: the enthalpy
+        # min_e/max_e are ignored by the PhysicsBase PH-flash physics: the enthalpy
         # axis is autocomputed from the PT corner box (min_p/max_p, min_t/max_t).
         self.idata.obl.min_e = 1000.  # kJ/kmol, unused
         self.idata.obl.max_e = 25000.  # kJ/kmol, unused

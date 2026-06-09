@@ -115,7 +115,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
             if 'BHT' in k:
                 time_data[k.replace('K', 'degrees')] = time_data[k] - 273.15
                 time_data.drop(columns=k, inplace=True)
-        # The geothermal flow is now driven by the Compositional engine with phases ['V','L'],
+        # The geothermal flow is now driven by the compositional engine with phases ['V','L'],
         # so the engine.time_data columns use ' : L rate ' / ' : V rate ' instead of the
         # legacy ' : water rate ' / ' : steam rate '. Alias the liquid (water) rate so the
         # shared plot helpers in darts.tools.plot_darts (plot_total_inj_water_rate_darts,

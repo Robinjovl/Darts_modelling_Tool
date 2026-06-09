@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.physics.super.property_container import (
+from darts.physics.base.property_container import (
     PropertyContainer as BasePropertyContainer,
 )
 

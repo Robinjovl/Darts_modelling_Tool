@@ -2,8 +2,8 @@ import numpy as np
 from darts.models.darts_model import DartsModel
 from darts.engines import ms_well
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
@@ -168,11 +168,11 @@ class Model(DartsModel):
 
         """ Define state specification and initialize Physics object """
         if temperature is None:  # if None, then thermal=True
-            state_spec = Compositional.StateSpecification.PH if ph else Compositional.StateSpecification.PT
+            state_spec = PhysicsBase.StateSpecification.PH if ph else PhysicsBase.StateSpecification.PT
         else:
-            state_spec = Compositional.StateSpecification.P
+            state_spec = PhysicsBase.StateSpecification.P
 
-        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=0., max_z=1.,
+        self.physics = PhysicsBase(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=0., max_z=1.,
                                      epsilon_z=epsilon, min_t=273.15, max_t=373.15, state_spec=state_spec, cache=False,
                                      extrapolation_flag=True)
         self.physics.add_property_region(property_container)
@@ -181,7 +181,7 @@ class Model(DartsModel):
 
     def set_initial_conditions(self):
         if 1:
-            from darts.physics.super.initialize import Initialize
+            from darts.physics.base.initialize import Initialize
             init = Initialize(physics=self.physics)
 
             # Solve boundary state

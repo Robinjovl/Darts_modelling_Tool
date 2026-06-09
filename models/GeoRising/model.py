@@ -7,8 +7,8 @@ from darts.engines import value_vector, sim_params, ms_well, well_control_iface
 
 from darts.input.input_data import InputData
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
@@ -75,7 +75,7 @@ class Model(CICDModel):
                                            well_diameter=0.32, ms_epm=True)
 
     def set_iapws_physics(self, n_points, min_p, max_p, min_t, max_t, cache=False):
-        """Drop-in replacement for legacy Geothermal(...) using Compositional + IAPWS PT-flash.
+        """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PT-flash.
 
         State spec is PT so the OBL grid axes are pressure and temperature, matching the
         BaseModels.set_iapws_physics template. PHFlash on IAPWS95 was unstable: the OBL
@@ -117,9 +117,9 @@ class Model(CICDModel):
         # output_props exposes derived T (K) via the property interpolator
         pc.output_props = {'temperature': lambda: pc.temperature}
 
-        self.physics = Compositional(
+        self.physics = PhysicsBase(
             components, phases, self.timer,
-            state_spec=Compositional.StateSpecification.PT,
+            state_spec=PhysicsBase.StateSpecification.PT,
             n_points=n_points,
             min_p=min_p, max_p=max_p,
             min_z=zero, max_z=1.0 - zero, epsilon_z=zero,
@@ -131,7 +131,7 @@ class Model(CICDModel):
 
     def set_physics(self):
         # Both legacy iapws_physics=True (Geothermal) and iapws_physics=False (GeothermalPH)
-        # branches now route through the Compositional + IAPWS PH-flash helper.
+        # branches now route through the compositional + IAPWS PH-flash helper.
         self.set_iapws_physics(n_points=self.idata.obl.n_points,
                                min_p=1., max_p=400.,
                                min_t=273.15, max_t=575.)

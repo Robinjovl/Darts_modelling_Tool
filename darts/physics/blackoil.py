@@ -1,10 +1,10 @@
 from darts.input.input_data import FluidProps, InputData
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.black_oil import *
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
 
 
-class BlackOilBase(Compositional):
+class BlackOilBase(PhysicsBase):
     def __init__(self, idata, timer):
         super().__init__(idata, timer, BlackOilProperties)
 
@@ -15,12 +15,12 @@ class BlackOilBase(Compositional):
         self.add_property_region(property_container)
 
 
-class BlackOil(Compositional):
+class BlackOil(PhysicsBase):
     def __init__(self, idata: InputData, timer, thermal):
         state_spec = (
-            Compositional.StateSpecification.PT
+            PhysicsBase.StateSpecification.PT
             if thermal
-            else Compositional.StateSpecification.P
+            else PhysicsBase.StateSpecification.P
         )
         super().__init__(
             components=idata.fluid.components,
