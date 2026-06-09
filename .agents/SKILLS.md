@@ -36,3 +36,5 @@ python helper_scripts/validate_skills.py
   `name` and `description`.
 - Detailed workflow material belongs in `references/` files and is loaded only
   when needed.
+- Skills must instruct agents to preserve existing file line endings and avoid
+  line-ending-only changes unless the user explicitly requests them.

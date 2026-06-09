@@ -42,6 +42,11 @@ public:
     static const int n_state_ctrls = 2;  // pressure and temperature operators
     static const int n_well_ctrl_models = 2;  // EPM and DFM rate ctrl operator families
 
+    // History values to append to the well control state when the physics uses OBL history variables
+    // (analogous to mesh->pz_bounds / mesh->Xhistory_bounds for boundary cells). When empty, the well
+    // control operates without a history axis.
+    std::vector<value_t> Xhistory_well_default;
+
 protected:
     WellControlType control_type = WellControlType::NONE;
     std::optional<index_t> phase_idx = std::nullopt;

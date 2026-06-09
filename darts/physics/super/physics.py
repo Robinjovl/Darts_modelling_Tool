@@ -1,4 +1,5 @@
 import warnings
+from collections.abc import Iterable
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -9,7 +10,7 @@ from darts.physics.base.operators_base import (
     ThermalVarOperator,
     WellCtrlOperators,
 )
-from darts.physics.base.physics_base import PhysicsBase
+from darts.physics.base.physics_base import HistoryField, PhysicsBase
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators
 
 
@@ -39,6 +40,7 @@ class Compositional(PhysicsBase):
         extrapolation_flag: bool = True,
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
+        history_fields: Iterable[HistoryField] | None = None,
     ):
         """
         :param components: List of components.
@@ -56,6 +58,10 @@ class Compositional(PhysicsBase):
         :param extrapolation_flag: Enable extrapolation logic (z[last] < 0 if nc >= 3).
         :param state_spec: P (default), PT, or PH.
         :param cache: Cache supporting points to disk between runs.
+        :param history_fields: (optional) List of :class:`HistoryField` descriptors declaring
+                               auxiliary OBL axes (e.g. ``sg_max`` for Killough hysteresis).
+                               Pass ``None`` or an empty list for standard drainage-only
+                               behaviour.
         """
         nc = len(components)
         nph = len(phases)
@@ -104,6 +110,11 @@ class Compositional(PhysicsBase):
                     "extrapolation requires equal dz across all composition axes"
                 )
 
+        # Fill in per-field defaults (mostly n_axis_points falling back to n_points) so that
+        # callers can pass HistoryField(label="sg_max") without repeating axis resolution.
+        # n_points isn't available with the multi-index adaptive grid; HistoryField specs
+        # must set n_axis_points explicitly, so we just pass entries through.
+        resolved_history_fields = list(history_fields or [])
         super().__init__(
             state_spec=state_spec,
             variables=variables,
@@ -115,6 +126,7 @@ class Compositional(PhysicsBase):
             axes_origin=list(axes_origin),
             sim_eps=epsilon_z * sim_eps_multiplier,
             cache=cache,
+            history_fields=resolved_history_fields,
         )
 
     def set_engine(self, discr_type: str = "tpfa", platform: str = "cpu"):
@@ -277,6 +289,8 @@ class Compositional(PhysicsBase):
             values = np.resize(np.asarray(values), mesh.n_res_blocks)
             np.asarray(mesh.initial_state)[ith_var :: self.n_vars] = values
 
+        self.populate_mesh_history_defaults(mesh)
+
     def set_initial_conditions_from_array(
         self, mesh: conn_mesh, input_distribution: dict
     ):
@@ -374,6 +388,11 @@ class Compositional(PhysicsBase):
                 if np.isscalar(input_distribution[self.vars[c + 1]])
                 else input_distribution[self.vars[c + 1]][:]
             )
+
+        # Broadcast HistoryField.default values into mesh.Xhistory_bounds so boundary cells
+        # (MPFA / mech engines with n_bounds > 0) start from the configured default instead
+        # of the engine's zero fallback in build_Xop.
+        self.populate_mesh_history_defaults(mesh)
 
     def evaluate_flash(
         self,

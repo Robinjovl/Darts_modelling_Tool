@@ -36,8 +36,8 @@ if(ENABLE_VALGRIND)
     # Limit SIMD to SSE4.2 (supported by Valgrind 3.24) to avoid SIGILL on AVX-512
     # -mno-avx512f disables AVX-512 foundation instructions
     # -march=x86-64-v2 targets SSE4.2 level (compatible with Valgrind)
-    set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} -g -O2 -march=x86-64-v2 -mno-avx512f")
-    set(CMAKE_C_FLAGS_DEBUG       "${CMAKE_C_FLAGS_DEBUG}   -g -O2 -march=x86-64-v2 -mno-avx512f")
+    set(CMAKE_CXX_FLAGS_DEBUG          "${CMAKE_CXX_FLAGS_DEBUG} -g -O2 -march=x86-64-v2 -mno-avx512f")
+    set(CMAKE_C_FLAGS_DEBUG            "${CMAKE_C_FLAGS_DEBUG}   -g -O2 -march=x86-64-v2 -mno-avx512f")
 endif()
 
 # Load cmake modules -----------------------------------------------------------

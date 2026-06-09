@@ -5,8 +5,11 @@ import os
 import pickle
 import signal
 import tempfile
+from collections.abc import Iterable
+from dataclasses import dataclass
 from enum import Enum
 from functools import total_ordering
+from typing import Any
 
 import numpy as np
 
@@ -15,9 +18,33 @@ from darts.interpolators import *
 from darts.physics.base.operators_base import ThermalVarOperator, WellCtrlOperators
 
 
+@dataclass
+class HistoryField:
+    """
+    Describe one OBL history variable declaratively.
+
+    History variables enter the OBL interpolator state but are NOT Newton unknowns — the physics
+    advances them outside of Newton (e.g. max gas saturation updated after each converged timestep
+    for Killough relative-permeability hysteresis).
+
+    :param label: Axis label used for interpolator state ordering (e.g. ``"sg_max"``)
+    :param axis_min: Lower bound of the OBL axis for this history variable
+    :param axis_max: Upper bound of the OBL axis for this history variable
+    :param n_axis_points: Number of OBL supporting points on this axis; ``None`` falls back to the
+                          physics default ``n_points``
+    :param default: Reservoir initial value and fallback value at wells / boundaries
+    """
+
+    label: str
+    axis_min: float = 0.0
+    axis_max: float = 1.0
+    n_axis_points: int | None = None
+    default: float = 0.0
+
+
 class PhysicsBase:
     """
-    This is a base class for Physics definition.
+    Define the shared infrastructure for DARTS physics classes.
 
     Physics contains all necessary objects to initialize and run the DARTS :class:`engine`.
 
@@ -56,7 +83,7 @@ class PhysicsBase:
         PH = 2
         PS = 3
 
-        def __lt__(self, other):
+        def __lt__(self, other: object) -> bool:
             if self.__class__ is other.__class__:
                 return self.value < other.value
             return NotImplemented
@@ -80,7 +107,8 @@ class PhysicsBase:
         axes_origin: list[float] = None,
         sim_eps: float = None,
         cache: bool = False,
-    ):
+        history_fields: Iterable['HistoryField'] | None = None,
+    ) -> None:
         """
         Constructor of the PhysicsBase class. Defines the OBL grid by per-axis cell size
         plus an optional origin offset; creates a `simulation` timer node and initializes
@@ -178,6 +206,203 @@ class PhysicsBase:
         self.output_property_operators = {}
         self.output_property_itor = {}
 
+        # Optional OBL history variables (e.g. max gas saturation for Killough hysteresis).
+        # Keep this as a list rather than a dict: these descriptors define not only labels,
+        # but also the ordering of the appended OBL history axes. That ordering must stay
+        # consistent across Python, engine.Xhistory, and the interpolator state [X | Xhistory].
+        # An empty list disables history-aware behaviour; a non-empty list extends the OBL
+        # interpolation state without touching the Newton system.
+        self.history_fields: list[HistoryField] = list(history_fields or [])
+        # Populated by set_interpolators when history_fields is non-empty, so create_interpolator
+        # can decide between primary-axes and extended-axes interpolator construction.
+        self._extended_axes_min: value_vector | None = None
+        self._extended_axes_max: value_vector | None = None
+        self._extended_n_axes_points: index_vector | None = None
+
+    @property
+    def n_history(self) -> int:
+        """
+        Return the number of configured OBL history variables (``len(history_fields)``).
+
+        :returns: Count of auxiliary OBL axes that enter interpolation but not the Newton system
+        :rtype: int
+        """
+        return len(self.history_fields)
+
+    @property
+    def n_state(self) -> int:
+        """
+        Return the total OBL interpolation-state size per cell = ``n_vars + n_history``.
+
+        :returns: Number of axes the reservoir / well interpolators consume per cell
+        :rtype: int
+        """
+        return self.n_vars + self.n_history
+
+    def get_interpolator_axes(
+        self,
+    ) -> tuple[value_vector, value_vector, index_vector]:
+        """
+        Return the ``(axes_min, axes_max, n_axes_points)`` triple that OBL interpolators
+        running on the full OBL state ``[X | Xhistory]`` should be built on.
+
+        When ``history_fields`` is empty this is identical to ``(self.axes_min, self.axes_max,
+        self.n_axes_points)``. When non-empty the primary axes are extended with one axis per
+        history field (using ``n_axes_points[0]`` as the default axis resolution). The result
+        is cached on ``self._extended_axes_*`` so callers (``set_interpolators`` and
+        :mod:`darts.output`) see identical bounds.
+
+        :returns: ``(axes_min, axes_max, n_axes_points)`` suitable for :meth:`create_interpolator`
+        :rtype: tuple[value_vector, value_vector, index_vector]
+        """
+        if not self.history_fields:
+            return self.axes_min, self.axes_max, self.n_axes_points
+        if self._extended_axes_min is None:
+            h_min = [h.axis_min for h in self.history_fields]
+            h_max = [h.axis_max for h in self.history_fields]
+            h_npts = [
+                (
+                    h.n_axis_points
+                    if h.n_axis_points is not None
+                    else self.n_axes_points[0]
+                )
+                for h in self.history_fields
+            ]
+            self._extended_axes_min = value_vector(list(self.axes_min) + h_min)
+            self._extended_axes_max = value_vector(list(self.axes_max) + h_max)
+            self._extended_n_axes_points = index_vector(
+                list(self.n_axes_points) + h_npts
+            )
+        return (
+            self._extended_axes_min,
+            self._extended_axes_max,
+            self._extended_n_axes_points,
+        )
+
+    def get_interpolator_state_labels(self) -> list:
+        """
+        Return axis labels used by the OBL interpolators, in storage order.
+
+        The first ``n_vars`` entries are the primary Newton unknown labels (``self.vars``),
+        followed by one label per history field (e.g. ``"sg_max"``). Used by
+        :mod:`darts.output` to label columns when dumping operator state.
+
+        :returns: Ordered list of axis labels of length ``n_state``
+        :rtype: list[str]
+        """
+        return list(self.vars) + [h.label for h in self.history_fields]
+
+    def get_history_default(self, label: str) -> float:
+        """
+        Return the configured initial / fallback value for a history field.
+
+        :param label: Label of the history field, must match one declared in ``history_fields``
+        :type label: str
+        :returns: The ``default`` attribute of the matching :class:`HistoryField`
+        :rtype: float
+        :raises KeyError: If no history field has the requested label
+        """
+        for h in self.history_fields:
+            if h.label == label:
+                return h.default
+        raise KeyError(label)
+
+    def get_engine_history_array(self, label: str, n_blocks: int = None) -> np.ndarray:
+        """
+        Return a per-cell copy of ``engine.Xhistory`` restricted to one history axis.
+
+        The engine stores ``Xhistory`` as a flat ``[(n_blocks + n_bounds) * n_history]`` buffer in
+        cell-major order (all ``n_history`` values for cell 0, then cell 1, ...). This helper
+        pulls out just the reservoir blocks for one label and returns a copy (safe to mutate).
+
+        :param label: Label of the history field to extract, must match one in ``history_fields``
+        :type label: str
+        :param n_blocks: Number of reservoir blocks to read. When ``None``, inferred as
+                         ``Xhistory.size // n_history`` (i.e. all cells including boundaries)
+        :type n_blocks: int, optional
+        :returns: One-dimensional array of shape ``(n_blocks,)`` with the requested axis values
+        :rtype: numpy.ndarray
+        :raises RuntimeError: If no history fields are configured on this physics
+        :raises KeyError: If no history field has the requested label
+        """
+        if not self.history_fields:
+            raise RuntimeError("Physics has no history fields configured")
+        idx = next(
+            (i for i, h in enumerate(self.history_fields) if h.label == label), -1
+        )
+        if idx < 0:
+            raise KeyError(label)
+        Xhistory = np.asarray(self.engine.Xhistory, copy=False)
+        n_history = self.n_history
+        if n_blocks is None:
+            n_blocks = Xhistory.size // n_history
+        return Xhistory.reshape(-1, n_history)[:n_blocks, idx].copy()
+
+    def get_engine_interpolator_state(self, n_blocks: int = None) -> np.ndarray:
+        """
+        Return the full OBL state ``[X | Xhistory]`` flattened in cell-major order.
+
+        Used by :mod:`darts.output` to dump operator inputs for post-processing. The layout is
+        interleaved so callers that stride by ``n_state`` pick out one state variable per cell:
+        ``result[j::n_state]`` is the ``j``-th state axis for every reservoir cell.
+
+        :param n_blocks: Number of reservoir blocks. When ``None``, inferred from
+                         ``engine.X.size // n_vars``
+        :type n_blocks: int, optional
+        :returns: One-dimensional array of length ``n_blocks * n_state`` with primary vars and
+                  history values interleaved per cell
+        :rtype: numpy.ndarray
+        """
+        if n_blocks is None:
+            n_blocks = self.engine.X.size // self.n_vars
+        X = np.asarray(self.engine.X, copy=False).reshape(-1, self.n_vars)[:n_blocks]
+        if not self.history_fields:
+            return X.flatten()
+        Xhistory = np.asarray(self.engine.Xhistory, copy=False).reshape(
+            -1, self.n_history
+        )[:n_blocks]
+        return np.concatenate([X, Xhistory], axis=1).flatten()
+
+    def set_engine_history_array(
+        self, label: str, values, n_blocks: int = None
+    ) -> None:
+        """
+        Overwrite one axis of ``engine.Xhistory`` with a per-cell scalar or array.
+
+        The selected history column is updated through a reshaped writable NumPy view of
+        ``engine.Xhistory``.
+
+        :param label: Label of the history field to write, must match one in ``history_fields``
+        :type label: str
+        :param values: Value(s) for the single history axis identified by ``label``: either a
+                       scalar applied to every cell, or a one-dimensional array-like of length
+                       ``n_blocks``
+        :type values: float or array-like
+        :param n_blocks: Number of reservoir blocks to write. When ``None``, inferred as
+                         ``Xhistory_flat.size // n_history``
+        :type n_blocks: int, optional
+        :returns: None
+        :raises RuntimeError: If no history fields are configured on this physics
+        :raises KeyError: If no history field has the requested label
+        """
+        if not self.history_fields:
+            raise RuntimeError("Physics has no history fields configured")
+        idx = next(
+            (i for i, h in enumerate(self.history_fields) if h.label == label), -1
+        )
+        if idx < 0:
+            raise KeyError(label)
+        n_history = self.n_history
+        Xhistory_flat = np.asarray(self.engine.Xhistory, copy=False)
+        if n_blocks is None:
+            n_blocks = Xhistory_flat.size // n_history
+        if np.isscalar(values):
+            history_values = np.full(n_blocks, float(values))
+        else:
+            history_values = np.asarray(values, dtype=float).reshape(-1)
+        Xhistory_view = Xhistory_flat.reshape(-1, n_history)
+        Xhistory_view[:n_blocks, idx] = history_values
+
     def init_physics(
         self,
         discr_type: str = 'tpfa',
@@ -187,13 +412,13 @@ class PhysicsBase:
         itor_precision: str = 'd',
         verbose: bool = False,
         is_barycentric: bool = False,
-        n_solid: int = None,
+        n_solid: int | None = None,
         parallel_evaluation: bool = False,
-        n_workers: int = None,
+        n_workers: int | None = None,
         evaluator_factory_hook=None,
-    ):
+    ) -> None:
         """
-        Function to initialize all contained objects within the Physics object.
+        Initialise engines, operators, and interpolators for this physics object.
 
         :param discr_type: Discretization type, 'tpfa' (default) or 'mpfa'
         :type discr_type: str
@@ -211,6 +436,14 @@ class PhysicsBase:
         :type is_barycentric: bool
         :param n_solid: Number of solid minerals for element-based reactive flow
         :type n_solid: int
+        :param parallel_evaluation: Enable parallel batch evaluation of supporting points via multiprocessing
+        :type parallel_evaluation: bool
+        :param n_workers: Number of worker processes for parallel evaluation (default: ``os.cpu_count()``)
+        :type n_workers: int, optional
+        :param evaluator_factory_hook: Callable ``(region: int) -> callable`` that returns a factory
+                                       for constructing a fresh evaluator per worker process.
+                                       Required when ``parallel_evaluation=True``.
+        :type evaluator_factory_hook: callable
         """
         # OBL grid is fully defined by (axes_origin, axes_step) — see __init__.
         # No more determine_obl_bounds() call: the adaptive interpolator caches cells
@@ -218,6 +451,11 @@ class PhysicsBase:
 
         # set engine, operators and create interpolators
         self.engine = self.set_engine(discr_type, platform)
+
+        # Tell the engine how many per-cell history variables to reserve in its Xop / Xhistory
+        # buffers. Must be set before engine.init() allocates them.
+        if hasattr(self.engine, "n_history_runtime"):
+            self.engine.n_history_runtime = self.n_history
 
         # for separate mineral fraction in reactive flow formulations
         if n_solid is not None:
@@ -237,11 +475,19 @@ class PhysicsBase:
             n_workers=n_workers,
             evaluator_factory_hook=evaluator_factory_hook,
         )
+
+        # When history fields are active, verify that all hysteresis-bearing evaluators in
+        # every region share consistent trapping parameters. Catches silent drift between
+        # rel_perm_ev and capillary_pressure_ev built from independent Corey sources.
+        if self.history_fields:
+            for pc in self.property_containers.values():
+                if hasattr(pc, "validate_history_consistency"):
+                    pc.validate_history_consistency()
         return
 
-    def set_state_spec(self, state_spec: StateSpecification):
+    def set_state_spec(self, state_spec: StateSpecification) -> None:
         """
-        Set the state specification in the engine
+        Set the state specification on the underlying engine.
 
         :param state_spec: State specification
         :type state_spec: StateSpecification
@@ -257,25 +503,35 @@ class PhysicsBase:
         else:
             raise NotImplementedError()
 
-    def add_property_region(self, property_container, region: int = 0):
+    def add_property_region(self, property_container: Any, region: int = 0) -> None:
         """
-        Function to add :class:`PropertyContainer` object for specified region to `property_containers` dict.
+        Register a property container for one region and propagate history metadata.
 
         :param property_container: Object for evaluation of properties
         :type property_container: :class:`PropertyContainer`
         :param region: Tag of the region, to be used as a key in `property_containers` dict
         """
+        # Tell the property container how many OBL history variables the physics appends
+        # to the state vector so that it can locate primary vars correctly (e.g. temperature
+        # at position [nc] rather than [-1] when sg_max is appended), and pass the ordered
+        # labels so it can expose {label: value} to history-aware evaluators.
+        if hasattr(property_container, "n_history"):
+            property_container.n_history = self.n_history
+        if hasattr(property_container, "history_labels"):
+            property_container.history_labels = [h.label for h in self.history_fields]
         self.property_containers[region] = property_container
         self.regions.append(region)
         return
 
-    def set_operators(self):
+    def set_operators(self) -> None:
         """
-        Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
+        Set operator objects for reservoir, well, control, and property evaluations.
+
+        Create :class:`ReservoirOperators` for each reservoir region,
         :class:`WellOperators` for the well cells, :class:`RateOperators` for evaluation of rates
         and a :class:`PropertyOperator` for the evaluation of properties.
 
-        In PhysicsBase, this is an empty function, needs to be overloaded in child classes.
+        Subclasses must override this placeholder implementation.
         """
         pass
 
@@ -284,9 +540,9 @@ class PhysicsBase:
         self, discr_type: str = 'tpfa', platform: str = 'cpu'
     ) -> engine_base:
         """
-        Function to set :class:`engine` object.
+        Create and return the engine implementation for this physics.
 
-        In PhysicsBase, this is an empty function, needs to be overloaded in child classes.
+        Subclasses must override this placeholder implementation.
 
         :param discr_type: Type of discretization, 'tpfa' (default) or 'mpfa'
         :type discr_type: str
@@ -304,12 +560,15 @@ class PhysicsBase:
         itor_precision='d',
         is_barycentric: bool = False,
         parallel_evaluation: bool = False,
-        n_workers: int = None,
+        n_workers: int | None = None,
         evaluator_factory_hook=None,
-    ):
+    ) -> None:
         """
-        Function to initialize set interpolator objects based on the set of operators.
-        It creates timers for each of the interpolators.
+        Initialise the interpolator set and timer nodes for the configured operators.
+
+        If history_fields is non-empty, the reservoir / well / well-control interpolators are built
+        on the extended axes set (primary OBL axes + one axis per history field); the thermal_var
+        interpolator always stays on the primary PT axes.
 
         :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
         :type platform: str
@@ -552,8 +811,20 @@ class PhysicsBase:
         self,
         itor: operator_set_evaluator_iface,
         etor: operator_set_evaluator_iface,
-        states,
-    ):
+        states: np.ndarray,
+    ) -> dict[str, np.ndarray]:
+        """
+        Evaluate interpolated operators on a batch of states.
+
+        :param itor: Interpolator object used for operator evaluation
+        :type itor: operator_set_evaluator_iface
+        :param etor: Evaluator that provides operator-name metadata
+        :type etor: operator_set_evaluator_iface
+        :param states: Two-dimensional array of state points to evaluate
+        :type states: numpy.ndarray
+        :returns: Mapping from operator name to evaluated values per state
+        :rtype: dict[str, numpy.ndarray]
+        """
         # Create values, dvalues and idxs arrays
         n_states = len(states)
         physical_points = np.where(np.sum(states[:, 1:-1], axis=1) <= 1.0, True, False)
@@ -591,13 +862,16 @@ class PhysicsBase:
         control_type: well_control_iface.WellControlType,
         is_inj: bool,
         target: float,
-        phase_name: str = None,
-        inj_composition: list = None,
-        inj_temp: float = None,
-    ):
+        phase_name: str | None = None,
+        inj_composition: list | None = None,
+        inj_temp: float | None = None,
+    ) -> None:
         """
-        Set well control/constraint. It will call set_bhp_control() or set_rate_control() on the control or constraint
-        well_control_iface object that lives in ms_well. In order to deactivate a control or constraint, pass WellControlType.NONE.
+        Set a well control or constraint on the target :class:`well_control_iface`.
+
+        Call ``set_bhp_control()`` or ``set_rate_control()`` on the control or constraint
+        object that lives on ``ms_well``. To deactivate a control or constraint, pass
+        ``WellControlType.NONE``.
 
         :param wctrl: well_control_iface object responsible for control/constraint. It must be set to:
                       - well_obj.control for well control
@@ -654,24 +928,23 @@ class PhysicsBase:
     @abc.abstractmethod
     def set_initial_conditions_from_depth_table(
         self, mesh: conn_mesh, input_distribution: dict, input_depth: list | np.ndarray
-    ):
+    ) -> None:
         """
-        Function to set initial conditions from given distribution of properties over depth.
+        Set initial conditions from property values tabulated over depth.
 
         :param mesh: conn_mesh object
         :param input_distribution: Initial distributions of unknowns over depth, must have keys equal to self.vars
                                    and each entry is scalar or array of length equal to depths
         :param input_depth: Array of depths over which depth table has been specified
-        :param global_to_local: array of indices mapping to active elements
         """
         pass
 
     @abc.abstractmethod
     def set_initial_conditions_from_array(
         self, mesh: conn_mesh, input_distribution: dict
-    ):
+    ) -> None:
         """
-        Method to set initial conditions by arrays or uniformly for all cells
+        Set initial conditions from arrays or uniform cell-wise values.
 
         :param mesh: conn_mesh object
         :param input_distribution: Initial distributions of unknowns over grid, must have keys equal to self.vars
@@ -679,11 +952,42 @@ class PhysicsBase:
         """
         pass
 
-    def init_wells(self, wells):
+    def populate_mesh_history_defaults(self, mesh: conn_mesh) -> None:
         """
-        Function to initialize physics of wells
+        Allocate and fill ``mesh.Xhistory_bounds`` from ``history_fields`` defaults.
 
-        :param wells: List of :class:`ms_well` objects
+        The engine's ``build_Xop`` reads boundary-cell history values from ``mesh.Xhistory_bounds``
+        and falls back to zero when the buffer is empty. This helper writes the configured
+        ``HistoryField.default`` for each field into every boundary cell so engines that use
+        non-zero defaults (MPFA / mechanical paths with boundary cells) behave correctly.
+        No-op when ``history_fields`` is empty or ``mesh.n_bounds == 0``.
+
+        :param mesh: Connection mesh the engine will run on
+        :type mesh: darts.engines.conn_mesh
+        :returns: None
+        """
+        if not self.history_fields:
+            return
+        n_bounds = int(getattr(mesh, "n_bounds", 0))
+        if n_bounds <= 0:
+            return
+        defaults = np.array([h.default for h in self.history_fields], dtype=float)
+        # cell-major layout: [(h_0, h_1, ..., h_{n_history-1}) for cell 0, cell 1, ...]
+        flat = np.tile(defaults, n_bounds)
+        mesh.Xhistory_bounds = value_vector(flat.tolist())
+
+    def init_wells(self, wells: list[ms_well]) -> None:
+        """
+        Initialise well-rate parameters and propagate history defaults to wells.
+
+        When ``history_fields`` is non-empty, the per-field default values are also broadcast
+        to each well's ``Xhistory_well_default`` and to its ``control`` / ``constraint`` objects.
+        This is the well-side analogue of ``mesh.Xhistory_bounds``: when the engine evaluates an
+        operator on a well cell it pads the extended OBL state with these fallback values.
+
+        :param wells: List of multi-segment wells to initialise
+        :type wells: list[darts.engines.ms_well]
+        :returns: None
         """
         for w in wells:
             assert isinstance(w, ms_well)
@@ -695,6 +999,15 @@ class PhysicsBase:
                 self.thermal_var_itor,
                 self.thermal,
             )
+
+        if self.history_fields:
+            defaults = value_vector([h.default for h in self.history_fields])
+            for w in wells:
+                w.Xhistory_well_default = defaults
+                if hasattr(w, "control"):
+                    w.control.Xhistory_well_default = defaults
+                if hasattr(w, "constraint"):
+                    w.constraint.Xhistory_well_default = defaults
 
     def create_interpolator(
         self,
@@ -709,7 +1022,7 @@ class PhysicsBase:
         precision: str = 'd',
         region: str = '',
         is_barycentric: bool = False,
-    ):
+    ) -> tuple[operator_set_gradient_evaluator_iface, int]:
         """
         Create an interpolator object using (axes_origin, axes_step) to define the grid.
 
@@ -926,9 +1239,9 @@ class PhysicsBase:
 
     def create_itor_timers(
         self, itor: operator_set_gradient_evaluator_iface, timer_name: str
-    ):
+    ) -> None:
         """
-        Create timers for interpolators.
+        Create timer nodes for one interpolator.
 
         :param itor: The object which performs evaluation of operator gradient (interpolators currently, AD-based in future)
         :type itor: operator_set_gradient_evaluator_iface object
@@ -953,7 +1266,10 @@ class PhysicsBase:
             self.timer.node["jacobian assembly"].node["interpolation"].node[timer_name]
         )
 
-    def write_cache(self):
+    def write_cache(self) -> None:
+        """
+        Flush cached interpolator point data to disk once per physics object.
+        """
         # this function can be called two ways
         #   1. Destructor (__del__) method
         #   2. Via atexit function, before interpreter exits
@@ -999,10 +1315,11 @@ class PhysicsBase:
                     except Exception:
                         pass
 
-    def _atomic_pickle_dump(self, obj, final_path: str):
+    def _atomic_pickle_dump(self, obj: Any, final_path: str) -> None:
         """
-        Atomically write pickle to final_path using a temporary file followed by os.replace.
-        Ensures data is flushed (fsync) to disk before the rename to avoid corruption.
+        Atomically write a pickle file via a temporary path followed by ``os.replace``.
+
+        Flush the data to disk before the rename to reduce cache corruption on interruption.
         """
         directory = os.path.dirname(final_path) or "."
         try:
@@ -1038,9 +1355,9 @@ class PhysicsBase:
             except Exception:
                 pass
 
-    def _safe_pickle_load(self, path: str):
+    def _safe_pickle_load(self, path: str) -> Any | None:
         """
-        Safely load a pickle file. If the file is corrupted or truncated, delete it and return None.
+        Load a pickle file and drop it if it is corrupted or truncated.
         """
         try:
             with open(path, "rb") as fp:
@@ -1060,9 +1377,9 @@ class PhysicsBase:
                 pass
             return None
 
-    def body_path_start(self, output_folder):
+    def body_path_start(self, output_folder: str) -> None:
         """
-        Function that prepare hypercube output demonstrating occupancy of state space (for adaptive interpolators)
+        Start hypercube-occupancy output for adaptive interpolators.
 
         :param output_folder: folder to write output to
         """
@@ -1077,9 +1394,9 @@ class PhysicsBase:
                 )
             fp.write('Body Index Data\n')
 
-    def body_path_add_bodys(self, output_folder, time):
+    def body_path_add_bodys(self, output_folder: str, time: float) -> None:
         """
-        Function performs hypercube output demonstrating occupancy of state space (for adaptive interpolators)
+        Append hypercube-occupancy output for adaptive interpolators.
 
         :param output_folder: folder to write output to
         :param time: current time

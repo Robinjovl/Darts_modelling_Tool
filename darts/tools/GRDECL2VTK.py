@@ -13,6 +13,7 @@
 
 import warnings
 
+import meshio
 import numpy as np
 
 from darts.tools.GRDECL_FaultProcess import *
@@ -21,13 +22,6 @@ from darts.tools.GRDECL_Parser import *
 warnings.simplefilter(
     action='ignore', category=FutureWarning
 )  # Supress some Future Warnning due to outdated library
-
-try:
-    import vtk
-    import vtk.util.numpy_support as ns
-except ImportError:
-    warnings.warn("No vtk module loaded.", stacklevel=2)
-
 
 # from GRDECL_CADExporter import *
 
@@ -58,7 +52,9 @@ class GeologyModel:
         self.GRDECL_Data = GRDECL_Parser()
         self.FaultProcessor = None
 
-        self.VTK_Grids = vtk.vtkUnstructuredGrid()
+        self.meshio_points = None
+        self.meshio_cells = None
+        self.cell_data = {}
 
         if self.fname != '':
             self.GRDECL_Data = GRDECL_Parser(self.fname)
@@ -73,36 +69,29 @@ class GeologyModel:
         print('[Geometry] Converting GRDECL to Paraview Hexahedron mesh data....')
         NX, NY, NZ = self.GRDECL_Data.NX, self.GRDECL_Data.NY, self.GRDECL_Data.NZ
         if self.GRDECL_Data.GRID_type == 'CornerPoint':
-            # 1.Collect Points from the raw CornerPoint data [ZCORN]&[COORD]
-            # X,Y has to be interpolated from [ZCORN]
-            Points = vtk.vtkPoints()
-            Points.SetNumberOfPoints(len(self.GRDECL_Data.ZCORN))  # =2*NX*2*NY*2*NZ
-
+            # 1. Collect Points from the raw CornerPoint data [ZCORN]&[COORD]
+            n_pts = len(self.GRDECL_Data.ZCORN)  # = NX*NY*NZ*8
+            all_points = np.zeros((n_pts, 3))
             ptsid = 0
             for k in range(NZ):
                 for j in range(NY):
                     for i in range(NX):
                         CellCoords = self.GRDECL_Data.getCellCoords(i, j, k)
-                        for pi in range(
-                            8
-                        ):  # Loop 8 point for each cell, see getCellCoords(i,j,k) for node ordering
-                            Points.SetPoint(ptsid, CellCoords[pi])
+                        for pi in range(8):
+                            all_points[ptsid] = CellCoords[pi]
                             ptsid += 1
-            self.VTK_Grids.SetPoints(Points)
 
             # 2. Recover Cells which follows the convention of [ZCORN]
-            cellArray = vtk.vtkCellArray()
-            Cell = vtk.vtkHexahedron()
-
-            cellid = 0
+            # Node index mapping: GRDECL [0,1,2,3,...] -> VTK [0,1,3,2,...] (anti-clockwise)
+            active_cells = []
             for k in range(NZ):
                 for j in range(NY):
                     for i in range(NX):
                         ptid = i + NX * (j + NY * k)
                         if actnum[ptid]:
+                            cell_conn = np.empty(8, dtype=np.int64)
                             for pi in range(8):
                                 # Convert GRDECL node index convention to VTK convention
-                                # https://www.vtk.org/wp-content/uploads/2015/04/file-formats.pdf
                                 # 0,1,2,3(GRDECL)->0,1,3,2(VTK,anti-clockwise)
                                 if pi == 2 or pi == 6:
                                     VTKid = pi + 1
@@ -110,14 +99,14 @@ class GeologyModel:
                                     VTKid = pi - 1
                                 else:
                                     VTKid = pi
-                                Cell.GetPointIds().SetId(pi, ptid * 8 + VTKid)
-                            cellArray.InsertNextCell(Cell)
-                            cellid += 1
+                                cell_conn[pi] = ptid * 8 + VTKid
+                            active_cells.append(cell_conn)
 
-            self.VTK_Grids.SetCells(Cell.GetCellType(), cellArray)
+            self.meshio_points = all_points
+            self.meshio_cells = [("hexahedron", np.array(active_cells, dtype=np.int64))]
 
-            print("     NumOfPoints", self.VTK_Grids.GetNumberOfPoints())
-            print("     NumOfCells", self.VTK_Grids.GetNumberOfCells())
+            print("     NumOfPoints", n_pts)
+            print("     NumOfCells", len(active_cells))
 
             # 3. Load grid properties data if applicable
             for keyword, data in self.GRDECL_Data.SpatialDatas.items():
@@ -189,16 +178,11 @@ class GeologyModel:
         self.AppendScalarData('SubVolumes', DomainMarker3D)
 
     def AppendScalarData(self, name, numpy_array):
-        # * Append scalar cell data (numpy array) into vtk object
-        data = ns.numpy_to_vtk(numpy_array.ravel(order='F'), deep=True)
-        data.SetName(str(name))
-        data.SetNumberOfComponents(1)
-        self.VTK_Grids.GetCellData().AddArray(data)
+        self.cell_data[str(name)] = numpy_array.ravel(order='F')
 
     def Write2VTU(self, vtk_file_name):
         vtk_file_name = vtk_file_name + '.vtu'
-        xmlWriter = vtk.vtkXMLUnstructuredGridWriter()
-        xmlWriter.SetFileName(vtk_file_name)
-        xmlWriter.SetInputData(self.VTK_Grids)
-        xmlWriter.Write()
+        cell_data = {name: [arr] for name, arr in self.cell_data.items()}
+        mesh = meshio.Mesh(self.meshio_points, self.meshio_cells, cell_data=cell_data)
+        meshio.write(vtk_file_name, mesh)
         return vtk_file_name
