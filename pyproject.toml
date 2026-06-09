@@ -69,7 +69,7 @@ darts = ['*.pyd', '*.so', '*.dll', 'CHANGELOG.md', 'build_info.txt', 'libstdc++.
 # --- Ruff configuration ---
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [
