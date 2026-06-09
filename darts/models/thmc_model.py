@@ -34,6 +34,7 @@ class THMCModel(DartsModel):
             exit()
 
         super().__init__()
+        self.timer.node["initialization"].start()
         self.set_input_data()
         self.set_physics()
         self.set_reservoir()

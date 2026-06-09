@@ -1,21 +1,6 @@
-"""
-The two functions
-    plot_well_1d_reservoir_line_graphs_for_reported_times
-    and
-    plot_well_1d_reservoir_line_graphs_for_scenarios
-in this file can be used for plotting the profile of a property both in the wellbore and reservoir.
-plot_well_1d_reservoir_line_graphs_for_reported_times can be used to plot a property for reported times of a particular
-scenario, but it cannot be used if we want to plot well-reservoir profiles of different scenarios and compare the
-results in the same axes. To do this, you can use plot_well_1d_reservoir_line_graphs_for_scenarios.
-
-The file all_solutions.csv which contains the reservoir data at reported time steps needs to be generated from the
-corresponding vtk files by using the Python interface of ParaView and stored in the output folder.
-
-Note:
-    This functino can be used only for 1D reservoirs.
-"""
-
 import os
+import re
+import shutil
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -23,180 +8,186 @@ import numpy as np
 import pandas as pd
 
 from darts.models.darts_model import DartsModel
+from darts.pipes.save_results import save_dfm_well_props
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
-def plot_well_1d_reservoir_line_graphs_for_reported_times(
+def plot_well_1d_reservoir_line_graphs(
     well_name: str,
     coupled_model: DartsModel,
-    report_time_labels: list,
     reported_times: list,
     *,
-    prop_name: str,
-    legend_loc: str = 'best',
+    report_time_labels: list = None,
+    reservoir_radius_max: float = None,
+    phase_labels: dict = None,
+    property_labels: dict = None,
+    output_dir: str = None,
+    save_as=("png"),
+    show_plot: bool = False,
+    legend_loc: str = "best",
+    cmap_name: str = "jet",
+    figure_size=(6, 5),
+    marker_size: float = 4.0,
+    line_width: float = 2.0,
+    time_atol: float = 1e-10,
+    time_rtol: float = 1e-8,
 ):
     """
-    Plot well-reservoir property profiles at certain reported times for a scenario for the specified well
-    Note: It can be used only for 1D reservoirs.
+    Save scalar property profiles through a DFM well and a 1D reservoir.
 
-    :param well_name: Name of the well the properties of which will be considered for plotting
-    :type well_name: str
-    :param coupled_model: An instance of DartsModel
-    :type coupled_model: DartsModel
-    :param report_time_labels: List of labels of reported times
-    :type report_time_labels: list
-    :param reported_times: List of reported times [day]
-    :type reported_times: list
-    :param prop_name: Name of the property to plot
-    :type prop_name: str
-    :param legend_loc: Legend location
-    :type legend_loc: str
+    Reservoir properties are evaluated directly from reservoir_solution.h5 using
+    coupled_model.output.output_properties.
+
+    :param well_name: DFM well name.
+    :param coupled_model: Initialized DartsModel instance with output files available.
+    :param reported_times: Simulation times to plot, in days.
+    :param report_time_labels: Legend labels for reported_times. If omitted, labels are
+                               generated from the time values.
+    :param reservoir_radius_max: Optional maximum reservoir radial distance [m]
+                                 to include in the plot. If omitted, the full 1D reservoir is plotted.
+    :param phase_labels: Optional mapping from phase keys to plot labels, for example
+                         {"L_a": r"Liquid $CO_2$", "L_b": "Aqueous phase"}.
+    :param property_labels: Optional mapping from property keys to full x-axis labels.
+                            This overrides the automatic label generated for each property.
+    :param output_dir: Directory for saved figures. Defaults to a subfolder in model output.
+    :param save_as: File extension or iterable of extensions to save.
+    :param show_plot: If True, display the figure.
+    :param legend_loc: Matplotlib legend location.
+    :param cmap_name: Matplotlib colormap name for report-step colors.
+    :param figure_size: Matplotlib figure size.
+    :param marker_size: Marker size.
+    :param line_width: Line width.
+    :param time_atol: Absolute tolerance for matching requested times.
+    :param time_rtol: Relative tolerance for matching requested times.
+
+    :returns: Dictionary mapping each plotted property to its saved figure paths.
     """
-    output_folder_path = coupled_model.output_folder
+    _validate_1d_reservoir(coupled_model)
+    reported_times = np.asarray(reported_times, dtype=float)
+    if len(reported_times) == 0:
+        raise ValueError("reported_times must contain at least one time value.")
 
-    dx = coupled_model.reservoir.global_data['dx']
-    assert dx.ndim == 3 and dx.shape[1:] == (1, 1), f"Expected (*,1,1), got {dx.shape}"
+    if report_time_labels is None:
+        report_time_labels = [_format_time_label(time) for time in reported_times]
+    elif len(report_time_labels) != len(reported_times):
+        raise ValueError(
+            "report_time_labels must have the same length as reported_times."
+        )
 
-    assert len(report_time_labels) == len(reported_times), (
-        "Number of report step labels must be equal to number of report step times!"
-    )
+    phase_labels = phase_labels or {}
+    property_labels = property_labels or {}
 
-    avail_props = [
-        "pressure",
-        "temperature",
-        "sG",
-        "rhoG",
-        "rhoL",
-        "miuG",
-        "miuL",
-    ]
-    n_mobile_phases = coupled_model.wells[well_name].n_mobile_phases
-    if n_mobile_phases == 2:
-        avail_props.append("sL")
-    elif n_mobile_phases == 3:
-        avail_props.extend(["sL_a", "sL_b"])
-    assert prop_name in avail_props, (
-        f"Entered prop_name '{prop_name}' is not in the list of available properties!"
-    )
-
-    if prop_name == "pressure":
-        xlabel = "Pressure [bar]"
-    elif prop_name == "temperature":
-        xlabel = "Temperature [\u00b0C]"
-    elif prop_name == "sG":
-        xlabel = "Gas volume fraction [-]"
-    elif prop_name == "sL":
-        xlabel = "Liquid volume fraction [-]"
-    elif prop_name == "sL_a":
-        xlabel = "L_a volume fraction [-]"
-    elif prop_name == "sL_b":
-        xlabel = "L_b volume fraction [-]"
-    elif prop_name == "rhoG":
-        xlabel = r"Gas density [kg/m$^3$]"
-    elif prop_name == "rhoL":
-        xlabel = r"Liquid density [kg/m$^3$]"
-    elif prop_name == "miuG":
-        xlabel = "Gas viscosity [cP]"
-    elif prop_name == "miuL":
-        xlabel = "Liquid viscosity [cP]"
-
-    # Get well geometry info
-    well_geom = coupled_model.wells[well_name].geometry
-    segment_depths = well_geom.z
-    num_segments = well_geom.num_segments
-
-    # Get reservoir radial distance array: strictly positive, non-zero start
-    reservoir_dx = dx.flatten()
-    reservoir_radial_distance = np.cumsum(reservoir_dx)
-
-    # report_step_labels = [
-    #     "Initial conditions",
-    #     "30 seconds",
-    #     "1 minute",
-    #     "2 minutes",
-    #     "3 minutes",
-    #     "5 minutes",
-    #     "10 minutes",
-    #     "20 minutes",
-    #     "30 seconds",
-    #     "50 seconds",
-    #     "1 hour",
-    # ]
-    #
-    # report_step_times = [0,
-    #                      0.5 / 24 / 60,  # 30 seconds
-    #                      0.5 / 24 / 60,  # 1 minute
-    #                      1 / 24 / 30 - 1 / 24 / 60,  # 2 minute
-    #                      1 / 24 / 20 - 1 / 24 / 30,  # 3 minute
-    #                      1 / 24 / 12 - 1 / 24 / 20,  # 5 minute
-    #                      1 / 24 / 6 - 1 / 24 / 12,  # 10 minute
-    #                      1 / 24 / 3 - 1 / 24 / 6,  # 20 minute
-    #                      1 / 24 / 2 - 1 / 24 / 3,  # 30 minute
-    #                      1 / 24 / 6 * 5 - 1 / 24 / 2,  # 50 minute
-    #                      1 / 24 - 1 / 24 / 6 * 5,  # 1 hour
-    #                      ]
-
-    # Well HDF5 file is used here to get the time step sizes
-    h5_well_file_path = coupled_model.well_filepath
-    h5_well_dict = load_hdf5_to_dict(h5_well_file_path)
-    simulated_time = h5_well_dict["dynamic"]["time"]
-
-    report_indices = [
-        np.where(np.isclose(simulated_time, a))[0][0] for a in reported_times
-    ]
-
-    # Load primary vars and phase props for the well
+    save_dfm_well_props(well_name, coupled_model)
     well_props_file_path = os.path.join(
         coupled_model.output_folder, f"dfm_well_props_{well_name}.pkl"
     )
     well_data_frame = pd.read_pickle(well_props_file_path)
-
-    # Fast load; infer low-memory dtypes
-    all_solutions_csv_path = os.path.join(output_folder_path, "all_solutions.csv")
-    reservoir_data_frame = pd.read_csv(all_solutions_csv_path, low_memory=False)
-
-    # Ensure stable ordering
-    tvals = np.array(sorted(reservoir_data_frame["Timestep"].unique()))
-    num_res_cells = coupled_model.reservoir.nx
-
-    # Make an index to pivot quickly
-    df_idx = reservoir_data_frame.set_index(["Timestep", "CellID"]).sort_index()
-
-    def to_matrix(prop_name):
-        """
-        Return a (num_report_times, num_res_cells) matrix for the given property name
-        """
-        full_idx = pd.MultiIndex.from_product(
-            [tvals, sorted(reservoir_data_frame["CellID"].unique())],
-            names=["Timestep", "CellID"],
+    prop_names, skipped_props = _get_available_property_names(
+        coupled_model, well_data_frame
+    )
+    if len(prop_names) == 0:
+        raise ValueError(
+            "No scalar well-reservoir properties are available for plotting."
         )
-        s = df_idx[prop_name].reindex(full_idx)
-        matrix_full = s.values.reshape((len(tvals), -1))
-        reservoir_prop_matrix = matrix_full[
-            :, :num_res_cells
-        ]  # keep only the first num_res_cells
+    if skipped_props:
+        print(
+            "Skipped unavailable well-reservoir properties: " + ", ".join(skipped_props)
+        )
 
-        return reservoir_prop_matrix
+    h5_well_dict = load_hdf5_to_dict(coupled_model.well_filepath)
+    well_times = h5_well_dict["dynamic"]["time"]
+    well_time_indices = _get_matching_time_indices(
+        well_times, reported_times, "well_data.h5", time_atol, time_rtol
+    )
 
-    reservoir_prop_matrix = to_matrix(prop_name)
-    if prop_name == "temperature":
-        reservoir_prop_matrix -= 273.15
+    reservoir_times, reservoir_props = coupled_model.output.output_properties(
+        output_properties=prop_names
+    )
+    reservoir_time_indices = _get_matching_time_indices(
+        reservoir_times,
+        reported_times,
+        "reservoir_solution.h5",
+        time_atol,
+        time_rtol,
+    )
 
-    # Generate a colormap for the report steps (big jumps for the first time steps, then smaller)
-    n = len(report_time_labels)
-    cmap = mpl.colormaps['jet']
-    alpha = 10.0  # larger => more contrast early, flatter later
-    t = np.arange(n) / (n - 1 if n > 1 else 1)
-    t_nonlin = np.log1p(alpha * t) / np.log1p(alpha)
-    colors = [cmap(v) for v in t_nonlin]
+    well_geom = coupled_model.wells[well_name].geometry
+    segment_depths = np.asarray(well_geom.z, dtype=float)
+    num_segments = well_geom.num_segments
 
-    # Define markers and line styles
-    markers = ['o', 's', 'd', '^', 'v', 'x', '*']
-    linestyles = ['-', '--', '-.', ':']
+    reservoir_radial_distance_all = _get_reservoir_radial_distance(coupled_model)
+    reservoir_cell_indices = _get_reservoir_radius_indices(
+        reservoir_radial_distance_all, reservoir_radius_max
+    )
+    reservoir_radial_distance = reservoir_radial_distance_all[reservoir_cell_indices]
+    reservoir_prop_matrices = {}
+    for prop in prop_names:
+        reservoir_prop_matrix = np.asarray(reservoir_props[prop], dtype=float)
+        if reservoir_prop_matrix.shape[1] < reservoir_radial_distance_all.size:
+            raise ValueError(
+                f"Reservoir property '{prop}' has {reservoir_prop_matrix.shape[1]} "
+                f"cells, but the 1D reservoir geometry has {reservoir_radial_distance_all.size} cells."
+            )
+        reservoir_prop_matrices[prop] = reservoir_prop_matrix
 
-    # Start plotting
-    fig, ax = plt.subplots(figsize=(6, 5))
-    y_r, offset, rmin, rmax = stacked_y_axis_linear_log(
+    output_dir = _prepare_output_dir(coupled_model, well_name, output_dir)
+
+    saved_files = {}
+    for prop_name in prop_names:
+        fig, ax = _plot_property_profile(
+            prop_name,
+            well_data_frame,
+            reservoir_prop_matrices[prop_name],
+            well_time_indices,
+            reservoir_time_indices,
+            reported_times,
+            report_time_labels,
+            segment_depths,
+            num_segments,
+            reservoir_radial_distance,
+            reservoir_cell_indices,
+            phase_labels,
+            property_labels,
+            legend_loc,
+            cmap_name,
+            figure_size,
+            marker_size,
+            line_width,
+        )
+        saved_files[prop_name] = _save_profile_figure(
+            fig, output_dir, prop_name, save_as
+        )
+
+        if show_plot:
+            plt.show()
+        else:
+            plt.close(fig)
+
+    return saved_files
+
+
+def _plot_property_profile(
+    prop_name,
+    well_data_frame,
+    reservoir_prop_matrix,
+    well_time_indices,
+    reservoir_time_indices,
+    reported_times,
+    report_time_labels,
+    segment_depths,
+    num_segments,
+    reservoir_radial_distance,
+    reservoir_cell_indices,
+    phase_labels,
+    property_labels,
+    legend_loc,
+    cmap_name,
+    figure_size,
+    marker_size,
+    line_width,
+):
+    fig, ax = plt.subplots(figsize=figure_size)
+    y_r, _offset, _rmin, _rmax = _configure_stacked_y_axis_linear_log(
         ax,
         segment_depths,
         reservoir_radial_distance,
@@ -205,290 +196,282 @@ def plot_well_1d_reservoir_line_graphs_for_reported_times(
         add_minor=True,
     )
 
-    for idx, report_index in enumerate(report_indices):
-        well_prop_profile = well_data_frame[prop_name][
-            report_index * num_segments : (report_index + 1) * num_segments
-        ]
-        if prop_name == "temperature":
-            well_prop_profile -= 273.15
+    colors = _get_report_colors(len(reported_times), cmap_name)
+    markers = ["o", "s", "d", "^", "v", "x", "*"]
+    linestyles = ["-", "--", "-.", ":"]
 
-        color = colors[idx]  # Assign color from the colormap
-        marker = markers[idx % len(markers)]  # Cycle through markers
-        linestyle = linestyles[idx % len(linestyles)]  # Cycle through line styles
+    for idx, (well_time_idx, reservoir_time_idx) in enumerate(
+        zip(well_time_indices, reservoir_time_indices, strict=False)
+    ):
+        color = colors[idx]
+        marker = markers[idx % len(markers)]
+        linestyle = linestyles[idx % len(linestyles)]
+
+        well_profile = _get_well_profile(
+            well_data_frame, prop_name, well_time_idx, num_segments
+        )
+        reservoir_profile = reservoir_prop_matrix[
+            reservoir_time_idx, reservoir_cell_indices
+        ]
+
+        if prop_name == "temperature":
+            well_profile = well_profile - 273.15
+            reservoir_profile = reservoir_profile - 273.15
 
         ax.plot(
-            well_prop_profile,
+            well_profile,
             segment_depths,
             linestyle=linestyle,
             marker=marker,
-            linewidth=2.0,  # match linewidth
-            markersize=4.0,  # match markersize
+            linewidth=line_width,
+            markersize=marker_size,
             color=color,
             label=report_time_labels[idx],
         )
-
-        reservoir_prop_profile = reservoir_prop_matrix[idx, :]
         ax.plot(
-            reservoir_prop_profile,
+            reservoir_profile,
             y_r(reservoir_radial_distance),
             linestyle=linestyle,
             marker=marker,
-            linewidth=2.0,  # match linewidth
-            markersize=4.0,  # match markersize
+            linewidth=line_width,
+            markersize=marker_size,
             color=color,
         )
 
     ax.set_ylim(top=0)
-
-    ax.set_xlabel(xlabel)
-
-    # ax.legend(loc="best", frameon=False)
-
+    ax.set_xlabel(_get_property_axis_label(prop_name, phase_labels, property_labels))
     ax.tick_params(
-        axis='y',
-        which='both',
+        axis="y",
+        which="both",
         labelleft=True,
         labelright=False,
         left=True,
         right=False,
-        pad=3,  # <-- increase this to push labels farther from ticks
-        direction='in',
-    )  # optional: ticks point outward
-    ax.spines['right'].set_visible(True)
-
-    # Add subtle grid
+        pad=3,
+        direction="in",
+    )
+    ax.spines["right"].set_visible(True)
     ax.grid(True, which="both", linestyle=":", linewidth=0.6, alpha=0.6)
 
-    plt.legend(
+    ax.legend(
         fontsize=6,
         loc=legend_loc,
         title="Report steps",
         title_fontsize=10,
-    ).get_frame().set_edgecolor('black')  # Optional: Add a border
+    ).get_frame().set_edgecolor("black")
+
     fig.tight_layout()
-    fig.savefig(
-        os.path.join(output_folder_path, f"{prop_name}_well_reservoir_profile.pdf")
+
+    return fig, ax
+
+
+def _save_profile_figure(fig, output_dir, prop_name, save_as):
+    if save_as is None:
+        return []
+    elif isinstance(save_as, str):
+        save_as = (save_as,)
+
+    file_base = os.path.join(
+        output_dir, f"{_make_safe_filename(prop_name)}_well_1d_reservoir_profile"
     )
-    fig.savefig(
-        os.path.join(output_folder_path, f"{prop_name}_well_reservoir_profile.png")
-    )
-    plt.show()
+    saved_files = []
+    for extension in save_as:
+        extension = extension.lstrip(".")
+        file_path = f"{file_base}.{extension}"
+        fig.savefig(file_path)
+        saved_files.append(file_path)
 
-    plt.close(fig)
+    return saved_files
 
 
-def plot_well_1d_reservoir_line_graphs_for_scenarios(
-    well_name: str,
-    dfm_well_props_file_address: str,
-    h5_well_data: dict,
-    coupled_model: DartsModel,
-    report_time_labels: list,
-    reported_times: list,
-    *,
-    prop_name: str,
-    ax,
-    legend_label: str,
-    legend_title: str,
-    color: str,
-    marker: str,
-    linestyle: str,
-    legend_loc: str = 'best',
-):
-    """
-    This function is used to plot well-reservoir property profiles at certain reported times for different scenarios.
-    It can be used only for 1D reservoirs.
+def _get_available_property_names(coupled_model, well_data_frame):
+    candidate_props = []
+    skipped_props = []
 
-    :param well_name: Name of the well the properties of which will be considered for plotting
-    :type well_name: str
-    :param dfm_well_props_file_address: Address of the pickle file in which primary variables and phase
-    properties of DFM well segments are stored
-    :type dfm_well_props_file_address: str
-    :param h5_well_data: HDF5 file containing well solution
-    :type h5_well_data: dict
-    :param coupled_model: An instance of DartsModel
-    :type coupled_model: DartsModel
-    :param report_time_labels: List of labels of reported times
-    :type report_time_labels: list
-    :param reported_times: List of reported times [day]
-    :type reported_times: list
-    :param prop_name: Name of the property to plot
-    :type prop_name: str
-    :param ax: Axes to plot on. This is needed to plot all the plots of different scenarios in the same axes.
-    :type ax: matplotlib.axes.Axes
-    :param legend_label: Label of the plot for the legend
-    :type legend_label: str
-    :param color: Color of the plot
-    :type color: str
-    :param marker: Marker of the plot
-    :type marker: str
-    :param linestyle: Linestyle of the plot
-    :type linestyle: str
-    :param legend_loc: Legend location
-    :type legend_loc: str
-    """
-    output_folder = coupled_model.output_folder
+    _append_unique(candidate_props, coupled_model.physics.vars)
+    for container in coupled_model.physics.property_containers.values():
+        _append_unique(candidate_props, container.output_props.keys())
 
-    dx = coupled_model.reservoir.global_data['dx']
-    assert dx.ndim == 3 and dx.shape[1:] == (1, 1), f"Expected (*,1,1), got {dx.shape}"
+    prop_names = []
+    for prop in candidate_props:
+        if prop not in well_data_frame.columns:
+            skipped_props.append(prop)
+        elif _is_scalar_property_series(well_data_frame[prop]):
+            prop_names.append(prop)
+        else:
+            skipped_props.append(prop)
 
-    assert len(report_time_labels) == len(reported_times), (
-        "Number of report step labels must be equal to number of report step times!"
-    )
+    return prop_names, skipped_props
 
-    assert prop_name in ["pressure", "temperature", "sL"]
+
+def _append_unique(items, new_items):
+    for item in new_items:
+        if item not in items:
+            items.append(item)
+
+
+def _is_scalar_property_series(series):
+    values = series.dropna()
+    if values.empty:
+        return True
+
+    value = values.iloc[0]
+    return np.asarray(value).ndim == 0
+
+
+def _prepare_output_dir(coupled_model, well_name, output_dir):
+    remove_old_default_output = output_dir is None
+    if output_dir is None:
+        output_dir = os.path.join(
+            coupled_model.output_folder, f"well_1d_reservoir_line_graphs_{well_name}"
+        )
+
+    output_dir = os.path.normpath(output_dir)
+    if remove_old_default_output:
+        if os.path.isdir(output_dir):
+            shutil.rmtree(output_dir)
+
+    os.makedirs(output_dir, exist_ok=True)
+    return output_dir
+
+
+def _validate_1d_reservoir(coupled_model):
+    dx = coupled_model.reservoir.global_data["dx"]
+    if dx.ndim != 3 or dx.shape[1:] != (1, 1):
+        raise ValueError(
+            f"Expected a 1D reservoir with dx shape (*, 1, 1), got {dx.shape}."
+        )
+
+
+def _get_reservoir_radial_distance(coupled_model):
+    reservoir_dx = np.asarray(coupled_model.reservoir.global_data["dx"], dtype=float)
+    reservoir_radial_distance = np.cumsum(reservoir_dx.flatten())
+    if np.any(reservoir_radial_distance <= 0.0):
+        raise ValueError("Reservoir radial distances must be strictly positive.")
+    return reservoir_radial_distance
+
+
+def _get_reservoir_radius_indices(reservoir_radial_distance, reservoir_radius_max):
+    if reservoir_radius_max is None:
+        return np.arange(reservoir_radial_distance.size)
+
+    reservoir_radius_max = float(reservoir_radius_max)
+    if not np.isfinite(reservoir_radius_max) or reservoir_radius_max <= 0.0:
+        raise ValueError("reservoir_radius_max must be a positive finite value.")
+
+    indices = np.where(reservoir_radial_distance <= reservoir_radius_max)[0]
+    if len(indices) < 2:
+        if reservoir_radial_distance.size < 2:
+            raise ValueError("At least two reservoir cells are needed for plotting.")
+        raise ValueError(
+            "reservoir_radius_max must include at least two reservoir cells. "
+            f"Use a value >= {reservoir_radial_distance[1]:g} m, or omit "
+            "reservoir_radius_max."
+        )
+    return indices
+
+
+def _get_matching_time_indices(times, requested_times, source_name, atol, rtol):
+    times = np.asarray(times, dtype=float)
+    indices = []
+    for requested_time in requested_times:
+        matches = np.where(np.isclose(times, requested_time, atol=atol, rtol=rtol))[0]
+        if len(matches) == 0:
+            nearest_idx = int(np.argmin(np.abs(times - requested_time)))
+            raise ValueError(
+                f"Requested time {requested_time:g} day was not found in {source_name}. "
+                f"Nearest available time is {times[nearest_idx]:g} day."
+            )
+        indices.append(int(matches[0]))
+    return indices
+
+
+def _get_well_profile(data_frame, prop_name, time_idx, num_segments):
+    start = time_idx * num_segments
+    stop = (time_idx + 1) * num_segments
+    profile = data_frame[prop_name].iloc[start:stop].to_numpy()
+    if len(profile) != num_segments:
+        raise ValueError(
+            f"Well property '{prop_name}' has no complete profile at time index {time_idx}."
+        )
+    try:
+        return profile.astype(float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Property '{prop_name}' is not a scalar profile and cannot be plotted by this function."
+        ) from exc
+
+
+def _get_report_colors(num_reports, cmap_name):
+    cmap = mpl.colormaps[cmap_name]
+    alpha = 10.0
+    t = np.arange(num_reports) / (num_reports - 1 if num_reports > 1 else 1)
+    t_nonlin = np.log1p(alpha * t) / np.log1p(alpha)
+    return [cmap(value) for value in t_nonlin]
+
+
+def _get_property_axis_label(prop_name, phase_labels, property_labels):
+    if prop_name in property_labels:
+        return property_labels[prop_name]
     if prop_name == "pressure":
-        xlabel = "Pressure [bar]"
-    elif prop_name == "temperature":
-        xlabel = "Temperature [\u00b0C]"
-    elif prop_name == "sL":
-        xlabel = "Liquid volume fraction [-]"
-
-    # Get well geometry info
-    well_geom = coupled_model.wells[well_name].geometry
-    segment_depths = well_geom.z
-    num_segments = well_geom.num_segments
-
-    # Get reservoir radial distance array: strictly positive, non-zero start
-    reservoir_dx = dx.flatten()
-    reservoir_radial_distance = np.cumsum(reservoir_dx)
-
-    # report_step_labels = [
-    #     "Initial conditions",
-    #     "30 seconds",
-    #     "1 minute",
-    #     "2 minutes",
-    #     "3 minutes",
-    #     "5 minutes",
-    #     "10 minutes",
-    #     "20 minutes",
-    #     "30 seconds",
-    #     "50 seconds",
-    #     "1 hour",
-    # ]
-    #
-    # report_step_times = [0,
-    #                      0.5 / 24 / 60,  # 30 seconds
-    #                      0.5 / 24 / 60,  # 1 minute
-    #                      1 / 24 / 30 - 1 / 24 / 60,  # 2 minute
-    #                      1 / 24 / 20 - 1 / 24 / 30,  # 3 minute
-    #                      1 / 24 / 12 - 1 / 24 / 20,  # 5 minute
-    #                      1 / 24 / 6 - 1 / 24 / 12,  # 10 minute
-    #                      1 / 24 / 3 - 1 / 24 / 6,  # 20 minute
-    #                      1 / 24 / 2 - 1 / 24 / 3,  # 30 minute
-    #                      1 / 24 / 6 * 5 - 1 / 24 / 2,  # 50 minute
-    #                      1 / 24 - 1 / 24 / 6 * 5,  # 1 hour
-    #                      ]
-
-    simulated_time = h5_well_data["dynamic"]["time"]
-
-    report_indices = [
-        np.where(np.isclose(simulated_time, a))[0][0] for a in reported_times
-    ]
-
-    # Load primary vars and phase props for the well
-    well_data_frame = pd.read_pickle(dfm_well_props_file_address)
-
-    # Fast load; infer low-memory dtypes
-    all_solutions_csv_path = os.path.join(output_folder, "all_solutions.csv")
-    reservoir_data_frame = pd.read_csv(all_solutions_csv_path, low_memory=False)
-
-    # Ensure stable ordering
-    tvals = np.array(sorted(reservoir_data_frame["Timestep"].unique()))
-    num_res_cells = coupled_model.reservoir.nx
-
-    # Make an index to pivot quickly
-    df_idx = reservoir_data_frame.set_index(["Timestep", "CellID"]).sort_index()
-
-    def to_matrix(prop_name):
-        """
-        Return a (num_report_times, num_res_cells) matrix for the given property name
-        """
-        full_idx = pd.MultiIndex.from_product(
-            [tvals, sorted(reservoir_data_frame["CellID"].unique())],
-            names=["Timestep", "CellID"],
-        )
-        s = df_idx[prop_name].reindex(full_idx)
-        matrix_full = s.values.reshape((len(tvals), -1))
-        reservoir_prop_matrix = matrix_full[
-            :, :num_res_cells
-        ]  # keep only the first num_res_cells
-
-        return reservoir_prop_matrix
-
-    reservoir_prop_matrix = to_matrix(prop_name)
+        return "Pressure [bar]"
     if prop_name == "temperature":
-        reservoir_prop_matrix -= 273.15
+        return r"Temperature [$^\circ$C]"
 
-    # Start plotting
-    # fig, ax = plt.subplots(figsize=(6, 5))
-    y_r, offset, rmin, rmax = stacked_y_axis_linear_log(
-        ax,
-        segment_depths,
-        reservoir_radial_distance,
-        gap_ratio=0.06,
-        n_ticks_well=5,
-        add_minor=True,
-    )
+    if prop_name.startswith("rho") and len(prop_name) > 3:
+        phase = prop_name[3:]
+        return rf"{_get_phase_label(phase, phase_labels)} density [kg/m$^3$]"
+    if prop_name.startswith("miu") and len(prop_name) > 3:
+        phase = prop_name[3:]
+        return f"{_get_phase_label(phase, phase_labels)} viscosity [cP]"
+    if prop_name.startswith("s") and len(prop_name) > 1:
+        phase = prop_name[1:]
+        return f"{_get_phase_label(phase, phase_labels)} saturation [-]"
 
-    for idx, report_index in enumerate(report_indices):
-        well_prop_profile = well_data_frame[prop_name][
-            report_index * num_segments : (report_index + 1) * num_segments
-        ]
-        if prop_name == "temperature":
-            well_prop_profile -= 273.15
-
-        ax.plot(
-            well_prop_profile,
-            segment_depths,
-            linestyle=linestyle,
-            marker=marker,
-            linewidth=2.0,  # match linewidth
-            markersize=4.0,  # match markersize
-            color=color,
-            label=legend_label,
+    phase_mass_fraction = _parse_phase_mass_fraction(prop_name)
+    if phase_mass_fraction is not None:
+        component, phase = phase_mass_fraction
+        return (
+            f"{component} mass fraction in {_get_phase_label(phase, phase_labels)} [-]"
         )
 
-        reservoir_prop_profile = reservoir_prop_matrix[idx, :]
-        ax.plot(
-            reservoir_prop_profile,
-            y_r(reservoir_radial_distance),
-            linestyle=linestyle,
-            marker=marker,
-            linewidth=2.0,  # match linewidth
-            markersize=4.0,  # match markersize
-            color=color,
-        )
-
-    ax.set_ylim(top=0)
-
-    ax.set_xlabel(xlabel)
-
-    # ax.legend(loc="best", frameon=False)
-
-    ax.tick_params(
-        axis='y',
-        which='both',
-        labelleft=True,
-        labelright=False,
-        left=True,
-        right=False,
-        pad=3,  # <-- increase this to push labels farther from ticks
-        direction='in',
-    )  # optional: ticks point outward
-    ax.spines['right'].set_visible(True)
-
-    # Add subtle grid
-    ax.grid(True, which="both", linestyle=":", linewidth=0.6, alpha=0.6)
-
-    plt.legend(
-        fontsize=8,
-        loc=legend_loc,
-        title=legend_title,
-        title_fontsize=10,
-    ).get_frame().set_edgecolor('black')  # Optional: Add a border
+    return prop_name
 
 
-def stacked_y_axis_linear_log(
+def _parse_phase_mass_fraction(prop_name):
+    if not (prop_name.startswith("x") and prop_name.endswith("_mass")):
+        return None
+    inner = prop_name[1:-5]
+    if "_in_" not in inner:
+        return None
+    component, phase = inner.split("_in_", 1)
+    return component, phase
+
+
+def _get_phase_label(phase, phase_labels):
+    return phase_labels.get(phase, phase)
+
+
+def _format_time_label(time_days):
+    seconds = time_days * 24.0 * 60.0 * 60.0
+    if np.isclose(seconds, 0.0):
+        return "0 s"
+    if seconds < 60.0:
+        return f"{seconds:g} s"
+    minutes = seconds / 60.0
+    if minutes < 60.0:
+        return f"{minutes:g} min"
+    hours = minutes / 60.0
+    if hours < 24.0:
+        return f"{hours:g} h"
+    return f"{time_days:g} d"
+
+
+def _make_safe_filename(value):
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_")
+
+
+def _configure_stacked_y_axis_linear_log(
     ax,
     segment_depths,
     reservoir_radial_distance,
@@ -499,24 +482,8 @@ def stacked_y_axis_linear_log(
     add_minor=True,
 ):
     """
-    Build a single y-axis that is linear for the well part and logarithmic for the
-    reservoir part. Returns a mapper y_r(r) for the reservoir part.
-
-    :param ax: The desired matplotlib axes
-    :type ax: matplotlib.axes.Axes
-    :param segment_depths: The array of the depths of the segment centroids
-    :type segment_depths: array-like
-    :param reservoir_radial_distance: The array of the radial distance of the reservoir cells (strictly positive)
-    :type reservoir_radial_distance: array-like
-    :param gap_ratio: Visual gap between the well and reservoir parts as a fraction of z-span
-    :type gap_ratio: float
-    :param res_height: Pixel-height of the reservoir part in data units;
-                       default equals z-span for visual balance
-    :type res_height: float or None
-    :param n_ticks_well: Number of ticks on the well (linear) part
-    :type n_ticks_well: int
-    :param add_minor: Add log minor ticks in reservoir part
-    :type add_minor: bool
+    Build one y-axis that is linear for the well and logarithmic for the reservoir.
+    Returns a mapper y_r(r) for reservoir radii.
     """
     z = np.asarray(segment_depths, float)
     r = np.asarray(reservoir_radial_distance, float)
@@ -524,107 +491,85 @@ def stacked_y_axis_linear_log(
     z0, z1 = float(z[0]), float(z[-1])
     z_span = abs(z1 - z0)
     gap = gap_ratio * z_span
-    H_res = z_span if res_height is None else float(res_height)
-    offset = z1 + gap  # start of reservoir segment in the stacked axis
+    h_res = z_span if res_height is None else float(res_height)
+    offset = z1 + gap
 
-    # --- reservoir log domain (must be > 0 and have spread) ---
     rmin, rmax = float(np.min(r)), float(np.max(r))
     if not (rmin > 0 and rmax > rmin):
-        raise ValueError(
-            "Reservoir radii must satisfy 0 < rmin < rmax for log scaling."
-        )
+        raise ValueError("Reservoir radii must satisfy 0 < rmin < rmax.")
 
     log_base = 10
     logb = lambda x: np.log(x) / np.log(log_base)
-    Lmin, Lmax = logb(rmin), logb(rmax)
+    lmin, lmax = logb(rmin), logb(rmax)
 
     def y_r(rv):
-        """Map reservoir radii to stacked y coordinates."""
         rv = np.clip(np.asarray(rv, float), rmin, rmax)
-        return offset + H_res * (logb(rv) - Lmin) / (Lmax - Lmin)
+        return offset + h_res * (logb(rv) - lmin) / (lmax - lmin)
 
-    # --- ticks: well (linear) ---
     ticks_w = np.linspace(z0, z1, n_ticks_well)
-    labels_w = [f"{t:g}" for t in ticks_w]
+    labels_w = [f"{tick:g}" for tick in ticks_w]
 
-    # --- ticks: reservoir (log) ---
-    k0, k1 = int(np.floor(Lmin)), int(np.ceil(Lmax))
+    k0, k1 = int(np.floor(lmin)), int(np.ceil(lmax))
     decades = log_base ** np.arange(k0, k1 + 1, dtype=float)
     decades = decades[(decades >= rmin) & (decades <= rmax)]
 
-    # always include rmin (even if not a decade)
     major_vals = np.unique(np.r_[rmin, decades])
     major_y = y_r(major_vals)
 
-    def is_decade(val):
-        k = round(logb(val))
-        return np.isclose(val, (log_base**k), rtol=0, atol=1e-12)
+    def is_decade(value):
+        k = round(logb(value))
+        return np.isclose(value, log_base**k, rtol=0, atol=1e-12)
 
-    def format_log_label(v):
-        if is_decade(v) and not np.isclose(v, rmin):  # show decades as 10^{k}
-            k = int(round(logb(v)))
-            base_text = (
-                r"e"
-                if np.isclose(log_base, np.e)
-                else str(int(log_base) if float(log_base).is_integer() else log_base)
-            )
-            return rf"$\mathrm{{{base_text}}}^{{{k}}}$"
-        return f"{v:g}"  # keep rmin as the actual number
+    def format_log_label(value):
+        if is_decade(value) and not np.isclose(value, rmin):
+            k = int(round(logb(value)))
+            return rf"$\mathrm{{10}}^{{{k}}}$"
+        return f"{value:g}"
 
-    major_labels = [format_log_label(v) for v in major_vals]
+    major_labels = [format_log_label(value) for value in major_vals]
 
     if add_minor:
         minors = []
         for k in range(k0, k1):
             base = log_base**k
-            minors.extend(base * np.arange(2, log_base, dtype=float))  # 2..base-1
+            minors.extend(base * np.arange(2, log_base, dtype=float))
         minors = np.array(minors, float)
         minors = minors[(minors > rmin) & (minors < rmax)]
-        all_ticks = np.r_[ticks_w, major_y, y_r(minors)]
-        all_labels = labels_w + major_labels + [''] * len(minors)
-        ax.set_yticks(all_ticks)
-        ax.set_yticklabels(all_labels)
+        ax.set_yticks(np.r_[ticks_w, major_y, y_r(minors)])
+        ax.set_yticklabels(labels_w + major_labels + [""] * len(minors))
     else:
         ax.set_yticks(np.r_[ticks_w, major_y])
         ax.set_yticklabels(labels_w + major_labels)
 
-    # limits & look
-    ax.set_ylim(z0, offset + H_res)
+    ax.set_ylim(z0, offset + h_res)
     ax.invert_yaxis()
+    ax.axhline(offset - gap * 0.5, ls="--", lw=1)
 
-    # divider & side labels
-    ax.axhline(offset - gap * 0.5, ls='--', lw=1)
-
-    # --- helper to convert a y data value to axes coordinates (0..1) ---
     def ydata_to_axes(yval):
         return ax.transAxes.inverted().transform(ax.transData.transform((0, yval)))[1]
 
-    # y positions for labels: midpoint of each segment (well is linear; reservoir use geometric mean in log)
     y_well_mid_data = 0.5 * (z0 + z1)
     y_res_mid_data = y_r(np.sqrt(rmin * rmax))
-
-    LEFT_OFFSET = -0.08  # move labels further left; make more negative to push farther
-    # fig.subplots_adjust(left=0.22)
+    left_offset = -0.08
 
     ax.text(
-        LEFT_OFFSET,
+        left_offset,
         ydata_to_axes(y_well_mid_data),
         r"$z_{\mathrm{well}}\,[\mathrm{m}]$ (linear)",
         transform=ax.transAxes,
         rotation=90,
-        va='center',
-        ha='right',
+        va="center",
+        ha="right",
         clip_on=False,
     )
-
     ax.text(
-        LEFT_OFFSET,
+        left_offset,
         ydata_to_axes(y_res_mid_data),
         r"$r_\mathrm{reservoir}\,[\mathrm{m}]$ (logarithmic)",
         transform=ax.transAxes,
         rotation=90,
-        va='center',
-        ha='right',
+        va="center",
+        ha="right",
         clip_on=False,
     )
 

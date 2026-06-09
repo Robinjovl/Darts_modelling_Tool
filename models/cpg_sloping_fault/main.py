@@ -82,7 +82,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
         output_properties_main = m.physics.vars  # only main variables
         output_properties_full = output_properties_main + m.output.properties # additional properties (might take some time to compute)
-        m.reservoir.create_vtk_wells(output_directory=out_dir)
+
         n_timesteps = len(m.idata.sim.time_steps)
         for ith_step in range(n_timesteps + 1):
             # compute additional properties only for the first and for the last timestep:
@@ -90,8 +90,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
             #print('timestep', ith_step, 'output_properties:', output_properties)
             timesteps, property_array = m.output.output_properties(output_properties=output_properties, ts_idx=ith_step, engine=False)
             if ith_step == 0:
-                centers_x, centers_y, centers_z = m.reservoir.get_centers()
-                property_array.update({'centers_x' : centers_x.reshape(1,-1), 'centers_y': centers_y.reshape(1,-1), 'centers_z': centers_z.reshape(1,-1)})
+                pts = m.reservoir.get_centers()
+                property_array.update({'centers_x': pts[:, 0].reshape(1, -1), 'centers_y': pts[:, 1].reshape(1, -1), 'centers_z': pts[:, 2].reshape(1, -1)})
 
             if 0:
                 # save properties in its own *.h5 file
@@ -106,6 +106,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
             m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step)
 
+        m.reservoir.create_vtk_wells(output_directory=os.path.join(out_dir, 'vtk_files'))
         m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
 
     def add_columns_time_data(time_data):

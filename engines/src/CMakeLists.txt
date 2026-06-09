@@ -69,7 +69,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_GLOBAL_PUBLI
 
 # Install the library file of engines_global
 install(TARGETS engines_global
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
@@ -149,7 +149,7 @@ target_include_directories(engines_build_info
 
 # Install the library file of engines_build_info
 install(TARGETS engines_build_info
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
@@ -222,7 +222,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_CONN_MESH_PU
 
 # Install the library file of engines_conn_mesh
 install(TARGETS engines_conn_mesh
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
@@ -295,7 +295,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_WELLS_PUBLIC
 
 # Install the library file of engines_wells
 install(TARGETS engines_wells
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
@@ -390,7 +390,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_ENGINES_PUBL
 
 # Install the library file of engines_engines
 install(TARGETS engines_engines
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 

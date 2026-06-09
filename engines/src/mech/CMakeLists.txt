@@ -61,7 +61,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_MECHANICS_PU
 
 # Install the library file of engines_mechanics
 install(TARGETS engines_mechanics
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
