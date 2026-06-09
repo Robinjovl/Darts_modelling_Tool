@@ -142,6 +142,8 @@ multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_poin
       }
     }
     point_data[point_index] = new_point;
+    // Mark for append-only cache flush after this new point is materialized.
+    dirty_point_data.insert(point_index);
     this->n_points_used++;
     //this->timer->node["gpu interpolation"].node["hypercube generation"].node["point generation"].stop_gpu();
     return point_data[point_index];

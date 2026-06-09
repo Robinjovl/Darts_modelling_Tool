@@ -136,6 +136,42 @@ struct interpolator_exposer
           })
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
+#ifdef WITH_GPU
+      else if constexpr (std::is_same_v<interpolator_class, multilinear_adaptive_gpu_interpolator<i_t, f_t, N_DIMS, N_OPS>>)
+      {
+        py::class_<interpolator_class,
+          operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
+          .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &>(), py::keep_alive<1, 2>())
+          .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
+            "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
+          .def("init_timer_node", &interpolator_class::init_timer_node,
+            "Initialize timer", "timer_node"_a)
+          .def("init", &interpolator_class::init, "Initialize interpolator")
+          .def("write_to_file", &interpolator_class::write_to_file, "Write interpolator data to file")
+          .def("evaluate", &interpolator_class::evaluate,
+            "Evaluate operators", "state"_a, "values"_a)
+          .def_readwrite("point_data", &interpolator_class::point_data)
+          // Cheap cache hooks let Python persist only dirty points (same as the CPU adaptive interpolators).
+          .def("point_data_size", [](const interpolator_class &self) {
+            return self.point_data.size();
+          })
+          .def("point_data_delta", [](const interpolator_class &self) {
+            py::dict delta;
+            for (const auto &key : self.dirty_point_data)
+            {
+              auto item = self.point_data.find(key);
+              if (item != self.point_data.end())
+              {
+                delta[py::cast(key)] = py::cast(item->second);
+              }
+            }
+            return delta;
+          })
+          .def("clear_point_data_delta", [](interpolator_class &self) {
+            self.dirty_point_data.clear();
+          });
+      }
+#endif // WITH_GPU
       else {
         py::class_<interpolator_class,
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
