@@ -26,9 +26,8 @@ class ReservoirOperators(OperatorsSuper):
         :param property_container: Property container of type PropertyBase
         :param thermal: Switch to indicate if energy conservation equation is there
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
-        :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
-                    during boundary extrapolation. Scalar (uniform spacing) or a per-axis
-                    vector of length nc-1 (non-uniform cell size across composition axes).
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
         """
         # set some properties to -1 to use OperatorsSuper constructor
         # TODO: refactor in future
@@ -213,9 +212,8 @@ class ConversionOperators(ReservoirOperators):
         :param property_container: Property container of type PropertyBase
         :param thermal: Switch to indicate if energy conservation equation is there
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
-        :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
-                    during boundary extrapolation. Scalar (uniform spacing) or a per-axis
-                    vector of length nc-1 (non-uniform cell size across composition axes).
+        :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
+                    (must be equal along all composition axes in current setup)
         """
         super().__init__(
             property_container, thermal, extrapolation_flag, dz
