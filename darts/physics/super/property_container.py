@@ -240,6 +240,7 @@ class PropertyContainer(PropertyBase):
             a[:] = 0
         for j in range(self.np_fl):
             self.x[j][:] = 0
+            self.x_mass[j][:] = 0
 
     def compute_saturation(self, ph):
         # Get saturations [volume fraction]
