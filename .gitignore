@@ -47,3 +47,7 @@ solution.pvd
 *.nc
 *.h5
 *.vim
+*.vtk
+*.vtp
+*.vtu
+*.pvd
