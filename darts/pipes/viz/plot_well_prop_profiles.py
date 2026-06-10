@@ -178,71 +178,77 @@ def plot_well_prop_profiles(
     plt.close()
 
     # %% z_c
-    # Create a figure and a single set of axes
-    plt.figure(figsize=(10, 6))
 
-    for idx, report_index in enumerate(report_indices):
-        z = data_frame["z"][
-            report_index * num_segments : (report_index + 1) * num_segments
-        ]
-        z = z.tolist()
-        z_c = np.zeros(num_segments)
-        for segment_idx in range(num_segments):
-            z_c[segment_idx] = z[segment_idx][0]  # Only for the first component
+    if "z" in data_frame.columns:
+        # Create a figure and a single set of axes
+        plt.figure(figsize=(10, 6))
 
-        color = colors[idx]  # Assign color from the colormap
-        marker = markers[idx % len(markers)]  # Cycle through markers
-        line_style = line_styles[idx % len(line_styles)]  # Cycle through line styles
-        plt.plot(
-            z_c,
-            segment_depths,
-            marker=marker,
-            linestyle=line_style,
-            color=color,
-            label=report_step_labels[idx],
+        for idx, report_index in enumerate(report_indices):
+            z = data_frame["z"][
+                report_index * num_segments : (report_index + 1) * num_segments
+            ]
+            z = z.tolist()
+            z_c = np.zeros(num_segments)
+            for segment_idx in range(num_segments):
+                z_c[segment_idx] = z[segment_idx][0]  # Only for the first component
+
+            color = colors[idx]  # Assign color from the colormap
+            marker = markers[idx % len(markers)]  # Cycle through markers
+            line_style = line_styles[
+                idx % len(line_styles)
+            ]  # Cycle through line styles
+            plt.plot(
+                z_c,
+                segment_depths,
+                marker=marker,
+                linestyle=line_style,
+                color=color,
+                label=report_step_labels[idx],
+            )
+
+        # Add labels, title, and grid
+        # plt.title("Profile of overall mole fraction of CO2 along the wellbore", fontsize=font_size_title, pad=15)
+        plt.xlabel(
+            "Overall mole fraction of CO$_2$ [-]",
+            fontsize=font_size_labels,
+            labelpad=10,
         )
+        # plt.ylabel("Segment index [-]", fontsize=font_size_labels, labelpad=10)
+        plt.ylabel("Well segment depth [m]", fontsize=font_size_labels, labelpad=10)
+        plt.yticks(fontsize=font_size_ticks)
+        plt.gca().invert_yaxis()  # Invert y-axis for proper orientation
+        # plt.grid(True)
+        plt.grid(linestyle='--')  # Add dashed grid lines
+        plt.gca().xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
-    # Add labels, title, and grid
-    # plt.title("Profile of overall mole fraction of CO2 along the wellbore", fontsize=font_size_title, pad=15)
-    plt.xlabel(
-        "Overall mole fraction of CO$_2$ [-]", fontsize=font_size_labels, labelpad=10
-    )
-    # plt.ylabel("Segment index [-]", fontsize=font_size_labels, labelpad=10)
-    plt.ylabel("Well segment depth [m]", fontsize=font_size_labels, labelpad=10)
-    plt.yticks(fontsize=font_size_ticks)
-    plt.gca().invert_yaxis()  # Invert y-axis for proper orientation
-    # plt.grid(True)
-    plt.grid(linestyle='--')  # Add dashed grid lines
-    plt.gca().xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        # Move the x-axis to the top
+        plt.gca().xaxis.set_label_position('top')  # Move x-axis label to the top
+        plt.gca().xaxis.tick_top()  # Move x-axis ticks to the top
+        plt.xticks(fontsize=font_size_ticks)
 
-    # Move the x-axis to the top
-    plt.gca().xaxis.set_label_position('top')  # Move x-axis label to the top
-    plt.gca().xaxis.tick_top()  # Move x-axis ticks to the top
-    plt.xticks(fontsize=font_size_ticks)
+        # Position the legend outside the plot, with multiple columns
+        plt.legend(
+            fontsize=9,
+            loc='upper left',
+            bbox_to_anchor=(1.05, 1.05),  # Position legend outside
+            ncol=1,  # Single or multiple columns for compactness
+            title="Report steps",
+            title_fontsize=12,
+        ).get_frame().set_edgecolor('black')  # Optional: Add a border
+        plt.gca().legend_.set_frame_on(True)
 
-    # Position the legend outside the plot, with multiple columns
-    plt.legend(
-        fontsize=9,
-        loc='upper left',
-        bbox_to_anchor=(1.05, 1.05),  # Position legend outside
-        ncol=1,  # Single or multiple columns for compactness
-        title="Report steps",
-        title_fontsize=12,
-    ).get_frame().set_edgecolor('black')  # Optional: Add a border
-    plt.gca().legend_.set_frame_on(True)
+        plt.tight_layout()  # Adjust layout to prevent overlap
+        plt.savefig(
+            os.path.join(main_dir, "wellbore_CO2_overall_mole_fraction_profiles.pdf"),
+            format='pdf',
+        )
+        plt.savefig(
+            os.path.join(main_dir, "wellbore_CO2_overall_mole_fraction_profiles.svg"),
+            format='svg',
+        )
+        plt.show()
 
-    plt.tight_layout()  # Adjust layout to prevent overlap
-    plt.savefig(
-        os.path.join(main_dir, "wellbore_CO2_overall_mole_fraction_profiles.pdf"),
-        format='pdf',
-    )
-    plt.savefig(
-        os.path.join(main_dir, "wellbore_CO2_overall_mole_fraction_profiles.svg"),
-        format='svg',
-    )
-    plt.show()
-
-    plt.close()
+        plt.close()
 
     # %% Temperature
     # Create a figure and a single set of axes

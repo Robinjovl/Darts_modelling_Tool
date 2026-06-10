@@ -111,69 +111,73 @@ def plot_line_graphs(
 
     # %% Component/components overall mole fraction profile
 
-    for comp_idx in range(num_components):
-        # Update figure counter for name of the saved figure
-        figure_counter += 1
-        # Initialize the plot
-        plt.figure(figsize=(12, 6))
+    if "z" in data_frame.columns:
+        for comp_idx in range(num_components):
+            # Update figure counter for name of the saved figure
+            figure_counter += 1
+            # Initialize the plot
+            plt.figure(figsize=(12, 6))
 
-        for ts_counter in list_of_time_steps:
-            z_profile = data_frame["z"][
-                ts_counter * num_segments : (ts_counter + 1) * num_segments
-            ]
-            z_profile = z_profile.tolist()
-            z_c_profile = np.zeros(num_segments)
-            for segment_idx in range(num_segments):
-                try:
-                    z_c_profile[segment_idx] = z_profile[segment_idx][comp_idx]
-                except:
-                    z_c_profile[segment_idx] = 1 - sum(z_profile[segment_idx])
-            plt.plot(z_c_profile, list(range(num_segments)), color=colors[ts_counter])
+            for ts_counter in list_of_time_steps:
+                z_profile = data_frame["z"][
+                    ts_counter * num_segments : (ts_counter + 1) * num_segments
+                ]
+                z_profile = z_profile.tolist()
+                z_c_profile = np.zeros(num_segments)
+                for segment_idx in range(num_segments):
+                    try:
+                        z_c_profile[segment_idx] = z_profile[segment_idx][comp_idx]
+                    except:
+                        z_c_profile[segment_idx] = 1 - sum(z_profile[segment_idx])
+                plt.plot(
+                    z_c_profile, list(range(num_segments)), color=colors[ts_counter]
+                )
 
-        # Reverse the y-axis
-        plt.gca().invert_yaxis()
-        plt.ylim(num_segments - 1, 0)
+            # Reverse the y-axis
+            plt.gca().invert_yaxis()
+            plt.ylim(num_segments - 1, 0)
 
-        # Set the y-axis ticks
-        plt.gca().yaxis.set_major_locator(MultipleLocator(1))
-        # Set the x-axis ticks
-        # plt.gca().xaxis.set_major_locator(MultipleLocator(0.1))
+            # Set the y-axis ticks
+            plt.gca().yaxis.set_major_locator(MultipleLocator(1))
+            # Set the x-axis ticks
+            # plt.gca().xaxis.set_major_locator(MultipleLocator(0.1))
 
-        # Set x-axis limits
-        # plt.xlim(4, 12)
+            # Set x-axis limits
+            # plt.xlim(4, 12)
 
-        # Add labels and legend
-        plt.xlabel(
-            components_names[comp_idx] + " overall mole fraction [-]", fontsize=14
-        )
-        plt.ylabel("Segment index", fontsize=14)
-        plt.title(
-            components_names[comp_idx]
-            + " overall mole fraction profile/profiles along the wellbore",
-            fontsize=14,
-            fontweight="bold",
-        )
-        # plt.legend(loc='upper left', bbox_to_anchor=(1, 1), ncol=2)
-        # plt.tight_layout(rect=[0, 0, 0.99, 1])  # Adjust the size of the axes to make space for the legend
-        # plt.legend(loc='upper right')
+            # Add labels and legend
+            plt.xlabel(
+                components_names[comp_idx] + " overall mole fraction [-]", fontsize=14
+            )
+            plt.ylabel("Segment index", fontsize=14)
+            plt.title(
+                components_names[comp_idx]
+                + " overall mole fraction profile/profiles along the wellbore",
+                fontsize=14,
+                fontweight="bold",
+            )
+            # plt.legend(loc='upper left', bbox_to_anchor=(1, 1), ncol=2)
+            # plt.tight_layout(rect=[0, 0, 0.99, 1])  # Adjust the size of the axes to make space for the legend
+            # plt.legend(loc='upper right')
 
-        plt.tight_layout()
-        file_address = os.path.join(
-            main_dir,
-            f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.png",
-        )
-        plt.savefig(file_address)
-        if show_plot:
-            plt.show()
+            plt.tight_layout()
+            file_address = os.path.join(
+                main_dir,
+                f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.png",
+            )
+            plt.savefig(file_address)
+            if show_plot:
+                plt.show()
 
-        plt.close()
+            plt.close()
 
     # %% Temperature profile
 
-    # Update figure counter for name of the saved figure
-    figure_counter += 1
     # Temperature profile is plotted if the system is non-isothermal.
     if coupled_model.physics.property_containers[0].thermal:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+
         # Initialize the plot
         plt.figure(figsize=(12, 6))
 

@@ -241,113 +241,117 @@ def plot_heat_map_contourf(
 
     # %% Overall mole fraction profiles
 
-    for comp_idx in range(num_components):
-        # Update figure counter for name of the saved figure
-        figure_counter += 1
-        # Initialize the overall mole fraction matrix
-        z_c_matrix = np.zeros((num_segments, num_selected_ts))
+    if "z" in data_frame.columns:
+        for comp_idx in range(num_components):
+            # Update figure counter for name of the saved figure
+            figure_counter += 1
+            # Initialize the overall mole fraction matrix
+            z_c_matrix = np.zeros((num_segments, num_selected_ts))
 
-        # Fill the overall mole fraction matrix
-        for ts_idx, ts_counter in enumerate(time_step_idx_range):
-            z = data_frame["z"][
-                ts_counter * num_segments : (ts_counter + 1) * num_segments
-            ]
-            z = z.tolist()
-            z_c = np.zeros(num_segments)
-            for segment_idx in range(num_segments):
-                z_c[segment_idx] = z[segment_idx][comp_idx]
-            z_c_matrix[:, ts_idx] = z_c
+            # Fill the overall mole fraction matrix
+            for ts_idx, ts_counter in enumerate(time_step_idx_range):
+                z = data_frame["z"][
+                    ts_counter * num_segments : (ts_counter + 1) * num_segments
+                ]
+                z = z.tolist()
+                z_c = np.zeros(num_segments)
+                for segment_idx in range(num_segments):
+                    z_c[segment_idx] = z[segment_idx][comp_idx]
+                z_c_matrix[:, ts_idx] = z_c
 
-        # Initialize the plot
-        fig, ax = plt.subplots(figsize=(12, 6))
+            # Initialize the plot
+            fig, ax = plt.subplots(figsize=(12, 6))
 
-        # Create a discrete colorbar and colormap
-        z_c_min, z_c_max = (
-            np.nanmin(z_c_matrix),
-            np.nanmax(z_c_matrix),
-        )  # Using np.nanmin or np.nanmax because if nan exists in the matrix, np.min and np.max return nan as min and max, which we don't want.
-        if z_c_min == z_c_max:
-            z_c_min = 0.0
-            z_c_max = 1.0
-        levels = np.linspace(z_c_min, z_c_max, n_cmap_bins_comp + 1)
-        cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
-        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+            # Create a discrete colorbar and colormap
+            z_c_min, z_c_max = (
+                np.nanmin(z_c_matrix),
+                np.nanmax(z_c_matrix),
+            )  # Using np.nanmin or np.nanmax because if nan exists in the matrix, np.min and np.max return nan as min and max, which we don't want.
+            if z_c_min == z_c_max:
+                z_c_min = 0.0
+                z_c_max = 1.0
+            levels = np.linspace(z_c_min, z_c_max, n_cmap_bins_comp + 1)
+            cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
+            norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
-        # Region‐based fill
-        cf = ax.contourf(
-            x,
-            y_segments,
-            z_c_matrix,
-            levels=levels,
-            cmap=cmap,
-            norm=norm,
-            # extend='both'  # if you want arrows at the ends
-        )
-
-        # Overlay the exact same contour lines
-        _cs = ax.contour(
-            x, y_segments, z_c_matrix, levels=levels, colors='k', linewidths=0.7
-        )
-        # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
-
-        # Create the colorbar
-        cbar = fig.colorbar(
-            cf,
-            ax=ax,
-            boundaries=levels,
-            ticks=levels,
-            spacing='proportional',
-        )
-        cbar.set_label(
-            components_names[comp_idx] + ' overall mole fraction [-]',
-            fontsize=font_size,
-        )
-        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
-
-        # Set the y-axis ticks
-        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
-
-        # Reverse the y-axis
-        ax.invert_yaxis()
-
-        # Add axes labels
-        ax.set_xlabel(x_label, fontsize=font_size)
-        ax.set_ylabel(y_segments_label, fontsize=font_size)
-
-        # Make the x-axis logarithmic
-        if with_logarithmic_x_axis:
-            ax.set_xscale('log')
-
-        ax.tick_params(
-            axis='both', labelsize=font_size
-        )  # Set the font size of tick labels
-
-        # Add title
-        if with_title:
-            ax.set_title(
-                'Profile of overall mole fraction of '
-                + components_names[comp_idx]
-                + ' along the wellbore over time',
-                fontsize=font_size,
-                fontweight='bold',
+            # Region‐based fill
+            cf = ax.contourf(
+                x,
+                y_segments,
+                z_c_matrix,
+                levels=levels,
+                cmap=cmap,
+                norm=norm,
+                # extend='both'  # if you want arrows at the ends
             )
 
-        plt.tight_layout()
-        file_address = os.path.join(
-            main_dir,
-            f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.{save_as}",
-        )
-        plt.savefig(file_address)
-        if show_plot:
-            plt.show()
+            # Overlay the exact same contour lines
+            _cs = ax.contour(
+                x, y_segments, z_c_matrix, levels=levels, colors='k', linewidths=0.7
+            )
+            # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
 
-        plt.close(fig)
+            # Create the colorbar
+            cbar = fig.colorbar(
+                cf,
+                ax=ax,
+                boundaries=levels,
+                ticks=levels,
+                spacing='proportional',
+            )
+            cbar.set_label(
+                components_names[comp_idx] + ' overall mole fraction [-]',
+                fontsize=font_size,
+            )
+            cbar.ax.tick_params(
+                labelsize=font_size
+            )  # Set tick font size of the colorbar
+
+            # Set the y-axis ticks
+            ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+            # Reverse the y-axis
+            ax.invert_yaxis()
+
+            # Add axes labels
+            ax.set_xlabel(x_label, fontsize=font_size)
+            ax.set_ylabel(y_segments_label, fontsize=font_size)
+
+            # Make the x-axis logarithmic
+            if with_logarithmic_x_axis:
+                ax.set_xscale('log')
+
+            ax.tick_params(
+                axis='both', labelsize=font_size
+            )  # Set the font size of tick labels
+
+            # Add title
+            if with_title:
+                ax.set_title(
+                    'Profile of overall mole fraction of '
+                    + components_names[comp_idx]
+                    + ' along the wellbore over time',
+                    fontsize=font_size,
+                    fontweight='bold',
+                )
+
+            plt.tight_layout()
+            file_address = os.path.join(
+                main_dir,
+                f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.{save_as}",
+            )
+            plt.savefig(file_address)
+            if show_plot:
+                plt.show()
+
+            plt.close(fig)
 
     # %% Temperature profile
 
-    # Update figure counter for name of the saved figure
-    figure_counter += 1
     if coupled_model.physics.property_containers[0].thermal:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+
         # Initialize the temperature matrix
         T_matrix = np.zeros((num_segments, num_selected_ts))
 
@@ -1587,169 +1591,177 @@ def plot_heat_map_contourf(
 
     # %% Gas velocity profile
 
-    # Update figure counter for name of the saved figure
-    figure_counter += 1
-    # Initialize the gas velocity matrix
-    vG_matrix = np.zeros((num_interfaces, num_selected_ts))
+    if "vG" in data_frame.columns:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+        # Initialize the gas velocity matrix
+        vG_matrix = np.zeros((num_interfaces, num_selected_ts))
 
-    # Fill the gas velocity matrix
-    for ts_idx, ts_counter in enumerate(time_step_idx_range):
-        vG = data_frame["vG"][
-            ts_counter * num_segments : (ts_counter + 1) * num_segments
-        ]
-        vG_matrix[:, ts_idx] = vG[:-1] / (24 * 60 * 60)  # convert m/day to m/s
+        # Fill the gas velocity matrix
+        for ts_idx, ts_counter in enumerate(time_step_idx_range):
+            vG = data_frame["vG"][
+                ts_counter * num_segments : (ts_counter + 1) * num_segments
+            ]
+            vG_matrix[:, ts_idx] = vG[:-1] / (24 * 60 * 60)  # convert m/day to m/s
 
-    # Apply a mask to hide values equal to zero
-    threshold = 0  # Set your threshold here
-    vG_matrix_masked = np.ma.masked_where(vG_matrix == threshold, vG_matrix)
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        vG_matrix_masked = np.ma.masked_where(vG_matrix == threshold, vG_matrix)
 
-    # Initialize the plot
-    fig, ax = plt.subplots(figsize=(12, 6))
+        # Initialize the plot
+        fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Create a discrete colorbar and colormap
-    vg_min, vg_max = np.min(vG_matrix_masked), np.max(vG_matrix_masked)
-    levels = np.linspace(vg_min, vg_max, n_cmap_bins_v + 1)
-    cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
-    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+        # Create a discrete colorbar and colormap
+        vg_min, vg_max = np.min(vG_matrix_masked), np.max(vG_matrix_masked)
+        levels = np.linspace(vg_min, vg_max, n_cmap_bins_v + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
-    # Region‐based fill
-    cf = ax.contourf(
-        x,
-        y_interfaces,
-        vG_matrix_masked,
-        levels=levels,
-        cmap=cmap,
-        norm=norm,
-        # extend='both'  # if you want arrows at the ends
-    )
-
-    # Overlay the exact same contour lines
-    _cs = ax.contour(
-        x, y_interfaces, vG_matrix_masked, levels=levels, colors='k', linewidths=0.7
-    )
-    # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
-
-    # Create the colorbar
-    cbar = fig.colorbar(
-        cf,
-        ax=ax,
-        boundaries=levels,
-        ticks=levels,
-        spacing='proportional',
-    )
-    cbar.set_label('Gas velocity [m/s]', fontsize=font_size)
-    cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
-
-    # Set the y-axis ticks
-    ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
-
-    # Reverse the y-axis
-    ax.invert_yaxis()
-
-    # Add axes labels
-    ax.set_xlabel(x_label, fontsize=font_size)
-    ax.set_ylabel(y_interfaces_label, fontsize=font_size)
-
-    ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
-
-    # Add title
-    if with_title:
-        ax.set_title(
-            'Gas velocity profile along the wellbore over time',
-            fontsize=font_size,
-            fontweight='bold',
+        # Region‐based fill
+        cf = ax.contourf(
+            x,
+            y_interfaces,
+            vG_matrix_masked,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
         )
 
-    plt.tight_layout()
-    file_address = os.path.join(main_dir, f"{figure_counter}- Gas velocity.{save_as}")
-    plt.savefig(file_address)
-    if show_plot:
-        plt.show()
+        # Overlay the exact same contour lines
+        _cs = ax.contour(
+            x, y_interfaces, vG_matrix_masked, levels=levels, colors='k', linewidths=0.7
+        )
+        # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
 
-    plt.close(fig)
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label('Gas velocity [m/s]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
+
+        # Set the y-axis ticks
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
+
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_interfaces_label, fontsize=font_size)
+
+        ax.tick_params(
+            axis='both', labelsize=font_size
+        )  # Set the font size of tick labels
+
+        # Add title
+        if with_title:
+            ax.set_title(
+                'Gas velocity profile along the wellbore over time',
+                fontsize=font_size,
+                fontweight='bold',
+            )
+
+        plt.tight_layout()
+        file_address = os.path.join(
+            main_dir, f"{figure_counter}- Gas velocity.{save_as}"
+        )
+        plt.savefig(file_address)
+        if show_plot:
+            plt.show()
+
+        plt.close(fig)
 
     # %% Liquid velocity profile
 
-    # Update figure counter for name of the saved figure
-    figure_counter += 1
-    # Initialize the liquid velocity matrix
-    vL_matrix = np.zeros((num_interfaces, num_selected_ts))
+    if "vL" in data_frame.columns:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+        # Initialize the liquid velocity matrix
+        vL_matrix = np.zeros((num_interfaces, num_selected_ts))
 
-    # Fill the liquid velocity matrix
-    for ts_idx, ts_counter in enumerate(time_step_idx_range):
-        vL = data_frame["vL"][
-            ts_counter * num_segments : (ts_counter + 1) * num_segments
-        ]
-        vL_matrix[:, ts_idx] = vL[:-1] / (24 * 60 * 60)  # convert m/day to m/s
+        # Fill the liquid velocity matrix
+        for ts_idx, ts_counter in enumerate(time_step_idx_range):
+            vL = data_frame["vL"][
+                ts_counter * num_segments : (ts_counter + 1) * num_segments
+            ]
+            vL_matrix[:, ts_idx] = vL[:-1] / (24 * 60 * 60)  # convert m/day to m/s
 
-    # Apply a mask to hide values equal to zero
-    threshold = 0  # Set your threshold here
-    vL_matrix_masked = np.ma.masked_where(vL_matrix == threshold, vL_matrix)
+        # Apply a mask to hide values equal to zero
+        threshold = 0  # Set your threshold here
+        vL_matrix_masked = np.ma.masked_where(vL_matrix == threshold, vL_matrix)
 
-    # Initialize the plot
-    fig, ax = plt.subplots(figsize=(12, 6))
+        # Initialize the plot
+        fig, ax = plt.subplots(figsize=(12, 6))
 
-    # Create a discrete colorbar and colormap
-    vl_min, vl_max = np.min(vL_matrix_masked), np.max(vL_matrix_masked)
-    levels = np.linspace(vl_min, vl_max, n_cmap_bins_v + 1)
-    cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
-    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+        # Create a discrete colorbar and colormap
+        vl_min, vl_max = np.min(vL_matrix_masked), np.max(vL_matrix_masked)
+        levels = np.linspace(vl_min, vl_max, n_cmap_bins_v + 1)
+        cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
+        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
-    # Region‐based fill
-    cf = ax.contourf(
-        x,
-        y_interfaces,
-        vL_matrix_masked,
-        levels=levels,
-        cmap=cmap,
-        norm=norm,
-        # extend='both'  # if you want arrows at the ends
-    )
-
-    # Overlay the exact same contour lines
-    _cs = ax.contour(
-        x, y_interfaces, vL_matrix_masked, levels=levels, colors='k', linewidths=0.7
-    )
-    # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
-
-    # Create the colorbar
-    cbar = fig.colorbar(
-        cf,
-        ax=ax,
-        boundaries=levels,
-        ticks=levels,
-        spacing='proportional',
-    )
-    cbar.set_label('Liquid velocity [m/s]', fontsize=font_size)
-    cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
-
-    # Set the y-axis ticks
-    ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
-
-    # Reverse the y-axis
-    ax.invert_yaxis()
-
-    # Add axes labels
-    ax.set_xlabel(x_label, fontsize=font_size)
-    ax.set_ylabel(y_interfaces_label, fontsize=font_size)
-
-    ax.tick_params(axis='both', labelsize=font_size)  # Set the font size of tick labels
-
-    # Add title
-    if with_title:
-        ax.set_title(
-            'Liquid velocity profile along the wellbore over time',
-            fontsize=font_size,
-            fontweight='bold',
+        # Region‐based fill
+        cf = ax.contourf(
+            x,
+            y_interfaces,
+            vL_matrix_masked,
+            levels=levels,
+            cmap=cmap,
+            norm=norm,
+            # extend='both'  # if you want arrows at the ends
         )
 
-    plt.tight_layout()
-    file_address = os.path.join(
-        main_dir,
-        f"{figure_counter}- Liquid velocity.{save_as}",
-    )
-    plt.savefig(file_address)
-    if show_plot:
-        plt.show()
+        # Overlay the exact same contour lines
+        _cs = ax.contour(
+            x, y_interfaces, vL_matrix_masked, levels=levels, colors='k', linewidths=0.7
+        )
+        # ax.clabel(_cs, fmt='%.0f')  # if you want labels on the lines
 
-    plt.close(fig)
+        # Create the colorbar
+        cbar = fig.colorbar(
+            cf,
+            ax=ax,
+            boundaries=levels,
+            ticks=levels,
+            spacing='proportional',
+        )
+        cbar.set_label('Liquid velocity [m/s]', fontsize=font_size)
+        cbar.ax.tick_params(labelsize=font_size)  # Set tick font size of the colorbar
+
+        # Set the y-axis ticks
+        ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+
+        # Reverse the y-axis
+        ax.invert_yaxis()
+
+        # Add axes labels
+        ax.set_xlabel(x_label, fontsize=font_size)
+        ax.set_ylabel(y_interfaces_label, fontsize=font_size)
+
+        ax.tick_params(
+            axis='both', labelsize=font_size
+        )  # Set the font size of tick labels
+
+        # Add title
+        if with_title:
+            ax.set_title(
+                'Liquid velocity profile along the wellbore over time',
+                fontsize=font_size,
+                fontweight='bold',
+            )
+
+        plt.tight_layout()
+        file_address = os.path.join(
+            main_dir,
+            f"{figure_counter}- Liquid velocity.{save_as}",
+        )
+        plt.savefig(file_address)
+        if show_plot:
+            plt.show()
+
+        plt.close(fig)
