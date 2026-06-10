@@ -205,7 +205,7 @@ def pkl_suffix():
     else:
         return '_odls'
 
-def run(m, specs, OUTPUT = 1):
+def run(m, specs, OUTPUT = 0):
     if specs['ny'] == 1:
         m.plot_reservoir()
         
@@ -272,10 +272,10 @@ def run(m, specs, OUTPUT = 1):
 #%%
 
 """Define realization ID"""
-Nt = 5
-Dt = 365
-nx = 840//10
-nz = 120//10
+Nt = 1
+Dt = 25 * 365
+nx = 840 // 5
+nz = 120 // 5
 zero = 1e-10
 
 if 0:
@@ -312,24 +312,24 @@ if 0:
 
 else:
     # cpu/gpu based on platform
-    platform = 'cpu'
-    if len(sys.argv) > 1 and sys.argv[1] in ['cpu', 'gpu']:
-        platform = sys.argv[1]
+    platform = 'cpu' # default is CPU.
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
        platform = 'gpu'
 
     # please read the README file for an explanation of the input parameters :
     model_specs = [
         # SPE11b 
-        # {'check_rates': True, 'temperature': None, '1000years': 10, 'RHS': True,
-        #      'components': ['H2O', 'CO2'], 'inj_stream': [0.001, .999, 283.15], 'inj_rate': 3024, 
-        #          'nx': 50, 'nz': 10, 'ny': 50, 'dispersion': False, 'output_dir': 'output____',
-        #              'post_process': None, 'platform': platform},
+        {'check_rates': False, 'temperature': None, '1000years': 10, 'RHS': True,
+             'components': ['H2O', 'CO2'], 'inj_stream': [0.001, .999, 283.15], 'inj_rate': 3024,
+                 'nx': nx, 'nz': nz, 'ny': 1, 'dispersion': False, 'output_dir': 'new_output',
+                     'post_process': None, 'platform': platform,
+                         'parallel_evaluation': True, 'n_workers': 4
+                         },
         
-        {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True,
-            'components': ['H2O', 'CO2'], 'inj_stream': [0., 1., 283.15], 'inj_rate': 50 * 24 * 60 * 60, 
-                'nx': 50, 'nz': 50, 'ny': 10, 'dispersion': False, 'output_dir': 'SPE11c_results',
-                    'post_process': None, 'platform': 'cpu'},
+        # {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True,
+        #     'components': ['H2O', 'CO2'], 'inj_stream': [0., 1., 283.15], 'inj_rate': 50 * 24 * 60 * 60,
+        #         'nx': 50, 'nz': 50, 'ny': 10, 'dispersion': False, 'output_dir': 'SPE11c_results',
+        #             'post_process': None, 'platform': 'cpu'},
         
         # restart model
         # {'check_rates': True, 'temperature': None, '1000years': None, 'RHS': True,
@@ -371,7 +371,13 @@ if __name__ == '__main__':
 
         if specs['post_process'] is None:
             # ---- RUN MODEL
-            m.init(discr_type='tpfa', platform=m.platform, verbose = True)
+            m.init(
+                discr_type='tpfa',
+                platform=m.platform,
+                verbose=True,
+                parallel_evaluation=specs.get('parallel_evaluation', False),
+                n_workers=specs.get('n_workers'),
+            )
             
             # if specs['reservoir_type'] == '11c':
                 # m.set_boundary_conditions_11c()
@@ -436,7 +442,12 @@ if __name__ == '__main__':
             """ PROCESS RESULTS AND RESTART MODEL """
 
             print(f'Post processing into {m.output_dir}...')
-            m.init(discr_type = 'tpfa', platform = m.platform)
+            m.init(
+                discr_type='tpfa',
+                platform=m.platform,
+                parallel_evaluation=specs.get('parallel_evaluation', False),
+                n_workers=specs.get('n_workers'),
+            )
             m.set_output(output_folder = m.output_dir, sol_filename = 'reservoir_solution_PART2.h5',
                          save_initial=False, precision='d', verbose = False)
             # m.output.set_phase_properties()

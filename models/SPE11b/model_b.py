@@ -86,6 +86,64 @@ property_regions  = [0, 1, 2, 3, 4, 5, 6]
 layers_to_regions = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6}
 ######
 
+class SPE11bCompositional(Compositional):
+    """
+    SPE11b physics variant that shares one parallel evaluator pool across regions.
+    """
+
+    def set_interpolators(
+        self,
+        platform: str = 'cpu',
+        itor_type: str = 'multilinear',
+        itor_mode: str = 'adaptive',
+        itor_precision: str = 'd',
+        is_barycentric: bool = False,
+        parallel_evaluation: bool = False,
+        n_workers: int = None,
+        evaluator_factory_hook=None,
+    ):
+        use_parallel_evaluation = parallel_evaluation and (
+            n_workers is None or n_workers > 1
+        )
+
+        if use_parallel_evaluation:
+            if evaluator_factory_hook is None:
+                raise ValueError(
+                    "parallel_evaluation=True requires evaluator_factory_hook"
+                )
+
+            from shared_parallel_evaluator import (
+                SharedParallelEvaluatorPool,
+                SharedRegionParallelEvaluator,
+            )
+
+            factories = {
+                region: evaluator_factory_hook(region) for region in self.regions
+            }
+            self._spe11b_shared_parallel_pool = SharedParallelEvaluatorPool(
+                factories,
+                n_workers=n_workers,
+            )
+            serial_evaluators = dict(self.reservoir_operators)
+            for region in factories:
+                self.reservoir_operators[region] = SharedRegionParallelEvaluator(
+                    region,
+                    serial_evaluators[region],
+                    self._spe11b_shared_parallel_pool,
+                )
+
+        return super().set_interpolators(
+            platform=platform,
+            itor_type=itor_type,
+            itor_mode=itor_mode,
+            itor_precision=itor_precision,
+            is_barycentric=is_barycentric,
+            parallel_evaluation=False,
+            n_workers=None,
+            evaluator_factory_hook=None,
+        )
+
+
 class Model(CICDModel):
     def __init__(self, specs):
         super().__init__()
@@ -118,7 +176,7 @@ class Model(CICDModel):
             self.platform = 'cpu'
             try:
                 from darts.engines import set_num_threads
-                set_num_threads(int(os.getenv('OMP_NUM_THREADS', 1)))
+                set_num_threads(int(os.getenv('OMP_NUM_THREADS', 1))) # if the variable is not set, it defaults to 1
             except: 
                 pass 
             
@@ -377,12 +435,22 @@ class Model(CICDModel):
         pres_in = 210 # (pressure at depth of well 1 will be 300 bar)
         min_t = 273.15 if temperature is None else None
         max_t = 373.15 if temperature is None else None
-        self.physics = Compositional(self.components, phases, timer=self.timer,
-                                     n_points=n_points, min_p=200, max_p=450,
-                                     min_z=0., max_z=1., epsilon_z=self.zero/10, min_t=min_t, max_t=max_t,
-                                     state_spec = state_spec,
-                                     extrapolation_flag = False, 
-                                     cache=False)
+        self.physics = SPE11bCompositional(
+            self.components,
+            phases,
+            timer=self.timer,
+            n_points=n_points,
+            min_p=200,
+            max_p=450,
+            min_z=0.,
+            max_z=1.,
+            epsilon_z=self.zero / 10,
+            min_t=min_t,
+            max_t=max_t,
+            state_spec=state_spec,
+            extrapolation_flag=False,
+            cache=False,
+        )
         self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
 
         dispersivity = 10.
@@ -901,12 +969,12 @@ class Model(CICDModel):
         return converged
 
     def set_well_rhs(self, Dt, inj_rate, event1, event2):
-        if self.physics.engine.t >= 25 * Dt and self.physics.engine.t < 50 * Dt and event1:
+        if self.physics.engine.t >= 25 * 365 and self.physics.engine.t < 50 * 365 and event1:
             print('At 25 years, start injecting in the second well')
             self.inj_rate = [inj_rate, inj_rate]
             #self.inj_rate = [inj_rate, self.zero]
             event1 = False
-        elif self.physics.engine.t >= 50 * Dt and event2:
+        elif self.physics.engine.t >= 50 * 365 and event2:
             print('At 50 years, stop injection for both wells')
             self.inj_rate = [self.zero, self.zero]
             self.specs['check_rates'] = False  # after injection stop checking rates
