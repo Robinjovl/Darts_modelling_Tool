@@ -54,6 +54,97 @@ namespace opendarts
       int smoother_iters = 0;        // global smoother iterations
     };
 
+    /** Block-ILU(0) local-solver options for the MGR F-relaxation stage.
+     *
+     *  Mirrors linsolv_mgr::set_mgr_bilu0_pivot_shift /
+     *  set_mgr_bilu0_fallback_options. Defaults match linsolv_mgr's
+     *  constructor (pivot 1e-12, identity fallback).
+     */
+    struct mgr_bilu0_config
+    {
+      opendarts::config::mat_float pivot_shift = 1.0e-12;
+      int fallback_strategy = 0;                                  // mgr::LocalFallbackStrategy::identity
+      opendarts::config::mat_float fallback_diagonal_tolerance = 1.0e-4;
+      opendarts::config::mat_float fallback_shifted_max = 1.0e-4;
+      opendarts::config::mat_float fallback_shifted_growth = 100.0;
+    };
+
+    /** MGR local-correction (pressure-block damping) options.
+     *
+     *  Mirrors linsolv_mgr::set_mgr_local_correction_options /
+     *  set_mgr_local_correction_quality_options. Defaults match the
+     *  linsolv_mgr constructor.
+     */
+    struct mgr_local_correction_config
+    {
+      opendarts::config::mat_float alpha = 1.0;
+      opendarts::config::mat_float adaptive_fallback_threshold = -1.0;
+      opendarts::config::mat_float adaptive_alpha = 0.0;
+      opendarts::config::mat_float adaptive_fallback_threshold_high = -1.0;
+      opendarts::config::mat_float adaptive_alpha_high = 0.0;
+      bool quality_enabled = false;
+      opendarts::config::mat_float quality_min_alpha = 0.0;
+    };
+
+    /** BCSR-CPR (block-CSR Constrained Pressure Residual) options.
+     *
+     *  Mirrors the linsolv_mgr set_bcsr_cpr_* setter family. Presence of this
+     *  struct on mgr_solver_config enables BCSR-CPR (set_use_bcsr_cpr(true)).
+     *  Scalar defaults match the linsolv_mgr constructor. transpose_apply /
+     *  forward_source are optional: the factory calls their setters only when
+     *  set, so the linsolv_mgr auto-derivation is preserved when unset.
+     */
+    struct mgr_bcsr_cpr_config
+    {
+      int reduction_type = 1;                                     // mgr::BCSRCPRReductionType::trueIMPES
+      int pressure_variable = 0;
+      opendarts::config::mat_float weight_max = 1.0e6;
+      bool reuse_amg_hierarchy = false;
+      opendarts::config::index_t amg_rebuild_interval = 1;
+      bool adaptive_amg_rebuild = false;
+      opendarts::config::index_t adaptive_li_threshold = 80;
+      opendarts::config::mat_float adaptive_li_growth_factor = 2.0;
+      opendarts::config::index_t adaptive_min_reuse_setups = 1;
+      opendarts::config::index_t adaptive_max_reuse_setups = 0;
+      opendarts::config::mat_float adaptive_pressure_overshoot_threshold = -1.0;
+      opendarts::config::mat_float adaptive_final_proxy_threshold = -1.0;
+      opendarts::config::mat_float adaptive_fallback_threshold = -1.0;
+      bool diagnostics = false;
+      opendarts::config::index_t diagnostic_apply_interval = 0;
+      opendarts::config::index_t diagnostic_matrix_interval = 0;
+      opendarts::config::mat_float pressure_correction_alpha = 1.0;
+      opendarts::config::mat_float pressure_correction_guard_threshold = -1.0;
+      opendarts::config::mat_float pressure_correction_guard_min_alpha = 0.0;
+      std::optional<bool> transpose_apply;                        // unset = keep linsolv_mgr auto-derivation
+      std::optional<bool> forward_source;                         // unset = keep linsolv_mgr auto-derivation
+    };
+
+    /** MGR pressure-subsystem BoomerAMG options.
+     *
+     *  Mirrors set_mgr_pressure_amg_options / _advanced_options / _solve_options.
+     *  Defaults match the typical HYPRE settings used by the composite models;
+     *  applied only when this struct is set on mgr_solver_config.
+     */
+    struct mgr_pressure_amg_config
+    {
+      // set_mgr_pressure_amg_options
+      int coarsen_type = 6;
+      int interp_type = 6;
+      int relax_type = 6;
+      int agg_num_levels = 1;
+      int agg_interp_type = 6;
+      int agg_pmax_elmts = 20;
+      int relax_order = 1;
+      // set_mgr_pressure_amg_advanced_options
+      opendarts::config::mat_float strong_threshold = 0.5;
+      opendarts::config::mat_float trunc_factor = -1.0;
+      int pmax_elmts = -1;
+      int max_levels = 0;
+      // set_mgr_pressure_amg_solve_options
+      opendarts::config::index_t solve_max_iter = 1;
+      opendarts::config::mat_float solve_tolerance = 0.0;
+    };
+
     /** Configuration for the HYPRE MGR solver (linsolv_mgr).
      *
      *  Inherits max_iterations / tolerance / print_level from solver_config.
@@ -85,6 +176,17 @@ namespace opendarts
       std::optional<mgr_level_config> composition_level;  // overrides the composition level
       std::optional<mgr_level_config> pressure_level;     // overrides the pressure level
       std::vector<mgr_level_config> custom_levels;        // user-defined extra reduction levels
+
+      // Composite-preconditioner / local-solver knobs (applied only when set, so
+      // a default mgr_solver_config keeps linsolv_mgr's out-of-the-box behaviour).
+      std::optional<int> scaling_type;                          // set_mgr_scaling_type
+      std::optional<int> composite_mode;                        // set_mgr_composite_mode
+      std::optional<int> local_solver;                          // set_mgr_local_solver
+      std::optional<bool> use_bcsr_cpr;                         // set_use_bcsr_cpr (standalone toggle)
+      std::optional<mgr_bilu0_config> bilu0;                    // block-ILU0 local solver options
+      std::optional<mgr_local_correction_config> local_correction;  // pressure-block damping
+      std::optional<mgr_bcsr_cpr_config> bcsr_cpr;              // BCSR-CPR options (presence enables it)
+      std::optional<mgr_pressure_amg_config> pressure_amg;      // pressure-subsystem BoomerAMG options
     };
 
     /** Configuration for the open-source GMRES outer Krylov solver (linsolv_gmres).

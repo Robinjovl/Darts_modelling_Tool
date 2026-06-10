@@ -339,6 +339,72 @@ void bind_unified_solver_api(py::module &m)
         .def_readwrite("smoother_type", &mgr_level_config::smoother_type)
         .def_readwrite("smoother_iters", &mgr_level_config::smoother_iters);
 
+    // Block-ILU(0) local-solver options for the MGR F-relaxation stage.
+    py::class_<mgr_bilu0_config>(m, "MGRBILU0Config",
+        "MGR block-ILU(0) local-solver options.")
+        .def(py::init<>())
+        .def_readwrite("pivot_shift", &mgr_bilu0_config::pivot_shift)
+        .def_readwrite("fallback_strategy", &mgr_bilu0_config::fallback_strategy)
+        .def_readwrite("fallback_diagonal_tolerance", &mgr_bilu0_config::fallback_diagonal_tolerance)
+        .def_readwrite("fallback_shifted_max", &mgr_bilu0_config::fallback_shifted_max)
+        .def_readwrite("fallback_shifted_growth", &mgr_bilu0_config::fallback_shifted_growth);
+
+    // MGR local-correction (pressure-block damping) options.
+    py::class_<mgr_local_correction_config>(m, "MGRLocalCorrectionConfig",
+        "MGR local-correction (pressure-block damping) options.")
+        .def(py::init<>())
+        .def_readwrite("alpha", &mgr_local_correction_config::alpha)
+        .def_readwrite("adaptive_fallback_threshold", &mgr_local_correction_config::adaptive_fallback_threshold)
+        .def_readwrite("adaptive_alpha", &mgr_local_correction_config::adaptive_alpha)
+        .def_readwrite("adaptive_fallback_threshold_high", &mgr_local_correction_config::adaptive_fallback_threshold_high)
+        .def_readwrite("adaptive_alpha_high", &mgr_local_correction_config::adaptive_alpha_high)
+        .def_readwrite("quality_enabled", &mgr_local_correction_config::quality_enabled)
+        .def_readwrite("quality_min_alpha", &mgr_local_correction_config::quality_min_alpha);
+
+    // BCSR-CPR (block-CSR Constrained Pressure Residual) options.
+    py::class_<mgr_bcsr_cpr_config>(m, "MGRBCSRCPRConfig",
+        "MGR BCSR-CPR options; presence on MGRSolverConfig enables BCSR-CPR.")
+        .def(py::init<>())
+        .def_readwrite("reduction_type", &mgr_bcsr_cpr_config::reduction_type)
+        .def_readwrite("pressure_variable", &mgr_bcsr_cpr_config::pressure_variable)
+        .def_readwrite("weight_max", &mgr_bcsr_cpr_config::weight_max)
+        .def_readwrite("reuse_amg_hierarchy", &mgr_bcsr_cpr_config::reuse_amg_hierarchy)
+        .def_readwrite("amg_rebuild_interval", &mgr_bcsr_cpr_config::amg_rebuild_interval)
+        .def_readwrite("adaptive_amg_rebuild", &mgr_bcsr_cpr_config::adaptive_amg_rebuild)
+        .def_readwrite("adaptive_li_threshold", &mgr_bcsr_cpr_config::adaptive_li_threshold)
+        .def_readwrite("adaptive_li_growth_factor", &mgr_bcsr_cpr_config::adaptive_li_growth_factor)
+        .def_readwrite("adaptive_min_reuse_setups", &mgr_bcsr_cpr_config::adaptive_min_reuse_setups)
+        .def_readwrite("adaptive_max_reuse_setups", &mgr_bcsr_cpr_config::adaptive_max_reuse_setups)
+        .def_readwrite("adaptive_pressure_overshoot_threshold", &mgr_bcsr_cpr_config::adaptive_pressure_overshoot_threshold)
+        .def_readwrite("adaptive_final_proxy_threshold", &mgr_bcsr_cpr_config::adaptive_final_proxy_threshold)
+        .def_readwrite("adaptive_fallback_threshold", &mgr_bcsr_cpr_config::adaptive_fallback_threshold)
+        .def_readwrite("diagnostics", &mgr_bcsr_cpr_config::diagnostics)
+        .def_readwrite("diagnostic_apply_interval", &mgr_bcsr_cpr_config::diagnostic_apply_interval)
+        .def_readwrite("diagnostic_matrix_interval", &mgr_bcsr_cpr_config::diagnostic_matrix_interval)
+        .def_readwrite("pressure_correction_alpha", &mgr_bcsr_cpr_config::pressure_correction_alpha)
+        .def_readwrite("pressure_correction_guard_threshold", &mgr_bcsr_cpr_config::pressure_correction_guard_threshold)
+        .def_readwrite("pressure_correction_guard_min_alpha", &mgr_bcsr_cpr_config::pressure_correction_guard_min_alpha)
+        .def_readwrite("transpose_apply", &mgr_bcsr_cpr_config::transpose_apply)
+        .def_readwrite("forward_source", &mgr_bcsr_cpr_config::forward_source);
+
+    // MGR pressure-subsystem BoomerAMG options.
+    py::class_<mgr_pressure_amg_config>(m, "MGRPressureAMGConfig",
+        "MGR pressure-subsystem BoomerAMG options.")
+        .def(py::init<>())
+        .def_readwrite("coarsen_type", &mgr_pressure_amg_config::coarsen_type)
+        .def_readwrite("interp_type", &mgr_pressure_amg_config::interp_type)
+        .def_readwrite("relax_type", &mgr_pressure_amg_config::relax_type)
+        .def_readwrite("agg_num_levels", &mgr_pressure_amg_config::agg_num_levels)
+        .def_readwrite("agg_interp_type", &mgr_pressure_amg_config::agg_interp_type)
+        .def_readwrite("agg_pmax_elmts", &mgr_pressure_amg_config::agg_pmax_elmts)
+        .def_readwrite("relax_order", &mgr_pressure_amg_config::relax_order)
+        .def_readwrite("strong_threshold", &mgr_pressure_amg_config::strong_threshold)
+        .def_readwrite("trunc_factor", &mgr_pressure_amg_config::trunc_factor)
+        .def_readwrite("pmax_elmts", &mgr_pressure_amg_config::pmax_elmts)
+        .def_readwrite("max_levels", &mgr_pressure_amg_config::max_levels)
+        .def_readwrite("solve_max_iter", &mgr_pressure_amg_config::solve_max_iter)
+        .def_readwrite("solve_tolerance", &mgr_pressure_amg_config::solve_tolerance);
+
     // MGR solver configuration (derives SolverConfig).
     py::class_<mgr_solver_config, solver_config>(m, "MGRSolverConfig",
         "Configuration for the HYPRE MGR solver.")
@@ -357,7 +423,15 @@ void bind_unified_solver_api(py::module &m)
         .def_readwrite("well_level", &mgr_solver_config::well_level)
         .def_readwrite("composition_level", &mgr_solver_config::composition_level)
         .def_readwrite("pressure_level", &mgr_solver_config::pressure_level)
-        .def_readwrite("custom_levels", &mgr_solver_config::custom_levels);
+        .def_readwrite("custom_levels", &mgr_solver_config::custom_levels)
+        .def_readwrite("scaling_type", &mgr_solver_config::scaling_type)
+        .def_readwrite("composite_mode", &mgr_solver_config::composite_mode)
+        .def_readwrite("local_solver", &mgr_solver_config::local_solver)
+        .def_readwrite("use_bcsr_cpr", &mgr_solver_config::use_bcsr_cpr)
+        .def_readwrite("bilu0", &mgr_solver_config::bilu0)
+        .def_readwrite("local_correction", &mgr_solver_config::local_correction)
+        .def_readwrite("bcsr_cpr", &mgr_solver_config::bcsr_cpr)
+        .def_readwrite("pressure_amg", &mgr_solver_config::pressure_amg);
 
     // Open-source GMRES outer Krylov solver configuration.
     py::class_<gmres_solver_config, solver_config>(m, "GMRESSolverConfig",

@@ -123,7 +123,7 @@ class Model(CICDModel):
         # open-source build. In the proprietary build a Spec is ignored and the
         # engine factory keeps using its iterative default (which converges there).
         from darts.solvers import SuperLUSolverSpec
-        self.data_ts.linear_solver = SuperLUSolverSpec()
+        self.solver = SuperLUSolverSpec()
 
     def print_range(self, time, part='cells'):
         depth = np.array(self.reservoir.mesh.depth, copy=True)

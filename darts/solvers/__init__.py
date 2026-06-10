@@ -39,11 +39,16 @@ from .adaptive import (  # noqa: F401
     fallback_on_failure,
 )
 from .enums import (  # noqa: F401
+    BCSRCPRReduction,
     CoarseGrid,
+    CompositeMode,
     FRelaxation,
     GlobalSmoother,
     Interpolation,
+    LocalFallback,
+    LocalPreconditioner,
     Restriction,
+    ScalingType,
     VariableRole,
 )
 from .python_solvers import (  # noqa: F401
@@ -52,13 +57,21 @@ from .python_solvers import (  # noqa: F401
     PythonLinearSolver,
 )
 from .specs import (  # noqa: F401
+    AMGXCPRSolverSpec,
+    BCSRCPRSpec,
+    BILU0Spec,
     CPRSolverSpec,
     GMRESSolverSpec,
+    GPUBiCGStabCPRSolverSpec,
+    GPUGMRESILU0SolverSpec,
+    GPUSolverSpec,
     LinearSolverSpec,
+    LocalCorrectionSpec,
     MGRLevelSpec,
     MGRSolverSpec,
     PardisoSolverSpec,
     PETScSolverSpec,
+    PressureAMGSpec,
     PythonLinearSolverSpec,
     SuperLUSolverSpec,
     default_linear_solver,

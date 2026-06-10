@@ -324,7 +324,7 @@ class Model(CICDModel):
                     break
 
             # Python-resident solver (PETSc / Pardiso) is dispatched via
-            # data_ts.linear_solver = PETScSolverSpec() / PardisoSolverSpec().
+            # self.solver = PETScSolverSpec() / PardisoSolverSpec() (in set_solver()).
             self._solve_linear_equation()
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)

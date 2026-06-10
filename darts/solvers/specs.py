@@ -18,7 +18,15 @@ try:
     from . import solvers
 except ImportError:
     solvers = None  # type: ignore[assignment]
-from .enums import CoarseGrid, FRelaxation, GlobalSmoother, Interpolation, Restriction
+from .enums import (
+    BCSRCPRReduction,
+    CoarseGrid,
+    FRelaxation,
+    GlobalSmoother,
+    Interpolation,
+    LocalFallback,
+    Restriction,
+)
 
 
 @dataclass
@@ -101,6 +109,165 @@ class MGRLevelSpec:
 
 
 @dataclass
+class BILU0Spec:
+    """Block-ILU(0) local-solver options for the MGR F-relaxation stage.
+
+    Mirrors the C++ ``mgr_bilu0_config``; defaults match ``linsolv_mgr``'s own.
+    """
+
+    pivot_shift: float = 1.0e-12
+    fallback_strategy: int = LocalFallback.IDENTITY
+    fallback_diagonal_tolerance: float = 1.0e-4
+    fallback_shifted_max: float = 1.0e-4
+    fallback_shifted_growth: float = 100.0
+
+    def _to_cpp(self) -> solvers.MGRBILU0Config:
+        cpp = solvers.MGRBILU0Config()
+        cpp.pivot_shift = float(self.pivot_shift)
+        cpp.fallback_strategy = int(self.fallback_strategy)
+        cpp.fallback_diagonal_tolerance = float(self.fallback_diagonal_tolerance)
+        cpp.fallback_shifted_max = float(self.fallback_shifted_max)
+        cpp.fallback_shifted_growth = float(self.fallback_shifted_growth)
+        return cpp
+
+
+@dataclass
+class LocalCorrectionSpec:
+    """MGR local-correction (pressure-block damping) options.
+
+    Mirrors the C++ ``mgr_local_correction_config``.
+    """
+
+    alpha: float = 1.0
+    adaptive_fallback_threshold: float = -1.0
+    adaptive_alpha: float = 0.0
+    adaptive_fallback_threshold_high: float = -1.0
+    adaptive_alpha_high: float = 0.0
+    quality_enabled: bool = False
+    quality_min_alpha: float = 0.0
+
+    def _to_cpp(self) -> solvers.MGRLocalCorrectionConfig:
+        cpp = solvers.MGRLocalCorrectionConfig()
+        cpp.alpha = float(self.alpha)
+        cpp.adaptive_fallback_threshold = float(self.adaptive_fallback_threshold)
+        cpp.adaptive_alpha = float(self.adaptive_alpha)
+        cpp.adaptive_fallback_threshold_high = float(
+            self.adaptive_fallback_threshold_high
+        )
+        cpp.adaptive_alpha_high = float(self.adaptive_alpha_high)
+        cpp.quality_enabled = bool(self.quality_enabled)
+        cpp.quality_min_alpha = float(self.quality_min_alpha)
+        return cpp
+
+
+@dataclass
+class BCSRCPRSpec:
+    """BCSR-CPR (block-CSR Constrained Pressure Residual) options.
+
+    Attaching this to :attr:`MGRSolverSpec.bcsr_cpr` enables BCSR-CPR. Mirrors
+    the C++ ``mgr_bcsr_cpr_config``. ``transpose_apply`` / ``forward_source``
+    default to ``None`` (left to ``linsolv_mgr``'s auto-derivation).
+    """
+
+    reduction_type: int = BCSRCPRReduction.TRUE_IMPES
+    pressure_variable: int = 0
+    weight_max: float = 1.0e6
+    reuse_amg_hierarchy: bool = False
+    amg_rebuild_interval: int = 1
+    adaptive_amg_rebuild: bool = False
+    adaptive_li_threshold: int = 80
+    adaptive_li_growth_factor: float = 2.0
+    adaptive_min_reuse_setups: int = 1
+    adaptive_max_reuse_setups: int = 0
+    adaptive_pressure_overshoot_threshold: float = -1.0
+    adaptive_final_proxy_threshold: float = -1.0
+    adaptive_fallback_threshold: float = -1.0
+    diagnostics: bool = False
+    diagnostic_apply_interval: int = 0
+    diagnostic_matrix_interval: int = 0
+    pressure_correction_alpha: float = 1.0
+    pressure_correction_guard_threshold: float = -1.0
+    pressure_correction_guard_min_alpha: float = 0.0
+    transpose_apply: bool | None = None
+    forward_source: bool | None = None
+
+    def _to_cpp(self) -> solvers.MGRBCSRCPRConfig:
+        cpp = solvers.MGRBCSRCPRConfig()
+        cpp.reduction_type = int(self.reduction_type)
+        cpp.pressure_variable = int(self.pressure_variable)
+        cpp.weight_max = float(self.weight_max)
+        cpp.reuse_amg_hierarchy = bool(self.reuse_amg_hierarchy)
+        cpp.amg_rebuild_interval = int(self.amg_rebuild_interval)
+        cpp.adaptive_amg_rebuild = bool(self.adaptive_amg_rebuild)
+        cpp.adaptive_li_threshold = int(self.adaptive_li_threshold)
+        cpp.adaptive_li_growth_factor = float(self.adaptive_li_growth_factor)
+        cpp.adaptive_min_reuse_setups = int(self.adaptive_min_reuse_setups)
+        cpp.adaptive_max_reuse_setups = int(self.adaptive_max_reuse_setups)
+        cpp.adaptive_pressure_overshoot_threshold = float(
+            self.adaptive_pressure_overshoot_threshold
+        )
+        cpp.adaptive_final_proxy_threshold = float(self.adaptive_final_proxy_threshold)
+        cpp.adaptive_fallback_threshold = float(self.adaptive_fallback_threshold)
+        cpp.diagnostics = bool(self.diagnostics)
+        cpp.diagnostic_apply_interval = int(self.diagnostic_apply_interval)
+        cpp.diagnostic_matrix_interval = int(self.diagnostic_matrix_interval)
+        cpp.pressure_correction_alpha = float(self.pressure_correction_alpha)
+        cpp.pressure_correction_guard_threshold = float(
+            self.pressure_correction_guard_threshold
+        )
+        cpp.pressure_correction_guard_min_alpha = float(
+            self.pressure_correction_guard_min_alpha
+        )
+        cpp.transpose_apply = (
+            None if self.transpose_apply is None else bool(self.transpose_apply)
+        )
+        cpp.forward_source = (
+            None if self.forward_source is None else bool(self.forward_source)
+        )
+        return cpp
+
+
+@dataclass
+class PressureAMGSpec:
+    """MGR pressure-subsystem BoomerAMG options.
+
+    Mirrors the C++ ``mgr_pressure_amg_config`` (the three
+    ``set_mgr_pressure_amg_*`` setter groups).
+    """
+
+    coarsen_type: int = 6
+    interp_type: int = 6
+    relax_type: int = 6
+    agg_num_levels: int = 1
+    agg_interp_type: int = 6
+    agg_pmax_elmts: int = 20
+    relax_order: int = 1
+    strong_threshold: float = 0.5
+    trunc_factor: float = -1.0
+    pmax_elmts: int = -1
+    max_levels: int = 0
+    solve_max_iter: int = 1
+    solve_tolerance: float = 0.0
+
+    def _to_cpp(self) -> solvers.MGRPressureAMGConfig:
+        cpp = solvers.MGRPressureAMGConfig()
+        cpp.coarsen_type = int(self.coarsen_type)
+        cpp.interp_type = int(self.interp_type)
+        cpp.relax_type = int(self.relax_type)
+        cpp.agg_num_levels = int(self.agg_num_levels)
+        cpp.agg_interp_type = int(self.agg_interp_type)
+        cpp.agg_pmax_elmts = int(self.agg_pmax_elmts)
+        cpp.relax_order = int(self.relax_order)
+        cpp.strong_threshold = float(self.strong_threshold)
+        cpp.trunc_factor = float(self.trunc_factor)
+        cpp.pmax_elmts = int(self.pmax_elmts)
+        cpp.max_levels = int(self.max_levels)
+        cpp.solve_max_iter = int(self.solve_max_iter)
+        cpp.solve_tolerance = float(self.solve_tolerance)
+        return cpp
+
+
+@dataclass
 class MGRSolverSpec(LinearSolverSpec):
     """HYPRE MGR solver -- the default open-source CPU solver.
 
@@ -126,6 +293,18 @@ class MGRSolverSpec(LinearSolverSpec):
     composition_level: MGRLevelSpec | None = None
     pressure_level: MGRLevelSpec | None = None
     custom_levels: list[MGRLevelSpec] = field(default_factory=list)
+
+    # Composite-preconditioner / local-solver knobs. Each is applied only when
+    # set (None / unset), so a bare MGRSolverSpec keeps linsolv_mgr's built-in
+    # behaviour; populating them reproduces the composite-model raw build.
+    scaling_type: int | None = None
+    composite_mode: int | None = None
+    local_solver: int | None = None
+    use_bcsr_cpr: bool | None = None
+    bilu0: BILU0Spec | None = None
+    local_correction: LocalCorrectionSpec | None = None
+    bcsr_cpr: BCSRCPRSpec | None = None
+    pressure_amg: PressureAMGSpec | None = None
 
     def _make_config(self) -> solvers.MGRSolverConfig:
         config = solvers.MGRSolverConfig()
@@ -156,6 +335,26 @@ class MGRSolverSpec(LinearSolverSpec):
             None if self.pressure_level is None else self.pressure_level._to_cpp()
         )
         config.custom_levels = [level._to_cpp() for level in self.custom_levels]
+        config.scaling_type = (
+            None if self.scaling_type is None else int(self.scaling_type)
+        )
+        config.composite_mode = (
+            None if self.composite_mode is None else int(self.composite_mode)
+        )
+        config.local_solver = (
+            None if self.local_solver is None else int(self.local_solver)
+        )
+        config.use_bcsr_cpr = (
+            None if self.use_bcsr_cpr is None else bool(self.use_bcsr_cpr)
+        )
+        config.bilu0 = None if self.bilu0 is None else self.bilu0._to_cpp()
+        config.local_correction = (
+            None if self.local_correction is None else self.local_correction._to_cpp()
+        )
+        config.bcsr_cpr = None if self.bcsr_cpr is None else self.bcsr_cpr._to_cpp()
+        config.pressure_amg = (
+            None if self.pressure_amg is None else self.pressure_amg._to_cpp()
+        )
         return config
 
 
@@ -382,6 +581,62 @@ class PardisoSolverSpec(PythonLinearSolverSpec):
         )
 
 
+@dataclass
+class GPUSolverSpec(LinearSolverSpec):
+    """Base spec for GPU linear solvers.
+
+    GPU solvers are selected by the GPU engine factory through the
+    ``params.linear_type`` (``darts.engines.linear_solver_t``) enum, NOT through
+    the open-source ``darts.solvers`` registry. A GPUSolverSpec therefore does not
+    build a C++ solver -- it names the enum value via :attr:`linear_type_name`, and
+    :meth:`darts.models.darts_model.DartsModel._apply_solver` translates
+    ``self.solver`` to ``params.linear_type`` on the GPU platform. :meth:`build`
+    raises.
+
+    This keeps ``self.solver`` the single user-facing API on GPU too:
+    ``self.solver = AMGXCPRSolverSpec()`` selects the GPU solver, mirroring the way
+    a CPU spec selects a registry solver.
+    """
+
+    #: name of the ``darts.engines.sim_params`` ``linear_solver_t`` enum value
+    linear_type_name: ClassVar[str] = ""
+
+    def build(self, block_size: int):
+        raise NotImplementedError(
+            f"{type(self).__name__} is a GPU spec; it is selected via "
+            f"params.linear_type ({self.linear_type_name or '<unset>'}) by the GPU "
+            f"engine factory, not built through the open-source registry."
+        )
+
+
+@dataclass
+class AMGXCPRSolverSpec(GPUSolverSpec):
+    """GPU GMRES + AMGX-CPR -- the default GPU solver.
+
+    NVIDIA AMGX algebraic multigrid on the pressure subsystem + ILU on the full
+    system, wrapped in GMRES. Maps to ``linear_solver_t.gpu_gmres_cpr_amgx_ilu``.
+    """
+
+    linear_type_name: ClassVar[str] = "gpu_gmres_cpr_amgx_ilu"
+
+
+@dataclass
+class GPUBiCGStabCPRSolverSpec(GPUSolverSpec):
+    """GPU BiCGStab + AMGX-CPR. Maps to ``linear_solver_t.gpu_bicgstab_cpr_amgx``."""
+
+    linear_type_name: ClassVar[str] = "gpu_bicgstab_cpr_amgx"
+
+
+@dataclass
+class GPUGMRESILU0SolverSpec(GPUSolverSpec):
+    """GPU GMRES + cuSPARSE-ILU(0) -- a single-stage GPU fallback (no AMG).
+
+    Maps to ``linear_solver_t.gpu_gmres_ilu0``.
+    """
+
+    linear_type_name: ClassVar[str] = "gpu_gmres_ilu0"
+
+
 def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:
     """Return the default linear-solver spec for a platform.
 
@@ -397,24 +652,20 @@ def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:
 
     :class:`MGRSolverSpec` remains the recommended fallback for matrices
     where the CPR pressure extraction is a bad fit; set
-    ``data_ts.linear_solver = MGRSolverSpec()`` to use it.
+    ``self.solver = MGRSolverSpec()`` in the model's ``set_solver()`` to use it.
 
     :param platform: ``"cpu"`` or ``"gpu"``.
 
-    .. note::
-       The GPU default is ``gpu_gmres_cpr_amgx_ilu`` -- GMRES + AMGX-CPR (NVIDIA
-       AMGX algebraic multigrid on the pressure subsystem + ILU on the full
-       system) -- with the in-tree BiCGStab + cuSPARSE-ILU solver as the
-       fallback. It is selected by ``DartsModel.init()`` (which sets
-       ``params.linear_type`` on the GPU platform) and wired in the GPU engine
-       factory (``engine_base_gpu``); it does not flow through a
-       ``LinearSolverSpec`` and ``data_ts.linear_solver`` is unused on GPU.
-       Requesting the GPU default through this function therefore raises
-       :class:`NotImplementedError`.
+    The GPU default is :class:`AMGXCPRSolverSpec` -- GMRES + AMGX-CPR (NVIDIA
+    AMGX algebraic multigrid on the pressure subsystem + ILU on the full system),
+    mapping to ``linear_solver_t.gpu_gmres_cpr_amgx_ilu``. A :class:`GPUSolverSpec`
+    does not build a C++ solver; it names the ``params.linear_type`` enum, which
+    :meth:`DartsModel._apply_solver` sets on the GPU platform and the GPU engine
+    factory (``engine_base_gpu``) consumes. So ``self.solver`` is the single
+    user-facing API on GPU too.
+
+    :param platform: ``"cpu"`` or ``"gpu"``.
     """
     if platform.lower() == "gpu":
-        raise NotImplementedError(
-            "GPU default solver is configured in the GPU engine factory, not "
-            "through a LinearSolverSpec (see engine_base_gpu)."
-        )
+        return AMGXCPRSolverSpec()
     return GMRESSolverSpec(restart=50, prec=CPRSolverSpec())

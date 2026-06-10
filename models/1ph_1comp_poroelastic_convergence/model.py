@@ -54,14 +54,14 @@ class Model(THMCModel):
             n_fracs=0,
             n_wells=n_blocks - n_res_blks,
         )
-        self.data_ts.linear_solver = GMRESSolverSpec(
+        self.solver = GMRESSolverSpec(
             prec=fs_cpr,
             tolerance=1e-8,
             max_iterations=200,
             restart=50,
         )
         # params.linear_type is only a placeholder in the open-source build -- the
-        # FS-CPR spec above drives _apply_linear_solver_spec, so it must stay a
+        # FS-CPR spec above drives _apply_solver, so it must stay a
         # factory-safe value (cpu_superlu); the neutralised cpu_gmres_fs_cpr factory
         # path crashes there. In the proprietary build it is the real selector
         # (bos_fs_cpr).

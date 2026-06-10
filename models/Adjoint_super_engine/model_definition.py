@@ -3,6 +3,26 @@ from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
 from darts import solvers
+from darts.solvers import (
+    BCSRCPRSpec,
+    BILU0Spec,
+    LocalCorrectionSpec,
+    MGRLevelSpec,
+    MGRSolverSpec,
+    PressureAMGSpec,
+)
+from darts.solvers.enums import (
+    BCSRCPRReduction,
+    CoarseGrid,
+    CompositeMode,
+    FRelaxation,
+    GlobalSmoother,
+    Interpolation,
+    LocalFallback,
+    LocalPreconditioner,
+    Restriction,
+    VariableRole,
+)
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -334,82 +354,106 @@ class Model(CICDModel, OptModuleSettings):
         # valid.
         if self.solver is not None:
             return
-        # The raw MGR build below is open-source-only. In the proprietary -a build
-        # (no compiled darts.solvers registry) fall back to the engine factory.
+        # Forward MGR (BCSR-CPR) via the unified spec API (self.solver = MGRSolverSpec).
+        # The base DartsModel._apply_solver hook builds + injects it before engine.init
+        # in the open-source CPU build; the adjoint solver is injected separately by
+        # _attach_mgr_solvers_to_engine(). In the proprietary -a build the spec is
+        # ignored and the engine factory uses params.linear_type. Mirrors 2ph_comp's
+        # MGRSolverSpec (here diagnostics are off, as in the former raw build).
         if not self.open_source_solvers_available():
             self.solver = None
             self.params.linear_type = sim_params.cpu_gmres_cpr
             return
         block_size = self.physics.n_vars
-        self.solver = solvers.create_mgr_solver_for_block_size(block_size)
+        reservoir_blocks = self._reservoir_block_count() or 0
 
-        self.solver.set_max_iterations(self.params.max_i_linear)
-        self.solver.set_tolerance(self.params.tolerance_linear)
-        self.solver.set_log_level(self.params.linear_print_level)
-        self.solver.set_kdim(150)
-        self.solver.set_use_mgr(True)
-        self.solver.set_use_flex_gmres(True)
-        self.solver.set_use_physics_scaling(True)
-        self.solver.set_mgr_composite_mode(1)
-
-        self.solver.set_mgr_local_solver(
-            getattr(sim_params, "mgrLocalSolverBlockILU0", 2)
+        reservoir_roles = [VariableRole.PRESSURE] + [VariableRole.COMPOSITION] * (
+            block_size - 1
         )
-        self.solver.set_mgr_bilu0_pivot_shift(1e-12)
-        self.solver.set_mgr_bilu0_fallback_options(
-            sim_params.mgrBilu0FallbackIdentity,
-            1e-4,
-            1e-4,
-            100.0,
+        well_roles = [VariableRole.WELL_PRESSURE] + [VariableRole.WELL_SECONDARY] * (
+            block_size - 1
         )
-        self.solver.set_mgr_local_correction_options(1.0, -1.0, 0.0, -1.0, 0.0)
-        self.solver.set_mgr_local_correction_quality_options(False, 0.0)
 
-        self.solver.set_mgr_pressure_amg_options(6, 6, 6, 1, 6, 20, 1)
-        if hasattr(self.solver, "set_mgr_pressure_amg_advanced_options"):
-            self.solver.set_mgr_pressure_amg_advanced_options(0.5, -1.0, -1, 0)
-        self.solver.set_mgr_pressure_amg_solve_options(1, 0.0)
-
-        self.solver.set_use_bcsr_cpr(True)
-        self.solver.set_bcsr_cpr_options(
-            getattr(
-                self,
-                "bcsr_cpr_reduction_type",
-                sim_params.mgrCprReductionTrueIMPES,
+        self.solver = MGRSolverSpec(
+            tolerance=self.params.tolerance_linear,
+            max_iterations=self.params.max_i_linear,
+            log_level=self.params.linear_print_level,
+            kdim=150,
+            use_mgr=True,
+            use_flex_gmres=True,
+            use_physics_scaling=True,
+            composite_mode=CompositeMode.MGR_THEN_LOCAL,
+            local_solver=LocalPreconditioner.BLOCK_ILU0,
+            bilu0=BILU0Spec(
+                pivot_shift=1e-12,
+                fallback_strategy=LocalFallback.IDENTITY,
+                fallback_diagonal_tolerance=1e-4,
+                fallback_shifted_max=1e-4,
+                fallback_shifted_growth=100.0,
             ),
-            0,
-            1e6,
+            local_correction=LocalCorrectionSpec(
+                alpha=1.0,
+                adaptive_fallback_threshold=-1.0,
+                adaptive_alpha=0.0,
+                adaptive_fallback_threshold_high=-1.0,
+                adaptive_alpha_high=0.0,
+                quality_enabled=False,
+                quality_min_alpha=0.0,
+            ),
+            pressure_amg=PressureAMGSpec(
+                coarsen_type=6,
+                interp_type=6,
+                relax_type=6,
+                agg_num_levels=1,
+                agg_interp_type=6,
+                agg_pmax_elmts=20,
+                relax_order=1,
+                strong_threshold=0.5,
+                trunc_factor=-1.0,
+                pmax_elmts=-1,
+                max_levels=0,
+                solve_max_iter=1,
+                solve_tolerance=0.0,
+            ),
+            bcsr_cpr=BCSRCPRSpec(
+                reduction_type=getattr(
+                    self, "bcsr_cpr_reduction_type", BCSRCPRReduction.TRUE_IMPES
+                ),
+                pressure_variable=0,
+                weight_max=1e6,
+                reuse_amg_hierarchy=True,
+                amg_rebuild_interval=0,
+                adaptive_amg_rebuild=True,
+                adaptive_li_threshold=15,
+                adaptive_li_growth_factor=1.5,
+                adaptive_min_reuse_setups=1,
+                adaptive_max_reuse_setups=2,
+                adaptive_pressure_overshoot_threshold=-1.0,
+                adaptive_final_proxy_threshold=-1.0,
+                adaptive_fallback_threshold=-1.0,
+                diagnostics=False,
+                diagnostic_apply_interval=0,
+                diagnostic_matrix_interval=0,
+                pressure_correction_alpha=1.0,
+                pressure_correction_guard_threshold=10.0,
+                pressure_correction_guard_min_alpha=0.05,
+            ),
+            reservoir_variable_roles=reservoir_roles,
+            well_variable_roles=well_roles,
+            pressure_level=MGRLevelSpec(
+                frelax_type=FRelaxation.NONE,
+                frelax_iters=0,
+                interp_type=Interpolation.INJECTION,
+                restrict_type=Restriction.BLOCK_COL_LUMPED,
+                coarse_method=CoarseGrid.GALERKIN,
+                smoother_type=GlobalSmoother.HYPRE_ILU,
+                smoother_iters=1,
+            ),
+            n_reservoir_blocks=int(reservoir_blocks),
+            enable_well_level=False,
+            enable_composition_level=False,
         )
-        self.solver.set_bcsr_cpr_reuse_options(True, 0)
-        self.solver.set_bcsr_cpr_adaptive_rebuild_options(True, 15, 1.5, 1, 2)
-        self.solver.set_bcsr_cpr_adaptive_quality_options(-1.0, -1.0, -1.0)
-        self.solver.set_bcsr_cpr_diagnostics_options(False, 0, 0)
-        self.solver.set_bcsr_cpr_pressure_correction_options(1.0, 10.0, 0.05)
-
-        reservoir_roles = [sim_params.mgrVarPressure] + [
-            sim_params.mgrVarComposition
-        ] * (block_size - 1)
-        well_roles = [sim_params.mgrVarWellPressure] + [
-            sim_params.mgrVarWellSecondary
-        ] * (block_size - 1)
-        self.solver.set_mgr_reservoir_variable_roles(reservoir_roles)
-        self.solver.set_mgr_well_variable_roles(well_roles)
-        self.solver.set_mgr_pressure_level_options(
-            sim_params.mgrFRelaxNone,
-            0,
-            sim_params.mgrInterpInjection,
-            sim_params.mgrRestrictBlockColLumped,
-            sim_params.mgrCoarseGalerkin,
-            sim_params.mgrSmootherHypreILU,
-            1,
-        )
-
-        reservoir_blocks = self._reservoir_block_count()
-        if reservoir_blocks is not None:
-            self.solver.set_n_reservoir_blocks(reservoir_blocks)
-
-        self.solver.set_mgr_enable_well_level(False)
-        self.solver.set_mgr_enable_composition_level(False)
+        self.solver_label = "mgr (bcsr-cpr, forward)"
 
     def set_adjoint_solver(self):
         if getattr(self, "adjoint_solver_mode", "mgr") == "superlu":
@@ -574,11 +618,21 @@ class Model(CICDModel, OptModuleSettings):
         if engine is None:
             return
 
-        if self.solver is not None:
+        # The forward solver (self.solver = MGRSolverSpec) is built and injected by
+        # the base DartsModel._apply_solver hook from super().reset(). Its
+        # n_reservoir_blocks is only FINAL after engine.init (the well/reservoir
+        # partition is split there): mesh.n_res_blocks reads the total pre-init and
+        # the reservoir-only count post-init. The spec captured the pre-init value,
+        # so correct the built forward solver here and re-inject -- exactly as the
+        # former raw _attach did. (self._linear_solver is the base-built MGR object.)
+        forward_solver = getattr(self, "_linear_solver", None)
+        if forward_solver is not None and hasattr(
+            forward_solver, "set_n_reservoir_blocks"
+        ):
             reservoir_blocks = self._reservoir_block_count()
             if reservoir_blocks is not None:
-                self.solver.set_n_reservoir_blocks(reservoir_blocks)
-            engine.set_linear_solver(self.solver)
+                forward_solver.set_n_reservoir_blocks(reservoir_blocks)
+                engine.set_linear_solver(forward_solver)
 
         if self.adjoint_solver is not None and hasattr(
             engine, "set_adjoint_linear_solver"

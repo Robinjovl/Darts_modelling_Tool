@@ -148,7 +148,7 @@ def run_timestep_python(m, dt, t):
                 break
 
         # Python-resident solver (PETSc / Pardiso) is dispatched via
-        # data_ts.linear_solver = PETScSolverSpec() / PardisoSolverSpec().
+        # self.solver = PETScSolverSpec() / PardisoSolverSpec() (in set_solver()).
         # See darts/solvers/specs.py + DartsModel._solve_linear_equation.
         self._solve_linear_equation()
         r_code = 0

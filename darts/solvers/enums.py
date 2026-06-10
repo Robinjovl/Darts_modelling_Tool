@@ -108,3 +108,61 @@ class VariableRole(IntEnum):
     DISPLACEMENT = 301
     STRESS = 302
     OTHER = 999
+
+
+class CompositeMode(IntEnum):
+    """MGR composite-preconditioner mode (``MGRSolverSpec.composite_mode``).
+
+    Mirrors ``mgr::CompositePreconditionerMode`` in ``solvers/include/MGRStrategy.hpp``.
+    """
+
+    MGR_ONLY = 0
+    MGR_THEN_LOCAL = 1
+    LOCAL_ONLY = 2
+
+
+class LocalPreconditioner(IntEnum):
+    """MGR local F-relaxation solver (``MGRSolverSpec.local_solver``).
+
+    Mirrors ``mgr::LocalPreconditionerType`` in ``solvers/include/MGRStrategy.hpp``.
+    """
+
+    NONE = 0
+    BLOCK_JACOBI = 1
+    BLOCK_ILU0 = 2
+    BLOCK_ILU1 = 3
+
+
+class LocalFallback(IntEnum):
+    """Block-ILU(0) singular-pivot fallback strategy (``BILU0Spec.fallback_strategy``).
+
+    Mirrors ``mgr::LocalFallbackStrategy`` in ``solvers/include/MGRStrategy.hpp``.
+    """
+
+    IDENTITY = 0
+    SHIFTED_DENSE = 1
+    BOUNDED_DIAGONAL = 2
+    SHIFTED_DENSE_THEN_DIAGONAL = 3
+
+
+class BCSRCPRReduction(IntEnum):
+    """BCSR-CPR pressure-reduction weighting (``BCSRCPRSpec.reduction_type``).
+
+    Mirrors ``mgr::BCSRCPRReductionType`` in ``solvers/include/MGRStrategy.hpp``.
+    """
+
+    PRESSURE_ROW = 0
+    TRUE_IMPES = 1
+    TRUE_IMPES_WELL_ELIMINATION = 2
+
+
+class ScalingType(IntEnum):
+    """MGR matrix-scaling strategy (``MGRSolverSpec.scaling_type``).
+
+    Mirrors ``mgr::ScalingType`` in ``solvers/include/MGRStrategy.hpp``.
+    """
+
+    NONE = 0
+    PHYSICS = 1
+    ROW_COL_ONE_NORM = 2
+    DIAGONAL = 3

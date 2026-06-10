@@ -173,7 +173,7 @@ class Model(CICDModel):
         # in the proprietary build the spec is ignored and the engine factory keeps
         # its iterative default. (Mirrors the long-standing `cpu_superlu` hint here.)
         from darts.solvers import SuperLUSolverSpec
-        self.data_ts.linear_solver = SuperLUSolverSpec()
+        self.solver = SuperLUSolverSpec()
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,

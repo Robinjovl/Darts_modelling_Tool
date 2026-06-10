@@ -37,11 +37,11 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.DataTS.newton_tol = 1e-2
     idata.sim.DataTS.linear_tol = 1e-4
     # optional: choose a non-default linear solver via the Spec interface,
-    # e.g.
+    # e.g. in the model's set_solver():
     #   from darts.solvers import SuperLUSolverSpec, PETScSolverSpec, PardisoSolverSpec
-    #   idata.sim.DataTS.linear_solver = SuperLUSolverSpec()
-    #   idata.sim.DataTS.linear_solver = PETScSolverSpec(variant="cpr")
-    #   idata.sim.DataTS.linear_solver = PardisoSolverSpec()
+    #   self.solver = SuperLUSolverSpec()
+    #   self.solver = PETScSolverSpec(variant="cpr")
+    #   self.solver = PardisoSolverSpec()
 
     idata.generate_grid = 'generate' in case
     idata.geom = InputDataGeom()

@@ -73,10 +73,10 @@ class THMCModel(DartsModel):
 
     def set_solver(self):
         # Mechanics models drive the linear solver through params.linear_type /
-        # engine.ls_params (a direct cpu_superlu by default), NOT through
-        # data_ts.linear_solver -- so they do NOT call super().set_solver() (which
-        # would select the flow CPR/AMG default). Called from the base reset(),
-        # before engine.init.
+        # engine.ls_params (a direct cpu_superlu by default), NOT through a
+        # self.solver spec -- so they do NOT call super().set_solver() (which would
+        # select the flow CPR/AMG default) and leave self.solver None. Called from
+        # the base reset(), before engine.init.
         self.params.tolerance_newton = (
             1e-6  # Tolerance of newton residual norm ||residual||<tol_newt
         )
