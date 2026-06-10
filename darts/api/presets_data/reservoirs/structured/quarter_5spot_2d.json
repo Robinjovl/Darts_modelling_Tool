@@ -1,0 +1,24 @@
+{
+  "_meta": {
+    "name": "quarter_5spot_2d",
+    "description": "Classic 2D quarter-five-spot benchmark: 50x50x1 grid, 10x10x10 m cells, 100 mD isotropic permeability, 0.2 porosity at 1000 m depth.",
+    "references": [],
+    "tags": ["reservoir", "structured", "quarter-five-spot", "2d", "benchmark"],
+    "version": "1"
+  },
+  "config": {
+    "type": "structured",
+    "nx": 50,
+    "ny": 50,
+    "nz": 1,
+    "dx": 10.0,
+    "dy": 10.0,
+    "dz": 10.0,
+    "permx": 100.0,
+    "permy": 100.0,
+    "permz": 100.0,
+    "poro": 0.2,
+    "depth": 1000.0,
+    "start_z": 1000.0
+  }
+}

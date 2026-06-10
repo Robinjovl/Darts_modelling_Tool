@@ -1,93 +1,216 @@
-from darts.input.input_data import FluidProps, InputData
+import os
+from typing import Annotated, Any, Literal
+
+import numpy as np
+from pydantic import BaseModel, ConfigDict, Field
+
 from darts.physics.properties.black_oil import *
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 
 
-class BlackOilBase(Compositional):
-    def __init__(self, idata, timer):
-        super().__init__(idata, timer, BlackOilProperties)
+class BlackOilConfig(BaseModel):
+    """Configuration for BlackOil physics (PVT-driven)."""
 
-        property_container = BlackOilProperties(idata)
-        property_container.density_ev = idata.fluid.density
-        property_container.viscosity_ev = idata.fluid.viscosity
-        property_container.rel_perm_ev = idata.fluid.rel_perm
-        self.add_property_region(property_container)
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "kind": "black_oil",
+                    "pvt_path": "pvt_data.in",
+                    "thermal": False,
+                    "n_points": 5001,
+                    "min_p": 1.0,
+                    "max_p": 450.0,
+                }
+            ]
+        },
+    )
+
+    kind: Literal["black_oil"] = Field(
+        default="black_oil",
+        description="Physics discriminator for ModelConfig.physics union",
+    )
+    pvt_path: Annotated[
+        str, Field(description="Path to PVT data file (may be relative)")
+    ]
+    thermal: Annotated[
+        bool, Field(description="Whether to run in thermal (PT) mode")
+    ] = False
+    type_hydr: Annotated[
+        Literal["isothermal", "thermal"],
+        Field(description="Hydraulic problem type"),
+    ] = "isothermal"
+    type_mech: Annotated[
+        Literal["none", "poroelasticity", "thermoporoelasticity"],
+        Field(description="Mechanical coupling type"),
+    ] = "none"
+    init_type: Annotated[
+        Literal["uniform"], Field(description="Initialization type")
+    ] = "uniform"
+    n_points: Annotated[int, Field(ge=2, description="OBL table resolution")] = 5001
+    zero: Annotated[float, Field(ge=0, description="OBL zero offset")] = 1e-12
+    epsilon_z: Annotated[float, Field(ge=0, description="OBL composition epsilon")] = (
+        1e-13
+    )
+    min_p: Annotated[float, Field(ge=0, description="Minimum OBL pressure [bar]")] = 1.0
+    max_p: Annotated[float, Field(ge=0, description="Maximum OBL pressure [bar]")] = (
+        450.0
+    )
+    min_t: Annotated[float, Field(description="Minimum OBL temperature [°C]")] = -10.0
+    max_t: Annotated[float, Field(description="Maximum OBL temperature [°C]")] = 100.0
+    min_z: Annotated[float, Field(ge=0, description="Minimum OBL composition")] = 0.0
+    max_z: Annotated[float, Field(ge=0, description="Maximum OBL composition")] = 1.0
+    components: Annotated[
+        list[str] | None,
+        Field(
+            description="Component names; metadata-only on BlackOilConfig "
+            "(BlackOil.__init__ derives the canonical components from the PVT "
+            "file). Lets a JSON preset ship the names so PhysicsSpec.components "
+            "doesn't need to be repeated by the caller.",
+        ),
+    ] = None
+    phases: Annotated[
+        list[str] | None,
+        Field(description="Phase names; same semantics as ``components``."),
+    ] = None
 
 
 class BlackOil(Compositional):
-    def __init__(self, idata: InputData, timer, thermal):
+    """Black-oil physics constructed directly from a :class:`BlackOilConfig`.
+
+    Reads the PVT file referenced by ``config.pvt_path`` to build the
+    density/viscosity/rel-perm/capillary-pressure evaluator bundle, then
+    forwards OBL parameters to :class:`Compositional`.
+    """
+
+    def __init__(
+        self,
+        config: "BlackOilConfig",
+        timer: Any,
+        *,
+        components: list[str] | None = None,
+        phases: list[str] | None = None,
+    ):
+        """
+        :param config: validated physics configuration
+        :type config: BlackOilConfig
+        :param timer: DARTS timer node passed to Compositional
+        :type timer: darts.engines.timer_node
+        :param components: optional override of component names (must match PVT)
+        :type components: list[str] | None
+        :param phases: optional override of phase names (must match PVT)
+        :type phases: list[str] | None
+        """
+        pvt_path = os.path.expanduser(config.pvt_path)
+        evaluators = _load_black_oil_evaluators(pvt_path)
+
+        if components and components != evaluators["components"]:
+            raise ValueError(
+                f"BlackOil components mismatch: {components} vs "
+                f"{evaluators['components']}"
+            )
+        if phases and phases != evaluators["phases"]:
+            raise ValueError(
+                f"BlackOil phases mismatch: {phases} vs {evaluators['phases']}"
+            )
+
+        thermal = config.thermal
         state_spec = (
             Compositional.StateSpecification.PT
             if thermal
             else Compositional.StateSpecification.P
         )
         super().__init__(
-            components=idata.fluid.components,
-            phases=idata.fluid.phases,
+            components=evaluators["components"],
+            phases=evaluators["phases"],
             timer=timer,
-            n_points=idata.obl.n_points,
-            min_p=idata.obl.min_p,
-            max_p=idata.obl.max_p,
-            min_z=idata.obl.min_z,
-            max_z=idata.obl.max_z,
-            epsilon_z=idata.obl.epsilon_z,
-            min_t=idata.obl.min_t,
-            max_t=idata.obl.max_t,
+            n_points=config.n_points,
+            min_p=config.min_p,
+            max_p=config.max_p,
+            min_z=config.min_z,
+            max_z=config.max_z,
+            epsilon_z=config.epsilon_z,
+            min_t=config.min_t,
+            max_t=config.max_t,
             state_spec=state_spec,
             extrapolation_flag=True,
         )
 
         temperature = None if thermal else 1.0
         property_container = BlackOilProperties(
-            phases_name=idata.fluid.phases,
-            components_name=idata.fluid.components,
-            Mw=idata.fluid.Mw,
-            eps_z=idata.obl.epsilon_z,
-            # eps_z=idata.obl.min_z,
+            phases_name=evaluators["phases"],
+            components_name=evaluators["components"],
+            Mw=evaluators["Mw"],
+            eps_z=config.epsilon_z,
             temperature=temperature,
         )
 
-        property_container.flash_ev = idata.fluid.flash_ev
-        property_container.density_ev = idata.fluid.density
-        property_container.viscosity_ev = idata.fluid.viscosity
-        property_container.rel_perm_ev = idata.fluid.rel_perm
-        property_container.capillary_pressure_ev = idata.fluid.capillary_pressure
-
-        property_container.rock_compress_ev = RockCompactionEvaluator(idata.fluid.pvt)
+        property_container.flash_ev = evaluators["flash_ev"]
+        property_container.density_ev = evaluators["density"]
+        property_container.viscosity_ev = evaluators["viscosity"]
+        property_container.rel_perm_ev = evaluators["rel_perm"]
+        property_container.capillary_pressure_ev = evaluators["capillary_pressure"]
+        property_container.rock_compress_ev = RockCompactionEvaluator(pvt_path)
 
         self.add_property_region(property_container)
 
+    @classmethod
+    def from_config(
+        cls,
+        config: "BlackOilConfig",
+        *,
+        components: list[str] | None = None,
+        phases: list[str] | None = None,
+        timer: Any,
+    ) -> "BlackOil":
+        """Build a BlackOil directly from its Config — thin alias for
+        ``BlackOil(config, timer, components=..., phases=...)``.
+        """
+        return cls(config, timer, components=components, phases=phases)
 
-class BlackOilFluidProps(FluidProps):
-    def __init__(self, pvt):
-        super().__init__()
-        self.components = ["g", "o", "w"]
-        self.phases = ["gas", "oil", "water"]
-        self.Mw = np.ones(len(self.components))
 
-        self.pvt = pvt
-        self.flash_ev = flash_black_oil(pvt)
-        self.density = dict(
-            [
-                ('gas', DensityGas(pvt)),
-                ('oil', DensityOil(pvt)),
-                ('water', DensityWat(pvt)),
-            ]
-        )
-        self.viscosity = dict(
-            [('gas', ViscGas(pvt)), ('oil', ViscOil(pvt)), ('water', ViscWat(pvt))]
-        )
-        self.rel_perm = dict(
-            [
-                ('gas', GasRelPerm(pvt)),
-                ('oil', OilRelPerm(pvt)),
-                ('water', WatRelPerm(pvt)),
-            ]
-        )
-        self.capillary_pressure = dict(
-            [('pcow', CapillaryPressurePcow(pvt)), ('pcgo', CapillaryPressurePcgo(pvt))]
-        )
+def _load_black_oil_evaluators(pvt_path: str) -> dict:
+    """Load PVT and build the dict of evaluators consumed by BlackOil.
+
+    Replaces the BlackOilFluidProps facade — the PVT loading side-effect
+    now lives directly alongside BlackOil construction instead of being
+    attached to a free-form ``idata.fluid`` attribute.
+
+    :param pvt_path: filesystem path to a DARTS PVT input file
+    :type pvt_path: str
+    :return: dict with keys ``components``, ``phases``, ``Mw``, ``flash_ev``,
+        ``density``, ``viscosity``, ``rel_perm``, ``capillary_pressure``
+    :rtype: dict
+    """
+    components = ["g", "o", "w"]
+    phases = ["gas", "oil", "water"]
+    return {
+        "components": components,
+        "phases": phases,
+        "Mw": np.ones(len(components)),
+        "flash_ev": flash_black_oil(pvt_path),
+        "density": {
+            "gas": DensityGas(pvt_path),
+            "oil": DensityOil(pvt_path),
+            "water": DensityWat(pvt_path),
+        },
+        "viscosity": {
+            "gas": ViscGas(pvt_path),
+            "oil": ViscOil(pvt_path),
+            "water": ViscWat(pvt_path),
+        },
+        "rel_perm": {
+            "gas": GasRelPerm(pvt_path),
+            "oil": OilRelPerm(pvt_path),
+            "water": WatRelPerm(pvt_path),
+        },
+        "capillary_pressure": {
+            "pcow": CapillaryPressurePcow(pvt_path),
+            "pcgo": CapillaryPressurePcgo(pvt_path),
+        },
+    }
 
 
 class BlackOilProperties(PropertyContainer):

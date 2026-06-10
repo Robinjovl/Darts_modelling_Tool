@@ -1,0 +1,12 @@
+{
+  "_meta": {
+    "name": "single_phase",
+    "description": "Trivial single-phase flash placeholder — assigns the entire mole stream to one phase. Useful for unit tests and dead-oil setups.",
+    "references": [],
+    "tags": ["single-phase", "flash", "trivial"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "single_phase"
+  }
+}

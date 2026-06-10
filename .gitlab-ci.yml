@@ -54,6 +54,4 @@ include:
   # - local: '.cicd/jobs/darts-models.yml'
   #   rules:
   #     - if: $MCP_TRIGGER_TAHITI_GPU != "1"
-  - local: '.cicd/jobs/gitingest.yml'
-    rules:
-      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
+  - local: '.cicd/jobs/ingest.yml'

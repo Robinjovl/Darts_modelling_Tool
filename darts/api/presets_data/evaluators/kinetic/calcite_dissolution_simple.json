@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "name": "calcite_dissolution_simple",
+    "description": "Simple combined-ions kinetic for calcite dissolution: equilibrium product Keq=10^-8.48, rate constant 1.5 kmol/(m2 day), 4-component rate vector.",
+    "references": [
+      "Plummer, Wigley & Parkhurst (1978) — Am. J. Sci., 278"
+    ],
+    "tags": ["kinetic", "calcite", "dissolution", "ion-product"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "kinetic_basic",
+    "equi_prod": 3.31e-09,
+    "rate": 1.5,
+    "ne": 4
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "name": "spe1_isothermal",
+    "description": "Isothermal SPE1 black-oil physics with 5001-point OBL grid (1-450 bar). Self-contained for set_physics — BlackOil builds its full evaluator stack (densities, viscosities, rel-perms, capillary pressures, rock compaction) from the PVT data file at construction time, so no property_regions block is needed at the JSON layer. The caller must override pvt_path with the path to their PVT data file (relative paths resolve against the ModelSpec JSON's directory). components/phases are shipped so callers don't need to repeat them.",
+    "references": [
+      "Odeh (1981) — SPE 9723, SPE Comparative Solution Project (SPE1)"
+    ],
+    "tags": ["physics", "black-oil", "spe1", "isothermal"],
+    "version": "1"
+  },
+  "config": {
+    "pvt_path": "pvt_data.in",
+    "thermal": false,
+    "type_hydr": "isothermal",
+    "type_mech": "none",
+    "init_type": "uniform",
+    "n_points": 5001,
+    "zero": 1e-12,
+    "epsilon_z": 1e-13,
+    "min_p": 1.0,
+    "max_p": 450.0,
+    "min_t": -10.0,
+    "max_t": 100.0,
+    "min_z": 0.0,
+    "max_z": 1.0,
+    "components": ["g", "o", "w"],
+    "phases": ["gas", "oil", "water"]
+  }
+}

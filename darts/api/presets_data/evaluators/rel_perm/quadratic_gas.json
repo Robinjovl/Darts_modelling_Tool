@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "name": "quadratic_gas",
+    "description": "Brooks-Corey-style quadratic gas rel-perm: krg_end=1, n=2, no residual gas saturation.",
+    "references": [],
+    "tags": ["gas", "rel-perm", "brooks-corey", "quadratic"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "phase_rel_perm",
+    "phase": "gas",
+    "swc": 0.0,
+    "sgr": 0.0,
+    "kre": 1.0,
+    "n": 2.0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "_meta": {
+    "name": "layered_caprock",
+    "description": "20x20x10 layered demo with three layers: high-perm storage zone (top), low-perm caprock (middle), high-perm aquifer (bottom). Cell size 50x50x5 m.",
+    "references": [],
+    "tags": ["reservoir", "structured", "layered", "caprock", "co2-storage"],
+    "version": "1"
+  },
+  "config": {
+    "type": "structured",
+    "nx": 20,
+    "ny": 20,
+    "nz": 10,
+    "dx": 50.0,
+    "dy": 50.0,
+    "dz": 5.0,
+    "depth": 1500.0,
+    "start_z": 1500.0,
+    "layers": [
+      {"count": 1200, "permx": 200.0, "permy": 200.0, "permz": 20.0, "poro": 0.25},
+      {"count": 1200, "permx": 0.01, "permy": 0.01, "permz": 0.001, "poro": 0.05},
+      {"count": 1600, "permx": 500.0, "permy": 500.0, "permz": 50.0, "poro": 0.30}
+    ]
+  }
+}

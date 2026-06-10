@@ -1,0 +1,13 @@
+{
+  "_meta": {
+    "name": "co2_supercritical",
+    "description": "Constant CO2 viscosity ~ 0.05 cp, representative of supercritical conditions (T > 31 C, P > 73 bar).",
+    "references": [],
+    "tags": ["co2", "supercritical", "viscosity", "constant"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "const_func",
+    "value": 0.05
+  }
+}

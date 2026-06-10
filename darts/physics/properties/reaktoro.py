@@ -1,6 +1,13 @@
 import warnings
+from typing import Literal
 
 import numpy as np
+
+from darts.physics.properties.evaluator_base import (
+    EvaluatorBase,
+    EvaluatorConfigBase,
+    register_evaluator,
+)
 
 try:
     # Reaktoro v2 Python API
@@ -33,7 +40,20 @@ else:
     _REAKTORO_IMPORT_ERROR = None
 
 
-class Flash:
+class ReaktoroFlashConfig(EvaluatorConfigBase):
+    """Configuration for Reaktoro-based Flash evaluator."""
+
+    kind: Literal["reaktoro_flash"] = "reaktoro_flash"
+    min_z: float
+    minerals: list[str]
+    components: list[str]
+    temperature: float | None = None
+    gas_species: list[str] = ["CO2(g)", "H2O(g)"]
+    tolerance: float = 1e-10
+    database_filename: str = "phreeqc.dat"
+
+
+class Flash(EvaluatorBase):
     """
     Calculates chemical and vapour-liquid equilibrium using Reaktoro.
 
@@ -76,6 +96,10 @@ class Flash:
             raise ImportError(
                 "Reaktoro is required but could not be imported"
             ) from _REAKTORO_IMPORT_ERROR
+
+        # Preserve raw construction args for round-trip serialization
+        self._init_temperature_K = temperature
+        self._init_gas_species = list(gas_species)
 
         # Store composition/model parameters (keep parity with PHREEQC Flash)
         self.minerals = minerals
@@ -287,6 +311,14 @@ class Flash:
         )
 
     def _build_reaktoro_system(self):
+        """Initialize the underlying Reaktoro :class:`ChemicalSystem` from the
+        configured database, aqueous and gaseous phases. Populates
+        ``self.db``, ``self.aq_ending``, ``self.system``,
+        ``self.aqueous_species`` and reassigns ``self.gas_species``.
+
+        :return: ``None``
+        :rtype: None
+        """
         try:
             if self.database_filename == "supcrtbl":
                 # Load SUPCRT database
@@ -337,3 +369,47 @@ class Flash:
         self.gas_species = [
             sp.name() for sp in self.system.phases()[phase_idx].species()
         ]
+
+    def to_config(self) -> ReaktoroFlashConfig:
+        """Build Config explicitly because the constructor mutates two fields
+        before storage: ``temperature`` is converted to Celsius into
+        ``self.temperature``, and ``self.gas_species`` is reassigned to the
+        post-build species list. The original values are preserved on
+        ``self._init_temperature_K`` / ``self._init_gas_species`` for
+        round-tripping.
+
+        :return: serialized config
+        :rtype: ReaktoroFlashConfig
+        """
+        return ReaktoroFlashConfig(
+            min_z=self.min_z,
+            minerals=list(self.minerals),
+            components=list(self.components),
+            temperature=self._init_temperature_K,
+            gas_species=list(self._init_gas_species),
+            tolerance=self.tolerance,
+            database_filename=self.database_filename,
+        )
+
+    @classmethod
+    def from_config(cls, config: ReaktoroFlashConfig) -> "Flash":
+        """Build instance explicitly to mirror :meth:`to_config` and to expand
+        the Config into the kwargs accepted by ``__init__``.
+
+        :param config: validated config
+        :type config: ReaktoroFlashConfig
+        :return: Reaktoro Flash instance
+        :rtype: Flash
+        """
+        return cls(
+            min_z=config.min_z,
+            minerals=list(config.minerals),
+            components=list(config.components),
+            temperature=config.temperature,
+            gas_species=list(config.gas_species),
+            tolerance=config.tolerance,
+            database_filename=config.database_filename,
+        )
+
+
+register_evaluator("reaktoro_flash", Flash, ReaktoroFlashConfig)

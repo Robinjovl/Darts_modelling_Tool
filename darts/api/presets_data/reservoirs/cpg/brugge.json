@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "name": "brugge",
+    "description": "Brugge benchmark corner-point geometry. `grid_file` and `prop_file` are placeholder paths — callers MUST override them with absolute paths to their local copy of grid.grdecl / reservoir.in. The numerical guards (minpv, min_poro, boundary_volume) are reproduced from the legacy `cpg_deadoil_brugge` template.",
+    "references": [
+      "Peters, L. et al. (2009). Results of the Brugge Benchmark Study for Flooding Optimisation and History Matching. SPE Reservoir Evaluation & Engineering."
+    ],
+    "tags": ["reservoir", "cpg", "corner-point", "brugge", "benchmark"],
+    "version": "1"
+  },
+  "config": {
+    "type": "cpg",
+    "grid_file": "<override: absolute path to brugge/grid.grdecl>",
+    "prop_file": "<override: absolute path to brugge/reservoir.in>",
+    "minpv": 1e-05,
+    "min_poro": 1e-05,
+    "boundary_volume": 10000000000.0
+  }
+}

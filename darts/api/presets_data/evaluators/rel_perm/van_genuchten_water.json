@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "name": "van_genuchten_water",
+    "description": "Van Genuchten water rel-perm with default exponent (n=4.367), suitable for unsaturated-zone and CO2-storage caprock studies.",
+    "references": [
+      "Van Genuchten (1980) — Soil Sci. Soc. Am. J., 44(5)"
+    ],
+    "tags": ["water", "rel-perm", "van-genuchten", "unsaturated"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "phase_rel_perm_vg",
+    "phase": "wat",
+    "swc": 0.2,
+    "sgr": 0.0,
+    "kre": 1.0,
+    "n": 4.367
+  }
+}

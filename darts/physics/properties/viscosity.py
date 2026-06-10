@@ -1,7 +1,39 @@
+from typing import Literal
+
 import numpy as np
 
+from darts.physics.properties.evaluator_base import (
+    EvaluatorBase,
+    EvaluatorConfigBase,
+    register_evaluator,
+)
 
-class Viscosity:
+
+class Fenghour1998Config(EvaluatorConfigBase):
+    """Configuration for Fenghour1998 CO2 viscosity correlation."""
+
+    kind: Literal["fenghour_1998"] = "fenghour_1998"
+
+
+class Lee1966Config(EvaluatorConfigBase):
+    """Configuration for Lee1966 gas viscosity correlation."""
+
+    kind: Literal["lee_1966"] = "lee_1966"
+
+
+class MaoDuan2009Config(EvaluatorConfigBase):
+    """Configuration for MaoDuan2009 brine viscosity correlation."""
+
+    kind: Literal["mao_duan_2009"] = "mao_duan_2009"
+
+
+class Islam2012Config(EvaluatorConfigBase):
+    """Configuration for Islam2012 brine+CO2 viscosity correlation."""
+
+    kind: Literal["islam_2012"] = "islam_2012"
+
+
+class Viscosity(EvaluatorBase):
     def __init__(self, components: list = None, ions: list = None):
         self.nc = len(components) if components is not None else 0
         self.ni = len(ions) if ions is not None else 0
@@ -56,6 +88,9 @@ class Fenghour1998(Viscosity):
         return n
 
 
+register_evaluator("fenghour_1998", Fenghour1998, Fenghour1998Config)
+
+
 class Lee1966(Viscosity):
     """
     Correlation for gas mixture viscosity: Lee et al. (1966) - The Viscosity of Natural Gases
@@ -64,6 +99,7 @@ class Lee1966(Viscosity):
     def __init__(self, components: list, Mw: list):
         super().__init__(components)
         self.Mw = Mw
+        self._components = list(components)
 
     def evaluate(self, pressure, temperature, x, rho):
         MW = np.sum(x * self.Mw) * 1e-3  # kg/mol
@@ -74,6 +110,9 @@ class Lee1966(Viscosity):
         c = 2.447 - 0.2224 * b
         rho_lb = rho * 0.0624279606  # convert rho from [kg / m3] -> [lb / ft ^ 3]
         return 1e-4 * a * np.exp(b * (rho_lb / 62.43) ** c)
+
+
+register_evaluator("lee_1966", Lee1966, Lee1966Config)
 
 
 class MaoDuan2009(Viscosity):
@@ -107,6 +146,8 @@ class MaoDuan2009(Viscosity):
         super().__init__(components, ions)
 
         self.H2O_idx = components.index("H2O")
+        self._components = list(components)
+        self._ions = list(ions) if ions is not None else None
         self.combined_ions = combined_ions
 
     def evaluate(self, pressure, temperature, x, rho):
@@ -155,6 +196,9 @@ class MaoDuan2009(Viscosity):
         return mu * 1e-3
 
 
+register_evaluator("mao_duan_2009", MaoDuan2009, MaoDuan2009Config)
+
+
 class Islam2012(MaoDuan2009):
     """
     Correlation for H2O + NaCl + CO2 viscosity: Islam and Carlson (2012) - Viscosity Models and Effects of Dissolved CO2
@@ -173,3 +217,6 @@ class Islam2012(MaoDuan2009):
             mu_brine *= 1.0 + 4.65 * x[self.CO2_idx] ** 1.0134
 
         return mu_brine
+
+
+register_evaluator("islam_2012", Islam2012, Islam2012Config)

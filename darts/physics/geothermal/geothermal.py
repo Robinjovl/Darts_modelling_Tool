@@ -1,9 +1,10 @@
 import abc
+from typing import Literal
 
 import numpy as np
+from pydantic import BaseModel, ConfigDict, Field
 
 from darts.engines import value_vector
-from darts.input.input_data import FluidProps, InputData
 from darts.physics.base.property_base import PropertyBase
 from darts.physics.geothermal.physics import Geothermal as GeothermalBase
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
@@ -11,27 +12,138 @@ from darts.physics.properties.iapws.custom_rock_property import *
 from darts.physics.properties.iapws.iapws_property import *
 
 
+class GeothermalConfig(BaseModel):
+    """Configuration for Geothermal physics (IAPWS steam-water).
+
+    Mirrors the OBL + rock-compaction parameters ``Geothermal.__init__``
+    currently reads out of ``idata.obl`` and ``idata.rock``.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "kind": "geothermal",
+                    "state_spec": "PH",
+                    "n_points": 128,
+                    "min_p": 1.0,
+                    "max_p": 351.0,
+                    "min_e": 1000.0,
+                    "max_e": 10000.0,
+                    "rock_compressibility": 1e-5,
+                    "rock_compressibility_ref_p": 1.0,
+                    "rock_compressibility_ref_T": 273.15,
+                }
+            ]
+        },
+    )
+
+    kind: Literal["geothermal"] = Field(
+        default="geothermal",
+        description="Physics discriminator for ModelConfig.physics union",
+    )
+    state_spec: Literal["PH", "PT"] = Field(
+        default="PH",
+        description="Thermodynamic variable pair (enthalpy or temperature)",
+    )
+    n_points: int = Field(default=128, ge=2)
+    min_p: float = Field(default=1.0, ge=0)
+    max_p: float = Field(default=351.0, ge=0)
+    min_e: float = Field(default=1000.0)
+    max_e: float = Field(default=10000.0)
+    rock_compressibility: float = Field(default=1e-5, ge=0)
+    rock_compressibility_ref_p: float = Field(default=1.0, ge=0)
+    rock_compressibility_ref_T: float = Field(default=273.15, ge=0)
+
+
 class Geothermal(GeothermalBase):
-    def __init__(self, idata: InputData, timer):
+    """Geothermal physics (P-H state, IAPWS fluid) built from
+    :class:`GeothermalConfig` — no InputData dependency.
+    """
+
+    def __init__(self, config: "GeothermalConfig", timer):
+        """
+        :param config: validated GeothermalConfig
+        :type config: GeothermalConfig
+        :param timer: DARTS timer node
+        :type timer: darts.engines.timer_node
+        """
         super().__init__(
             timer,
-            idata.obl.n_points,
-            idata.obl.min_p,
-            idata.obl.max_p,
-            idata.obl.min_e,
-            idata.obl.max_e,
+            config.n_points,
+            config.min_p,
+            config.max_p,
+            config.min_e,
+            config.max_e,
         )
 
         property_container = GeothermalIAPWSProperties()
+        property_container.Mw = [18.015]
+        property_container.rock = [
+            value_vector(
+                [
+                    config.rock_compressibility_ref_p,
+                    config.rock_compressibility,
+                    config.rock_compressibility_ref_T,
+                ]
+            )
+        ]
+        property_container.rock_compaction_ev = custom_rock_compaction_evaluator(
+            property_container.rock
+        )
+        property_container.rock_energy_ev = custom_rock_energy_evaluator(
+            property_container.rock
+        )
 
+        evaluators = _default_geothermal_iapws_evaluators()
+        property_container.temperature_ev = evaluators["temperature_ev"]
+        property_container.density_ev = evaluators["density_ev"]
+        property_container.viscosity_ev = evaluators["viscosity_ev"]
+        property_container.relperm_ev = evaluators["relperm_ev"]
+        property_container.enthalpy_ev = evaluators["enthalpy_ev"]
+        property_container.saturation_ev = evaluators["saturation_ev"]
+        property_container.conduction_ev = evaluators["conduction_ev"]
+
+        self.add_property_region(property_container)
+
+    @classmethod
+    def from_config(cls, config: "GeothermalConfig", *, timer) -> "Geothermal":
+        """Thin alias for ``Geothermal(config, timer)``."""
+        return cls(config, timer)
+
+
+class GeothermalPH(GeothermalBase):
+    """Geothermal physics in P-H formulation with explicit flash (built
+    from :class:`GeothermalConfig` — no InputData)."""
+
+    def __init__(self, config: "GeothermalConfig", timer):
+        """
+        :param config: validated GeothermalConfig
+        :type config: GeothermalConfig
+        :param timer: DARTS timer node
+        :type timer: darts.engines.timer_node
+        """
+        super().__init__(
+            timer,
+            config.n_points,
+            config.min_p,
+            config.max_p,
+            config.min_e,
+            config.max_e,
+        )
+        property_container = GeothermalPHProperties()
+
+        evaluators = _default_geothermal_iapws_evaluators()
+        property_container.flash_ev = evaluators.get("flash_ev")
         property_container.Mw = [18.015]
 
         property_container.rock = [
             value_vector(
                 [
-                    idata.rock.compressibility_ref_p,
-                    idata.rock.compressibility,
-                    idata.rock.compressibility_ref_T,
+                    config.rock_compressibility_ref_p,
+                    config.rock_compressibility,
+                    config.rock_compressibility_ref_T,
                 ]
             )
         ]
@@ -40,59 +152,53 @@ class Geothermal(GeothermalBase):
         )
         property_container.rock_energy_ev = custom_rock_energy_evaluator(
             property_container.rock
-        )  # Create rock_energy object
+        )
 
-        property_container.temperature_ev = idata.fluid.temperature_ev
-        property_container.density_ev = idata.fluid.density_ev
-        property_container.viscosity_ev = idata.fluid.viscosity_ev
-        property_container.relperm_ev = idata.fluid.relperm_ev
-        property_container.enthalpy_ev = idata.fluid.enthalpy_ev
-        property_container.saturation_ev = idata.fluid.saturation_ev
-        property_container.conduction_ev = idata.fluid.conduction_ev
+        property_container.density_ev = evaluators["density_ev"]
+        property_container.viscosity_ev = evaluators["viscosity_ev"]
+        property_container.relperm_ev = evaluators["relperm_ev"]
+        property_container.enthalpy_ev = evaluators["enthalpy_ev"]
+        property_container.conduction_ev = evaluators["conduction_ev"]
 
         self.add_property_region(property_container)
 
+    @classmethod
+    def from_config(cls, config: "GeothermalConfig", *, timer) -> "GeothermalPH":
+        """Thin alias for ``GeothermalPH(config, timer)``."""
+        return cls(config, timer)
 
-class GeothermalPH(GeothermalBase):
-    def __init__(self, idata: InputData, timer):
-        # Call base class constructor
-        super().__init__(
-            timer,
-            idata.obl.n_points,
-            idata.obl.min_p,
-            idata.obl.max_p,
-            idata.obl.min_e,
-            idata.obl.max_e,
-        )
-        self.idata = idata
-        property_container = GeothermalPHProperties()
 
-        property_container.flash_ev = idata.fluid.flash_ev
-        property_container.Mw = idata.fluid.Mw
+def _default_geothermal_iapws_evaluators() -> dict:
+    """Build the default IAPWS evaluator bundle for Geothermal physics.
 
-        property_container.rock = [
-            value_vector(
-                [
-                    idata.rock.compressibility_ref_p,
-                    idata.rock.compressibility,
-                    idata.rock.compressibility_ref_T,
-                ]
-            )
-        ]
-        property_container.rock_compaction_ev = custom_rock_compaction_evaluator(
-            property_container.rock
-        )
-        property_container.rock_energy_ev = custom_rock_energy_evaluator(
-            property_container.rock
-        )  # Create rock_energy object
-
-        property_container.density_ev = idata.fluid.density_ev
-        property_container.viscosity_ev = idata.fluid.viscosity_ev
-        property_container.relperm_ev = idata.fluid.relperm_ev
-        property_container.enthalpy_ev = idata.fluid.enthalpy_ev
-        property_container.conduction_ev = idata.fluid.conduction_ev
-
-        self.add_property_region(property_container)
+    Replaces the :class:`GeothermalIAPWSFluidProps` facade — evaluators
+    now live alongside the physics class rather than on ``idata.fluid``.
+    """
+    return {
+        "temperature_ev": iapws_temperature_evaluator(),
+        "enthalpy_ev": {
+            "water": iapws_water_enthalpy_evaluator(),
+            "steam": iapws_steam_enthalpy_evaluator(),
+            "total": iapws_total_enthalpy_evalutor(),
+        },
+        "density_ev": {
+            "water": iapws_water_density_evaluator(),
+            "steam": iapws_steam_density_evaluator(),
+        },
+        "saturation_ev": {
+            "water": iapws_water_saturation_evaluator(),
+            "steam": iapws_steam_saturation_evaluator(),
+        },
+        "viscosity_ev": {
+            "water": iapws_water_viscosity_evaluator(),
+            "steam": iapws_steam_viscosity_evaluator(),
+        },
+        "conduction_ev": {"water": ConstFunc(172.8), "steam": ConstFunc(0.0)},
+        "relperm_ev": {
+            "water": iapws_water_relperm_evaluator(),
+            "steam": iapws_steam_relperm_evaluator(),
+        },
+    }
 
 
 class GeothermalPropertiesBase(PropertyBase):
@@ -155,37 +261,6 @@ class GeothermalIAPWSProperties(GeothermalPropertiesBase):
 
     def compute_total_enthalpy(self, state_pt):
         return self.enthalpy_ev['total'].evaluate(state_pt, state_pt[-1])
-
-
-class GeothermalIAPWSFluidProps(FluidProps):
-    def __init__(self):
-        super().__init__()
-
-        self.components_name = ['water']
-        self.phases_name = ["water", "steam"]
-        self.temperature_ev = iapws_temperature_evaluator()  # Create temperature object
-        self.enthalpy_ev = {
-            'water': iapws_water_enthalpy_evaluator(),
-            'steam': iapws_steam_enthalpy_evaluator(),
-            'total': iapws_total_enthalpy_evalutor(),
-        }
-        self.density_ev = {
-            'water': iapws_water_density_evaluator(),
-            'steam': iapws_steam_density_evaluator(),
-        }
-        self.saturation_ev = {
-            'water': iapws_water_saturation_evaluator(),
-            'steam': iapws_steam_saturation_evaluator(),
-        }
-        self.viscosity_ev = {
-            'water': iapws_water_viscosity_evaluator(),
-            'steam': iapws_steam_viscosity_evaluator(),
-        }
-        self.conduction_ev = {'water': ConstFunc(172.8), 'steam': ConstFunc(0.0)}
-        self.relperm_ev = {
-            'water': iapws_water_relperm_evaluator(),
-            'steam': iapws_steam_relperm_evaluator(),
-        }
 
 
 class GeothermalPHProperties(GeothermalPropertiesBase):
@@ -264,59 +339,67 @@ class GeothermalPHProperties(GeothermalPropertiesBase):
         return
 
 
-class GeothermalPHFluidProps(FluidProps):
-    def __init__(
-        self,
-    ):
-        super().__init__()
-        self.components = ["H2O"]
-        self.phases = ['water', 'steam']
+def _build_geothermal_ph_flash_evaluators() -> dict:
+    """Build the IAPWS P-H formulation flash + evaluator bundle.
 
-        from dartsflash.components import CompData
-        from dartsflash.libflash import (
-            AQEoS,
-            CubicEoS,
-            EoS,
-            FlashParams,
-            PHFlash,
-        )
+    Replaces the legacy :class:`GeothermalPHFluidProps` facade (removed
+    alongside :class:`FluidProps`).  Callers that previously did
+    ``idata.fluid = GeothermalPHFluidProps()`` now get a dict of
+    evaluators directly and assign them onto a
+    :class:`GeothermalPHProperties` container themselves.
+    """
+    from dartsflash.components import CompData
+    from dartsflash.libflash import (
+        AQEoS,
+        CubicEoS,
+        EoS,
+        FlashParams,
+        PHFlash,
+    )
 
-        comp_data = CompData(components=self.components, setprops=True)
-        self.Mw = comp_data.Mw
-        ceos = CubicEoS(comp_data, CubicEoS.PR)
-        ceos.set_preferred_roots(0, 0.75, EoS.MAX)
-        aq = AQEoS(comp_data, AQEoS.Jager2003)
-        aq.set_eos_range(0, [0.6, 1.0])
+    from darts.physics.properties.density import Spivey2004
+    from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+    from darts.physics.properties.viscosity import MaoDuan2009
 
-        flash_params = FlashParams(comp_data)
+    components = ["H2O"]
+    phases = ['water', 'steam']
 
-        # EoS-related parameters
-        flash_params.add_eos("CEOS", ceos)
-        flash_params.add_eos("AQ", aq)
-        flash_params.eos_order = ["AQ", "CEOS"]
+    comp_data = CompData(components=components, setprops=True)
+    Mw = comp_data.Mw
+    ceos = CubicEoS(comp_data, CubicEoS.PR)
+    ceos.set_preferred_roots(0, 0.75, EoS.MAX)
+    aq = AQEoS(comp_data, AQEoS.Jager2003)
+    aq.set_eos_range(0, [0.6, 1.0])
 
-        flash_params.T_min = 250.0
-        flash_params.T_max = 575.0
-        flash_params.phflash_Htol = 1e-3
-        flash_params.phflash_Ttol = 1e-8
+    flash_params = FlashParams(comp_data)
+    flash_params.add_eos("CEOS", ceos)
+    flash_params.add_eos("AQ", aq)
+    flash_params.eos_order = ["AQ", "CEOS"]
+    flash_params.T_min = 250.0
+    flash_params.T_max = 575.0
+    flash_params.phflash_Htol = 1e-3
+    flash_params.phflash_Ttol = 1e-8
 
-        self.flash_ev = PHFlash(flash_params)
-
-        # properties implemented in python
-        from darts.physics.properties.density import Spivey2004
-        from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-        from darts.physics.properties.viscosity import MaoDuan2009
-
-        self.enthalpy_ev = {'water': EoSEnthalpy(aq), 'steam': EoSEnthalpy(ceos)}
-        self.density_ev = {
-            'water': Spivey2004(self.components),
-            'steam': EoSDensity(ceos, comp_data.Mw),
-        }
-        self.viscosity_ev = {
-            'water': MaoDuan2009(self.components),
-            'steam': ConstFunc(0.01),
-        }
-        self.conduction_ev = {'water': ConstFunc(172.8), 'steam': ConstFunc(0.0)}
-        self.relperm_ev = dict(
-            [('water', PhaseRelPerm("water")), ('steam', PhaseRelPerm("gas"))]
-        )
+    return {
+        "components": components,
+        "phases": phases,
+        "Mw": Mw,
+        "flash_ev": PHFlash(flash_params),
+        "enthalpy_ev": {
+            "water": EoSEnthalpy(aq),
+            "steam": EoSEnthalpy(ceos),
+        },
+        "density_ev": {
+            "water": Spivey2004(components),
+            "steam": EoSDensity(ceos, comp_data.Mw),
+        },
+        "viscosity_ev": {
+            "water": MaoDuan2009(components),
+            "steam": ConstFunc(0.01),
+        },
+        "conduction_ev": {"water": ConstFunc(172.8), "steam": ConstFunc(0.0)},
+        "relperm_ev": {
+            "water": PhaseRelPerm("water"),
+            "steam": PhaseRelPerm("gas"),
+        },
+    }

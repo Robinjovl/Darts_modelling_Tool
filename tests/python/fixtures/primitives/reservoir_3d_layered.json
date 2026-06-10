@@ -1,0 +1,14 @@
+{
+  "type": "structured",
+  "nx": 10,
+  "ny": 10,
+  "nz": 3,
+  "dx": 300.0,
+  "dy": 300.0,
+  "poro": 0.3,
+  "layers": [
+    {"count": 100, "dz": 6,  "permx": 500, "permy": 500, "permz": 80,  "depth": 2540},
+    {"count": 100, "dz": 9,  "permx": 50,  "permy": 50,  "permz": 42,  "depth": 2548},
+    {"count": 100, "dz": 15, "permx": 200, "permy": 200, "permz": 20,  "depth": 2560}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "name": "spe1_3ph",
+    "description": "Three-phase SPE1-style PropertyContainer (gas, oil, wat) with CO2/C1/C10 components, isothermal at 350 K.",
+    "references": [
+      "Odeh (1981) — SPE 9723, SPE Comparative Solution Project (SPE1)"
+    ],
+    "tags": ["property-container", "spe1", "three-phase", "isothermal", "compositional"],
+    "version": "1"
+  },
+  "config": {
+    "phases_name": ["gas", "oil", "wat"],
+    "components_name": ["CO2", "C1", "C10"],
+    "Mw": [44.01, 16.04, 142.28],
+    "min_z": 1e-9,
+    "temperature": 350.0,
+    "rock_comp": 1e-06
+  }
+}

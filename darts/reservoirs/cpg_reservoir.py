@@ -3,12 +3,14 @@ import os
 import sys
 import time
 import warnings
+from typing import Annotated, Literal
 
 import meshio
 import numpy as np
 from opmcpg._cpggrid import index_vector as index_vector_cpggrid
 from opmcpg._cpggrid import process_cpg_grid
 from opmcpg._cpggrid import value_vector as value_vector_cpggrid
+from pydantic import BaseModel, ConfigDict, Field
 
 import darts
 from darts.discretizer import (
@@ -31,6 +33,56 @@ currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentfram
 parentdir = os.path.dirname(currentdir)
 parentdir2 = os.path.dirname(parentdir)
 sys.path.insert(0, os.path.join(parentdir2, "python"))
+
+
+class CPGReservoirConfig(BaseModel):
+    """Configuration for a corner-point (CPG) reservoir loaded from GRDECL-like files."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "type": "cpg",
+                    "grid_file": "meshes/brugge/grid.grdecl",
+                    "prop_file": "meshes/brugge/reservoir.in",
+                    "minpv": 1e-5,
+                    "min_poro": 1e-5,
+                    "boundary_volume": 1e10,
+                }
+            ]
+        },
+    )
+
+    type: Annotated[
+        Literal["cpg"], Field(description="Reservoir type (corner-point geometry)")
+    ] = "cpg"
+    grid_file: Annotated[str, Field(description="Path to GRDECL grid file")]
+    prop_file: Annotated[
+        str, Field(description="Path to reservoir property file (GRDECL-like)")
+    ]
+    fault_file: Annotated[
+        str | None,
+        Field(description="Optional file with fault transmissibility multipliers"),
+    ] = None
+    minpv: Annotated[
+        float | None,
+        Field(ge=0, description="Minimum pore volume threshold for active cells [m3]"),
+    ] = None
+    min_poro: Annotated[
+        float | None,
+        Field(ge=0, le=1, description="Optional porosity cutoff for ACTNUM filtering"),
+    ] = None
+    min_perm: Annotated[
+        float | None,
+        Field(ge=0, description="Optional lower bound for PERMX/PERMY/PERMZ [mD]"),
+    ] = None
+    boundary_volume: Annotated[
+        float | None,
+        Field(
+            gt=0, description="Optional lateral boundary volume assigned to edge cells"
+        ),
+    ] = None
 
 
 class CPG_Reservoir(ReservoirBase):
@@ -59,6 +111,51 @@ class CPG_Reservoir(ReservoirBase):
 
         self.vtk_filenames_and_times = {}
         self.vtkobj = 0
+
+    @classmethod
+    def from_config(
+        cls, config: "CPGReservoirConfig", *, timer: timer_node
+    ) -> "CPG_Reservoir":
+        """Construct a CPG_Reservoir from a :class:`CPGReservoirConfig`.
+
+        Reads grid/property files, applies optional ACTNUM/PERM filtering from
+        ``min_poro``/``min_perm``, discretizes the grid, and applies
+        ``boundary_volume`` if provided. File paths must be resolved by the
+        caller (e.g. the JSON builder resolves paths relative to a base_path
+        before constructing the config).
+        """
+        from darts.tools.keyword_file_tools import compressed_file
+
+        compressed_file(config.grid_file)
+        compressed_file(config.prop_file)
+
+        arrays = read_arrays(gridfile=config.grid_file, propfile=config.prop_file)
+        check_arrays(arrays)
+
+        if config.min_poro is not None and "PORO" in arrays and "ACTNUM" in arrays:
+            arrays["ACTNUM"][arrays["PORO"] < config.min_poro] = 0
+        if config.min_perm is not None:
+            for key in ("PERMX", "PERMY", "PERMZ"):
+                if key in arrays:
+                    arrays[key][arrays[key] < config.min_perm] = config.min_perm
+
+        reservoir = cls(
+            timer,
+            arrays=arrays,
+            faultfile=config.fault_file,
+            minpv=config.minpv if config.minpv is not None else 0.0,
+        )
+        reservoir.discretize()
+        reservoir.input_arrays = arrays
+
+        if config.boundary_volume is not None:
+            bv = config.boundary_volume
+            reservoir.set_boundary_volume(
+                xz_minus=bv, xz_plus=bv, yz_minus=bv, yz_plus=bv
+            )
+            reservoir.apply_volume_depth()
+
+        return reservoir
 
     def set_arrays(self, arrays):
         """
@@ -855,33 +952,182 @@ class CPG_Reservoir(ReservoirBase):
         self.depth[:] = self.depth_all_cells
         self.volume[:] = self.volume_all_cells
 
-    def create_vtk_wells(self, output_directory: str):
+    def create_vtk_wells(
+        self,
+        output_directory: str,
+        filename: str = "wells.vtk",
+        first_perforation_only: bool = True,
+        prolongation_up: float | None = None,
+        well_diameter: float | None = None,
+        tube_sides: int = 50,
+        tube_capping: bool = True,
+        invert_z: bool = True,
+        write_binary: bool = True,
+    ) -> str | None:
         """
-        Creates wells.vtu with a polyline per well based on its first perforation.
-        :param output_directory:
-        :return:
+        Export well trajectories to a standalone VTK PolyData file.
+
+        A tubular segment is generated for each selected perforation. For each well,
+        the first exported segment can optionally be prolonged upwards to make
+        injectors/producers visible above the reservoir body.
+
+        :param output_directory: Directory where the well VTK file is written.
+        :type output_directory: str
+        :param filename: Output VTK filename (for example, ``wells.vtk``).
+        :type filename: str
+        :param first_perforation_only: If ``True``, export only the first perforation
+            of each well. If ``False``, export all perforations.
+        :type first_perforation_only: bool
+        :param prolongation_up: Upward extension (in model length units) applied to
+            the first exported perforation segment of each well. If ``None``, it is
+            derived from the reservoir horizontal extent so wells stay proportional
+            to the model regardless of its absolute size.
+        :type prolongation_up: float, optional
+        :param well_diameter: Tube diameter in model length units. If ``None``, it is
+            derived from the reservoir horizontal extent (see ``prolongation_up``).
+        :type well_diameter: float, optional
+        :param tube_sides: Number of circumferential sides used by ``vtkTubeFilter``.
+        :type tube_sides: int
+        :param tube_capping: If ``True``, cap tube ends.
+        :type tube_capping: bool
+        :param invert_z: If ``True``, convert reservoir depth convention to VTK
+            coordinates by negating ``z`` for well points.
+        :type invert_z: bool
+        :param write_binary: If ``True``, write VTK PolyData in binary format.
+            If ``False``, write ASCII.
+        :type write_binary: bool
+        :returns: Absolute path to the written VTK file, or ``None`` if no
+            exportable perforations are present.
+        :rtype: str or None
+        :raises ValueError: If geometry controls are invalid.
         """
-        well_vtk_filename = os.path.join(output_directory, "wells.vtu")
-        points = []
-        lines = []
-        pt_idx = 0
-        prolongation = 1000
-        for w in self.wells:
-            for p in w.perforations:
-                well_block, res_block_local, well_index, well_indexD = p
-                c = self.centroids_all_cells[res_block_local].values
-                x, y, z = c[0], c[1], -c[2]
-                points.append([x, y, z + prolongation])
-                points.append([x, y, z])
-                lines.append([pt_idx, pt_idx + 1])
-                pt_idx += 2
-                break  # use only the first perf
-        if points:
-            mesh = meshio.Mesh(
-                points=np.array(points, dtype=np.float64),
-                cells=[("line", np.array(lines, dtype=np.int64))],
-            )
-            meshio.write(well_vtk_filename, mesh)
+        import vtk
+
+        if tube_sides < 3:
+            raise ValueError(f"tube_sides must be >= 3, got {tube_sides}.")
+        if well_diameter is not None and well_diameter <= 0:
+            raise ValueError(f"well_diameter must be positive, got {well_diameter}.")
+        if prolongation_up is not None and prolongation_up < 0:
+            raise ValueError(f"prolongation_up must be >= 0, got {prolongation_up}.")
+
+        os.makedirs(output_directory, exist_ok=True)
+        well_vtk_filename = os.path.abspath(os.path.join(output_directory, filename))
+
+        append_filter = vtk.vtkAppendPolyData()
+
+        def _centroid_to_xyz(centroid) -> tuple[float, float, float]:
+            values = centroid.values if hasattr(centroid, "values") else centroid
+            arr = np.asarray(values, dtype=float).reshape(-1)
+            if arr.size < 3:
+                raise ValueError(
+                    f"Centroid must contain at least 3 coordinates, got {arr.size}."
+                )
+            return float(arr[0]), float(arr[1]), float(arr[2])
+
+        # Cell-center coordinates of all reservoir blocks.
+        res_n = int(getattr(self.discr_mesh, "n_cells", len(self.centroids_all_cells)))
+        centroid_xyz_all = np.array(
+            [_centroid_to_xyz(c) for c in self.centroids_all_cells[:res_n]],
+            dtype=float,
+        )
+
+        # Reservoir block depths in the same convention used by the mesh VTK
+        # export. Anchoring wells to the discretizer depths (rather than to the
+        # centroid z-component) keeps wells aligned with the reservoir body and
+        # independent of how the corner-point centroids were computed.
+        mesh_depth = None
+        if getattr(self, "depth_all_cells", None) is not None:
+            mesh_depth = np.asarray(self.depth_all_cells, dtype=float).reshape(-1)
+        elif hasattr(self, "mesh") and getattr(self.mesh, "depth", None) is not None:
+            mesh_depth = np.array(self.mesh.depth, copy=False)
+
+        # Derive tube geometry from the reservoir horizontal extent so wells stay
+        # visually proportional for any model size. Defaults: tube diameter ~0.7 %
+        # and upward prolongation ~12 % of the horizontal bounding-box diagonal.
+        if centroid_xyz_all.shape[0] > 0:
+            extent_x = float(np.ptp(centroid_xyz_all[:, 0]))
+            extent_y = float(np.ptp(centroid_xyz_all[:, 1]))
+        else:
+            extent_x = extent_y = 0.0
+        horizontal_diag = float(np.hypot(extent_x, extent_y))
+        if well_diameter is None:
+            well_diameter = max(0.5, 0.007 * horizontal_diag)
+        if prolongation_up is None:
+            prolongation_up = max(float(well_diameter), 0.12 * horizontal_diag)
+
+        tube_radius = float(well_diameter) * 0.5
+
+        def _create_tube(x, y, depth, prolongation: float):
+            z_vtk = -depth if invert_z else depth
+
+            points = vtk.vtkPoints()
+            points.InsertNextPoint(x, y, z_vtk + float(prolongation))
+            points.InsertNextPoint(x, y, z_vtk)
+
+            line = vtk.vtkPolyLine()
+            line.GetPointIds().SetNumberOfIds(2)
+            line.GetPointIds().SetId(0, 0)
+            line.GetPointIds().SetId(1, 1)
+
+            lines = vtk.vtkCellArray()
+            lines.InsertNextCell(line)
+
+            poly_data = vtk.vtkPolyData()
+            poly_data.SetPoints(points)
+            poly_data.SetLines(lines)
+
+            tube_filter = vtk.vtkTubeFilter()
+            tube_filter.SetInputData(poly_data)
+            tube_filter.SetRadius(tube_radius)
+            tube_filter.SetNumberOfSides(int(tube_sides))
+            tube_filter.SetCapping(bool(tube_capping))
+            tube_filter.Update()
+            return tube_filter.GetOutput()
+
+        segments_added = 0
+        for well in self.wells:
+            first_segment = True
+            for perforation in well.perforations:
+                _, res_block_local, _, _ = perforation
+                if res_block_local < 0 or res_block_local >= centroid_xyz_all.shape[0]:
+                    continue
+                x, y, centroid_z = centroid_xyz_all[res_block_local]
+                if mesh_depth is not None and res_block_local < mesh_depth.size:
+                    block_depth = float(mesh_depth[res_block_local])
+                else:
+                    block_depth = float(centroid_z)
+                segment_prolongation = float(prolongation_up) if first_segment else 0.0
+                append_filter.AddInputData(
+                    _create_tube(
+                        float(x),
+                        float(y),
+                        block_depth,
+                        prolongation=segment_prolongation,
+                    )
+                )
+                segments_added += 1
+                first_segment = False
+                if first_perforation_only:
+                    break
+
+        if segments_added == 0:
+            return None
+
+        append_filter.Update()
+
+        writer = vtk.vtkPolyDataWriter()
+        writer.SetFileName(well_vtk_filename)
+        writer.SetInputConnection(append_filter.GetOutputPort())
+        if write_binary:
+            writer.SetFileTypeToBinary()
+        else:
+            writer.SetFileTypeToASCII()
+        write_result = writer.Write()
+        if write_result is not None and int(write_result) == 0:
+            return None
+        if not os.path.exists(well_vtk_filename):
+            return None
+        return well_vtk_filename
 
     def get_ijk_from_xyz(self, x, y, z):
         """

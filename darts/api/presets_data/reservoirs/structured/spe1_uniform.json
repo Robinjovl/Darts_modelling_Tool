@@ -1,0 +1,26 @@
+{
+  "_meta": {
+    "name": "spe1_uniform",
+    "description": "Small 5x5x5 SPE1-style structured reservoir with uniform 100 mD horizontal permeability, 10 mD vertical, 0.3 porosity, top depth 1000 m.",
+    "references": [
+      "Odeh (1981) — SPE 9723, SPE Comparative Solution Project (SPE1)"
+    ],
+    "tags": ["reservoir", "structured", "spe1", "uniform", "demo"],
+    "version": "1"
+  },
+  "config": {
+    "type": "structured",
+    "nx": 5,
+    "ny": 5,
+    "nz": 5,
+    "dx": 100.0,
+    "dy": 100.0,
+    "dz": 10.0,
+    "permx": 100.0,
+    "permy": 100.0,
+    "permz": 10.0,
+    "poro": 0.3,
+    "depth": 1000.0,
+    "start_z": 1000.0
+  }
+}

@@ -1,7 +1,9 @@
 import os
 import warnings
+from typing import Literal
 
 import numpy as np
+from pydantic import BaseModel, ConfigDict, Field
 from scipy.interpolate import griddata
 
 from darts.engines import (
@@ -13,6 +15,200 @@ from darts.engines import (
 )
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
 from darts.reservoirs.reservoir_base import ReservoirBase
+
+# Type alias for scalar-or-array fields used in reservoir properties.
+ScalarOrArray = float | list[float]
+
+
+class ReservoirLayerConfig(BaseModel):
+    """Layered overrides for structured reservoirs.
+
+    Each layer specifies a ``count`` (number of cells in KJI order) and
+    optional property overrides.  When ``layers`` is provided in
+    :class:`StructReservoirConfig`, layer values are expanded into flat
+    per-cell arrays during :meth:`StructReservoir.from_config`.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {"count": 100, "dz": 6, "permx": 500, "permy": 500, "permz": 80}
+            ]
+        },
+    )
+
+    count: int = Field(ge=1, description="Number of cells in this layer (KJI order)")
+    dx: ScalarOrArray | None = Field(None, description="Cell size in x [m]")
+    dy: ScalarOrArray | None = Field(None, description="Cell size in y [m]")
+    dz: ScalarOrArray | None = Field(None, description="Cell size in z [m]")
+    permx: ScalarOrArray | None = Field(None, description="Permeability in x [mD]")
+    permy: ScalarOrArray | None = Field(None, description="Permeability in y [mD]")
+    permz: ScalarOrArray | None = Field(None, description="Permeability in z [mD]")
+    poro: ScalarOrArray | None = Field(None, description="Porosity [fraction]")
+    depth: float | list[float] | None = Field(None, description="Reference depth [m]")
+
+
+class StructReservoirConfig(BaseModel):
+    """Pydantic configuration for structured reservoir grid construction.
+
+    Fields mirror the ``StructReservoir.__init__`` parameters (excluding
+    ``timer`` and ``cache`` which are runtime concerns).  This model
+    serves as the single source of truth for JSON schema generation and
+    validation of structured-reservoir specifications.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "type": "structured",
+                    "nx": 1000,
+                    "ny": 1,
+                    "nz": 1,
+                    "dx": 1.0,
+                    "dy": 10.0,
+                    "dz": 10.0,
+                    "permx": 100.0,
+                    "permy": 100.0,
+                    "permz": 10.0,
+                    "poro": 0.3,
+                    "depth": 1000.0,
+                }
+            ]
+        },
+    )
+
+    type: Literal["structured"] = "structured"
+    nx: int = Field(ge=1, description="Number of cells in x direction")
+    ny: int = Field(ge=1, description="Number of cells in y direction")
+    nz: int = Field(ge=1, description="Number of cells in z direction")
+    dx: ScalarOrArray | None = Field(
+        default=None, description="Cell size in x direction [m]"
+    )
+    dy: ScalarOrArray | None = Field(
+        default=None, description="Cell size in y direction [m]"
+    )
+    dz: ScalarOrArray | None = Field(
+        default=None, description="Cell size in z direction [m]"
+    )
+    permx: ScalarOrArray | None = Field(
+        default=None, description="Permeability in x direction [mD]"
+    )
+    permy: ScalarOrArray | None = Field(
+        default=None, description="Permeability in y direction [mD]"
+    )
+    permz: ScalarOrArray | None = Field(
+        default=None, description="Permeability in z direction [mD]"
+    )
+    poro: ScalarOrArray | None = Field(default=None, description="Porosity [fraction]")
+    depth: float | list[float] | None = Field(
+        default=None, description="Reference depth [m]"
+    )
+    start_z: float | list[float] = Field(
+        default=0.0, description="Top reservoir depth [m]"
+    )
+    rcond: ScalarOrArray = Field(
+        default=0.0, description="Rock thermal conductivity [W/m-K]"
+    )
+    hcap: ScalarOrArray = Field(default=0.0, description="Rock heat capacity [J/kg-K]")
+    actnum: int | list[int] = Field(default=1, description="Active cell indicator")
+    op_num: int | list[int] = Field(
+        default=0, description="Operator region number (PVTNUM, SCALNUM, ...)"
+    )
+    layers: list[ReservoirLayerConfig] | None = Field(
+        default=None, description="Layered overrides for per-cell properties"
+    )
+
+    # --- Geomechanics fields ----------------------------------------------
+    type_mech: Literal["none", "poroelasticity", "thermoporoelasticity"] = Field(
+        default="none",
+        description="Mechanical coupling type",
+    )
+    E: ScalarOrArray | None = Field(default=None, description="Young's modulus [bar]")
+    nu: ScalarOrArray | None = Field(default=None, description="Poisson ratio [-]")
+    stiffness: list[list[float]] | None = Field(
+        default=None, description="6x6 stiffness tensor (overrides E/nu when given)"
+    )
+    biot: ScalarOrArray | None = Field(default=None, description="Biot coefficient [-]")
+    th_expn: ScalarOrArray | None = Field(
+        default=None,
+        description="Thermal expansion coefficient [1/K] "
+        "(required when type_mech=='thermoporoelasticity')",
+    )
+    th_expn_poro: ScalarOrArray | None = Field(
+        default=None,
+        description="Pore thermal expansion coefficient [1/K]",
+    )
+
+    # Per-face boundary volume multipliers (applied after discretization).
+    # Mirrors the dict keys consumed by :meth:`StructReservoir.set_boundary_volume`.
+    boundary_volumes: (
+        dict[
+            Literal[
+                "xy_minus", "xy_plus", "yz_minus", "yz_plus", "xz_minus", "xz_plus"
+            ],
+            float,
+        ]
+        | None
+    ) = Field(
+        default=None,
+        description=(
+            "Per-face boundary volume multipliers applied after discretization. "
+            "Keys are 'xy_minus'/'xy_plus' (z-direction faces), "
+            "'yz_minus'/'yz_plus' (x-direction faces), "
+            "'xz_minus'/'xz_plus' (y-direction faces). Use to emulate "
+            "an infinite-aquifer side boundary."
+        ),
+    )
+
+    _PROPERTY_FIELDS = ("dx", "dy", "dz", "permx", "permy", "permz", "poro")
+
+    def _assert_geomech_complete(self) -> None:
+        """Raise if geomech fields are incomplete for the declared coupling.
+
+        Mirrors the ad-hoc ``InputData.check()`` logic the old god-struct
+        enforced: when ``type_mech != 'none'``, a stiffness tensor OR the
+        pair ``(E, nu)`` must be provided.
+        """
+        if self.type_mech == "none":
+            return
+        has_stiffness = self.stiffness is not None
+        has_e_nu = self.E is not None and self.nu is not None
+        if not (has_stiffness or has_e_nu):
+            raise ValueError(
+                f"type_mech={self.type_mech!r} requires either 'stiffness' "
+                f"OR both 'E' and 'nu'"
+            )
+        if self.type_mech == "thermoporoelasticity" and self.th_expn is None:
+            raise ValueError("type_mech='thermoporoelasticity' requires 'th_expn'")
+
+    def _assert_buildable(self) -> None:
+        """Raise if required property fields are missing for construction.
+
+        Enforced at build time (``from_config``) rather than as a pydantic
+        model_validator so that partial/patch payloads can still validate
+        against this config (see ``PatchReservoirSpec`` in ``darts.api``).
+        """
+        layer_keys: set[str] = set()
+        if self.layers:
+            for lay in self.layers:
+                layer_keys.update(
+                    k
+                    for k in self._PROPERTY_FIELDS
+                    if getattr(lay, k, None) is not None
+                )
+        missing = [
+            k
+            for k in self._PROPERTY_FIELDS
+            if getattr(self, k) is None and k not in layer_keys
+        ]
+        if missing:
+            raise ValueError(
+                "Reservoir config missing required fields (provide at top level "
+                f"or in every layer): {', '.join(missing)}"
+            )
 
 
 class StructReservoir(ReservoirBase):
@@ -68,6 +264,25 @@ class StructReservoir(ReservoirBase):
         """
         super().__init__(timer, cache)
 
+        self._init_kwargs = dict(
+            nx=nx,
+            ny=ny,
+            nz=nz,
+            dx=dx,
+            dy=dy,
+            dz=dz,
+            permx=permx,
+            permy=permy,
+            permz=permz,
+            poro=poro,
+            depth=depth,
+            start_z=start_z,
+            rcond=rcond,
+            hcap=hcap,
+            actnum=actnum,
+            op_num=op_num,
+        )
+
         self.nx = nx
         self.ny = ny
         self.nz = nz
@@ -112,6 +327,100 @@ class StructReservoir(ReservoirBase):
             "xz_plus": None,
         }
         self.connected_well_segments = {}
+
+    @classmethod
+    def from_config(
+        cls, config: StructReservoirConfig, *, timer: timer_node
+    ) -> "StructReservoir":
+        """Construct a StructReservoir from a validated config object.
+
+        When ``config.layers`` is provided, layer specs are expanded into
+        flat per-cell arrays before construction.
+
+        :param config: Validated reservoir configuration.
+        :param timer: Timer node for discretization timing.
+        :returns: Fully constructed StructReservoir instance.
+        """
+        config._assert_buildable()
+        config._assert_geomech_complete()
+        # Geomech fields are read back from the StructReservoirConfig by
+        # the mech physics layer, not passed to StructReservoir.__init__.
+        _GEOMECH_EXCLUDE = {
+            "type",
+            "layers",
+            "type_mech",
+            "E",
+            "nu",
+            "stiffness",
+            "biot",
+            "th_expn",
+            "th_expn_poro",
+            "boundary_volumes",
+        }
+        kwargs = {
+            k: v
+            for k, v in config.model_dump(exclude=_GEOMECH_EXCLUDE).items()
+            if v is not None
+        }
+
+        if config.layers:
+            total_cells = int(config.nx * config.ny * config.nz)
+            layer_dicts = [lay.model_dump(exclude_none=True) for lay in config.layers]
+            _LAYERED_KEYS = (
+                "dx",
+                "dy",
+                "dz",
+                "permx",
+                "permy",
+                "permz",
+                "poro",
+                "depth",
+            )
+            for key in _LAYERED_KEYS:
+                if not any(key in ld for ld in layer_dicts):
+                    continue
+                base_val = kwargs.get(key)
+                out: list = []
+                for ld in layer_dicts:
+                    count = ld["count"]
+                    val = ld.get(key, base_val)
+                    if val is None:
+                        raise ValueError(
+                            f"Layered '{key}' is missing for a layer "
+                            "and no base value was provided."
+                        )
+                    if isinstance(val, list):
+                        if len(val) != count:
+                            raise ValueError(
+                                f"Layered '{key}' list length must "
+                                f"equal count ({count})."
+                            )
+                        out.extend(val)
+                    else:
+                        out.extend([val] * count)
+                if len(out) != total_cells:
+                    raise ValueError(
+                        f"Layered '{key}' produced {len(out)} values, "
+                        f"expected {total_cells}."
+                    )
+                kwargs[key] = out
+
+        # Convert list values to numpy arrays (StructReservoir expects ndarray).
+        for key, val in kwargs.items():
+            if isinstance(val, list):
+                kwargs[key] = np.asarray(val)
+
+        reservoir = cls(timer=timer, **kwargs)
+        if config.boundary_volumes:
+            # ``set_boundary_volume`` reads every key; fill omitted faces with None.
+            full_bv = dict.fromkeys(reservoir.boundary_volumes.keys())
+            full_bv.update(config.boundary_volumes)
+            reservoir.boundary_volumes = full_bv
+        return reservoir
+
+    def to_config(self) -> StructReservoirConfig:
+        """Return the configuration that would reproduce this reservoir."""
+        return StructReservoirConfig(**self._init_kwargs)
 
     def discretize(self, cache: bool = False, verbose: bool = False) -> conn_mesh:
         self.discretizer = StructDiscretizer(
@@ -591,6 +900,182 @@ class StructReservoir(ReservoirBase):
         for fname, t in self.vtk_filenames_and_times.items():
             vtk_group.addFile(fname, t)
         vtk_group.save()
+
+    def create_vtk_wells(
+        self,
+        output_directory: str,
+        filename: str = "wells.vtk",
+        first_perforation_only: bool = True,
+        prolongation_up: float | None = None,
+        well_diameter: float | None = None,
+        tube_sides: int = 50,
+        tube_capping: bool = True,
+        invert_z: bool = True,
+        write_binary: bool = True,
+    ) -> str | None:
+        """
+        Export well trajectories to a standalone VTK PolyData file.
+
+        A tubular segment is generated for each selected perforation. For each well,
+        the first exported segment can optionally be prolonged upwards to make
+        injectors/producers visible above the reservoir body.
+
+        :param output_directory: Directory where the well VTK file is written.
+        :type output_directory: str
+        :param filename: Output VTK filename (for example, ``wells.vtk``).
+        :type filename: str
+        :param first_perforation_only: If ``True``, export only the first perforation
+            of each well. If ``False``, export all perforations.
+        :type first_perforation_only: bool
+        :param prolongation_up: Upward extension (in model length units) applied to
+            the first exported perforation segment of each well. If ``None``, it is
+            derived from the reservoir horizontal extent so wells stay proportional
+            to the model regardless of its absolute size.
+        :type prolongation_up: float, optional
+        :param well_diameter: Tube diameter in model length units. If ``None``, it is
+            derived from the reservoir horizontal extent (see ``prolongation_up``).
+        :type well_diameter: float, optional
+        :param tube_sides: Number of circumferential sides used by ``vtkTubeFilter``.
+        :type tube_sides: int
+        :param tube_capping: If ``True``, cap tube ends.
+        :type tube_capping: bool
+        :param invert_z: If ``True``, convert reservoir depth convention to VTK
+            coordinates by negating ``z`` for well points.
+        :type invert_z: bool
+        :param write_binary: If ``True``, write VTK PolyData in binary format.
+            If ``False``, write ASCII.
+        :type write_binary: bool
+        :returns: Absolute path to the written VTK file, or ``None`` if no
+            exportable perforations are present.
+        :rtype: str or None
+        :raises RuntimeError: If discretizer data required for centroids is absent.
+        :raises ValueError: If geometry controls are invalid.
+        """
+        import vtk
+
+        if not hasattr(self, "discretizer"):
+            raise RuntimeError(
+                "StructReservoir discretizer is not initialized. Run discretize/init_reservoir first."
+            )
+        if tube_sides < 3:
+            raise ValueError(f"tube_sides must be >= 3, got {tube_sides}.")
+        if well_diameter is not None and well_diameter <= 0:
+            raise ValueError(f"well_diameter must be positive, got {well_diameter}.")
+        if prolongation_up is not None and prolongation_up < 0:
+            raise ValueError(f"prolongation_up must be >= 0, got {prolongation_up}.")
+
+        os.makedirs(output_directory, exist_ok=True)
+        well_vtk_filename = os.path.abspath(os.path.join(output_directory, filename))
+
+        append_filter = vtk.vtkAppendPolyData()
+        local_to_global = np.asarray(self.discretizer.local_to_global, dtype=np.int64)
+        centroids = np.asarray(self.discretizer.centroids_all_cells)
+
+        if centroids.ndim != 2 or centroids.shape[1] < 3:
+            raise RuntimeError(
+                "StructReservoir discretizer centroids_all_cells has unexpected shape."
+            )
+
+        # Reservoir block depths in the same convention used by the mesh VTK
+        # export. Anchoring wells to ``mesh.depth`` (instead of the discretizer
+        # centroid z) keeps wells aligned with the reservoir body even when the
+        # model is built with ``start_z`` differing from ``depth`` -- otherwise
+        # the centroid z is shifted by the reference depth and the well tube
+        # floats above the grid (a non-deterministic, model-spec-dependent gap).
+        mesh_depth = None
+        if hasattr(self, "mesh") and getattr(self.mesh, "depth", None) is not None:
+            mesh_depth = np.array(self.mesh.depth, copy=False)
+
+        # Derive tube geometry from the reservoir horizontal extent so wells stay
+        # visually proportional for any model size. Defaults: tube diameter ~2 %
+        # and upward prolongation ~12 % of the horizontal bounding-box diagonal.
+        if centroids.shape[0] > 0:
+            extent_x = float(np.ptp(centroids[:, 0]))
+            extent_y = float(np.ptp(centroids[:, 1]))
+        else:
+            extent_x = extent_y = 0.0
+        horizontal_diag = float(np.hypot(extent_x, extent_y))
+        if well_diameter is None:
+            well_diameter = max(0.5, 0.02 * horizontal_diag)
+        if prolongation_up is None:
+            prolongation_up = max(float(well_diameter), 0.12 * horizontal_diag)
+
+        tube_radius = float(well_diameter) * 0.5
+
+        def _create_tube(x, y, depth, prolongation: float):
+            z_vtk = -depth if invert_z else depth
+
+            points = vtk.vtkPoints()
+            points.InsertNextPoint(x, y, z_vtk + float(prolongation))
+            points.InsertNextPoint(x, y, z_vtk)
+
+            line = vtk.vtkPolyLine()
+            line.GetPointIds().SetNumberOfIds(2)
+            line.GetPointIds().SetId(0, 0)
+            line.GetPointIds().SetId(1, 1)
+
+            lines = vtk.vtkCellArray()
+            lines.InsertNextCell(line)
+
+            poly_data = vtk.vtkPolyData()
+            poly_data.SetPoints(points)
+            poly_data.SetLines(lines)
+
+            tube_filter = vtk.vtkTubeFilter()
+            tube_filter.SetInputData(poly_data)
+            tube_filter.SetRadius(tube_radius)
+            tube_filter.SetNumberOfSides(int(tube_sides))
+            tube_filter.SetCapping(bool(tube_capping))
+            tube_filter.Update()
+            return tube_filter.GetOutput()
+
+        segments_added = 0
+        for well in self.wells:
+            first_segment = True
+            for perforation in well.perforations:
+                _, res_block_local, _, _ = perforation
+                if res_block_local < 0 or res_block_local >= local_to_global.size:
+                    continue
+                global_idx = int(local_to_global[res_block_local])
+                if global_idx < 0 or global_idx >= centroids.shape[0]:
+                    continue
+                centroid_xyz = centroids[global_idx]
+                if mesh_depth is not None and 0 <= res_block_local < mesh_depth.size:
+                    block_depth = float(mesh_depth[res_block_local])
+                else:
+                    block_depth = float(centroid_xyz[2])
+                segment_prolongation = float(prolongation_up) if first_segment else 0.0
+                append_filter.AddInputData(
+                    _create_tube(
+                        float(centroid_xyz[0]),
+                        float(centroid_xyz[1]),
+                        block_depth,
+                        prolongation=segment_prolongation,
+                    )
+                )
+                segments_added += 1
+                first_segment = False
+                if first_perforation_only:
+                    break
+
+        if segments_added == 0:
+            return None
+
+        append_filter.Update()
+
+        writer = vtk.vtkPolyDataWriter()
+        writer.SetFileName(well_vtk_filename)
+        writer.SetInputConnection(append_filter.GetOutputPort())
+        if write_binary:
+            writer.SetFileTypeToBinary()
+        else:
+            writer.SetFileTypeToASCII()
+        write_result = writer.Write()
+        if write_result is not None and int(write_result) == 0:
+            return None
+        if not os.path.exists(well_vtk_filename):
+            return None
+        return well_vtk_filename
 
     def generate_vtk_grid(
         self, strict_vertical_layers=True, compute_depth_by_dz_sum=True

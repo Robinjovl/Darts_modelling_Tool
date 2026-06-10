@@ -40,6 +40,8 @@
         - cd tests\interpolators
         - python test_interpolation.py
         - cd ..\..
+        # test API primitives and composable specs
+        - darts tests\python\test_primitives.py
         # test discretizer
         - cd discretizer\tests\compare_discretizers
         - python main.py

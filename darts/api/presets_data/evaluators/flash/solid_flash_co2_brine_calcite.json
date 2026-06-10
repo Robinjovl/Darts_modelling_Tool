@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "name": "solid_flash_co2_brine_calcite",
+    "description": "SolidFlash wrapper combining a CO2-brine constant-K flash (2 fluid components, 2 fluid phases) with one inert solid (calcite). Demonstrates $preset composition: the wrapped flash is loaded from another preset.",
+    "references": [],
+    "tags": ["co2", "brine", "calcite", "solid-flash", "composition"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "solid_flash",
+    "flash": {"$preset": "evaluators/flash/constant_k_co2_brine"},
+    "nc_fl": 2,
+    "np_fl": 2,
+    "ni": 0,
+    "nc_sol": 1,
+    "np_sol": 1
+  }
+}

@@ -19,9 +19,8 @@ readme = "README.md"
 keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal energy production"]
 requires-python = ">=3.10"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
-
 dependencies = ['numba', 'scipy', 'pandas', 'meshio', 'gmsh<=4.13', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib',
-    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash>=0.12.1', 'phreeqpy']
+    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash>=0.12.1', 'phreeqpy', 'pydantic>=2.12']
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE.md"]
 
@@ -63,6 +62,11 @@ exclude = ["discretizer", "engines", "models", "solvers", "docs", "thirdparty"]
 [tool.setuptools.package-data]
 darts = ['*.pyd', '*.so', '*.dll', 'CHANGELOG.md', 'build_info.txt', 'libstdc++.so.6']
 "darts.physics.properties" = ["databases/*"]
+# Named-preset registry shipped as package data so it is importable from
+# wheel installs (see darts.api.presets._default_preset_root()).
+# ``*.py`` covers bundled code plugins referenced by preset
+# ``plugin_registry.entries[].constructor`` paths.
+"darts.api" = ["presets_data/**/*.json", "presets_data/**/*.py"]
 
 # include darts command line interface (cli.py)
 

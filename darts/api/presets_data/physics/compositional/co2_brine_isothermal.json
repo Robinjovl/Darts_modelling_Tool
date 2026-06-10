@@ -1,0 +1,72 @@
+{
+  "_meta": {
+    "name": "co2_brine_isothermal",
+    "description": "Isothermal CO2-C1-brine two-phase compositional physics on a 200-point P-only OBL grid (1-300 bar). Ships a full evaluator stack in property_regions composed via $preset references — no model_type fallback needed.",
+    "references": [],
+    "tags": ["physics", "compositional", "co2", "c1", "brine", "isothermal", "co2-storage"],
+    "version": "1"
+  },
+  "config": {
+    "state_spec": "P",
+    "n_points": 200,
+    "min_p": 1.0,
+    "max_p": 300.0,
+    "min_z": 1e-9,
+    "max_z": 0.999999,
+    "epsilon_z": 1e-9,
+    "extrapolation_flag": false,
+    "components": ["CO2", "C1", "H2O"],
+    "phases": ["gas", "oil"]
+  },
+  "property_regions": [
+    {
+      "region": 0,
+      "property_container": {
+        "type_id": "pc/SuperPropertyContainer@v1",
+        "config": {
+          "components_name": ["CO2", "C1", "H2O"],
+          "phases_name": ["gas", "oil"],
+          "Mw": [44.01, 16.04, 18.015],
+          "min_z": 1e-9,
+          "temperature": 1.0
+        }
+      },
+      "plugins": {
+        "flash_ev": {
+          "type_id": "flash/ConstantK@v1",
+          "config": {"$preset": "evaluators/flash/constant_k_co2_c1_brine"}
+        },
+        "density_ev": {
+          "gas": {
+            "type_id": "density/DensityBasic@v1",
+            "config": {"dens0": 200.0, "compr": 1e-3}
+          },
+          "oil": {
+            "type_id": "density/DensityBasic@v1",
+            "config": {"dens0": 600.0, "compr": 1e-5}
+          }
+        },
+        "viscosity_ev": {
+          "gas": {
+            "type_id": "viscosity/ConstFunc@v1",
+            "config": {"value": 0.05}
+          },
+          "oil": {
+            "type_id": "viscosity/ConstFunc@v1",
+            "config": {"value": 0.5}
+          }
+        },
+        "rel_perm_ev": {
+          "gas": {
+            "type_id": "relperm/PhaseRelPerm@v1",
+            "config": {"$preset": "evaluators/rel_perm/quadratic_gas"}
+          },
+          "oil": {
+            "type_id": "relperm/PhaseRelPerm@v1",
+            "config": {"$preset": "evaluators/rel_perm/quadratic_oil"}
+          }
+        }
+      }
+    }
+  ]
+}

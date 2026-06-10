@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "name": "garcia_2001_co2_brine",
+    "description": "Brine density with dissolved CO2 (Garcia 2001), built on top of Spivey-2004 pure-brine density.",
+    "references": [
+      "Garcia (2001) — Density of Aqueous Solutions of CO2"
+    ],
+    "tags": ["co2", "brine", "density", "correlation", "thermal"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "garcia_2001"
+  }
+}

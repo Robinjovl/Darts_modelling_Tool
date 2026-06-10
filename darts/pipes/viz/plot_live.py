@@ -10,8 +10,8 @@ try:
     from darts.engines import copy_data_to_device
 except ImportError:
     pass
-from darts.input.input_data import linear_solver_types
 from darts.models.darts_model import DartsModel
+from darts.models.solver_types import linear_solver_types
 
 
 @dataclass

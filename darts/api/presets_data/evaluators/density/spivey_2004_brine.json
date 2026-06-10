@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "name": "spivey_2004_brine",
+    "description": "Brine density correlation of Spivey et al. (2004) — valid 0-275 C, up to 200 MPa, salinities to 5.7 mol/kg.",
+    "references": [
+      "Spivey, McCain, North (2004) — Estimating Density, FVF, Compressibility, Methane Solubility, and Viscosity for Oilfield Brines"
+    ],
+    "tags": ["brine", "density", "correlation", "thermal"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "spivey_2004"
+  }
+}

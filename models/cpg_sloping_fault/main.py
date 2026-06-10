@@ -1,15 +1,13 @@
-import numpy as np
-import pandas as pd
+import os
+
 import matplotlib.pyplot as plt
-import os, sys
-
-from darts.engines import redirect_darts_output
-from darts.tools.plot_darts import *
-from darts.tools.logging import redirect_all_output, abort_redirection
-
-from model_geothermal import ModelGeothermal
-from model_deadoil import ModelDeadOil
+import pandas as pd
 from model_CO2 import ModelCCS
+from model_deadoil import ModelDeadOil
+from model_geothermal import ModelGeothermal
+
+from darts.tools.logging import abort_redirection, redirect_all_output
+from darts.tools.plot_darts import *
 
 
 def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=False):
@@ -104,7 +102,15 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
                 # append properties to reservoir.h5
                 m.output.save_property_array(timesteps, property_array)
 
-            m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step)
+            m.output.output_to_vtk(
+                output_data=[timesteps, property_array],
+                ith_step=ith_step,
+                # render_with_paraview=(ith_step == n_timesteps),
+                # paraview_timestep_mode='all',
+                # paraview_render_options={
+                #     'fields': ['pressure[bar]', 'Zo'],
+                # },
+            )
 
         m.reservoir.create_vtk_wells(output_directory=os.path.join(out_dir, 'vtk_files'))
         m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))

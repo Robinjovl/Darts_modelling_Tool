@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "name": "co2_aquifer_enriched",
+    "description": "Brine density with linear CO2 enrichment (Daubert-style), suitable for CO2 storage screening when the full Spivey/Garcia stack is overkill.",
+    "references": [
+      "Spycher & Pruess (2005) — Geochim. Cosmochim. Acta, 69(13)"
+    ],
+    "tags": ["co2", "brine", "density", "screening"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "density_brine_co2",
+    "dens0": 1020.0,
+    "compr": 4.5e-5,
+    "p0": 1.0,
+    "co2_mult": 350.0,
+    "ions_mult": 0.0
+  }
+}

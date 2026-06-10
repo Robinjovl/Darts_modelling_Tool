@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "name": "co2_brine",
+    "description": "Linear-compressibility brine density tuned for CO2 storage screening (rho0 ~ 1020 kg/m3, compressibility ~ 4.5e-5 1/bar).",
+    "references": [
+      "Spycher & Pruess (2005) — Geochim. Cosmochim. Acta, 69(13)"
+    ],
+    "tags": ["co2", "brine", "aqueous", "density"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "density_basic",
+    "dens0": 1020.0,
+    "compr": 4.5e-5
+  }
+}

@@ -1,0 +1,220 @@
+{
+  "plugin_registry": {
+    "modules": ["spe11b_plugins.py"]
+  },
+  "reservoir": {
+    "type": "structured",
+    "nx": 84, "ny": 1, "nz": 12,
+    "dx": 100.0, "dy": 1.0, "dz": 100.0,
+    "permx": {"kind": "path", "value": "arrays/permx.json"},
+    "permy": {"kind": "path", "value": "arrays/permy.json"},
+    "permz": {"kind": "path", "value": "arrays/permz.json"},
+    "poro":  {"kind": "path", "value": "arrays/poro.json"},
+    "hcap":  {"kind": "path", "value": "arrays/hcap.json"},
+    "rcond": {"kind": "path", "value": "arrays/rcond.json"},
+    "depth": {"kind": "path", "value": "arrays/depth.json"},
+    "op_num": {"kind": "path", "value": "arrays/op_num.json"},
+    "boundary_volumes": {
+      "yz_minus": 500000000000.0,
+      "yz_plus":  500000000000.0
+    }
+  },
+  "physics": {
+    "plugin": {
+      "type_id": "physics/Compositional@v1",
+      "config": {
+        "state_spec": "PT",
+        "n_points": 1001,
+        "min_p": 200.0, "max_p": 450.0,
+        "min_t": 273.15, "max_t": 373.15,
+        "min_z": 0.0, "max_z": 1.0,
+        "epsilon_z": 1e-11,
+        "extrapolation_flag": false
+      }
+    },
+    "components": ["H2O", "CO2"],
+    "phases": ["V", "Aq"],
+    "property_regions": [
+      {"region": 0, "property_container": {"type_id": "pc/SuperPropertyContainer@v1",
+        "config": {"components_name": ["H2O", "CO2"], "phases_name": ["V", "Aq"],
+                   "Mw": [18.015, 44.01], "eps_z": 1e-11, "temperature": null}},
+       "plugins": {
+         "flash_ev":      {"type_id": "flash/SPE11bVLAq@v1",     "config": {"components": ["H2O", "CO2"]}},
+         "density_ev":    {"V":  {"type_id": "density/SPE11bGasPR@v1",     "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "density/SPE11bAqGarcia@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "viscosity_ev":  {"V":  {"type_id": "viscosity/SPE11bGasFenghour@v1", "config": {}},
+                            "Aq": {"type_id": "viscosity/SPE11bAqIslam@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "enthalpy_ev":   {"V":  {"type_id": "enthalpy/SPE11bGasPR@v1",   "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "enthalpy/SPE11bAqEoS@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "conductivity_ev":{"V":  {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 8.4}},
+                            "Aq": {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 170.0}}},
+         "rel_perm_ev":   {"V":  {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "V",  "nw": 1.5, "ng": 1.5, "swc": 0.32, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}},
+                            "Aq": {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "Aq", "nw": 1.5, "ng": 1.5, "swc": 0.32, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}}},
+         "diffusion_ev":  {"V":  {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1.728e-3}},
+                            "Aq": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 8.64e-5}}}
+       }},
+      {"region": 1, "property_container": {"type_id": "pc/SuperPropertyContainer@v1",
+        "config": {"components_name": ["H2O", "CO2"], "phases_name": ["V", "Aq"],
+                   "Mw": [18.015, 44.01], "eps_z": 1e-11, "temperature": null}},
+       "plugins": {
+         "flash_ev":      {"type_id": "flash/SPE11bVLAq@v1",     "config": {"components": ["H2O", "CO2"]}},
+         "density_ev":    {"V":  {"type_id": "density/SPE11bGasPR@v1",     "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "density/SPE11bAqGarcia@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "viscosity_ev":  {"V":  {"type_id": "viscosity/SPE11bGasFenghour@v1", "config": {}},
+                            "Aq": {"type_id": "viscosity/SPE11bAqIslam@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "enthalpy_ev":   {"V":  {"type_id": "enthalpy/SPE11bGasPR@v1",   "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "enthalpy/SPE11bAqEoS@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "conductivity_ev":{"V":  {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 8.4}},
+                            "Aq": {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 170.0}}},
+         "rel_perm_ev":   {"V":  {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "V",  "nw": 1.5, "ng": 1.5, "swc": 0.14, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}},
+                            "Aq": {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "Aq", "nw": 1.5, "ng": 1.5, "swc": 0.14, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}}},
+         "diffusion_ev":  {"V":  {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1.728e-3}},
+                            "Aq": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 8.64e-5}}}
+       }},
+      {"region": 2, "property_container": {"type_id": "pc/SuperPropertyContainer@v1",
+        "config": {"components_name": ["H2O", "CO2"], "phases_name": ["V", "Aq"],
+                   "Mw": [18.015, 44.01], "eps_z": 1e-11, "temperature": null}},
+       "plugins": {
+         "flash_ev":      {"type_id": "flash/SPE11bVLAq@v1",     "config": {"components": ["H2O", "CO2"]}},
+         "density_ev":    {"V":  {"type_id": "density/SPE11bGasPR@v1",     "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "density/SPE11bAqGarcia@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "viscosity_ev":  {"V":  {"type_id": "viscosity/SPE11bGasFenghour@v1", "config": {}},
+                            "Aq": {"type_id": "viscosity/SPE11bAqIslam@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "enthalpy_ev":   {"V":  {"type_id": "enthalpy/SPE11bGasPR@v1",   "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "enthalpy/SPE11bAqEoS@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "conductivity_ev":{"V":  {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 8.4}},
+                            "Aq": {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 170.0}}},
+         "rel_perm_ev":   {"V":  {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "V",  "nw": 1.5, "ng": 1.5, "swc": 0.12, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}},
+                            "Aq": {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "Aq", "nw": 1.5, "ng": 1.5, "swc": 0.12, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}}},
+         "diffusion_ev":  {"V":  {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1.728e-3}},
+                            "Aq": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 8.64e-5}}}
+       }},
+      {"region": 3, "property_container": {"type_id": "pc/SuperPropertyContainer@v1",
+        "config": {"components_name": ["H2O", "CO2"], "phases_name": ["V", "Aq"],
+                   "Mw": [18.015, 44.01], "eps_z": 1e-11, "temperature": null}},
+       "plugins": {
+         "flash_ev":      {"type_id": "flash/SPE11bVLAq@v1",     "config": {"components": ["H2O", "CO2"]}},
+         "density_ev":    {"V":  {"type_id": "density/SPE11bGasPR@v1",     "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "density/SPE11bAqGarcia@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "viscosity_ev":  {"V":  {"type_id": "viscosity/SPE11bGasFenghour@v1", "config": {}},
+                            "Aq": {"type_id": "viscosity/SPE11bAqIslam@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "enthalpy_ev":   {"V":  {"type_id": "enthalpy/SPE11bGasPR@v1",   "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "enthalpy/SPE11bAqEoS@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "conductivity_ev":{"V":  {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 8.4}},
+                            "Aq": {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 170.0}}},
+         "rel_perm_ev":   {"V":  {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "V",  "nw": 1.5, "ng": 1.5, "swc": 0.12, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}},
+                            "Aq": {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "Aq", "nw": 1.5, "ng": 1.5, "swc": 0.12, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}}},
+         "diffusion_ev":  {"V":  {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1.728e-3}},
+                            "Aq": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 8.64e-5}}}
+       }},
+      {"region": 4, "property_container": {"type_id": "pc/SuperPropertyContainer@v1",
+        "config": {"components_name": ["H2O", "CO2"], "phases_name": ["V", "Aq"],
+                   "Mw": [18.015, 44.01], "eps_z": 1e-11, "temperature": null}},
+       "plugins": {
+         "flash_ev":      {"type_id": "flash/SPE11bVLAq@v1",     "config": {"components": ["H2O", "CO2"]}},
+         "density_ev":    {"V":  {"type_id": "density/SPE11bGasPR@v1",     "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "density/SPE11bAqGarcia@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "viscosity_ev":  {"V":  {"type_id": "viscosity/SPE11bGasFenghour@v1", "config": {}},
+                            "Aq": {"type_id": "viscosity/SPE11bAqIslam@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "enthalpy_ev":   {"V":  {"type_id": "enthalpy/SPE11bGasPR@v1",   "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "enthalpy/SPE11bAqEoS@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "conductivity_ev":{"V":  {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 8.4}},
+                            "Aq": {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 170.0}}},
+         "rel_perm_ev":   {"V":  {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "V",  "nw": 1.5, "ng": 1.5, "swc": 0.12, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}},
+                            "Aq": {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "Aq", "nw": 1.5, "ng": 1.5, "swc": 0.12, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}}},
+         "diffusion_ev":  {"V":  {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1.728e-3}},
+                            "Aq": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 8.64e-5}}}
+       }},
+      {"region": 5, "property_container": {"type_id": "pc/SuperPropertyContainer@v1",
+        "config": {"components_name": ["H2O", "CO2"], "phases_name": ["V", "Aq"],
+                   "Mw": [18.015, 44.01], "eps_z": 1e-11, "temperature": null}},
+       "plugins": {
+         "flash_ev":      {"type_id": "flash/SPE11bVLAq@v1",     "config": {"components": ["H2O", "CO2"]}},
+         "density_ev":    {"V":  {"type_id": "density/SPE11bGasPR@v1",     "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "density/SPE11bAqGarcia@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "viscosity_ev":  {"V":  {"type_id": "viscosity/SPE11bGasFenghour@v1", "config": {}},
+                            "Aq": {"type_id": "viscosity/SPE11bAqIslam@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "enthalpy_ev":   {"V":  {"type_id": "enthalpy/SPE11bGasPR@v1",   "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "enthalpy/SPE11bAqEoS@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "conductivity_ev":{"V":  {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 8.4}},
+                            "Aq": {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 170.0}}},
+         "rel_perm_ev":   {"V":  {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "V",  "nw": 1.5, "ng": 1.5, "swc": 0.10, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}},
+                            "Aq": {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "Aq", "nw": 1.5, "ng": 1.5, "swc": 0.10, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}}},
+         "diffusion_ev":  {"V":  {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1.728e-3}},
+                            "Aq": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 8.64e-5}}}
+       }},
+      {"region": 6, "property_container": {"type_id": "pc/SuperPropertyContainer@v1",
+        "config": {"components_name": ["H2O", "CO2"], "phases_name": ["V", "Aq"],
+                   "Mw": [18.015, 44.01], "eps_z": 1e-11, "temperature": null}},
+       "plugins": {
+         "flash_ev":      {"type_id": "flash/SPE11bVLAq@v1",     "config": {"components": ["H2O", "CO2"]}},
+         "density_ev":    {"V":  {"type_id": "density/SPE11bGasPR@v1",     "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "density/SPE11bAqGarcia@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "viscosity_ev":  {"V":  {"type_id": "viscosity/SPE11bGasFenghour@v1", "config": {}},
+                            "Aq": {"type_id": "viscosity/SPE11bAqIslam@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "enthalpy_ev":   {"V":  {"type_id": "enthalpy/SPE11bGasPR@v1",   "config": {"components": ["H2O", "CO2"]}},
+                            "Aq": {"type_id": "enthalpy/SPE11bAqEoS@v1",  "config": {"components": ["H2O", "CO2"]}}},
+         "conductivity_ev":{"V":  {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 8.4}},
+                            "Aq": {"type_id": "conductivity/ConstFunc@v1", "config": {"value": 170.0}}},
+         "rel_perm_ev":   {"V":  {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "V",  "nw": 1.5, "ng": 1.5, "swc": 1e-8, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}},
+                            "Aq": {"type_id": "relperm/SPE11bModBC@v1", "config": {"phase": "Aq", "nw": 1.5, "ng": 1.5, "swc": 1e-8, "sgc": 0.10, "krwe": 1.0, "krge": 1.0}}},
+         "diffusion_ev":  {"V":  {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 1.728e-3}},
+                            "Aq": {"type_id": "viscosity/ConstFunc@v1", "config": {"value": 8.64e-5}}}
+       }}
+    ]
+  },
+  "wells": {
+    "wells": [
+      {
+        "name": "I1",
+        "perforations": [{"ijk": [28, 1, 4]}],
+        "controls": {
+          "inj_rate": 3024.0,
+          "rate_type": "MASS_RATE",
+          "phase_name": "V",
+          "inj_composition": [0.01],
+          "inj_temp": 283.15
+        }
+      },
+      {
+        "name": "I2",
+        "perforations": [{"ijk": [52, 1, 8]}],
+        "controls": {
+          "inj_rate": 1e-10,
+          "rate_type": "MASS_RATE",
+          "phase_name": "V",
+          "inj_composition": [0.01],
+          "inj_temp": 283.15
+        }
+      }
+    ]
+  },
+  "initial_conditions": {
+    "by_depth_table": {
+      "input_depth": [100.0, 1200.0],
+      "input_distribution": {
+        "pressure": [212.0, 329.3],
+        "H2O": [0.9999999999, 0.9999999999],
+        "temperature": [315.65, 343.15]
+      }
+    }
+  },
+  "sim_params": {
+    "first_ts": 1e-6,
+    "mult_ts": 2.0,
+    "max_ts": 365.0,
+    "runtime": 9125.0,
+    "tol_newton": 1e-3,
+    "tol_linear": 1e-4,
+    "it_newton": 12,
+    "it_linear": 50,
+    "newton_type": "newton_global_chop"
+  },
+  "output": {
+    "output_folder": "output_json",
+    "precision": "d",
+    "save_initial": true,
+    "verbose": true,
+    "sol_filename": "spe_solution.h5"
+  }
+}

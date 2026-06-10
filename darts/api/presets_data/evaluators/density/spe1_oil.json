@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "name": "spe1_oil",
+    "description": "Constant oil density approximating SPE1 black-oil reference (rho0 ~ 740 kg/m3, mild compressibility).",
+    "references": [
+      "Odeh, A.S. (1981) — JPT, SPE-9723 — Comparison of Solutions to a Three-Dimensional Black-Oil Reservoir Simulation Problem"
+    ],
+    "tags": ["spe1", "oil", "black-oil", "density"],
+    "version": "1"
+  },
+  "config": {
+    "kind": "density_basic",
+    "dens0": 740.0,
+    "compr": 1.0e-5
+  }
+}

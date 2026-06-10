@@ -1,5 +1,6 @@
 import os
 import xml.dom.minidom
+from typing import Any  # InputData deleted; idata typed as Any at call sites
 
 import meshio
 import numpy as np
@@ -32,7 +33,6 @@ from darts.engines import (
 )
 from darts.engines import Stiffness as engine_stiffness
 from darts.engines import matrix33 as engine_matrix33
-from darts.input.input_data import InputData
 
 
 class bound_cond:
@@ -434,7 +434,7 @@ class UnstructReservoirMech:
         self.n_matrix = self.unstr_discr.mat_cells_tot
         self.n_bounds = self.unstr_discr.bound_faces_tot
 
-    def init_mech_discretizer(self, idata: InputData):
+    def init_mech_discretizer(self, idata: "Any"):
         self.discr_mesh = Mesh()
         self.discr_mesh.gmsh_mesh_processing(self.mesh_filename, self.domain_tags)
 
@@ -480,7 +480,7 @@ class UnstructReservoirMech:
         #    self.porosity = 0.
         # self.porosity = self.porosity + np.zeros(self.n_matrix + self.n_fracs)
 
-    def init_arrays(self, idata: InputData):
+    def init_arrays(self, idata: "Any"):
         # Create numpy arrays wrapped around mesh data (no copying, this will severely slow down the process!)
         self.poro = np.array(self.mesh.poro, copy=False)
         self.volume = np.array(self.mesh.volume, copy=False)
@@ -789,7 +789,7 @@ class UnstructReservoirMech:
         elif self.discretizer_name == 'pm_discretizer':
             self.pm.grav = grav_vec
 
-    def init_uniform_properties(self, idata: InputData):
+    def init_uniform_properties(self, idata: "Any"):
         if self.discretizer_name == 'mech_discretizer':
             for _i, _cell_id in enumerate(
                 range(
@@ -833,9 +833,7 @@ class UnstructReservoirMech:
         self.porosity = idata.rock.porosity
         self.cs = idata.rock.compressibility
 
-    def set_props_tags(
-        self, idata: InputData, matrix_tags: list, prop_list: list = None
-    ):
+    def set_props_tags(self, idata: "Any", matrix_tags: list, prop_list: list = None):
         # loop over idata.rock. objects and fill self.props, for example:
         # if idata.rock.poro=[0.2, 0.1], matrix_tags=[90,91]  =>  props = { 90: {'poro': 0.2}, 91: {'poro': 0.1}}
         if prop_list is None:
@@ -946,7 +944,7 @@ class UnstructReservoirMech:
                 )
                 self.porosity[cell_id] = poro
 
-    def set_uniform_initial_conditions(self, idata: InputData):
+    def set_uniform_initial_conditions(self, idata: "Any"):
         self.u_init = idata.initial.initial_displacements
         self.p_init = idata.initial.initial_pressure
         self.z_init = idata.initial.initial_composition
@@ -955,7 +953,7 @@ class UnstructReservoirMech:
         else:
             self.t_init = None
 
-    def init_reservoir_main(self, idata: InputData):
+    def init_reservoir_main(self, idata: "Any"):
         if not hasattr(self, 'ref_contact_cells'):
             self.ref_contact_cells = np.zeros(
                 self.n_fracs, dtype=np.intc
@@ -2057,9 +2055,9 @@ class UnstructReservoirMech:
             self.fig.savefig(output_directory + '/fig_' + str(ith_step) + '.png')
             plt.close(self.fig)
 
-    def get_frac_apers(self, idata: InputData):
+    def get_frac_apers(self, idata: "Any"):
         '''
-        :param idata: InputData
+        :param idata: "Any"
         :return: numpy array of fracture apertures, size = number of fractures; None if no fractures
         '''
         frac_apers = None
@@ -2072,13 +2070,13 @@ class UnstructReservoirMech:
                 frac_apers = idata.other.frac_apers
         return frac_apers
 
-    def init_fractures(self, idata: InputData):
+    def init_fractures(self, idata: "Any"):
         '''
         Initializes fractures in the unstructured discretizer:
         1.Appends data to: self.pm.cell_centers, self.pm.frac_apers, self.pm.faces, self.mesh.fault_normals, self.pm.perms
         self.pm.biots, self.p_init
         2. Initialize contacts
-        :param idata: InputData (frac apertures, perm, biot, initial_pressure)
+        :param idata: "Any" (frac apertures, perm, biot, initial_pressure)
         :return:
         '''
         frac_apers = self.get_frac_apers(idata)

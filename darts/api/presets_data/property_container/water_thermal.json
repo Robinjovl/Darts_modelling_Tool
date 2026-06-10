@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "name": "water_thermal",
+    "description": "Single-phase thermal water PropertyContainer for IAPWS-driven geothermal models (no fixed temperature).",
+    "references": [
+      "IAPWS-IF97 — Industrial Formulation 1997"
+    ],
+    "tags": ["property-container", "water", "thermal", "geothermal", "iapws"],
+    "version": "1"
+  },
+  "config": {
+    "phases_name": ["wat"],
+    "components_name": ["H2O"],
+    "Mw": [18.015],
+    "min_z": 1e-9,
+    "rock_comp": 1e-05
+  }
+}

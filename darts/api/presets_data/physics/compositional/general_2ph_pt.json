@@ -1,0 +1,93 @@
+{
+  "_meta": {
+    "name": "general_2ph_pt",
+    "description": "Generic two-phase compositional physics in P-T mode (1-400 bar, 273.15-450 K) with extrapolation enabled — suitable for thermal CO2 / hydrocarbon screening. Ships a CO2-H2O evaluator stack (gas/oil) composed via $preset references so this preset is self-contained; override components/phases and property_regions for other systems.",
+    "references": [],
+    "tags": ["physics", "compositional", "two-phase", "pt", "thermal"],
+    "version": "1"
+  },
+  "config": {
+    "state_spec": "PT",
+    "n_points": 200,
+    "min_p": 1.0,
+    "max_p": 400.0,
+    "min_z": 1e-9,
+    "max_z": 0.999999,
+    "epsilon_z": 1e-9,
+    "min_t": 273.15,
+    "max_t": 450.0,
+    "extrapolation_flag": true,
+    "components": ["CO2", "H2O"],
+    "phases": ["gas", "oil"]
+  },
+  "property_regions": [
+    {
+      "region": 0,
+      "property_container": {
+        "type_id": "pc/SuperPropertyContainer@v1",
+        "config": {
+          "components_name": ["CO2", "H2O"],
+          "phases_name": ["gas", "oil"],
+          "Mw": [44.01, 18.015],
+          "min_z": 1e-9
+        }
+      },
+      "plugins": {
+        "flash_ev": {
+          "type_id": "flash/ConstantK@v1",
+          "config": {"$preset": "evaluators/flash/constant_k_co2_brine"}
+        },
+        "density_ev": {
+          "gas": {
+            "type_id": "density/DensityBasic@v1",
+            "config": {"dens0": 600.0, "compr": 1e-3}
+          },
+          "oil": {
+            "type_id": "density/DensityBasic@v1",
+            "config": {"$preset": "evaluators/density/co2_brine"}
+          }
+        },
+        "viscosity_ev": {
+          "gas": {
+            "type_id": "viscosity/ConstFunc@v1",
+            "config": {"$preset": "evaluators/viscosity/co2_supercritical"}
+          },
+          "oil": {
+            "type_id": "viscosity/ConstFunc@v1",
+            "config": {"$preset": "evaluators/viscosity/water_constant"}
+          }
+        },
+        "enthalpy_ev": {
+          "gas": {
+            "type_id": "enthalpy/EnthalpyBasic@v1",
+            "config": {"$preset": "evaluators/enthalpy/co2_basic"}
+          },
+          "oil": {
+            "type_id": "enthalpy/EnthalpyBasic@v1",
+            "config": {"$preset": "evaluators/enthalpy/water_basic"}
+          }
+        },
+        "conductivity_ev": {
+          "gas": {
+            "type_id": "conductivity/ConstFunc@v1",
+            "config": {"value": 50.0}
+          },
+          "oil": {
+            "type_id": "conductivity/ConstFunc@v1",
+            "config": {"value": 180.0}
+          }
+        },
+        "rel_perm_ev": {
+          "gas": {
+            "type_id": "relperm/PhaseRelPerm@v1",
+            "config": {"$preset": "evaluators/rel_perm/quadratic_gas"}
+          },
+          "oil": {
+            "type_id": "relperm/PhaseRelPerm@v1",
+            "config": {"$preset": "evaluators/rel_perm/quadratic_oil"}
+          }
+        }
+      }
+    }
+  ]
+}

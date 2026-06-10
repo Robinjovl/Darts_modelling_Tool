@@ -1,30 +1,177 @@
 import abc
 import json
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
+from pydantic import Field
+
+from darts.physics.properties.evaluator_base import (
+    EvaluatorBase,
+    EvaluatorConfigBase,
+    register_evaluator,
+)
 
 
-class Kinetics:
+class KineticBasicConfig(EvaluatorConfigBase):
+    """Configuration for KineticBasic evaluator."""
+
+    kind: Literal["kinetic_basic"] = "kinetic_basic"
+    equi_prod: float
+    rate: float = Field(1.0, ge=0)
+    ne: int = Field(ge=1)
+
+
+class LawOfMassActionConfig(EvaluatorConfigBase):
+    """Configuration for LawOfMassAction kinetic evaluator."""
+
+    kind: Literal["law_of_mass_action"] = "law_of_mass_action"
+    stoich: list[float]
+    nc_fl: int = Field(ge=1)
+    fl_idx: int = Field(ge=0)
+    equi_prod: float
+    kin_rate_cte: float
+
+
+class HydrateKineticsConfig(EvaluatorConfigBase):
+    """Configuration for HydrateKinetics evaluator (EOS objects passed via context)."""
+
+    kind: Literal["hydrate_kinetics"] = "hydrate_kinetics"
+    components: list[str]
+    phases: list[str]
+    Mw: list[float]
+    stoich: list[float] | None = None
+    perm: float = 300.0
+    poro: float = 0.2
+    k: float | None = None
+    F_a: float = 1.0
+    moridis: bool = True
+    enthalpy: bool = False
+
+
+class LinearReactionSurfaceAreaConfig(EvaluatorConfigBase):
+    """Configuration for LinearReactionSurfaceArea evaluator."""
+
+    kind: Literal["linear_reaction_surface_area"] = "linear_reaction_surface_area"
+    initial_area_per_mol: float = Field(ge=0)
+
+
+class KineticRateConfig(EvaluatorConfigBase):
+    """Configuration for KineticRate mineral kinetic rate evaluator."""
+
+    kind: Literal["kinetic_rate"] = "kinetic_rate"
+    min_z: float
+    mineral_name: str
+    mechanisms: list[str]
+    surface_area_ev: LinearReactionSurfaceAreaConfig
+    kinetic_database: str = "PalandriKharaka"
+
+
+class Kinetics(EvaluatorBase):
+    """Family ABC for kinetic-rate evaluators.
+
+    Concrete subclasses implement :meth:`evaluate` returning a per-component
+    rate vector and the driving force (``dQ`` or fugacity difference).
+    """
+
     def __init__(self, stoich: list):
+        """
+        :param stoich: stoichiometric coefficients per component
+        :type stoich: list[float] | None
+        """
         self.stoich = stoich
 
     @abc.abstractmethod
     def evaluate(self, pressure, temperature, x, sat):
+        """
+        :param pressure: pressure [bar]
+        :type pressure: float
+        :param temperature: temperature [K]
+        :type temperature: float
+        :param x: per-phase composition matrix (molar fractions)
+        :type x: np.ndarray
+        :param sat: per-phase saturations
+        :type sat: list[float] | np.ndarray
+        :return: (rate vector per component, driving force)
+        :rtype: tuple[list[float], float]
+        """
         pass
 
     def evaluate_enthalpy(self, pressure, temperature, x, sat):
+        """Optional enthalpy-of-reaction hook; default is no enthalpy effect.
+
+        :param pressure: pressure [bar]
+        :type pressure: float
+        :param temperature: temperature [K]
+        :type temperature: float
+        :param x: per-phase composition matrix
+        :type x: np.ndarray
+        :param sat: per-phase saturations
+        :type sat: list[float] | np.ndarray
+        :return: enthalpy contribution
+        :rtype: float
+        """
         return 0.0
 
 
-class KineticBasic:
+class KineticBasic(EvaluatorBase):
+    """Simple precipitation/dissolution kinetic for ions."""
+
     def __init__(self, equi_prod, kin_rate_cte, ne, combined_ions=True):
+        """
+        :param equi_prod: equilibrium ion product
+        :type equi_prod: float
+        :param kin_rate_cte: kinetic rate constant
+        :type kin_rate_cte: float
+        :param ne: number of components in the rate vector
+        :type ne: int
+        :param combined_ions: whether ion species are combined into one column
+        :type combined_ions: bool
+        """
         self.equi_prod = equi_prod
         self.kin_rate_cte = kin_rate_cte
         self.kinetic_rate = np.zeros(ne)
         self.combined_ions = combined_ions
 
+    def to_config(self) -> KineticBasicConfig:
+        """Build Config explicitly because Config field ``rate`` maps to
+        attribute ``kin_rate_cte`` and ``ne`` is derived from
+        ``len(self.kinetic_rate)``.
+
+        :return: serialized config
+        :rtype: KineticBasicConfig
+        """
+        return KineticBasicConfig(
+            equi_prod=self.equi_prod,
+            rate=self.kin_rate_cte,
+            ne=len(self.kinetic_rate),
+        )
+
+    @classmethod
+    def from_config(cls, config: KineticBasicConfig) -> "KineticBasic":
+        """Build instance explicitly because the constructor uses
+        ``kin_rate_cte`` rather than the Config's ``rate``.
+
+        :param config: validated config
+        :type config: KineticBasicConfig
+        :return: KineticBasic instance
+        :rtype: KineticBasic
+        """
+        return cls(config.equi_prod, config.rate, config.ne)
+
     def evaluate(self, pressure, temperature, x, nu_sol):
+        """
+        :param pressure: pressure [bar] (unused)
+        :type pressure: float
+        :param temperature: temperature [K] (unused)
+        :type temperature: float
+        :param x: per-phase composition matrix
+        :type x: np.ndarray
+        :param nu_sol: solid phase fraction
+        :type nu_sol: float
+        :return: (kinetic rate vector, driving force ``dQ``)
+        :rtype: tuple[np.ndarray, float]
+        """
         if self.combined_ions:
             ion_prod = (x[1][1] / 2) ** 2
             dQ = 1 - ion_prod / self.equi_prod
@@ -40,10 +187,13 @@ class KineticBasic:
         return self.kinetic_rate, dQ
 
 
+register_evaluator("kinetic_basic", KineticBasic, KineticBasicConfig)
+
+
 class LawOfMassAction(Kinetics):
     """
-    Law of Mass Action for kinetic reaction
-    For reaction aA + bB <-> cC: rate = c * (1 - Q/K) with Q = [C]^c / [A]^a [B]^b
+    Law of Mass Action for kinetic reaction.
+    For reaction aA + bB <-> cC: rate = c * (1 - Q/K) with Q = [C]^c / [A]^a [B]^b.
     """
 
     def __init__(
@@ -54,6 +204,18 @@ class LawOfMassAction(Kinetics):
         equi_prod: float,
         kin_rate_cte: float,
     ):
+        """
+        :param stoich: stoichiometric coefficients per component
+        :type stoich: list[float]
+        :param nc_fl: number of fluid components
+        :type nc_fl: int
+        :param fl_idx: phase index used to read activities
+        :type fl_idx: int
+        :param equi_prod: equilibrium product
+        :type equi_prod: float
+        :param kin_rate_cte: kinetic rate constant
+        :type kin_rate_cte: float
+        """
         super().__init__(stoich)
 
         self.nc_fl = nc_fl
@@ -62,6 +224,18 @@ class LawOfMassAction(Kinetics):
         self.kin_rate_cte = kin_rate_cte
 
     def evaluate(self, pressure, temperature, x, sat_sol):
+        """
+        :param pressure: pressure [bar] (unused)
+        :type pressure: float
+        :param temperature: temperature [K] (unused)
+        :type temperature: float
+        :param x: per-phase composition matrix
+        :type x: np.ndarray
+        :param sat_sol: solid saturation
+        :type sat_sol: float
+        :return: (per-component rate vector, driving force ``dQ``)
+        :rtype: tuple[list[float], float]
+        """
         # For reaction aA + bB <-> cC
         # Calculate activity product Q = [C]^c / [A]^a [B]^b
         prod = 1.0
@@ -79,7 +253,12 @@ class LawOfMassAction(Kinetics):
         return [stoich * rate for stoich in self.stoich], dQ
 
 
+register_evaluator("law_of_mass_action", LawOfMassAction, LawOfMassActionConfig)
+
+
 class HydrateKinetics(Kinetics):
+    """Kinetics of methane-hydrate formation/dissociation following Yin (2018)."""
+
     def __init__(
         self,
         components: list,
@@ -95,14 +274,49 @@ class HydrateKinetics(Kinetics):
         moridis: bool = True,
         enthalpy: bool = False,
     ):
+        """
+        :param components: fluid component names
+        :type components: list[str]
+        :param phases: phase names (must include ``'Aq'``, ``'V'`` and ``'sI'``)
+        :type phases: list[str]
+        :param Mw: molecular weights per component [kg/kmol]
+        :type Mw: list[float] | np.ndarray
+        :param hydrate_eos: hydrate-phase EOS object (passed at construction time only)
+        :type hydrate_eos: object
+        :param fluid_eos: list of fluid-phase EOS objects (aqueous, vapor)
+        :type fluid_eos: list[object]
+        :param stoich: stoichiometric coefficients per component
+        :type stoich: list[float] | None
+        :param perm: permeability [mD]
+        :type perm: float
+        :param poro: porosity
+        :type poro: float
+        :param k: reaction rate constant; falls back to a default when ``None``
+        :type k: float | None
+        :param F_a: Moridis surface-area scale factor
+        :type F_a: float
+        :param moridis: whether to use Moridis surface-area model
+        :type moridis: bool
+        :param enthalpy: whether to compute enthalpy of dissociation
+        :type enthalpy: bool
+        """
         super().__init__(stoich)
+
+        # Preserve raw constructor args for round-trip serialization (the
+        # default to_config picks these up via the _init_<field> fallback).
+        self._init_components = list(components)
+        self._init_phases = list(phases)
+        self._init_perm = perm
+        self._init_poro = poro
+        self._init_k = k
+        self._init_F_a = F_a
+        self._init_moridis = moridis
 
         self.hydrate_eos = hydrate_eos
         self.fluid_eos = fluid_eos
 
         self.water_idx = components.index("H2O")
         self.guest_idx = 0 if self.water_idx == 1 else 1
-        # self.hydrate_idx = components.index("H")
 
         self.a_idx = phases.index("Aq")
         self.v_idx = phases.index("V")
@@ -147,7 +361,18 @@ class HydrateKinetics(Kinetics):
         self.enthalpy = enthalpy
 
     def calc_df(self, pressure, temperature, x):
-        # Calculate fugacity difference between water in fluid phases and water in hydrate phase
+        """Calculate fugacity difference between water in fluid phases and
+        water in hydrate phase.
+
+        :param pressure: pressure [bar]
+        :type pressure: float
+        :param temperature: temperature [K]
+        :type temperature: float
+        :param x: per-phase composition matrix
+        :type x: np.ndarray
+        :return: ``(df, xH)`` — fugacity difference and hydrate composition
+        :rtype: tuple[float, np.ndarray]
+        """
         if x[0, 0] != 0.0:
             f0 = self.fluid_eos[0].fugacity(pressure, temperature, x[0, :])
         else:
@@ -161,6 +386,18 @@ class HydrateKinetics(Kinetics):
         return df, xH
 
     def evaluate(self, pressure, temperature, x, sat: list):
+        """
+        :param pressure: pressure [bar]
+        :type pressure: float
+        :param temperature: temperature [K]
+        :type temperature: float
+        :param x: per-phase composition matrix
+        :type x: np.ndarray
+        :param sat: per-phase saturations
+        :type sat: list[float]
+        :return: (per-component rate vector, fugacity difference)
+        :rtype: tuple[list[float], float]
+        """
         df, xH = self.calc_df(pressure, temperature, x)
 
         # Reaction rate following Yin (2018)
@@ -177,6 +414,18 @@ class HydrateKinetics(Kinetics):
         return [stoich * self.rate for stoich in self.stoich], df
 
     def evaluate_enthalpy(self, pressure, temperature, x, sat):
+        """
+        :param pressure: pressure [bar] (unused)
+        :type pressure: float
+        :param temperature: temperature [K]
+        :type temperature: float
+        :param x: per-phase composition matrix
+        :type x: np.ndarray
+        :param sat: per-phase saturations
+        :type sat: list[float]
+        :return: enthalpy contribution (kJ/day) when ``self.enthalpy`` is True; ``0`` otherwise
+        :rtype: float
+        """
         if self.enthalpy:
             # Enthalpy change with dissociation (-ive, rate of hydrate component +ive)
             Cf = 33.72995  # J/kg cal/gmol
@@ -198,6 +447,44 @@ class HydrateKinetics(Kinetics):
         else:
             return 0.0
 
+    @classmethod
+    def from_config(
+        cls,
+        config: HydrateKineticsConfig,
+        *,
+        hydrate_eos,
+        fluid_eos: list,
+    ) -> "HydrateKinetics":
+        """Build instance explicitly because non-serializable EOS objects
+        (``hydrate_eos``, ``fluid_eos``) must be supplied via context.
+
+        :param config: validated config
+        :type config: HydrateKineticsConfig
+        :param hydrate_eos: hydrate-phase EOS object
+        :type hydrate_eos: object
+        :param fluid_eos: list of fluid-phase EOS objects
+        :type fluid_eos: list[object]
+        :return: HydrateKinetics instance
+        :rtype: HydrateKinetics
+        """
+        return cls(
+            components=list(config.components),
+            phases=list(config.phases),
+            Mw=list(config.Mw),
+            hydrate_eos=hydrate_eos,
+            fluid_eos=fluid_eos,
+            stoich=list(config.stoich) if config.stoich is not None else None,
+            perm=config.perm,
+            poro=config.poro,
+            k=config.k,
+            F_a=config.F_a,
+            moridis=config.moridis,
+            enthalpy=config.enthalpy,
+        )
+
+
+register_evaluator("hydrate_kinetics", HydrateKinetics, HydrateKineticsConfig)
+
 
 # ---------------------------
 # Mineral kinetics working with databases
@@ -211,8 +498,13 @@ _DEFAULT_DB_DIR = Path(__file__).parent / 'databases'
 def _resolve_kinetic_db_path(kinetic_database: str | Path) -> Path:
     """Resolve path to kinetics JSON database.
 
-    If `kinetic_database` is an existing path, use it. Otherwise, treat it as
-    a name within the default databases directory and append .json.
+    If ``kinetic_database`` is an existing path, use it. Otherwise, treat it as
+    a name within the default databases directory and append ``.json``.
+
+    :param kinetic_database: path or name of the kinetics database
+    :type kinetic_database: str | Path
+    :return: resolved path to the database file
+    :rtype: Path
     """
     candidate = Path(kinetic_database)
     if candidate.exists():
@@ -227,6 +519,13 @@ def _resolve_kinetic_db_path(kinetic_database: str | Path) -> Path:
 
 
 def _load_kinetic_registry(db_path: Path) -> dict:
+    """Load and normalize a kinetics database file.
+
+    :param db_path: path to JSON kinetics database
+    :type db_path: Path
+    :return: mapping mineral_name -> mechanism_name -> parameters
+    :rtype: dict
+    """
     with db_path.open('r', encoding='utf-8') as f:
         data = json.load(f)
     # Normalize: compute pre-exponential factor k from logk when needed
@@ -247,52 +546,88 @@ def _load_kinetic_registry(db_path: Path) -> dict:
 _SUPPORTED_MECHANISMS = {'acidic', 'neutral', 'carbonate'}
 
 
-class LinearReactionSurfaceArea:
+class LinearReactionSurfaceArea(EvaluatorBase):
+    """Reaction surface area linear in mineral volume fraction."""
+
     def __init__(self, initial_area_per_mol: float):
         """
-        Initialize the reaction surface area evaluator.
         :param initial_area_per_mol: initial area per mol [m2/mol]
         :type initial_area_per_mol: float
         """
         self.s_init = initial_area_per_mol
 
     def evaluate(self, vol_fraction):
+        """
+        :param vol_fraction: mineral volume fraction
+        :type vol_fraction: float
+        :return: surface area [m2/mol]
+        :rtype: float
+        """
         return self.s_init * vol_fraction
+
+    def to_config(self) -> LinearReactionSurfaceAreaConfig:
+        """Build Config explicitly because the storage attribute ``s_init``
+        diverges from the Config field name ``initial_area_per_mol``.
+
+        :return: serialized config
+        :rtype: LinearReactionSurfaceAreaConfig
+        """
+        return LinearReactionSurfaceAreaConfig(initial_area_per_mol=self.s_init)
+
+
+register_evaluator(
+    "linear_reaction_surface_area",
+    LinearReactionSurfaceArea,
+    LinearReactionSurfaceAreaConfig,
+)
 
 
 class ReactionMechanism:
-    """
-    Class representing an Arrhenius-type reaction mechanism
-    with chemical affinity term (1-SR**p)**q.
+    """Class representing an Arrhenius-type reaction mechanism with chemical
+    affinity term ``(1 - SR**p)**q``.
     """
 
     def __init__(self, name, temperature_ref, k, Ea, n, p=1, q=1):
+        """
+        :param name: mechanism name (``'acidic'``, ``'neutral'`` or ``'carbonate'``)
+        :type name: str
+        :param temperature_ref: reference temperature [K]
+        :type temperature_ref: float
+        :param k: pre-exponential factor [mol/m2/s]
+        :type k: float
+        :param Ea: activation energy [J/mol]
+        :type Ea: float
+        :param n: reaction order with respect to activity
+        :type n: float
+        :param p: chemical affinity parameter (exponent on ``SR``)
+        :type p: float
+        :param q: chemical affinity parameter (outer exponent)
+        :type q: float
+        """
         # maximum saturation ratio threshold for chemical affinity term
         self.SR_threshold = 100
         # universal gas constant [J/mol/K]
         self.R = 8.314472
-        # name of the mechanism
         self.name = name
-        # reference temperature when rate parameters are given [K]
         self.temperature_ref = temperature_ref
-        # pre-exponential factor [mol/m2/s]
         self.k = k
-        # activation energy [J/mol]
         self.Ea = Ea
-        # reaction order with respect to given activity/anything
         self.n = n
-        # chemical affinity parameter in (1-SR**p)**q term
         self.p = p
-        # chemical affinity parameter in (1-SR**p)**q term
         self.q = q
 
     def evaluate(self, temperature, activity, SR):
-        """
-        Evaluate the reaction rate for a given temperature, activity, and saturation ratio.
+        """Evaluate the reaction rate for a given temperature, activity, and
+        saturation ratio.
+
         :param temperature: temperature [K]
+        :type temperature: float
         :param activity: activity of the reactant relevant to the mechanism
+        :type activity: float
         :param SR: saturation ratio
+        :type SR: float
         :return: reaction rate [mol/s/m2]
+        :rtype: float
         """
         # calculate the Arrhenius factor
         k_arr = self.k * np.exp(
@@ -307,7 +642,7 @@ class ReactionMechanism:
         return rate
 
 
-class KineticRate:
+class KineticRate(EvaluatorBase):
     """Evaluate mineral kinetic rates loaded from a kinetics database.
 
     Database may be a path or a named JSON in the default databases folder.
@@ -323,15 +658,20 @@ class KineticRate:
     ):
         """Create a kinetic rate evaluator for a single mineral.
 
-        Parameters
-        - min_z: Minimum composition value (kept for API symmetry)
-        - mineral_name: Mineral identifier, e.g. 'CaCO3'
-        - mechanisms: List of mechanism names, e.g. ['acidic','neutral']
-        - surface_area_ev: Surface area evaluator, e.g. LinearReactionSurfaceArea
-        - kinetic_database: Path or name of kinetics DB (without .json)
+        :param min_z: minimum composition value (kept for API symmetry)
+        :type min_z: float
+        :param mineral_name: mineral identifier, e.g. ``'CaCO3'``
+        :type mineral_name: str
+        :param mechanisms: list of mechanism names (e.g. ``['acidic', 'neutral']``)
+        :type mechanisms: list[str]
+        :param surface_area_ev: surface area evaluator
+        :type surface_area_ev: LinearReactionSurfaceArea
+        :param kinetic_database: path or name of kinetics DB (without ``.json``)
+        :type kinetic_database: str | Path
         """
         self.min_z = min_z
         self.surface_area_ev = surface_area_ev
+        self.kinetic_database = kinetic_database
 
         db_path = _resolve_kinetic_db_path(kinetic_database)
         registry = _load_kinetic_registry(db_path)
@@ -355,12 +695,17 @@ class KineticRate:
     def evaluate(self, kin_state, solid_saturation, rho_s, temperature):
         """Compute kinetic rate [kmol/d/m3] for the configured mineral.
 
-        Parameters
-        - kin_state: Dict-like with activities/saturation ratios from PHREEQC; expects keys
-          'Act(H+)', 'Act(CO2)', and 'SR_<mineral>'
-        - solid_saturation: Solid saturation (volume fraction) of the mineral
-        - rho_s: Solid molar density [kmol/m3]
-        - temperature: Temperature [K]
+        :param kin_state: dict with activities/saturation ratios from PHREEQC;
+            expects keys ``'Act(H+)'``, ``'Act(CO2)'`` and ``'SR_<mineral>'``
+        :type kin_state: dict
+        :param solid_saturation: solid saturation (volume fraction) of the mineral
+        :type solid_saturation: float
+        :param rho_s: solid molar density [kmol/m3]
+        :type rho_s: float
+        :param temperature: temperature [K]
+        :type temperature: float
+        :return: kinetic rate [kmol/d/m3]
+        :rtype: float
         """
         if not self.mechanisms:
             return 0.0
@@ -395,6 +740,15 @@ class KineticRate:
 
     @staticmethod
     def _validate_mineral(mineral_name: str, registry: dict) -> str:
+        """Validate mineral name against the registry.
+
+        :param mineral_name: mineral identifier
+        :type mineral_name: str
+        :param registry: loaded kinetics registry
+        :type registry: dict
+        :return: validated mineral key
+        :rtype: str
+        """
         if not isinstance(mineral_name, str) or not mineral_name.strip():
             raise ValueError("'mineral_name' must be a non-empty string")
         mineral_key = mineral_name.strip()
@@ -407,6 +761,15 @@ class KineticRate:
 
     @staticmethod
     def _validate_mechanisms(mechanisms, mech_defs: dict) -> list[str]:
+        """Validate, normalize and de-duplicate the requested mechanism list.
+
+        :param mechanisms: input mechanism names
+        :type mechanisms: list[str] | tuple[str, ...]
+        :param mech_defs: mechanism definitions for the chosen mineral
+        :type mech_defs: dict
+        :return: normalized list of mechanism keys
+        :rtype: list[str]
+        """
         if not isinstance(mechanisms, list | tuple) or len(mechanisms) == 0:
             raise ValueError("'mechanisms' must be a non-empty list of strings")
         clean: list[str] = []
@@ -427,3 +790,47 @@ class KineticRate:
             if mk not in clean:
                 clean.append(mk)
         return clean
+
+    def to_config(self) -> KineticRateConfig:
+        """Build Config explicitly to recursively serialize the nested
+        surface-area evaluator and to translate stored attributes
+        (``mineral`` -> Config field ``mineral_name``, list of
+        ``ReactionMechanism`` objects -> list of names).
+
+        :return: serialized config
+        :rtype: KineticRateConfig
+        """
+        if not isinstance(self.surface_area_ev, EvaluatorBase):
+            raise TypeError(
+                "KineticRate.surface_area_ev must be an EvaluatorBase to serialize; "
+                f"got {type(self.surface_area_ev).__name__}"
+            )
+        return KineticRateConfig(
+            min_z=self.min_z,
+            mineral_name=self.mineral,
+            mechanisms=[m.name for m in self.mechanisms],
+            surface_area_ev=self.surface_area_ev.to_config(),
+            kinetic_database=str(self.kinetic_database),
+        )
+
+    @classmethod
+    def from_config(cls, config: KineticRateConfig) -> "KineticRate":
+        """Build instance explicitly: materialize the nested surface-area
+        Config into a live evaluator before constructing.
+
+        :param config: validated config
+        :type config: KineticRateConfig
+        :return: KineticRate instance
+        :rtype: KineticRate
+        """
+        surface_area_ev = LinearReactionSurfaceArea.from_config(config.surface_area_ev)
+        return cls(
+            min_z=config.min_z,
+            mineral_name=config.mineral_name,
+            mechanisms=list(config.mechanisms),
+            surface_area_ev=surface_area_ev,
+            kinetic_database=config.kinetic_database,
+        )
+
+
+register_evaluator("kinetic_rate", KineticRate, KineticRateConfig)

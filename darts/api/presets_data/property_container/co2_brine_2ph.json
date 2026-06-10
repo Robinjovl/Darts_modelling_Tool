@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "name": "co2_brine_2ph",
+    "description": "Two-phase CO2-brine PropertyContainer (gas, wat) with H2O+CO2 components, isothermal at 350 K, sandstone rock compressibility.",
+    "references": [],
+    "tags": ["property-container", "co2", "brine", "two-phase", "isothermal", "co2-storage"],
+    "version": "1"
+  },
+  "config": {
+    "phases_name": ["gas", "wat"],
+    "components_name": ["H2O", "CO2"],
+    "Mw": [18.015, 44.01],
+    "min_z": 1e-9,
+    "temperature": 350.0,
+    "rock_comp": 1.45e-05
+  }
+}

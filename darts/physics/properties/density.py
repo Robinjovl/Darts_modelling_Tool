@@ -1,35 +1,147 @@
 import abc
 import warnings
+from typing import Literal
 
 import numpy as np
+from pydantic import Field
+
+from darts.physics.properties.evaluator_base import (
+    EvaluatorBase,
+    EvaluatorConfigBase,
+    register_evaluator,
+)
 
 
-class Density:
+class DensityBasicConfig(EvaluatorConfigBase):
+    """Configuration for DensityBasic evaluator."""
+
+    kind: Literal["density_basic"] = "density_basic"
+    compr: float = Field(ge=0)
+    dens0: float = Field(gt=0)
+
+
+class DensityBrineCO2Config(EvaluatorConfigBase):
+    """Configuration for DensityBrineCO2 evaluator."""
+
+    kind: Literal["density_brine_co2"] = "density_brine_co2"
+    dens0: float = Field(gt=0)
+    compr: float = Field(0.0, ge=0)
+    p0: float = Field(1.0)
+    co2_mult: float = Field(0.0)
+    ions_mult: float = Field(0.0)
+
+
+class Density4IonsConfig(EvaluatorConfigBase):
+    """Configuration for Density4Ions evaluator."""
+
+    kind: Literal["density_4ions"] = "density_4ions"
+    density: float = Field(gt=0)
+    compressibility: float = Field(0.0, ge=0)
+    p_ref: float = Field(1.0)
+    ions_fac: float = Field(0.0)
+
+
+class Spivey2004Config(EvaluatorConfigBase):
+    """Configuration for Spivey2004 brine density correlation."""
+
+    kind: Literal["spivey_2004"] = "spivey_2004"
+
+
+class Garcia2001Config(EvaluatorConfigBase):
+    """Configuration for Garcia2001 brine+CO2 density correlation."""
+
+    kind: Literal["garcia_2001"] = "garcia_2001"
+
+
+class Density(EvaluatorBase):
+    """Family ABC for density evaluators.
+
+    Concrete subclasses implement :meth:`evaluate` returning a phase density
+    [kg/m3] for given pressure, temperature, and composition.
+    """
+
     def __init__(self, components: list = None):
+        """
+        :param components: list of fluid component names (used only to compute ``self.nc``)
+        :type components: list[str] | None
+        """
         self.nc = len(components) if components is not None else 0
 
     @abc.abstractmethod
     def evaluate(self, pressure, temperature, x):
+        """
+        :param pressure: pressure [bar]
+        :type pressure: float
+        :param temperature: temperature [K]
+        :type temperature: float
+        :param x: phase composition (molar fractions)
+        :type x: list[float] | np.ndarray
+        :return: phase density [kg/m3]
+        :rtype: float
+        """
         pass
 
 
 class DensityBasic(Density):
+    """Constant density with first-order compressibility:
+    ``rho = dens0 * (1 + compr * (p - p0))``.
+    """
+
     def __init__(self, dens0, compr=0.0, p0=1.0):
+        """
+        :param dens0: reference density [kg/m3]
+        :type dens0: float
+        :param compr: linear compressibility [1/bar]
+        :type compr: float
+        :param p0: reference pressure [bar]
+        :type p0: float
+        """
         super().__init__()
         self.dens0 = dens0
         self.compr = compr
         self.p0 = p0
 
     def evaluate(self, pressure, temperature: float = None, x: list = None):
+        """
+        :param pressure: pressure [bar]
+        :type pressure: float
+        :param temperature: temperature [K] (unused)
+        :type temperature: float | None
+        :param x: composition (unused)
+        :type x: list[float] | None
+        :return: density [kg/m3]
+        :rtype: float
+        """
         return self.dens0 * (1 + self.compr * (pressure - self.p0))
 
 
+register_evaluator("density_basic", DensityBasic, DensityBasicConfig)
+
+
 class DensityBrineCO2(DensityBasic):
+    """Linear-compressibility density with optional CO2 enrichment offset."""
+
     def __init__(
         self, components, dens0=1000.0, compr=0.0, p0=1.0, co2_mult=0.0, ions_mult=0.0
     ):
+        """
+        :param components: list of fluid component names
+        :type components: list[str]
+        :param dens0: reference density [kg/m3]
+        :type dens0: float
+        :param compr: linear compressibility [1/bar]
+        :type compr: float
+        :param p0: reference pressure [bar]
+        :type p0: float
+        :param co2_mult: CO2 enrichment multiplier
+        :type co2_mult: float
+        :param ions_mult: ion enrichment multiplier
+        :type ions_mult: float
+        """
         super().__init__(dens0, compr, p0)
         self.co2_mult = co2_mult
+        self.ions_mult = ions_mult
+        self._components = list(components)
 
         if "CO2" in components:
             self.CO2_idx = components.index("CO2")
@@ -37,6 +149,16 @@ class DensityBrineCO2(DensityBasic):
             self.CO2_idx = None
 
     def evaluate(self, pressure, temperature: float, x: list):
+        """
+        :param pressure: pressure [bar]
+        :type pressure: float
+        :param temperature: temperature [K]
+        :type temperature: float
+        :param x: phase composition (molar fractions)
+        :type x: list[float] | np.ndarray
+        :return: density [kg/m3]
+        :rtype: float
+        """
         if self.CO2_idx is not None:
             x_co2 = x[self.CO2_idx]
         else:
@@ -48,19 +170,79 @@ class DensityBrineCO2(DensityBasic):
         return density
 
 
-class Density4Ions:
+register_evaluator("density_brine_co2", DensityBrineCO2, DensityBrineCO2Config)
+
+
+class Density4Ions(EvaluatorBase):
+    """Density evaluator with first-order compressibility plus ion correction
+    (Taylor expansion).
+    """
+
     def __init__(self, density, compressibility=0, p_ref=1, ions_fac=0):
+        """
+        :param density: reference density [kg/m3]
+        :type density: float
+        :param compressibility: linear compressibility [1/bar]
+        :type compressibility: float
+        :param p_ref: reference pressure [bar]
+        :type p_ref: float
+        :param ions_fac: ion correction factor
+        :type ions_fac: float
+        """
         super().__init__()
-        # Density evaluator class based on simple first order compressibility approximation (Taylor expansion)
         self.density_rc = density
         self.cr = compressibility
         self.p_ref = p_ref
         self.ions_fac = ions_fac
 
     def evaluate(self, pres, ion_liq_molefrac):
+        """
+        :param pres: pressure [bar]
+        :type pres: float
+        :param ion_liq_molefrac: ion liquid molar fraction
+        :type ion_liq_molefrac: float
+        :return: density [kg/m3]
+        :rtype: float
+        """
         return self.density_rc * (
             1 + self.cr * (pres - self.p_ref) + self.ions_fac * ion_liq_molefrac
         )
+
+    def to_config(self) -> Density4IonsConfig:
+        """Build Config explicitly because attribute names diverge from Config
+        field names (``density_rc`` vs ``density``, ``cr`` vs
+        ``compressibility``).
+
+        :return: serialized config
+        :rtype: Density4IonsConfig
+        """
+        return Density4IonsConfig(
+            density=self.density_rc,
+            compressibility=self.cr,
+            p_ref=self.p_ref,
+            ions_fac=self.ions_fac,
+        )
+
+    @classmethod
+    def from_config(cls, config: Density4IonsConfig) -> "Density4Ions":
+        """Build instance explicitly because Config field names diverge from
+        constructor argument names (``density``/``compressibility`` are stored
+        under different attribute names).
+
+        :param config: validated config
+        :type config: Density4IonsConfig
+        :return: Density4Ions instance
+        :rtype: Density4Ions
+        """
+        return cls(
+            density=config.density,
+            compressibility=config.compressibility,
+            p_ref=config.p_ref,
+            ions_fac=config.ions_fac,
+        )
+
+
+register_evaluator("density_4ions", Density4Ions, Density4IonsConfig)
 
 
 class Spivey2004(Density):
@@ -88,17 +270,36 @@ class Spivey2004(Density):
     ]
 
     def __init__(self, components: list, ions: list = None, combined_ions: list = None):
+        """
+        :param components: fluid component names
+        :type components: list[str]
+        :param ions: ion species names
+        :type ions: list[str] | None
+        :param combined_ions: optional combined-ion weights
+        :type combined_ions: list[float] | None
+        """
         super().__init__(components)
 
         self.H2O_idx = components.index("H2O") if "H2O" in components else None
         if self.H2O_idx is None:
             warnings.warn("H2O not present", stacklevel=2)
 
+        self._components = list(components)
         self.ions = ions
         self.ni = len(ions) if ions is not None else 0
         self.combined_ions = combined_ions
 
     def evaluate(self, pressure, temperature, x):
+        """
+        :param pressure: pressure [bar]
+        :type pressure: float
+        :param temperature: temperature [K]
+        :type temperature: float
+        :param x: composition (molar fractions)
+        :type x: list[float] | np.ndarray
+        :return: density [kg/m3]
+        :rtype: float
+        """
         tc = temperature - 273.15  # Temp in [Celcius]
         tc_100 = tc / 100  # needed many times
         p0 = 700  # reference pressure of 70 MPa
@@ -150,18 +351,38 @@ class Spivey2004(Density):
         return rho  # kg/m3
 
 
+register_evaluator("spivey_2004", Spivey2004, Spivey2004Config)
+
+
 class Garcia2001(Spivey2004):
     """
     Correlation for brine density with dissolved CO2: Garcia (2001) - Density of aqueous solutions of CO2
     """
 
     def __init__(self, components: list, ions: list = None, combined_ions: list = None):
+        """
+        :param components: fluid component names
+        :type components: list[str]
+        :param ions: ion species names
+        :type ions: list[str] | None
+        :param combined_ions: optional combined-ion weights
+        :type combined_ions: list[float] | None
+        """
         super().__init__(components, ions, combined_ions)
 
         self.CO2_idx = components.index("CO2") if "CO2" in components else None
 
     def evaluate(self, pressure, temperature, x):
-        """"""
+        """
+        :param pressure: pressure [bar]
+        :type pressure: float
+        :param temperature: temperature [K]
+        :type temperature: float
+        :param x: composition (molar fractions)
+        :type x: list[float] | np.ndarray
+        :return: density [kg/m3]
+        :rtype: float
+        """
         rho_b = super().evaluate(pressure, temperature, x)
 
         # If CO2 is present, correct density
@@ -181,3 +402,6 @@ class Garcia2001(Spivey2004):
             rho = rho_b
 
         return rho
+
+
+register_evaluator("garcia_2001", Garcia2001, Garcia2001Config)

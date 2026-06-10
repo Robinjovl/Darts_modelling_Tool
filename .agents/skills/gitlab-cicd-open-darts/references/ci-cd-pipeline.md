@@ -41,7 +41,7 @@ pre_commit → build_images → build → test → deploy → ingest
 | `valgrind-check.yml` | Valgrind memory leak detection |
 | `upload-wheels.yml` | Wheel upload to SMB/artifacts |
 | `deploy.yml` | PyPI, Zenodo, GitLab Pages, Apptainer deploy |
-| `gitingest.yml` | Code ingestion for MCP server |
+| `ingest.yml` | Gitingest digest jobs and Tahiti GPU model-reference artifact assembly |
 
 ---
 
@@ -60,6 +60,8 @@ Jobs trigger based on these conditions:
 | `UPLOAD_TEST_PYPI=1` | Upload to TestPyPI |
 | `DOCS_PAGES=1` | Build + deploy documentation |
 | `RUN_APPTAINER_DEPLOY=1` | Push Apptainer image to registry |
+| `ENABLE_GITINGEST=1` on `development` | Run `gitingest-digest` and downstream MCP ingest |
+| `MCP_TRIGGER_TAHITI_GPU=1` | Create Tahiti GPU-only pipeline jobs, including `build-linux-tahiti-gpu` and `assemble-model-references-tahiti-gpu` |
 
 ---
 
@@ -173,6 +175,9 @@ cd docs && sphinx-build -b html . public
 | Test logs | `models/_logs/*.log` | 1 week |
 | Valgrind logs | `models/_valgrind_logs/*.log` | 1 week |
 | PKL archives | `models/pkl_lin.tar.gz` | 1 week |
+| Gitingest digests | `digest/open-darts-digest-*.json`, `digest/open-darts-models-*.json` | 1 week |
+| Gitingest logs | `digest/gitingest-*.txt` | 1 week |
+| Model reference artifacts | `digest/models/` | 1 week |
 | Linting output | `linting_output.log` | 1 week |
 | Documentation | `public/` | Permanent (Pages) |
 
@@ -188,6 +193,8 @@ cd docs && sphinx-build -b html . public
 | `UPLOAD_TEST_PYPI` | Upload to TestPyPI |
 | `DOCS_PAGES` | Build and deploy documentation |
 | `RUN_APPTAINER_DEPLOY` | Deploy Apptainer image |
+| `ENABLE_GITINGEST` | Enable `gitingest-digest` on `development` |
+| `MCP_TRIGGER_TAHITI_GPU` | Switch pipeline to Tahiti GPU-triggered jobs |
 | `APPEND_VTUNE_MODEL` | Additional models for VTune profiling |
 | `SMBNAME`, `SMBLOGIN`, `SMBPASS` | SMB credentials for bos_solvers |
 | `PYPIUSER`, `PYPIPWD` | PyPI upload credentials |
