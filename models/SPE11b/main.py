@@ -11,8 +11,7 @@ import pickle
 import platform as py_platform
 import sys
 
-# from model_b import Model, PorPerm, Corey, layer_props
-from model_b import Model
+from model import Model
 from darts.engines import redirect_darts_output, sim_params
 from darts.engines import well_control_iface
 
@@ -343,7 +342,7 @@ if __name__ == '__main__':
     for specs in model_specs:
 
         """ set up output directory """
-        from model_b import build_output_dir
+        from model import build_output_dir
         if specs['output_dir'] is None:
             specs["output_dir"] = build_output_dir(specs)
         else:
