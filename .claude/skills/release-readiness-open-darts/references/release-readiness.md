@@ -21,7 +21,7 @@ across all skills for the rest of the session.
 Default session environment:
 
 ```bash
-conda create -y -n open-darts-session python=3.10
+conda create -y -n open-darts-session python=3.11
 conda activate open-darts-session
 ```
 

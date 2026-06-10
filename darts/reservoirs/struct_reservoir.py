@@ -832,9 +832,7 @@ class StructReservoir(ReservoirBase):
 
                 self.vtkobj.Write2VTU(mesh_filename)
                 if len(self.vtk_filenames_and_times) == 0:
-                    for key, _data in self.global_data.items():
-                        self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray("cellNormals")
+                    self.vtkobj.cell_data.clear()
         return
 
     def output_to_vtk(
@@ -890,9 +888,7 @@ class StructReservoir(ReservoirBase):
 
             vtk_file_name = self.vtkobj.Write2VTU(vtk_file_name)
             if len(self.vtk_filenames_and_times) == 0:
-                for key, _data in self.global_data.items():
-                    self.vtkobj.VTK_Grids.GetCellData().RemoveArray(key)
-                self.vtkobj.VTK_Grids.GetCellData().RemoveArray("cellNormals")
+                self.vtkobj.cell_data.clear()
 
         # in order to have correct timesteps in Paraview, write down group file
         # since the library in use (pyevtk) requires the group file to call .save() method in the end,

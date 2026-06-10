@@ -6,9 +6,7 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import vtk
 import xarray as xr
-from vtk.util.numpy_support import numpy_to_vtk
 
 from darts.engines import (
     index_vector,
@@ -21,13 +19,14 @@ from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.geothermal.physics import Geothermal
 from darts.physics.super.physics import Compositional
 from darts.tools.hdf5_tools import load_hdf5_to_dict
+from darts.tools.vtk_io import write_lines_vtp, write_pvd
 
 
 class Output:
     """
-    This class handles simulation output including primary variables, secondary variables,
-    well reporting and visualizations (pyplots, .vtk files). All simulation output is saved
-    into HDF5 files. To view the contents of these HDF5 files users are recommended to use an HDF5 viewer.
+    This class handles simulation output including reservoir/well primary variables, secondary variables,
+    well time-series, and visualizations (pyplots, .vtk files). All simulation output is saved
+    into HDF5 files. To view the contents of these HDF5 files, users are recommended to use an HDF5 viewer.
     Alternatively, primary and secondary variables can also be processed into xarray format.
 
     * **Primary variables** (state/unknowns) for reservoir blocks and well blocks are written
@@ -69,7 +68,7 @@ class Output:
         has_dfm_well: bool = False,
     ):
         """
-        :param timer: timer object, measurs time spent saving data, and evaluating properties.
+        :param timer: timer object, measures time spent saving data, and evaluating properties.
         :param reservoir: reservoir object.
         :param physics: physics object.
         :param wells: dict of well objects if the DFM well is used
@@ -229,12 +228,22 @@ class Output:
                     extrapolation_flag=self.physics.extrapolation_flag,
                     dz=self.physics.dz,
                 )
+                # Match the reservoir/well interpolators: extended axes when the physics has
+                # history fields, primary axes otherwise. Output.output_properties(engine=True)
+                # feeds the full [X | Xhistory] state into this interpolator, so the axis layout
+                # must match that.
+                ax_min, ax_max, n_pts = (
+                    self.physics.get_interpolator_axes()
+                    if hasattr(self.physics, "get_interpolator_axes")
+                    else (self.physics.axes_min, self.physics.axes_max, None)
+                )
                 self.physics.property_itor[region], n_ops = (
                     self.physics.create_interpolator(
                         self.physics.property_operators[region],
                         n_ops=self.physics.n_ops,
-                        axes_min=self.physics.axes_min,
-                        axes_max=self.physics.axes_max,
+                        axes_min=ax_min,
+                        axes_max=ax_max,
+                        n_axes_points=n_pts,
                         platform='cpu',
                         algorithm='multilinear',
                         mode='adaptive',
@@ -342,12 +351,18 @@ class Output:
                 extrapolation_flag=self.physics.extrapolation_flag,
                 dz=self.physics.dz,
             )
+            ax_min, ax_max, n_pts = (
+                self.physics.get_interpolator_axes()
+                if hasattr(self.physics, "get_interpolator_axes")
+                else (self.physics.axes_min, self.physics.axes_max, None)
+            )
             self.physics.property_itor[region], n_ops = (
                 self.physics.create_interpolator(
                     self.physics.property_operators[region],
                     n_ops=self.physics.n_ops,
-                    axes_min=self.physics.axes_min,
-                    axes_max=self.physics.axes_max,
+                    axes_min=ax_min,
+                    axes_max=ax_max,
+                    n_axes_points=n_pts,
                     platform='cpu',
                     algorithm='multilinear',
                     mode='adaptive',
@@ -682,7 +697,12 @@ class Output:
         return centroids
 
     def configure_h5_output(
-        self, sol_filepath: str, cell_ids, description, add_static_data: bool = False
+        self,
+        sol_filepath: str,
+        cell_ids,
+        description,
+        add_static_data: bool = False,
+        extended_state: bool = True,
     ):
         """
         Create and initialize an HDF5 output file for simulation results.
@@ -764,10 +784,24 @@ class Output:
                 )
                 cell_ids_dataset[:] = cell_ids
 
+            # Reservoir H5 stores extended state [X | Xhistory] so restart preserves history;
+            # well H5 accumulates only primary Newton state (n_vars-wide), so it stays
+            # primary-width regardless of history_fields.
+            if extended_state and hasattr(self.physics, "n_state"):
+                n_state = self.physics.n_state
+                var_labels = (
+                    self.physics.get_interpolator_state_labels()
+                    if hasattr(self.physics, "get_interpolator_state_labels")
+                    else list(self.physics.vars)
+                )
+            else:
+                n_state = self.physics.n_vars
+                var_labels = list(self.physics.vars)
+
             dynamic_group.create_dataset(
                 "X",
-                shape=(0, nb, self.physics.n_vars),
-                maxshape=(None, nb, self.physics.n_vars),
+                shape=(0, nb, n_state),
+                maxshape=(None, nb, n_state),
                 dtype=self.precision_map[self.precision],
                 compression=self.compression,
                 compression_opts=self.compression_level,
@@ -776,7 +810,7 @@ class Output:
             # add variable names
             datatype = h5py.special_dtype(vlen=str)  # dtype for variable-length strings
             dynamic_group.create_dataset(
-                "variable_names", data=np.array(self.physics.vars, dtype=datatype)
+                "variable_names", data=np.array(var_labels, dtype=datatype)
             )
 
             # write brief description
@@ -824,6 +858,7 @@ class Output:
                 cell_ids=self.id_well_data,
                 add_static_data=True,
                 description="Well data",
+                extended_state=False,
             )
 
         if hasattr(self, "output_configured"):
@@ -856,13 +891,28 @@ class Output:
                 n_new = len(times)
             else:
                 times = np.array([self.physics.engine.t])
-                X = np.asarray(self.physics.engine.X)
-                reshaped = X.reshape(
-                    (self.reservoir.mesh.n_blocks, self.physics.n_vars)
-                )[cell_id]
+                # Dataset width drives whether we write the extended state [X | Xhistory] (reservoir
+                # H5, used for restart) or just the primary Newton state (well H5).
+                dataset_width = x_dataset.shape[2]
+                if dataset_width > self.physics.n_vars and hasattr(
+                    self.physics, "get_engine_interpolator_state"
+                ):
+                    full = np.asarray(
+                        self.physics.get_engine_interpolator_state(
+                            n_blocks=self.reservoir.mesh.n_blocks
+                        ),
+                        dtype=float,
+                    )
+                    reshaped = full.reshape(
+                        (self.reservoir.mesh.n_blocks, dataset_width)
+                    )[cell_id]
+                else:
+                    reshaped = np.asarray(self.physics.engine.X).reshape(
+                        (self.reservoir.mesh.n_blocks, self.physics.n_vars)
+                    )[cell_id]
                 data_array = np.expand_dims(
                     reshaped, axis=0
-                )  # shape (1, n_cells, n_vars)
+                )  # shape (1, n_cells, n_state)
                 cfl_values = np.array([self.physics.engine.CFL_max])
                 n_new = 1
 
@@ -1041,13 +1091,19 @@ class Output:
             # Get current time
             timesteps = np.array(self.physics.engine.t).reshape(1)
 
-            X = np.array(
-                self.physics.engine.X[
-                    : self.physics.n_vars * self.reservoir.mesh.n_res_blocks
-                ],
-                copy=True,
-            )  # reservoir solution at current time
-            var_names = self.physics.vars  # primary variable names
+            if hasattr(self.physics, "get_interpolator_state_labels"):
+                X = self.physics.get_engine_interpolator_state(
+                    n_blocks=self.reservoir.mesh.n_res_blocks
+                )
+                var_names = self.physics.get_interpolator_state_labels()
+            else:
+                X = np.array(
+                    self.physics.engine.X[
+                        : self.physics.n_vars * self.reservoir.mesh.n_res_blocks
+                    ],
+                    copy=True,
+                )
+                var_names = self.physics.vars
 
         n_vars = len(var_names)  # number of primary variables
         nb = self.reservoir.mesh.n_res_blocks  # number of reservoir blocks
@@ -1743,12 +1799,12 @@ class Output:
         """
         Evaluate and store well primary and secondary variables of the ith step in vtp files
 
-        :param output_properties: List of properties to evaluate. Defaults to None, which considers only primary vars.
-        :type output_properties: list
         :param ith_step: ith reporting step for which you want to create vtp files for
         :type ith_step: int
+        :param output_properties: List of properties to evaluate. Defaults to None, which considers only primary vars.
+        :type output_properties: list
         :param output_directory: Directory of where to save vtp files
-        :type: str
+        :type output_directory: str
         """
         if not self.has_dfm_well:
             return
@@ -1765,6 +1821,11 @@ class Output:
         time, output_data = self.well_output_properties(
             output_properties=output_properties, ith_step=ith_step
         )
+
+        if not hasattr(self, "_vtp_time_series"):
+            self._vtp_time_series = {}
+        output_key = os.path.abspath(output_directory)
+        output_time_series = self._vtp_time_series.setdefault(output_key, {})
 
         # Store well primary and seconday props in vtp files
         for w_name in self.wells.keys():
@@ -1791,12 +1852,31 @@ class Output:
                 nodes_xyz=nodes_coords,
                 output_properties=output_data,
                 ith_step=ith_step,
-                time=time,
                 output_directory=output_directory,
             )
 
+            # Accumulate time-series entries for this well
+            entries = output_time_series.setdefault(w_name, [])
+            vtp_filename = f"solution_well_{w_name}_ts{ith_step:d}.vtp"
+            if not any(f == vtp_filename for _, f in entries):
+                entries.append((time, vtp_filename))
+
+        self._write_wells_pvd(output_directory, output_time_series)
+
         self.timer.node["vtp_output"].stop()
         self.timer.stop()
+
+    def _write_wells_pvd(self, output_directory: str, output_time_series: dict):
+        """
+        Write one PVD collection containing all DFM well VTP files.
+        """
+        pvd_entries = []
+        for part, (w_name, entries) in enumerate(output_time_series.items(), start=1):
+            for time, vtp_filename in entries:
+                pvd_entries.append((time, vtp_filename, f"well_{w_name}", part))
+
+        pvd_entries.sort(key=lambda entry: (entry[0], entry[3], entry[1]))
+        write_pvd(os.path.join(output_directory, "wells.pvd"), pvd_entries)
 
     def well_output_properties(
         self,
@@ -1901,12 +1981,10 @@ class Output:
         nodes_xyz: np.ndarray,
         output_properties: dict,
         ith_step: int,
-        time: float,
         output_directory: str,
-        active: bool = None,
     ):
         """
-        Write well trajectory as .vtp (VTK PolyData) with segment-based primary and secondary vars as CELL data.
+        Write well output as .vtp (VTK PolyData) with segment-based primary and secondary vars as CELL data.
 
         :param well_name: Name of the well
         :type well_name: str
@@ -1916,63 +1994,14 @@ class Output:
         :type output_properties: dict
         :param ith_step: i'th reporting step for which you want to create a .vtp file for
         :type ith_step: int
-        :param time: Current simulation time
-        :type time: float
         :param output_directory: Directory of where to save the vtp file
-        :type: str
-        :param active: Optional name of variable to set as active scalars
-        :type active: bool
+        :type output_directory: str
         """
-        coords = np.asarray(nodes_xyz, dtype=float)
-        npts = coords.shape[0]
-        nseg = npts - 1
-
-        # Points
-        vtk_points = vtk.vtkPoints()
-        vtk_points.SetNumberOfPoints(npts)
-        for i, (x, y, z) in enumerate(coords):
-            vtk_points.SetPoint(i, float(x), float(y), float(z))
-
-        # Lines
-        vtk_lines = vtk.vtkCellArray()
-        for i in range(nseg):
-            vtk_lines.InsertNextCell(2)
-            vtk_lines.InsertCellPoint(i)
-            vtk_lines.InsertCellPoint(i + 1)
-
-        poly = vtk.vtkPolyData()
-        poly.SetPoints(vtk_points)
-        poly.SetLines(vtk_lines)
-
-        # Add time
-        tarr = vtk.vtkDoubleArray()
-        tarr.SetName("TimeValue")
-        tarr.SetNumberOfTuples(1)
-        tarr.SetValue(0, float(time))
-        poly.GetFieldData().AddArray(tarr)
-
-        # Cell data (segment-based)
-        cd = poly.GetCellData()
-        for name, vals in output_properties.items():
-            arr = np.asarray(vals).reshape((-1, 1))
-            if arr.shape[0] != nseg:
-                raise ValueError(f"'{name}' length {arr.shape[0]} != Nseg {nseg}")
-            vtk_arr = numpy_to_vtk(arr.astype(float), deep=True)
-            vtk_arr.SetName(name)
-            cd.AddArray(vtk_arr)
-
-        if active is None and output_properties:
-            active = next(iter(output_properties.keys()))
-        if active is not None:
-            cd.SetActiveScalars(active)
-
-        # Write
-        writer = vtk.vtkXMLPolyDataWriter()
         output_file_name = f"solution_well_{well_name}_ts{ith_step:d}.vtp"
         output_file_path = os.path.join(output_directory, output_file_name)
-        writer.SetFileName(output_file_path)
-        writer.SetInputData(poly)
-        writer.Write()
+        write_lines_vtp(
+            output_file_path, nodes_xyz, output_properties=output_properties
+        )
 
     def store_well_time_data(
         self,

@@ -1,17 +1,24 @@
-import darts.engines as darts_engines
-from darts.engines import print_build_info as engines_pbi
-from darts.print_build_info import print_build_info as package_pbi
-from for_each_model import for_each_model, run_tests, abort_redirection, redirect_all_output, for_each_model_adjoint
-from json_test_suite import run_json_tests
-import sys, os, shutil
+import os
+import shutil
 import subprocess
+import sys
 from contextlib import redirect_stdout
-from darts.engines import sim_params
+
 from compare_well_time_series import (
     compare_generated_well_time_series,
     create_well_time_series_snapshot,
     get_pkl_suffix,
 )
+from darts.engines import print_build_info as engines_pbi
+from darts.engines import sim_params
+from for_each_model import (
+    abort_redirection,
+    for_each_model,
+    for_each_model_adjoint,
+    redirect_all_output,
+    run_tests,
+)
+from json_test_suite import run_json_tests
 
 
 def _ensure_parent_dir(path):
@@ -60,6 +67,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         '2ph_do',
         '2ph_geothermal',
         '2ph_geothermal_mass_flux',
+        '2ph_hysteresis',
         '3ph_comp_w',
         '3ph_do',
         '3ph_bo',
@@ -283,6 +291,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
     # test for adjoint ------------------start---------------------------------
     print('\nAdjoint tests:')
+    failed_models_adj = []
     if len(accepted_dirs_adjoint):
         failed_models_adj = for_each_model_adjoint(model_dir, check_performance_adjoint, accepted_dirs_adjoint)
     n_total_adj = len(accepted_dirs_adjoint)

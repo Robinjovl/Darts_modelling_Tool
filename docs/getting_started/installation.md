@@ -18,7 +18,7 @@ Chemical models that rely on PHREEQC or the Reaktoro thermodynamic engine requir
 2. Create (optional) and activate the Python environment that you use for `open-darts`, for example:
 
    ```bash
-   conda create --name darts-chem python=3.10
+   conda create --name darts-chem python=3.11
    conda activate darts-chem
    ```
 

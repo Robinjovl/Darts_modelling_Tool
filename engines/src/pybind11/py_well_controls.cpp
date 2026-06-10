@@ -98,7 +98,8 @@ void pybind_well_controls(py::module &m)
       .def("get_pres_ctrl_op_idx", &well_control_iface::get_pres_ctrl_op_idx)
       .def("get_temp_ctrl_op_idx", &well_control_iface::get_temp_ctrl_op_idx)
       .def("check_constraint_violation", &well_control_iface::check_constraint_violation)
-      .def("add_to_jacobian", &well_control_iface::add_to_jacobian);
+      .def("add_to_jacobian", &well_control_iface::add_to_jacobian)
+      .def_readwrite("Xhistory_well_default", &well_control_iface::Xhistory_well_default);
 
   py::enum_<well_control_iface::WellControlType>(well_control_iface, "WellControlType")
     .value("NONE", well_control_iface::WellControlType::NONE)

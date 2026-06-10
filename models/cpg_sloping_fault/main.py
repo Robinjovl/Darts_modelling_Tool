@@ -1,15 +1,13 @@
-import numpy as np
-import pandas as pd
+import os
+
 import matplotlib.pyplot as plt
-import os, sys
-
-from darts.engines import redirect_darts_output
-from darts.tools.plot_darts import *
-from darts.tools.logging import redirect_all_output, abort_redirection
-
-from model_geothermal import ModelGeothermal
-from model_deadoil import ModelDeadOil
+import pandas as pd
 from model_CO2 import ModelCCS
+from model_deadoil import ModelDeadOil
+from model_geothermal import ModelGeothermal
+
+from darts.tools.logging import abort_redirection, redirect_all_output
+from darts.tools.plot_darts import *
 
 
 def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_log=False, platform='cpu', compare_with_ref=False):
@@ -82,6 +80,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
         output_properties_main = m.physics.vars  # only main variables
         output_properties_full = output_properties_main + m.output.properties # additional properties (might take some time to compute)
+
         n_timesteps = len(m.idata.sim.time_steps)
         for ith_step in range(n_timesteps + 1):
             # compute additional properties only for the first and for the last timestep:
@@ -89,8 +88,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
             #print('timestep', ith_step, 'output_properties:', output_properties)
             timesteps, property_array = m.output.output_properties(output_properties=output_properties, ts_idx=ith_step, engine=False)
             if ith_step == 0:
-                centers_x, centers_y, centers_z = m.reservoir.get_centers()
-                property_array.update({'centers_x' : centers_x.reshape(1,-1), 'centers_y': centers_y.reshape(1,-1), 'centers_z': centers_z.reshape(1,-1)})
+                pts = m.reservoir.get_centers()
+                property_array.update({'centers_x': pts[:, 0].reshape(1, -1), 'centers_y': pts[:, 1].reshape(1, -1), 'centers_z': pts[:, 2].reshape(1, -1)})
 
             if 0:
                 # save properties in its own *.h5 file
@@ -113,6 +112,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
                 # },
             )
 
+        m.reservoir.create_vtk_wells(output_directory=os.path.join(out_dir, 'vtk_files'))
         m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
 
     def add_columns_time_data(time_data):
