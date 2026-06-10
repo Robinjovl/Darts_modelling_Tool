@@ -27,27 +27,33 @@ models/__pycache__/
 # building info
 darts/build_info.txt
 
-# simulation results
-results_*/**
-solution.pvd
+# IDE/editor files
+.vscode
+/.idea/*
+*.vim
 
+# Build artifacts
 *.exp
-*.png
-*.xlsx
-*.pkl
 *.iobj
 *.ipdb
 *.lib
 *.pdb
-*.npy
-.vscode
-/.idea/*
 *x64*
+
+# Logs
 *.log
-*.nc
+
+# Simulation results
+results_*/**
 *.h5
-*.vim
+*.nc
+*.npy
+*.pkl
+*.png
+*.xlsx
+
+# Generated VTK/ParaView output files
+*.pvd
 *.vtk
 *.vtp
 *.vtu
-*.pvd
