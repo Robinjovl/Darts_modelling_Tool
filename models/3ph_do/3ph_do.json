@@ -59,7 +59,7 @@
       {
         "region": 0,
         "property_container": {
-          "type_id": "pc/ModelProperties@v1",
+          "type_id": "pc/DeadOil3phImmiscibleProperties@v1",
           "config": {
             "components_name": [
               "g",
@@ -72,13 +72,12 @@
               "wat"
             ],
             "Mw": [
-              1,
-              1,
-              1
+              1.0,
+              1.0,
+              1.0
             ],
             "eps_z": 1e-09,
-            "rock_comp": 1e-06,
-            "temperature": 1.0
+            "rock_comp": 1e-06
           }
         },
         "plugins": {
@@ -126,13 +125,17 @@
             },
             "wat": {
               "type_id": "viscosity/ConstFunc@v1",
-              "config": {"$preset": "evaluators/viscosity/water_constant"}
+              "config": {
+                "value": 0.5
+              }
             }
           },
           "rel_perm_ev": {
             "gas": {
               "type_id": "relperm/PhaseRelPerm@v1",
-              "config": {"$preset": "evaluators/rel_perm/quadratic_gas"}
+              "config": {
+                "phase": "gas"
+              }
             },
             "oil": {
               "type_id": "relperm/PhaseRelPerm@v1",

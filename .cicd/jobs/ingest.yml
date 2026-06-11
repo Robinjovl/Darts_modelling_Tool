@@ -24,8 +24,9 @@ gitingest-digest:
         - conda create -n ${CONDA_ENV} python=${PY_VER} -q -y
         - conda activate ${CONDA_ENV}
         - python -m pip install --upgrade pip
-        # Try to install gitingest if available on PyPI; job will still succeed if not
-        - pip install --upgrade gitingest || true
+        # Fail fast: a missing gitingest CLI previously caused the job to
+        # silently skip digest generation while still reporting success.
+        - pip install --upgrade gitingest
     script:
         - set -euo pipefail
         - mkdir -p "${GITINGEST_OUT_DIR}" "${GITINGEST_OUT_DIR}/src"
@@ -54,26 +55,23 @@ gitingest-digest:
           if [ "$MISSING" -gt 0 ]; then
             echo "There were $MISSING missing paths (continuing)." >&2
           fi
-          # Run gitingest if available (manifest-only flow)
+          # Run gitingest with an explicit output path (-o). This replaces the
+          # previous CWD-digest.txt discovery dance, whose sed fallback carried
+          # broken quoting and could pick up a stale digest from an earlier run.
+          # NOTE: the output keeps its historical *.json name for downstream
+          # auto-detect compatibility, but the CONTENT is gitingest TEXT format
+          # (the downstream GitIngestParser is extension-agnostic; validated
+          # locally 2026-06-11: 65 files parsed losslessly).
         - |
-          if command -v gitingest >/dev/null 2>&1; then
-            echo "Running gitingest CLI..."
-            gitingest "${GITINGEST_OUT_DIR}/src" > "${GITINGEST_OUT_DIR}/gitingest-output.txt" 2> "${GITINGEST_OUT_DIR}/gitingest-stderr.txt" || true
-            OUT_FILE=""
-            if [ -f "digest.txt" ]; then
-              OUT_FILE="digest.txt"
-            else
-              OUT_FILE="$(sed -n 's/^.*Output written to:[[:space:]]*//p' \"${GITINGEST_OUT_DIR}/gitingest-output.txt\" | head -n1 | tr -d '\r')"
-            fi
-            if [ -n "${OUT_FILE}" ] && [ -f "${OUT_FILE}" ]; then
-              mkdir -p "$(dirname \"${GITINGEST_OUTPUT}\")"
-              cp -f "${OUT_FILE}" "${GITINGEST_OUTPUT}"
-            else
-              echo "WARN: Could not locate gitingest output file; leaving ${GITINGEST_OUTPUT} absent." >&2
-            fi
-          else
-            echo "gitingest CLI not found; skipping digest generation." >&2
-          fi
+          echo "Running gitingest CLI..."
+          gitingest "${GITINGEST_OUT_DIR}/src" -o "${GITINGEST_OUTPUT}" \
+            > "${GITINGEST_OUT_DIR}/gitingest-output.txt" \
+            2> "${GITINGEST_OUT_DIR}/gitingest-stderr.txt"
+          test -s "${GITINGEST_OUTPUT}" || {
+            echo "ERROR: main digest was not produced at ${GITINGEST_OUTPUT}" >&2
+            tail -n 20 "${GITINGEST_OUT_DIR}/gitingest-stderr.txt" >&2 || true
+            exit 1
+          }
         - echo "Digest preparation completed."
         - |
           echo "Preparing models subfolders (*.py) for second gitingest..."
@@ -90,24 +88,17 @@ gitingest-digest:
                 MISSING_MODELS=$((MISSING_MODELS+1))
               fi
             done < <(find models -mindepth 2 -type f -name "*.py" | sort)
-            if command -v gitingest >/dev/null 2>&1; then
-              echo "Running second gitingest on models_src..."
-              gitingest "${GITINGEST_OUT_DIR}/models_src" > "${GITINGEST_OUT_DIR}/gitingest-models-output.txt" 2> "${GITINGEST_OUT_DIR}/gitingest-models-stderr.txt" || true
-              OUT_FILE2=""
-              if [ -f "digest.txt" ]; then
-                OUT_FILE2="digest.txt"
-              else
-                OUT_FILE2="$(sed -n 's/^.*Output written to:[[:space:]]*//p' \"${GITINGEST_OUT_DIR}/gitingest-models-output.txt\" | head -n1 | tr -d '\r')"
-              fi
-              if [ -n "${OUT_FILE2}" ] && [ -f "${OUT_FILE2}" ]; then
-                mkdir -p "$(dirname \"${MODELS_GITINGEST_OUTPUT}\")"
-                cp -f "${OUT_FILE2}" "${MODELS_GITINGEST_OUTPUT}"
-              else
-                echo "WARN: Could not locate gitingest models output file; leaving ${MODELS_GITINGEST_OUTPUT} absent." >&2
-              fi
-            else
-              echo "gitingest CLI not found; skipping models digest generation." >&2
-            fi
+            echo "Running second gitingest on models_src..."
+            # Explicit -o avoids the stale-digest.txt leak: previously a failed
+            # second run could silently ship the FIRST digest as the models one.
+            gitingest "${GITINGEST_OUT_DIR}/models_src" -o "${MODELS_GITINGEST_OUTPUT}" \
+              > "${GITINGEST_OUT_DIR}/gitingest-models-output.txt" \
+              2> "${GITINGEST_OUT_DIR}/gitingest-models-stderr.txt"
+            test -s "${MODELS_GITINGEST_OUTPUT}" || {
+              echo "ERROR: models digest was not produced at ${MODELS_GITINGEST_OUTPUT}" >&2
+              tail -n 20 "${GITINGEST_OUT_DIR}/gitingest-models-stderr.txt" >&2 || true
+              exit 1
+            }
           else
             echo "WARN: 'models' directory not found; skipping models digest generation." >&2
           fi

@@ -54,7 +54,7 @@
       {
         "region": 0,
         "property_container": {
-          "type_id": "pc/ModelProperties@v1",
+          "type_id": "pc/DeadOil2phThermalProperties@v1",
           "config": {
             "components_name": [
               "w",

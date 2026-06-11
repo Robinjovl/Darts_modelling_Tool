@@ -16,7 +16,6 @@ darts/api/schemas.py
 darts/api/spec_utils.py
 darts/api/type_registry.py
 
-darts/input/input_data.py
 darts/models/darts_model.py
 darts/models/opt/opt_module_settings.py
 darts/models/output.py

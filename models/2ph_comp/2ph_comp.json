@@ -21,9 +21,9 @@
         "n_points": 200,
         "min_p": 1,
         "max_p": 300,
-        "min_z": 0.0,
-        "max_z": 1.0,
-        "extrapolation_flag": true
+        "min_z": 1e-09,
+        "max_z": 0.999999,
+        "epsilon_z": 1e-09
       }
     },
     "components": [
@@ -62,7 +62,9 @@
         "plugins": {
           "flash_ev": {
             "type_id": "flash/ConstantK@v1",
-            "config": {"$preset": "evaluators/flash/constant_k_co2_c1_brine"}
+            "config": {
+              "$preset": "evaluators/flash/constant_k_co2_c1_brine"
+            }
           },
           "density_ev": {
             "gas": {
@@ -83,7 +85,9 @@
           "viscosity_ev": {
             "gas": {
               "type_id": "viscosity/ConstFunc@v1",
-              "config": {"$preset": "evaluators/viscosity/co2_supercritical"}
+              "config": {
+                "$preset": "evaluators/viscosity/co2_supercritical"
+              }
             },
             "oil": {
               "type_id": "viscosity/ConstFunc@v1",
@@ -95,12 +99,14 @@
           "rel_perm_ev": {
             "gas": {
               "type_id": "relperm/PhaseRelPerm@v1",
-              "config": {"$preset": "evaluators/rel_perm/quadratic_gas"}
+              "config": {
+                "$preset": "evaluators/rel_perm/quadratic_gas"
+              }
             },
             "oil": {
               "type_id": "relperm/PhaseRelPerm@v1",
               "config": {
-                "phase": "oil"
+                "$preset": "evaluators/rel_perm/quadratic_oil"
               }
             }
           }
