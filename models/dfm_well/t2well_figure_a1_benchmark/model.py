@@ -10,16 +10,43 @@ from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity
+from darts.physics.properties.flash import Flash
 
-from dartsflash.libflash import EoS, NegativeFlash
+from dartsflash.libflash import EoS
 from dartsflash.components import CompData
-from dartsflash.mixtures import DARTSFlash, VLAq
+from dartsflash.mixtures import VL
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import SingleAmbientTemperature
 from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
+
+
+class ImmiscibleCO2WaterFlash(Flash):
+    """
+    Immiscible two-phase flash for the Figure A1 analytical benchmark.
+
+    The analytical solution does not allow interphase component exchange:
+    gas is pure CO2 and liquid is pure H2O. The overall CO2 mole fraction
+    therefore directly sets the gas-phase mole amount.
+    """
+
+    def __init__(self, eps):
+        super().__init__(nph=2, nc=2)
+        self.eps = eps
+
+    def evaluate(self, pressure, temperature, zc):
+        z_co2 = float(np.clip(zc[0], self.eps, 1.0 - self.eps))
+        self.nu = np.array([z_co2, 1.0 - z_co2])
+        self.X = np.array(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+            ]
+        )
+        self.temperature = temperature
+        return 0
 
 
 class Model(DartsModel):
@@ -39,7 +66,7 @@ class Model(DartsModel):
         self.well_name = "I1"
         self.well_id_m = 0.1
         self.well_length_m = 1000.0
-        self.physical_segments = 100
+        self.physical_segments = 101
         self.physical_segment_length_m = 10.0
         self.top_boundary_length_m = 1.0e-6
         self.top_boundary_volume_m3 = 1.0e20
@@ -118,16 +145,11 @@ class Model(DartsModel):
             rock_comp=0.0,
         )
 
-        flash_ev = VLAq(comp_data, hybrid=True)
+        flash_ev = VL(comp_data)
         flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE])
-        flash_ev.set_aq_eos("Aq")
-        flash_ev.init_flash(
-            flash_type=DARTSFlash.FlashType.NegativeFlash,
-            eos_order=["VL", "Aq"],
-            nf_initial_guess=[NegativeFlash.Ki.Henry_VA],
-        )
-        property_container.flash_ev = flash_ev
         pr = flash_ev.eos["VL"]
+
+        property_container.flash_ev = ImmiscibleCO2WaterFlash(epsilon)
 
         property_container.density_ev = {
             "G": EoSDensity(eos=pr, Mw=comp_data.Mw),
@@ -136,10 +158,6 @@ class Model(DartsModel):
         property_container.viscosity_ev = {
             "G": Fenghour1998(),
             "L": Islam2012(components_names),
-        }
-        property_container.conductivity_ev = {
-            "G": ConstFunc(10.0),
-            "L": ConstFunc(180.0),
         }
         property_container.rel_perm_ev = {
             "G": PhaseRelPerm("gas", swc=0.0, sgr=0.0, n=1.0),
@@ -252,7 +270,7 @@ class Model(DartsModel):
         self.reservoir.add_perforation(
             self.well_name,
             res_cell_idx=(1, 1, 1),
-            well_seg_idx=geometry.num_segments,
+            well_seg_idx=geometry.num_segments - 1,
             well_diameter=geometry.pipe_ID,
             well_index=0.0,
             well_indexD=0.0,
