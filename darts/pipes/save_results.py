@@ -190,7 +190,8 @@ def save_dfm_well_props(
             data[prop_name] = _flatten_property_values(prop_values)
 
     if include_phase_velocities:
-        coupled_model.wells[well_name].is_first_first_iter = True
+        pipe = coupled_model.wells[well_name]
+        pipe.reset_pipe_state()
         iter_counter = 0
         flag = 1
         time_from_zero = np.insert(time, 0, 0.0)
@@ -207,12 +208,13 @@ def save_dfm_well_props(
                 Xn_ms_well = X_well_segments[i - 1, :, :].flatten()
             X_ms_well = X_well_segments[i, :, :].flatten()
 
-            phase_velocities = coupled_model.wells[well_name].eval_phase_vels(
+            phase_velocities = pipe.eval_phase_vels(
                 Xn_ms_well, X_ms_well, dt, time_from_zero[i], iter_counter, flag
             )
             mid = int(len(phase_velocities) / 2)
             vG_data[i, :] = np.append(phase_velocities[:mid], np.nan)
             vL_data[i, :] = np.append(phase_velocities[mid:], np.nan)
+            pipe.accept_pipe_state()
 
         data["vG"] = vG_data.reshape(-1)
         data["vL"] = vL_data.reshape(-1)

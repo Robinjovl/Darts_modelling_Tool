@@ -646,6 +646,7 @@ class DartsModel:
             if converged:
                 t += dt
                 ts += 1
+                self.accept_pipe_states()
                 self.after_converged_timestep()
                 if verbose:
                     print(
@@ -760,6 +761,7 @@ class DartsModel:
                 t += dt
                 self.physics.engine.t = t
                 ts_counter += 1
+                self.accept_pipe_states()
                 self.after_converged_timestep()
 
                 x = np.array(self.physics.engine.X, copy=False)[: nb * nc]
@@ -1015,6 +1017,21 @@ class DartsModel:
                 w.phases_vels = value_vector(well_phase_v)
                 w.phases_vels_ders = value_vector(well_phase_v_d)
         self.timer.node["simulation"].node["dfm_well_velocity_calculation"].stop()
+
+    def accept_pipe_states(self):
+        """
+        Store DFM pipe states.
+
+        Pipe velocity evaluator uses the previous accepted pipe state for the subsequent timestep.
+        This function must be used when a timestep has converged to accept the current pipe
+        state as the accepted pipe state to be used for the next timestep.
+        """
+        if not self.has_dfm_well:
+            return
+
+        for w in self.reservoir.wells:
+            if w.ms_type == ms_well.MS_Type.DFM:
+                self.wells[w.name].accept_pipe_state()
 
     def apply_dfm_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:

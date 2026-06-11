@@ -422,7 +422,9 @@ class Pipe:
 
         self._build_phase_vel_dense_der_indexers()
 
-        self.is_first_first_iter = True  # first_iter_in_first_ts_identifier
+        # is_first_first_iter is true only for the first iteration of the first time step.
+        self.is_first_first_iter = True
+        self._accepted_pipe_state = None
 
         self.lateral_heat_rate_eval = None
 
@@ -445,6 +447,60 @@ class Pipe:
         self.conn_local_col_idx = (
             self.conn_row_idx * n_vars + np.arange(vel_der_size)[None, :]
         )
+
+    @staticmethod
+    def _copy_pipe_state_value(value):
+        """Copy pipe-state entries without sharing mutable NumPy arrays."""
+        if isinstance(value, np.ndarray):
+            return value.copy()
+        if isinstance(value, list):
+            return [Pipe._copy_pipe_state_value(item) for item in value]
+        return value
+
+    def _current_pipe_state(self):
+        """Return a snapshot of the current pipe state."""
+        required_attrs = (
+            "iter_phases_props",
+            "rhoM_face",
+            "rhoM_vM",
+            "vM",
+            "vG",
+            "vL",
+        )
+        missing_attrs = [attr for attr in required_attrs if not hasattr(self, attr)]
+        if missing_attrs:
+            raise RuntimeError(
+                "Cannot accept pipe state before pipe properties have "
+                f"been evaluated. Missing attributes: {', '.join(missing_attrs)}"
+            )
+
+        return {
+            attr: self._copy_pipe_state_value(getattr(self, attr))
+            for attr in required_attrs
+        }
+
+    def reset_pipe_state(self):
+        """Clear accepted pipe state."""
+        self._accepted_pipe_state = None
+        self.is_first_first_iter = True
+
+    def accept_pipe_state(self):
+        """Store the current pipe state as the last converged (accepted) pipe state."""
+        accepted_state = self._current_pipe_state()
+
+        self._accepted_pipe_state = accepted_state
+        self.is_first_first_iter = False
+
+    def _load_accepted_pipe_state(self):
+        """Load the accepted pipe state."""
+        if self._accepted_pipe_state is None:
+            raise RuntimeError(
+                "Cannot load pipe state before an accepted pipe state has been stored."
+            )
+
+        for attr, value in self._accepted_pipe_state.items():
+            setattr(self, attr, self._copy_pipe_state_value(value))
+        return True
 
     def eval_phase_vels(
         self, Xn_dfm_well, X_dfm_well, dt, simulation_time, iter_counter, flag
@@ -491,6 +547,9 @@ class Pipe:
         elif self.n_mobile_phases == 3:
             la_idx = self.la_idx
             lb_idx = self.lb_idx
+
+        if iter_counter == 0 and not self.is_first_first_iter and flag == 1:
+            self._load_accepted_pipe_state()
 
         """ Calculate phase props of previous time step at centroids """
         if iter_counter == 0 and self.is_first_first_iter and flag == 1:
@@ -1236,9 +1295,6 @@ class Pipe:
         if self.diff_method == "OBL":
             self.vG_der *= 24 * 60 * 60
             self.vL_der *= 24 * 60 * 60
-
-        # is_first_first_iter is true only for the first iteration of the first time step.
-        self.is_first_first_iter = False
 
         return phase_vels
 
