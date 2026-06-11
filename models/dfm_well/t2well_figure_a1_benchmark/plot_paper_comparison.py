@@ -32,7 +32,7 @@ def _final_profile(model):
 
 
 def _load_reference_profiles():
-    long_reference_path = CASE_DIR / "digitized_profiles_long.csv"
+    long_reference_path = CASE_DIR / "digitized_t2well_paper_profiles.csv"
     if long_reference_path.exists():
         reference_long = pd.read_csv(long_reference_path)
         reference_long["quantity"] = reference_long["property"].map(
