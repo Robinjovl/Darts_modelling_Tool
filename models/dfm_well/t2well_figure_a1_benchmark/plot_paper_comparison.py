@@ -55,7 +55,7 @@ def _load_reference_profiles():
         var_name="quantity",
         value_name="value",
     )
-    reference_long["solution"] = "T2Well Figure A1"
+    reference_long["solution"] = "T2Well reference"
     pressure_rows = reference_long["quantity"] == "pressure_pa"
     reference_long.loc[pressure_rows, "quantity"] = "pressure_bar"
     reference_long.loc[pressure_rows, "value"] = (
@@ -104,7 +104,7 @@ def plot_comparison(model):
     reference_styles = {
         "Analytical": {"color": "#000000", "lw": 2.4, "ls": "-"},
         "T2Well": {"color": "#0072B2", "lw": 2.4, "ls": "--"},
-        "T2Well Figure A1": {
+        "T2Well reference": {
             "color": "#000000",
             "lw": 2.4,
             "ls": "-",
@@ -120,7 +120,7 @@ def plot_comparison(model):
                 style = reference_styles.get(
                     solution, {"color": "0.25", "lw": 1.8, "ls": "-"}
                 )
-                label_solution = solution if has_long_reference else "T2Well Figure A1"
+                label_solution = solution if has_long_reference else "T2Well reference"
                 ax.plot(
                     reference_subset["value"],
                     reference_subset["depth_m"],

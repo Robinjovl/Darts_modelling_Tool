@@ -1,10 +1,12 @@
-# T2Well Figure A1 Benchmark
+# T2Well Drift-Flux Verification Benchmark
 
-This case reproduces the Appendix A / Figure A1 wellbore-only verification from:
+Primary reference for the analytical solution and T2Well comparison:
 
-Pan et al. (2011), "Transient CO2 leakage and injection in wellbore-reservoir systems for geologic carbon sequestration."
+Pan, Webb, and Oldenburg (2011), "Analytical solution for two-phase flow in a wellbore using the drift-flux model."
 
-Paper setup used here:
+The current input deck uses the CO2/water T2Well-ECO2N verification variant of this drift-flux benchmark family, with digitized analytical and T2Well profiles stored in `digitized_t2well_paper_profiles.csv`.
+
+Input setup used here:
 
 - Vertical wellbore length: 1000 m
 - Grid resolution: 10 m
@@ -14,6 +16,6 @@ Paper setup used here:
 - Top outlet pressure: 1.0e5 Pa
 - Bottom injection mass rates: 0.19625 kg/s CO2 and 0.19625 kg/s H2O
 - Total upward mass flux: 50 kg/m2/s
-- Paper steady-time endpoint: 0.456869e9 s
+- Simulation endpoint: 0.456869e9 s
 
 By running the `main` file, generated comparison files are written to `paper_comparison/`.

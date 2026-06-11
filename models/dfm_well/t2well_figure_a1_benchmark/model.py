@@ -25,11 +25,12 @@ from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
 class ImmiscibleCO2WaterFlash(Flash):
     """
-    Immiscible two-phase flash for the Figure A1 analytical benchmark.
+    Immiscible two-phase flash for the CO2/water verification variant.
 
-    The analytical solution does not allow interphase component exchange:
-    gas is pure CO2 and liquid is pure H2O. The overall CO2 mole fraction
-    therefore directly sets the gas-phase mole amount.
+    Pan, Webb, and Oldenburg's analytical solution assumes no interphase
+    component exchange. This flash applies the same immiscible assumption to
+    the CO2/water case: gas is pure CO2 and liquid is pure H2O. The overall
+    CO2 mole fraction therefore directly sets the gas-phase mole amount.
     """
 
     def __init__(self, eps):
@@ -51,11 +52,12 @@ class ImmiscibleCO2WaterFlash(Flash):
 
 class Model(DartsModel):
     """
-    Figure A1 verification case from Pan et al. (2011), Appendix A.
+    Drift-flux wellbore verification case after Pan, Webb, and Oldenburg (2011).
 
-    The paper solves steady isothermal upward CO2/water flow in a 1000 m
-    vertical wellbore. A tiny high-volume top segment is used here only to
-    impose the fixed outlet pressure without adding a reservoir-flow boundary.
+    The current setup uses the CO2/water T2Well-ECO2N variant of the
+    analytical/T2Well comparison. A tiny high-volume top segment is used
+    only to impose the fixed outlet pressure without adding a reservoir-flow
+    boundary.
     """
 
     def __init__(self):
@@ -229,7 +231,7 @@ class Model(DartsModel):
             initial_conditions_dict,
             verbose=True,
         )
-        self._apply_figure_a1_initial_guess(initial_conditions)
+        self._apply_reference_initial_guess(initial_conditions)
 
         ramp_up_rate = RampUpRate(
             self.well_name,
@@ -290,7 +292,7 @@ class Model(DartsModel):
                 hi = mid
         return hi
 
-    def _apply_figure_a1_initial_guess(self, initial_conditions):
+    def _apply_reference_initial_guess(self, initial_conditions):
         geometry = initial_conditions.pipe_geom
         depths = np.clip(geometry.TVD_segments, 0.0, self.well_length_m)
         scaled_depth = depths / self.well_length_m
