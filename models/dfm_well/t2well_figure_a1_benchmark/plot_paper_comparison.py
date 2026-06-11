@@ -31,10 +31,21 @@ def _final_profile(model):
     return final
 
 
-def _load_reference_profiles():
-    long_reference_path = CASE_DIR / "digitized_t2well_paper_profiles.csv"
-    if long_reference_path.exists():
-        reference_long = pd.read_csv(long_reference_path)
+def _reference_path(reference_profile_file):
+    reference_path = Path(reference_profile_file)
+    if not reference_path.is_absolute():
+        reference_path = CASE_DIR / reference_path
+    return reference_path
+
+
+def _load_reference_profiles(reference_profile_file):
+    reference_path = _reference_path(reference_profile_file)
+    if not reference_path.exists():
+        raise FileNotFoundError(f"Reference profile file not found: {reference_path}")
+
+    reference = pd.read_csv(reference_path)
+    if {"property", "solution", "depth_m", "value"}.issubset(reference.columns):
+        reference_long = reference.copy()
         reference_long["quantity"] = reference_long["property"].map(
             REFERENCE_PROPERTY_COLUMNS
         )
@@ -44,11 +55,6 @@ def _load_reference_profiles():
         ) / 1.0e5
         return reference_long.dropna(subset=["quantity"]), True
 
-    reference_path = CASE_DIR / "paper_reference" / "figure_a1_digitized.csv"
-    if not reference_path.exists():
-        return None, False
-
-    reference = pd.read_csv(reference_path)
     reference_long = reference.melt(
         id_vars="depth_m",
         value_vars=["pressure_pa", "sG", "vG_m_s", "drift_velocity_m_s"],
@@ -64,10 +70,10 @@ def _load_reference_profiles():
     return reference_long, False
 
 
-def plot_comparison(model):
+def plot_comparison(model, reference_profile_file):
     COMPARISON_DIR.mkdir(exist_ok=True)
     profile = _final_profile(model)
-    reference_long, has_long_reference = _load_reference_profiles()
+    reference_long, has_long_reference = _load_reference_profiles(reference_profile_file)
 
     profile_plot = profile.copy()
     profile_plot["pressure_bar"] = profile_plot["pressure"]
@@ -139,7 +145,7 @@ def plot_comparison(model):
             zorder=5,
         )
         ax.set_xlabel(xlabel)
-        ax.set_ylabel("Depth (m)")
+        ax.set_ylabel("Depth [m]")
         ax.set_title(label, loc="left", fontweight="bold")
         ax.set_ylim(model.well_length_m, 0.0)
         ax.grid(True, color="0.86", linewidth=0.6)

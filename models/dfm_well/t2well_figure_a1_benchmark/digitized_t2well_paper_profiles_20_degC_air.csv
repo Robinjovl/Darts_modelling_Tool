@@ -1,0 +1,526 @@
+property,unit,solution,point_index,depth_m,value
+Pressure,Pa,Analytical,1,0.0,105813.95348837235
+Pressure,Pa,Analytical,2,10.0,105813.95348837235
+Pressure,Pa,Analytical,3,20.0,105813.95348837235
+Pressure,Pa,Analytical,4,30.0,106976.74418604677
+Pressure,Pa,Analytical,5,40.0,107541.52823920292
+Pressure,Pa,Analytical,6,50.0,109759.13621262484
+Pressure,Pa,Analytical,7,60.0,111976.7441860468
+Pressure,Pa,Analytical,8,70.0,112430.2325581398
+Pressure,Pa,Analytical,9,80.0,113149.50166112985
+Pressure,Pa,Analytical,10,90.0,115810.63122923617
+Pressure,Pa,Analytical,11,100.0,118471.76079734246
+Pressure,Pa,Analytical,12,110.0,119034.88372093049
+Pressure,Pa,Analytical,13,120.0,118666.66666666695
+Pressure,Pa,Analytical,14,130.0,122806.20155038786
+Pressure,Pa,Analytical,15,140.0,126945.73643410878
+Pressure,Pa,Analytical,16,150.0,125639.53488372121
+Pressure,Pa,Analytical,17,160.0,127720.9302325584
+Pressure,Pa,Analytical,18,170.0,131343.02325581422
+Pressure,Pa,Analytical,19,180.0,134883.7209302328
+Pressure,Pa,Analytical,20,190.0,134569.76744186072
+Pressure,Pa,Analytical,21,200.0,137054.26356589174
+Pressure,Pa,Analytical,22,210.0,141193.79844961263
+Pressure,Pa,Analytical,23,220.0,143325.5813953491
+Pressure,Pa,Analytical,24,230.0,143500.00000000026
+Pressure,Pa,Analytical,25,240.0,145651.1627906979
+Pressure,Pa,Analytical,26,250.0,149273.25581395376
+Pressure,Pa,Analytical,27,260.0,151837.20930232582
+Pressure,Pa,Analytical,28,270.0,153488.37209302353
+Pressure,Pa,Analytical,29,280.0,154902.32558139562
+Pressure,Pa,Analytical,30,290.0,159869.76744186072
+Pressure,Pa,Analytical,31,300.0,161744.1860465119
+Pressure,Pa,Analytical,32,310.0,163686.04651162814
+Pressure,Pa,Analytical,33,320.0,167348.83720930258
+Pressure,Pa,Analytical,34,330.0,171488.3720930235
+Pressure,Pa,Analytical,35,340.0,174418.60465116304
+Pressure,Pa,Analytical,36,350.0,176104.65116279095
+Pressure,Pa,Analytical,37,360.0,180031.00775193828
+Pressure,Pa,Analytical,38,370.0,184170.54263565922
+Pressure,Pa,Analytical,39,380.0,186046.51162790722
+Pressure,Pa,Analytical,40,390.0,189686.04651162814
+Pressure,Pa,Analytical,41,400.0,193837.20930232585
+Pressure,Pa,Analytical,42,410.0,198494.18604651187
+Pressure,Pa,Analytical,43,420.0,201325.58139534906
+Pressure,Pa,Analytical,44,430.0,204430.23255813977
+Pressure,Pa,Analytical,45,440.0,209730.23255813983
+Pressure,Pa,Analytical,46,450.0,214697.67441860493
+Pressure,Pa,Analytical,47,460.0,217232.55813953513
+Pressure,Pa,Analytical,48,470.0,222069.76744186075
+Pressure,Pa,Analytical,49,480.0,227776.74418604677
+Pressure,Pa,Analytical,50,490.0,233365.11627907003
+Pressure,Pa,Analytical,51,500.0,235465.11627907003
+Pressure,Pa,Analytical,52,510.0,240895.34883720952
+Pressure,Pa,Analytical,53,520.0,247209.30232558167
+Pressure,Pa,Analytical,54,530.0,252895.34883720957
+Pressure,Pa,Analytical,55,540.0,256232.5581395352
+Pressure,Pa,Analytical,56,550.0,260290.69767441892
+Pressure,Pa,Analytical,57,560.0,265767.44186046545
+Pressure,Pa,Analytical,58,570.0,274418.60465116304
+Pressure,Pa,Analytical,59,580.0,278744.1860465119
+Pressure,Pa,Analytical,60,590.0,284337.2093023258
+Pressure,Pa,Analytical,61,600.0,291918.604651163
+Pressure,Pa,Analytical,62,610.0,298686.0465116282
+Pressure,Pa,Analytical,63,620.0,304651.16279069794
+Pressure,Pa,Analytical,64,630.0,311718.0232558143
+Pressure,Pa,Analytical,65,640.0,318465.11627907003
+Pressure,Pa,Analytical,66,650.0,325058.139534884
+Pressure,Pa,Analytical,67,660.0,333970.9302325584
+Pressure,Pa,Analytical,68,670.0,341732.55813953513
+Pressure,Pa,Analytical,69,680.0,347813.9534883724
+Pressure,Pa,Analytical,70,690.0,359209.3023255816
+Pressure,Pa,Analytical,71,700.0,365000.00000000023
+Pressure,Pa,Analytical,72,710.0,371593.0232558142
+Pressure,Pa,Analytical,73,720.0,384248.06201550417
+Pressure,Pa,Analytical,74,730.0,391651.16279069794
+Pressure,Pa,Analytical,75,740.0,399511.6279069771
+Pressure,Pa,Analytical,76,750.0,414534.8837209305
+Pressure,Pa,Analytical,77,760.0,420744.18604651187
+Pressure,Pa,Analytical,78,770.0,429279.0697674421
+Pressure,Pa,Analytical,79,780.0,445651.1627906979
+Pressure,Pa,Analytical,80,790.0,452081.3953488375
+Pressure,Pa,Analytical,81,800.0,461162.79069767473
+Pressure,Pa,Analytical,82,810.0,478534.88372093055
+Pressure,Pa,Analytical,83,820.0,483651.162790698
+Pressure,Pa,Analytical,84,830.0,502581.3953488375
+Pressure,Pa,Analytical,85,840.0,508465.11627907003
+Pressure,Pa,Analytical,86,850.0,526627.9069767444
+Pressure,Pa,Analytical,87,860.0,535018.6046511631
+Pressure,Pa,Analytical,88,870.0,554162.7906976746
+Pressure,Pa,Analytical,89,880.0,561534.8837209305
+Pressure,Pa,Analytical,90,890.0,580534.8837209305
+Pressure,Pa,Analytical,91,900.0,589883.7209302328
+Pressure,Pa,Analytical,92,910.0,611523.2558139538
+Pressure,Pa,Analytical,93,920.0,619674.4186046513
+Pressure,Pa,Analytical,94,930.0,641418.6046511631
+Pressure,Pa,Analytical,95,940.0,651069.7674418609
+Pressure,Pa,Analytical,96,950.0,674360.4651162793
+Pressure,Pa,Analytical,97,960.0,685162.7906976747
+Pressure,Pa,Analytical,98,970.0,711887.0431893691
+Pressure,Pa,Analytical,99,980.0,718581.3953488375
+Pressure,Pa,Analytical,100,990.0,720930.2325581398
+Pressure,Pa,Analytical,101,1000.0,720930.2325581398
+Pressure,Pa,Numerical,1,14.446227929373984,106810.63122923614
+Pressure,Pa,Numerical,2,51.639995460220184,109513.74207188186
+Pressure,Pa,Numerical,3,91.36306889115876,115151.5151515154
+Pressure,Pa,Numerical,4,130.9726478265804,122198.73150105734
+Pressure,Pa,Numerical,5,170.10994321614112,128957.23930982771
+Pressure,Pa,Numerical,6,209.4257178526841,137273.90180878577
+Pressure,Pa,Numerical,7,249.2448954935363,145536.38409602427
+Pressure,Pa,Numerical,8,289.070480081716,155391.1205073998
+Pressure,Pa,Numerical,9,327.71535580524346,166757.86593707275
+Pressure,Pa,Numerical,10,367.46923488496526,178936.87707641223
+Pressure,Pa,Numerical,11,408.02568218298546,192757.47508305672
+Pressure,Pa,Numerical,12,447.3843179896097,207951.98799699952
+Pressure,Pa,Numerical,13,486.6573033707865,224345.9302325584
+Pressure,Pa,Numerical,14,526.2172284644195,243023.25581395376
+Pressure,Pa,Numerical,15,565.8735404274069,264637.4829001371
+Pressure,Pa,Numerical,16,606.0995184590689,288372.0930232561
+Pressure,Pa,Numerical,17,634.8314606741573,308139.5348837212
+Pressure,Pa,Numerical,18,665.5965757089352,328837.20930232585
+Pressure,Pa,Numerical,19,694.7565543071162,352325.5813953491
+Pressure,Pa,Numerical,20,723.4706616729088,377906.9767441863
+Pressure,Pa,Numerical,21,754.414125200642,405182.72425249196
+Pressure,Pa,Numerical,22,783.4525025536262,435377.02607470076
+Pressure,Pa,Numerical,23,814.3046997704482,467591.8979744939
+Pressure,Pa,Numerical,24,833.3333333333334,491860.4651162793
+Pressure,Pa,Numerical,25,853.2516172965611,515856.2367864696
+Pressure,Pa,Numerical,26,873.4302709847985,541655.2667578661
+Pressure,Pa,Numerical,27,891.7262512768132,569062.7202255112
+Pressure,Pa,Numerical,28,913.0632164340028,597885.8350951378
+Pressure,Pa,Numerical,29,931.9422150882824,628504.9833887046
+Pressure,Pa,Numerical,30,951.9529159978598,660465.11627907
+Pressure,Pa,Numerical,31,972.3507380480282,693365.2530779756
+Pressure,Pa,Numerical,32,985.7677902621722,729302.3255813956
+Gas Saturation,,Analytical,1,0.0,0.9873539129773443
+Gas Saturation,,Analytical,2,10.0,0.9873539129773443
+Gas Saturation,,Analytical,3,20.0,0.9873539129773443
+Gas Saturation,,Analytical,4,30.0,0.9880770173318573
+Gas Saturation,,Analytical,5,40.0,0.9874701910645022
+Gas Saturation,,Analytical,6,50.0,0.9870735997315173
+Gas Saturation,,Analytical,7,60.0,0.9865192024231039
+Gas Saturation,,Analytical,8,70.0,0.9859648051146905
+Gas Saturation,,Analytical,9,80.0,0.9861329930621868
+Gas Saturation,,Analytical,10,90.0,0.9856238222195931
+Gas Saturation,,Analytical,11,100.0,0.9852599989859468
+Gas Saturation,,Analytical,12,110.0,0.9848961757523005
+Gas Saturation,,Analytical,13,120.0,0.9844469607983978
+Gas Saturation,,Analytical,14,130.0,0.9839143656313265
+Gas Saturation,,Analytical,15,140.0,0.9830827696687063
+Gas Saturation,,Analytical,16,150.0,0.9823030835664246
+Gas Saturation,,Analytical,17,160.0,0.9826301156865562
+Gas Saturation,,Analytical,18,170.0,0.9822693421572046
+Gas Saturation,,Analytical,19,180.0,0.9815763455216879
+Gas Saturation,,Analytical,20,190.0,0.9808833488861712
+Gas Saturation,,Analytical,21,200.0,0.9808132705747146
+Gas Saturation,,Analytical,22,210.0,0.9792301928672633
+Gas Saturation,,Analytical,23,220.0,0.9789067944373554
+Gas Saturation,,Analytical,24,230.0,0.9786330564405046
+Gas Saturation,,Analytical,25,240.0,0.9786039869187152
+Gas Saturation,,Analytical,26,250.0,0.9777246338845837
+Gas Saturation,,Analytical,27,260.0,0.9768930379219638
+Gas Saturation,,Analytical,28,270.0,0.9761221764959396
+Gas Saturation,,Analytical,29,280.0,0.9758133128269264
+Gas Saturation,,Analytical,30,290.0,0.974756514586872
+Gas Saturation,,Analytical,31,300.0,0.9736246200821946
+Gas Saturation,,Analytical,32,310.0,0.9733787403770586
+Gas Saturation,,Analytical,33,320.0,0.9728191520826115
+Gas Saturation,,Analytical,34,330.0,0.9716084065000803
+Gas Saturation,,Analytical,35,340.0,0.9704441721524122
+Gas Saturation,,Analytical,36,350.0,0.9702755689260332
+Gas Saturation,,Analytical,37,360.0,0.9698249913382966
+Gas Saturation,,Analytical,38,370.0,0.9681447729788655
+Gas Saturation,,Analytical,39,380.0,0.966592460515308
+Gas Saturation,,Analytical,40,390.0,0.9669580097518105
+Gas Saturation,,Analytical,41,400.0,0.965987814462087
+Gas Saturation,,Analytical,42,410.0,0.9646971276946348
+Gas Saturation,,Analytical,43,420.0,0.9631448152310773
+Gas Saturation,,Analytical,44,430.0,0.9627138595705484
+Gas Saturation,,Analytical,45,440.0,0.961743664280825
+Gas Saturation,,Analytical,46,450.0,0.9603555946153781
+Gas Saturation,,Analytical,47,460.0,0.9584152040359313
+Gas Saturation,,Analytical,48,470.0,0.9581063403669181
+Gas Saturation,,Analytical,49,480.0,0.9568309150984053
+Gas Saturation,,Analytical,50,490.0,0.9555009844765373
+Gas Saturation,,Analytical,51,500.0,0.9535605938970905
+Gas Saturation,,Analytical,52,510.0,0.953073679407117
+Gas Saturation,,Analytical,53,520.0,0.9518600268724067
+Gas Saturation,,Analytical,54,530.0,0.94991963629296
+Gas Saturation,,Analytical,55,540.0,0.9480446521375394
+Gas Saturation,,Analytical,56,550.0,0.947383320516829
+Gas Saturation,,Analytical,57,560.0,0.9457408925357242
+Gas Saturation,,Analytical,58,570.0,0.9438157634552169
+Gas Saturation,,Analytical,59,580.0,0.9416813338178254
+Gas Saturation,,Analytical,60,590.0,0.9408208759728571
+Gas Saturation,,Analytical,61,600.0,0.9392438544157786
+Gas Saturation,,Analytical,62,610.0,0.9369637138004174
+Gas Saturation,,Analytical,63,620.0,0.9348325544842273
+Gas Saturation,,Analytical,64,630.0,0.9334989901721356
+Gas Saturation,,Analytical,65,640.0,0.9313333107988203
+Gas Saturation,,Analytical,66,650.0,0.9290150164361104
+Gas Saturation,,Analytical,67,660.0,0.9276814521240186
+Gas Saturation,,Analytical,68,670.0,0.925166030066674
+Gas Saturation,,Analytical,69,680.0,0.9226742269957833
+Gas Saturation,,Analytical,70,690.0,0.9213333953032441
+Gas Saturation,,Analytical,71,700.0,0.9190768736743369
+Gas Saturation,,Analytical,72,710.0,0.9155630952280353
+Gas Saturation,,Analytical,73,720.0,0.9138661618935752
+Gas Saturation,,Analytical,74,730.0,0.9111608795220429
+Gas Saturation,,Analytical,75,740.0,0.9082920810904451
+Gas Saturation,,Analytical,76,750.0,0.9062317787336167
+Gas Saturation,,Analytical,77,760.0,0.9042877544639463
+Gas Saturation,,Analytical,78,770.0,0.9002943289081184
+Gas Saturation,,Analytical,79,780.0,0.8981395506054742
+Gas Saturation,,Analytical,80,790.0,0.8949718811529784
+Gas Saturation,,Analytical,81,800.0,0.8919332077034233
+Gas Saturation,,Analytical,82,810.0,0.8894114266881872
+Gas Saturation,,Analytical,83,820.0,0.8863191563078328
+Gas Saturation,,Analytical,84,830.0,0.8827036345352679
+Gas Saturation,,Analytical,85,840.0,0.8795931957037952
+Gas Saturation,,Analytical,86,850.0,0.8768836740270021
+Gas Saturation,,Analytical,87,860.0,0.8719406440927183
+Gas Saturation,,Analytical,88,870.0,0.8692008416640612
+Gas Saturation,,Analytical,89,880.0,0.8653781995487464
+Gas Saturation,,Analytical,90,890.0,0.8617626777761815
+Gas Saturation,,Analytical,91,900.0,0.8591573218858007
+Gas Saturation,,Analytical,92,910.0,0.8540192839095126
+Gas Saturation,,Analytical,93,920.0,0.8497824011086982
+Gas Saturation,,Analytical,94,930.0,0.8462540879015017
+Gas Saturation,,Analytical,95,940.0,0.8426131302973711
+Gas Saturation,,Analytical,96,950.0,0.8382636030996223
+Gas Saturation,,Analytical,97,960.0,0.8354220573447021
+Gas Saturation,,Analytical,98,970.0,0.8300260273625325
+Gas Saturation,,Analytical,99,980.0,0.8254512113709151
+Gas Saturation,,Analytical,100,990.0,0.8219010960223769
+Gas Saturation,,Analytical,101,1000.0,0.8216576387773901
+Gas Saturation,,Numerical,1,11.938202247191011,0.989170758089186
+Gas Saturation,,Numerical,2,59.58461014640789,0.9875741366272645
+Gas Saturation,,Numerical,3,99.87515605493135,0.9860619342311459
+Gas Saturation,,Numerical,4,139.75387907972177,0.9843846689659917
+Gas Saturation,,Numerical,5,179.47160643789857,0.9826595780397211
+Gas Saturation,,Numerical,6,219.04437634774712,0.9805269798298183
+Gas Saturation,,Numerical,7,258.42696629213486,0.9780986902311395
+Gas Saturation,,Numerical,8,299.0012484394507,0.9753627352391898
+Gas Saturation,,Numerical,9,338.36610486891385,0.9724103619324471
+Gas Saturation,,Numerical,10,378.0631353665061,0.9691854618589283
+Gas Saturation,,Numerical,11,417.31926001588926,0.9653755927153089
+Gas Saturation,,Numerical,12,458.0637839064806,0.9611252762718492
+Gas Saturation,,Numerical,13,496.83988764044943,0.9561041770536687
+Gas Saturation,,Numerical,14,537.4531835205993,0.9506536417181439
+Gas Saturation,,Numerical,15,576.7790262172284,0.9446525472578187
+Gas Saturation,,Numerical,16,616.1048689138577,0.9375723569128844
+Gas Saturation,,Numerical,17,647.1689799515311,0.9320576976322357
+Gas Saturation,,Numerical,18,676.0299625468165,0.925702302182186
+Gas Saturation,,Numerical,19,707.0090957731408,0.918978244939694
+Gas Saturation,,Numerical,20,735.6530143771897,0.9118200426502004
+Gas Saturation,,Numerical,21,766.4683851068518,0.9039286603712529
+Gas Saturation,,Numerical,22,795.880149812734,0.8954215503181592
+Gas Saturation,,Numerical,23,825.3745318352061,0.8864508775784412
+Gas Saturation,,Numerical,24,855.8052434456929,0.8761629921326382
+Gas Saturation,,Numerical,25,884.7512038523273,0.8656772003442952
+Gas Saturation,,Numerical,26,904.5511292702303,0.8582808317591184
+Gas Saturation,,Numerical,27,925.4057428214733,0.8507473477347651
+Gas Saturation,,Numerical,28,945.104333868379,0.8427745699630234
+Gas Saturation,,Numerical,29,965.980024968789,0.834759110750559
+Gas Saturation,,Numerical,30,983.7312734082398,0.8262905938125862
+Gas Phase Velocity,m/s,Analytical,1,0.0,20.933679398403818
+Gas Phase Velocity,m/s,Analytical,2,10.0,20.933679398403818
+Gas Phase Velocity,m/s,Analytical,3,20.0,20.673335382192224
+Gas Phase Velocity,m/s,Analytical,4,30.0,20.336904910538504
+Gas Phase Velocity,m/s,Analytical,5,40.0,20.092144867128304
+Gas Phase Velocity,m/s,Analytical,6,50.0,19.817591934538964
+Gas Phase Velocity,m/s,Analytical,7,60.0,19.55587286190372
+Gas Phase Velocity,m/s,Analytical,8,70.0,19.220359094532434
+Gas Phase Velocity,m/s,Analytical,9,80.0,19.00493358816016
+Gas Phase Velocity,m/s,Analytical,10,90.0,18.743825651713212
+Gas Phase Velocity,m/s,Analytical,11,100.0,18.380657971821794
+Gas Phase Velocity,m/s,Analytical,12,110.0,18.195483706769885
+Gas Phase Velocity,m/s,Analytical,13,120.0,17.901221632108182
+Gas Phase Velocity,m/s,Analytical,14,130.0,17.614293191705972
+Gas Phase Velocity,m/s,Analytical,15,140.0,17.41536836241753
+Gas Phase Velocity,m/s,Analytical,16,150.0,17.033102676642056
+Gas Phase Velocity,m/s,Analytical,17,160.0,16.821343987399523
+Gas Phase Velocity,m/s,Analytical,18,170.0,16.635253018065182
+Gas Phase Velocity,m/s,Analytical,19,180.0,16.343282704109573
+Gas Phase Velocity,m/s,Analytical,20,190.0,16.054062503001266
+Gas Phase Velocity,m/s,Analytical,21,200.0,15.855137673712829
+Gas Phase Velocity,m/s,Analytical,22,210.0,15.600752235337062
+Gas Phase Velocity,m/s,Analytical,23,220.0,15.307865217099014
+Gas Phase Velocity,m/s,Analytical,24,230.0,15.120857543482238
+Gas Phase Velocity,m/s,Analytical,25,240.0,14.947600434101986
+Gas Phase Velocity,m/s,Analytical,26,250.0,14.58550224254008
+Gas Phase Velocity,m/s,Analytical,27,260.0,14.432412627373402
+Gas Phase Velocity,m/s,Analytical,28,270.0,14.123788852286882
+Gas Phase Velocity,m/s,Analytical,29,280.0,13.931892089163785
+Gas Phase Velocity,m/s,Analytical,30,290.0,13.74396771126457
+Gas Phase Velocity,m/s,Analytical,31,300.0,13.508374710678726
+Gas Phase Velocity,m/s,Analytical,32,310.0,13.210904171028506
+Gas Phase Velocity,m/s,Analytical,33,320.0,13.004187355339365
+Gas Phase Velocity,m/s,Analytical,34,330.0,12.815804625298934
+Gas Phase Velocity,m/s,Analytical,35,340.0,12.576086455442134
+Gas Phase Velocity,m/s,Analytical,36,350.0,12.26509452762599
+Gas Phase Velocity,m/s,Analytical,37,360.0,12.127818061331318
+Gas Phase Velocity,m/s,Analytical,38,370.0,11.959602825504458
+Gas Phase Velocity,m/s,Analytical,39,380.0,11.745552375555842
+Gas Phase Velocity,m/s,Analytical,40,390.0,11.47672884473172
+Gas Phase Velocity,m/s,Analytical,41,400.0,11.2991173900099
+Gas Phase Velocity,m/s,Analytical,42,410.0,11.127693689194516
+Gas Phase Velocity,m/s,Analytical,43,420.0,10.94801964983722
+Gas Phase Velocity,m/s,Analytical,44,430.0,10.788329763837009
+Gas Phase Velocity,m/s,Analytical,45,440.0,10.49461771174477
+Gas Phase Velocity,m/s,Analytical,46,450.0,10.338869654159033
+Gas Phase Velocity,m/s,Analytical,47,460.0,10.170654418332173
+Gas Phase Velocity,m/s,Analytical,48,470.0,9.911318776831255
+Gas Phase Velocity,m/s,Analytical,49,480.0,9.66555035871038
+Gas Phase Velocity,m/s,Analytical,50,490.0,9.582130269008776
+Gas Phase Velocity,m/s,Analytical,51,500.0,9.429040653842101
+Gas Phase Velocity,m/s,Analytical,52,510.0,9.180384617231557
+Gas Phase Velocity,m/s,Analytical,53,520.0,8.970688512624502
+Gas Phase Velocity,m/s,Analytical,54,530.0,8.878101380098549
+Gas Phase Velocity,m/s,Analytical,55,540.0,8.7415124420157
+Gas Phase Velocity,m/s,Analytical,56,550.0,8.508325790171245
+Gas Phase Velocity,m/s,Analytical,57,560.0,8.261159398019657
+Gas Phase Velocity,m/s,Analytical,58,570.0,8.182781181871448
+Gas Phase Velocity,m/s,Analytical,59,580.0,8.06040116016635
+Gas Phase Velocity,m/s,Analytical,60,590.0,7.880039592597227
+Gas Phase Velocity,m/s,Analytical,61,600.0,7.696469560039573
+Gas Phase Velocity,m/s,Analytical,62,610.0,7.555755452685774
+Gas Phase Velocity,m/s,Analytical,63,620.0,7.458126446606426
+Gas Phase Velocity,m/s,Analytical,64,630.0,7.275793964830062
+Gas Phase Velocity,m/s,Analytical,65,640.0,7.055509925760888
+Gas Phase Velocity,m/s,Analytical,66,650.0,6.974564937621863
+Gas Phase Velocity,m/s,Analytical,67,660.0,6.862268663023548
+Gas Phase Velocity,m/s,Analytical,68,670.0,6.689011553643298
+Gas Phase Velocity,m/s,Analytical,69,680.0,6.444251510233104
+Gas Phase Velocity,m/s,Analytical,70,690.0,6.393374422557945
+Gas Phase Velocity,m/s,Analytical,71,700.0,6.31224609356243
+Gas Phase Velocity,m/s,Analytical,72,710.0,6.13555134312305
+Gas Phase Velocity,m/s,Analytical,73,720.0,5.951981310565398
+Gas Phase Velocity,m/s,Analytical,74,730.0,5.9038543357375515
+Gas Phase Velocity,m/s,Analytical,75,740.0,5.762223524101313
+Gas Phase Velocity,m/s,Analytical,76,750.0,5.597216753262976
+Gas Phase Velocity,m/s,Analytical,77,760.0,5.401408718534822
+Gas Phase Velocity,m/s,Analytical,78,770.0,5.414334248917155
+Gas Phase Velocity,m/s,Analytical,79,780.0,5.331830863497989
+Gas Phase Velocity,m/s,Analytical,80,790.0,5.148260830940335
+Gas Phase Velocity,m/s,Analytical,81,800.0,4.96469079838269
+Gas Phase Velocity,m/s,Analytical,82,810.0,4.97064937621852
+Gas Phase Velocity,m/s,Analytical,83,820.0,4.887949554167398
+Gas Phase Velocity,m/s,Analytical,84,830.0,4.748086672218716
+Gas Phase Velocity,m/s,Analytical,85,840.0,4.608223790270036
+Gas Phase Velocity,m/s,Analytical,86,850.0,4.572799717641643
+Gas Phase Velocity,m/s,Analytical,87,860.0,4.491518604599057
+Gas Phase Velocity,m/s,Analytical,88,870.0,4.3487419126097775
+Gas Phase Velocity,m/s,Analytical,89,880.0,4.2059652206204925
+Gas Phase Velocity,m/s,Analytical,90,890.0,4.203826243961479
+Gas Phase Velocity,m/s,Analytical,91,900.0,4.0984052514814335
+Gas Phase Velocity,m/s,Analytical,92,910.0,3.9760252297763303
+Gas Phase Velocity,m/s,Analytical,93,920.0,3.8536452080712342
+Gas Phase Velocity,m/s,Analytical,94,930.0,3.914606042853177
+Gas Phase Velocity,m/s,Analytical,95,940.0,3.92698155066605
+Gas Phase Velocity,m/s,Analytical,96,950.0,3.7466199830969247
+Gas Phase Velocity,m/s,Analytical,97,960.0,3.5630499505392796
+Gas Phase Velocity,m/s,Analytical,98,970.0,3.5625915983980585
+Gas Phase Velocity,m/s,Analytical,99,980.0,3.562133246256841
+Gas Phase Velocity,m/s,Analytical,100,990.0,3.562133246256841
+Gas Phase Velocity,m/s,Analytical,101,1000.0,3.562133246256841
+Gas Phase Velocity,m/s,Numerical,1,10.719359421412983,21.311424783752116
+Gas Phase Velocity,m/s,Numerical,2,40.352784825419754,20.476805812480467
+Gas Phase Velocity,m/s,Numerical,3,69.28838951310861,19.650293402994542
+Gas Phase Velocity,m/s,Numerical,4,99.25093632958801,18.825259548802865
+Gas Phase Velocity,m/s,Numerical,5,129.38372488934294,18.02661566637826
+Gas Phase Velocity,m/s,Numerical,6,158.5518102372034,17.241398260817608
+Gas Phase Velocity,m/s,Numerical,7,188.03701255783207,16.482271250461142
+Gas Phase Velocity,m/s,Numerical,8,217.87051899411452,15.754300202644956
+Gas Phase Velocity,m/s,Numerical,9,248.32595619112476,15.012603101401933
+Gas Phase Velocity,m/s,Numerical,10,277.15355805243445,14.311839052342513
+Gas Phase Velocity,m/s,Numerical,11,316.1956645102713,13.376424851843357
+Gas Phase Velocity,m/s,Numerical,12,354.94917067950786,12.493452112268326
+Gas Phase Velocity,m/s,Numerical,13,395.859342488556,11.657141340316535
+Gas Phase Velocity,m/s,Numerical,14,435.2059925093633,10.810972359613157
+Gas Phase Velocity,m/s,Numerical,15,475.6554307116105,10.055018720990706
+Gas Phase Velocity,m/s,Numerical,16,514.8000483266884,9.29892778794807
+Gas Phase Velocity,m/s,Numerical,17,555.2985239039435,8.60400679965042
+Gas Phase Velocity,m/s,Numerical,18,594.5390842092546,7.929785585472275
+Gas Phase Velocity,m/s,Numerical,19,634.0937464532968,7.328954479536013
+Gas Phase Velocity,m/s,Numerical,20,673.689138576779,6.724763020658268
+Gas Phase Velocity,m/s,Numerical,21,713.4831460674156,6.1747404511971515
+Gas Phase Velocity,m/s,Numerical,22,753.2629667461129,5.684442554682568
+Gas Phase Velocity,m/s,Numerical,23,792.6785067053279,5.235857839348198
+Gas Phase Velocity,m/s,Numerical,24,832.0458801498128,4.811142831074796
+Gas Phase Velocity,m/s,Numerical,25,872.3381487426432,4.450026822672645
+Gas Phase Velocity,m/s,Numerical,26,911.9850187265918,4.066320601596199
+Gas Phase Velocity,m/s,Numerical,27,951.9529159978598,3.74547410274388
+Gas Phase Velocity,m/s,Numerical,28,985.4868913857679,3.5162980321350803
+Drift Velocity,m/s,Analytical,1,0.0,0.2069783753179481
+Drift Velocity,m/s,Analytical,2,10.0,0.20940568038736856
+Drift Velocity,m/s,Analytical,3,20.0,0.21255972350152547
+Drift Velocity,m/s,Analytical,4,30.0,0.2157137666156826
+Drift Velocity,m/s,Analytical,5,40.0,0.22032128581931293
+Drift Velocity,m/s,Analytical,6,50.0,0.22347532893346994
+Drift Velocity,m/s,Analytical,7,60.0,0.22662937204762684
+Drift Velocity,m/s,Analytical,8,70.0,0.23000870395565237
+Drift Velocity,m/s,Analytical,9,80.0,0.2343909343654143
+Drift Velocity,m/s,Analytical,10,90.0,0.2375449774795712
+Drift Velocity,m/s,Analytical,11,100.0,0.24142575863846488
+Drift Velocity,m/s,Analytical,12,110.0,0.24503764672080602
+Drift Velocity,m/s,Analytical,13,120.0,0.2498849894791994
+Drift Velocity,m/s,Analytical,14,130.0,0.25234136407040925
+Drift Velocity,m/s,Analytical,15,140.0,0.2564983056863029
+Drift Velocity,m/s,Analytical,16,150.0,0.2614837286731962
+Drift Velocity,m/s,Analytical,17,160.0,0.26346045615487995
+Drift Velocity,m/s,Analytical,18,170.0,0.26786448870598395
+Drift Velocity,m/s,Analytical,19,180.0,0.2731115373889825
+Drift Velocity,m/s,Analytical,20,190.0,0.2756260510237713
+Drift Velocity,m/s,Analytical,21,200.0,0.27921613696477027
+Drift Velocity,m/s,Analytical,22,210.0,0.28484108943103187
+Drift Velocity,m/s,Analytical,23,220.0,0.2874573463920838
+Drift Velocity,m/s,Analytical,24,230.0,0.2911491756593459
+Drift Velocity,m/s,Analytical,25,240.0,0.2964252938641339
+Drift Velocity,m/s,Analytical,26,250.0,0.2996374760218699
+Drift Velocity,m/s,Analytical,27,260.0,0.30382348715955293
+Drift Velocity,m/s,Analytical,28,270.0,0.3088525144291306
+Drift Velocity,m/s,Analytical,29,280.0,0.31127981949855094
+Drift Velocity,m/s,Analytical,30,290.0,0.3154730980166813
+Drift Velocity,m/s,Analytical,31,300.0,0.3218756601908111
+Drift Velocity,m/s,Analytical,32,310.0,0.3243756390647052
+Drift Velocity,m/s,Analytical,33,320.0,0.32793665548391476
+Drift Velocity,m/s,Analytical,34,330.0,0.3335107362870449
+Drift Velocity,m/s,Analytical,35,340.0,0.33674472058612276
+Drift Velocity,m/s,Analytical,36,350.0,0.3398987637002799
+Drift Velocity,m/s,Analytical,37,360.0,0.3465992884727516
+Drift Velocity,m/s,Analytical,38,370.0,0.3504146632076191
+Drift Velocity,m/s,Analytical,39,380.0,0.3551747974006441
+Drift Velocity,m/s,Analytical,40,390.0,0.361141316747932
+Drift Velocity,m/s,Analytical,41,400.0,0.3625003168915894
+Drift Velocity,m/s,Analytical,42,410.0,0.3679290500857721
+Drift Velocity,m/s,Analytical,43,420.0,0.3742298689336387
+Drift Velocity,m/s,Analytical,44,430.0,0.37675891732932226
+Drift Velocity,m/s,Analytical,45,440.0,0.3791862223987427
+Drift Velocity,m/s,Analytical,46,450.0,0.38462949035382005
+Drift Velocity,m/s,Analytical,47,460.0,0.38925881169879245
+Drift Velocity,m/s,Analytical,48,470.0,0.3926526783677126
+Drift Velocity,m/s,Analytical,49,480.0,0.39773257730042183
+Drift Velocity,m/s,Analytical,50,490.0,0.4023473638844994
+Drift Velocity,m/s,Analytical,51,500.0,0.40574123055341954
+Drift Velocity,m/s,Analytical,52,510.0,0.41044140885775376
+Drift Velocity,m/s,Analytical,53,520.0,0.41470917802546986
+Drift Velocity,m/s,Analytical,54,530.0,0.41847368109720556
+Drift Velocity,m/s,Analytical,55,540.0,0.42393875119362506
+Drift Velocity,m/s,Analytical,56,550.0,0.4279067409178871
+Drift Velocity,m/s,Analytical,57,560.0,0.43119159688009673
+Drift Velocity,m/s,Analytical,58,570.0,0.43591721101599684
+Drift Velocity,m/s,Analytical,59,580.0,0.4407845390706205
+Drift Velocity,m/s,Analytical,60,590.0,0.4439385821847774
+Drift Velocity,m/s,Analytical,61,600.0,0.4490184811174867
+Drift Velocity,m/s,Analytical,62,610.0,0.45388035863677473
+Drift Velocity,m/s,Analytical,63,620.0,0.4566419632067739
+Drift Velocity,m/s,Analytical,64,630.0,0.46179453594395675
+Drift Velocity,m/s,Analytical,65,640.0,0.4656971192441925
+Drift Velocity,m/s,Analytical,66,650.0,0.4694034832723493
+Drift Velocity,m/s,Analytical,67,660.0,0.4748976228905584
+Drift Velocity,m/s,Analytical,68,670.0,0.478778404049452
+Drift Velocity,m/s,Analytical,69,680.0,0.48136559148871444
+Drift Velocity,m/s,Analytical,70,690.0,0.48459049156223327
+Drift Velocity,m/s,Analytical,71,700.0,0.4908967609454355
+Drift Velocity,m/s,Analytical,72,710.0,0.4941416463151846
+Drift Velocity,m/s,Analytical,73,720.0,0.4983480061181204
+Drift Velocity,m/s,Analytical,74,730.0,0.5026168653929033
+Drift Velocity,m/s,Analytical,75,740.0,0.5057839897918657
+Drift Velocity,m/s,Analytical,76,750.0,0.5099918030708908
+Drift Velocity,m/s,Analytical,77,760.0,0.5142606623456738
+Drift Velocity,m/s,Analytical,78,770.0,0.5177242958668888
+Drift Velocity,m/s,Analytical,79,780.0,0.5207693282743351
+Drift Velocity,m/s,Analytical,80,790.0,0.5265905000126758
+Drift Velocity,m/s,Analytical,81,800.0,0.5279058958736489
+Drift Velocity,m/s,Analytical,82,810.0,0.5314269417003981
+Drift Velocity,m/s,Analytical,83,820.0,0.538218308728462
+Drift Velocity,m/s,Analytical,84,830.0,0.5395409719698827
+Drift Velocity,m/s,Analytical,85,840.0,0.5441325029365287
+Drift Velocity,m/s,Analytical,86,850.0,0.5491775184430905
+Drift Velocity,m/s,Analytical,87,860.0,0.551350465196853
+Drift Velocity,m/s,Analytical,88,870.0,0.5543591607020628
+Drift Velocity,m/s,Analytical,89,880.0,0.5574928551509672
+Drift Velocity,m/s,Analytical,90,890.0,0.5617617144257501
+Drift Velocity,m/s,Analytical,91,900.0,0.564242798110481
+Drift Velocity,m/s,Analytical,92,910.0,0.5681235792693748
+Drift Velocity,m/s,Analytical,93,920.0,0.5714447721338212
+Drift Velocity,m/s,Analytical,94,930.0,0.5763865908380303
+Drift Velocity,m/s,Analytical,95,940.0,0.5776002433727405
+Drift Velocity,m/s,Analytical,96,950.0,0.5809941100416607
+Drift Velocity,m/s,Analytical,97,960.0,0.5833996129697387
+Drift Velocity,m/s,Analytical,98,970.0,0.5892207847080795
+Drift Velocity,m/s,Analytical,99,980.0,0.5906960629388949
+Drift Velocity,m/s,Analytical,100,990.0,0.5936030151178413
+Drift Velocity,m/s,Analytical,101,1000.0,0.5885158488046849
+Drift Velocity,m/s,Numerical,1,10.083549409392058,0.20250614119649185
+Drift Velocity,m/s,Numerical,2,46.81647940074907,0.21497249381005118
+Drift Velocity,m/s,Numerical,3,87.64044943820217,0.22902276267495963
+Drift Velocity,m/s,Numerical,4,127.09919052796909,0.24392479978584963
+Drift Velocity,m/s,Numerical,5,156.97290152015873,0.255242331347811
+Drift Velocity,m/s,Numerical,6,187.16188098210574,0.26669201799380876
+Drift Velocity,m/s,Numerical,7,215.4125524912041,0.2790795983018198
+Drift Velocity,m/s,Numerical,8,246.37172284644197,0.2911437251240104
+Drift Velocity,m/s,Numerical,9,276.0091552226384,0.30335191491719055
+Drift Velocity,m/s,Numerical,10,304.9129764265255,0.3158608341381966
+Drift Velocity,m/s,Numerical,11,335.2059925093633,0.3283436287889672
+Drift Velocity,m/s,Numerical,12,365.1685393258427,0.34142491359422683
+Drift Velocity,m/s,Numerical,13,395.52831687663155,0.3559816968539516
+Drift Velocity,m/s,Numerical,14,425.789192081327,0.3688956116852718
+Drift Velocity,m/s,Numerical,15,456.07276618512583,0.3822260638201554
+Drift Velocity,m/s,Numerical,16,485.71428571428584,0.3953488765136856
+Drift Velocity,m/s,Numerical,17,514.9812734082398,0.40828481370999786
+Drift Velocity,m/s,Numerical,18,545.6815344455796,0.42160834453016954
+Drift Velocity,m/s,Numerical,19,574.9063670411985,0.43444738332051686
+Drift Velocity,m/s,Numerical,20,605.6400088125139,0.44752866812577646
+Drift Velocity,m/s,Numerical,21,634.5294188715717,0.459976987537233
+Drift Velocity,m/s,Numerical,22,665.3792134831461,0.47237402503021036
+Drift Velocity,m/s,Numerical,23,694.7565543071162,0.4850198013748373
+Drift Velocity,m/s,Numerical,24,723.981386902735,0.4975414590226525
+Drift Velocity,m/s,Numerical,25,754.6816479400749,0.5094830864395752
+Drift Velocity,m/s,Numerical,26,783.6038285476485,0.5211310823232709
+Drift Velocity,m/s,Numerical,27,814.9610284441745,0.5327927181852836
+Drift Velocity,m/s,Numerical,28,844.5692883895131,0.5434580900310131
+Drift Velocity,m/s,Numerical,29,883.4269662921348,0.5579928509257459
+Drift Velocity,m/s,Numerical,30,924.0721824991489,0.5715806501258218
+Drift Velocity,m/s,Numerical,31,964.0890063890728,0.5850531557679985
