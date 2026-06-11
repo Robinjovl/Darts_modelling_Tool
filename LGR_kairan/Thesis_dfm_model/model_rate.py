@@ -30,7 +30,7 @@ from darts.reservoirs.struct_reservoir_with_lgr import LGRPatch, StructReservoir
 
 @dataclass
 class Stage1ThermosiphonRateConfig:
-    p_init: float = 200.0
+    p_init: float = 243.71
     t_reservoir: float = 356.15
     sG_init_target: float | None = 0.5
     z_co2_init: float = 1e-8
