@@ -6,13 +6,18 @@ import pandas as pd
 
 CASE_DIR = Path(__file__).resolve().parent
 COMPARISON_DIR = CASE_DIR / "paper_comparison"
-REFERENCE_PRESSURE_OFFSET_PA = 1.0e5
+GAUGE_PRESSURE_OFFSET_PA = 1.0e5
 REFERENCE_PROPERTY_COLUMNS = {
     "Pressure": "pressure_bar",
     "Gas Saturation": "sG",
     "Gas Phase Velocity": "vG_m_s",
     "Drift Velocity": "drift_velocity_m_s",
 }
+
+
+def _pressure_to_bar(pressure_pa):
+    offset_pa = GAUGE_PRESSURE_OFFSET_PA if pressure_pa.min() < 1.0e5 else 0.0
+    return (pressure_pa + offset_pa) / 1.0e5
 
 
 def _final_profile(model):
@@ -23,7 +28,7 @@ def _final_profile(model):
     geometry = model.wells["I1"].geometry
     final["depth_m"] = geometry.TVD_segments
     area = geometry.pipe_internal_A
-    final["vG_m_s"] = model.mass_rate_co2_kg_s / (final["rhoG"] * final["sG"] * area)
+    final["vG_m_s"] = model.mass_rate_gas_kg_s / (final["rhoG"] * final["sG"] * area)
     final["vL_m_s"] = model.mass_rate_h2o_kg_s / (final["rhoL"] * final["sL"] * area)
 
     # The first segment is the artificial top pressure block.
@@ -50,9 +55,9 @@ def _load_reference_profiles(reference_profile_file):
             REFERENCE_PROPERTY_COLUMNS
         )
         pressure_rows = reference_long["quantity"] == "pressure_bar"
-        reference_long.loc[pressure_rows, "value"] = (
-            reference_long.loc[pressure_rows, "value"] + REFERENCE_PRESSURE_OFFSET_PA
-        ) / 1.0e5
+        reference_long.loc[pressure_rows, "value"] = _pressure_to_bar(
+            reference_long.loc[pressure_rows, "value"]
+        )
         return reference_long.dropna(subset=["quantity"]), True
 
     reference_long = reference.melt(
@@ -61,19 +66,19 @@ def _load_reference_profiles(reference_profile_file):
         var_name="quantity",
         value_name="value",
     )
-    reference_long["solution"] = "T2Well reference"
+    reference_long["solution"] = "T2Well"
     pressure_rows = reference_long["quantity"] == "pressure_pa"
     reference_long.loc[pressure_rows, "quantity"] = "pressure_bar"
-    reference_long.loc[pressure_rows, "value"] = (
-        reference_long.loc[pressure_rows, "value"] + REFERENCE_PRESSURE_OFFSET_PA
-    ) / 1.0e5
+    reference_long.loc[pressure_rows, "value"] = _pressure_to_bar(
+        reference_long.loc[pressure_rows, "value"]
+    )
     return reference_long, False
 
 
-def plot_comparison(model, reference_profile_file):
+def plot_comparison(model, reference_profile_file, output_label=None):
     COMPARISON_DIR.mkdir(exist_ok=True)
     profile = _final_profile(model)
-    reference_long, has_long_reference = _load_reference_profiles(reference_profile_file)
+    reference_long, _ = _load_reference_profiles(reference_profile_file)
 
     profile_plot = profile.copy()
     profile_plot["pressure_bar"] = profile_plot["pressure"]
@@ -104,17 +109,12 @@ def plot_comparison(model, reference_profile_file):
     panels = [
         ("pressure_bar", "Pressure [bar]", "(a)"),
         ("sG", "Gas saturation [-]", "(b)"),
-        ("vG_m_s", "Gas phase velocity (m/s)", "(c)"),
-        ("drift_velocity_m_s", "Drift velocity (m/s)", "(d)"),
+        ("vG_m_s", "Gas phase velocity [m/s]", "(c)"),
+        ("drift_velocity_m_s", "Drift velocity [m/s]", "(d)"),
     ]
     reference_styles = {
         "Analytical": {"color": "#000000", "lw": 2.4, "ls": "-"},
         "T2Well": {"color": "#0072B2", "lw": 2.4, "ls": "--"},
-        "T2Well reference": {
-            "color": "#000000",
-            "lw": 2.4,
-            "ls": "-",
-        },
     }
     for ax, (column, xlabel, label) in zip(axes, panels):
         if reference_long is not None:
@@ -126,11 +126,10 @@ def plot_comparison(model, reference_profile_file):
                 style = reference_styles.get(
                     solution, {"color": "0.25", "lw": 1.8, "ls": "-"}
                 )
-                label_solution = solution if has_long_reference else "T2Well reference"
                 ax.plot(
                     reference_subset["value"],
                     reference_subset["depth_m"],
-                    label=label_solution,
+                    label=solution,
                     solid_capstyle="round",
                     dash_capstyle="round",
                     **style,
@@ -166,6 +165,9 @@ def plot_comparison(model, reference_profile_file):
         bbox_to_anchor=(0.5, 1.0),
     )
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.94), h_pad=1.6, w_pad=1.6)
-    fig.savefig(COMPARISON_DIR / "darts_figure_a1_profiles.png", bbox_inches="tight")
-    fig.savefig(COMPARISON_DIR / "darts_figure_a1_profiles.pdf", bbox_inches="tight")
+    output_stem = "darts_figure_a1_profiles"
+    if output_label:
+        output_stem += f"_{output_label}"
+    fig.savefig(COMPARISON_DIR / f"{output_stem}.png", bbox_inches="tight")
+    fig.savefig(COMPARISON_DIR / f"{output_stem}.pdf", bbox_inches="tight")
     plt.close(fig)

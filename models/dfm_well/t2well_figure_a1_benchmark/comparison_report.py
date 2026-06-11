@@ -81,7 +81,6 @@ def _compare_against_analytical(model, reference_profile_file):
         rows.append(
             {
                 "quantity": label,
-                "n": len(common_depth),
                 "darts_r2": darts_r2,
                 "t2well_r2": t2well_r2,
             }
@@ -89,13 +88,16 @@ def _compare_against_analytical(model, reference_profile_file):
     return rows
 
 
-def print_r2_report(model, reference_profile_file):
+def print_r2_report(model, reference_profile_file, case_label=None):
     rows = _compare_against_analytical(model, reference_profile_file)
     if not rows:
         print("\nR2 report against analytical solution was not generated.")
         return
 
-    print("\nCoefficient of determination against analytical solution")
+    if case_label:
+        print(f"\nCoefficient of determination against analytical solution: {case_label}")
+    else:
+        print("\nCoefficient of determination against analytical solution")
     print(f"{'Quantity':<28} {'DARTS-well':>12} {'T2Well':>12}")
     print(f"{'-' * 28} {'-' * 12:>12} {'-' * 12:>12}")
     for row in rows:

@@ -7,9 +7,13 @@ from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
-from darts.physics.properties.density import Garcia2001
-from darts.physics.properties.viscosity import Fenghour1998, Islam2012
+from darts.physics.properties.density import Garcia2001, IdealGasDensity
 from darts.physics.properties.eos_properties import EoSDensity
+from darts.physics.properties.viscosity import (
+    AirViscositySutherland,
+    Fenghour1998,
+    Islam2012,
+)
 from darts.physics.properties.flash import Flash
 
 from dartsflash.libflash import EoS
@@ -23,14 +27,33 @@ from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
 
-class ImmiscibleCO2WaterFlash(Flash):
+AIR_MW_G_PER_MOL = 28.9652
+AIR_WATER_IFT_N_M = 0.0728
+CASE_CONFIGS = {
+    "20_degC_air": {
+        "gas_component": "N2",
+        "temperature_c": 20.0,
+        "steady_time_s": 7.85e8,
+        "reference_profile_file": "digitized_t2well_paper_profiles_20_degC_air.csv",
+        "use_air_properties": True,
+    },
+    "40_degC_CO2": {
+        "gas_component": "CO2",
+        "temperature_c": 40.0,
+        "steady_time_s": 0.456869e9,
+        "reference_profile_file": "digitized_t2well_paper_profiles_40_degC_CO2.csv",
+        "use_air_properties": False,
+    },
+}
+
+
+class ImmiscibleGasWaterFlash(Flash):
     """
-    Immiscible two-phase flash for the CO2/water verification variant.
+    Immiscible two-phase flash for the gas/water verification cases.
 
     Pan, Webb, and Oldenburg's analytical solution assumes no interphase
-    component exchange. This flash applies the same immiscible assumption to
-    the CO2/water case: gas is pure CO2 and liquid is pure H2O. The overall
-    CO2 mole fraction therefore directly sets the gas-phase mole amount.
+    component exchange. This flash applies the same immiscible assumption:
+    gas is pure gas component and liquid is pure H2O.
     """
 
     def __init__(self, eps):
@@ -38,8 +61,8 @@ class ImmiscibleCO2WaterFlash(Flash):
         self.eps = eps
 
     def evaluate(self, pressure, temperature, zc):
-        z_co2 = float(np.clip(zc[0], self.eps, 1.0 - self.eps))
-        self.nu = np.array([z_co2, 1.0 - z_co2])
+        z_gas = float(np.clip(zc[0], self.eps, 1.0 - self.eps))
+        self.nu = np.array([z_gas, 1.0 - z_gas])
         self.X = np.array(
             [
                 [1.0, 0.0],
@@ -54,16 +77,18 @@ class Model(DartsModel):
     """
     Drift-flux wellbore verification case after Pan, Webb, and Oldenburg (2011).
 
-    The current setup uses the CO2/water T2Well-ECO2N variant of the
-    analytical/T2Well comparison. A tiny high-volume top segment is used
-    only to impose the fixed outlet pressure without adding a reservoir-flow
-    boundary.
+    The setup follows the T2Well drift-flux verification cases. A tiny
+    high-volume top segment is used only to impose the fixed outlet pressure
+    without adding a reservoir-flow boundary.
     """
 
-    def __init__(self):
+    def __init__(self, case_name="20_degC_air"):
         super().__init__()
         self.timer.node["initialization"].start()
 
+        self.case_name = case_name
+        self.case_config = CASE_CONFIGS[case_name]
+        self.reference_profile_file = self.case_config["reference_profile_file"]
         self.zero = 1.0e-10
         self.well_name = "I1"
         self.well_id_m = 0.1
@@ -73,9 +98,11 @@ class Model(DartsModel):
         self.top_boundary_length_m = 1.0e-6
         self.top_boundary_volume_m3 = 1.0e20
         self.wall_roughness_m = 2.4e-5
-        self.temperature_k = 40.0 + 273.15
+        self.temperature_k = self.case_config["temperature_c"] + 273.15
         self.top_pressure_bar = 1.0
-        self.mass_rate_co2_kg_s = 0.19625
+        self.paper_steady_time_s = self.case_config["steady_time_s"]
+        self.mass_rate_gas_kg_s = 0.19625
+        self.mass_rate_air_kg_s = self.mass_rate_gas_kg_s
         self.mass_rate_h2o_kg_s = 0.19625
 
         self.set_reservoir()
@@ -93,7 +120,7 @@ class Model(DartsModel):
             it_linear=10,
             newton_type=sim_params.newton_local_chop,
             coupled_well_res_norm_method=2,
-            runtime=0.456869e9 / (24 * 60 * 60),
+            runtime=self.paper_steady_time_s / (24 * 60 * 60),
         )
 
         self.timer.node["initialization"].stop()
@@ -118,9 +145,12 @@ class Model(DartsModel):
         self.reservoir.boundary_volumes["yz_minus"] = 1.0e20
 
     def set_physics(self):
-        components_names = ["CO2", "H2O"]
+        components_names = [self.case_config["gas_component"], "H2O"]
         phases_names = ["G", "L"]
         comp_data = CompData(components_names, setprops=True)
+        molecular_weights = list(comp_data.Mw)
+        if self.case_config["use_air_properties"]:
+            molecular_weights[0] = AIR_MW_G_PER_MOL
         epsilon = self.zero / 10.0
 
         self.physics = Compositional(
@@ -141,31 +171,39 @@ class Model(DartsModel):
         property_container = PropertyContainer(
             phases_names,
             components_names,
-            Mw=comp_data.Mw,
+            Mw=molecular_weights,
             eps_z=epsilon,
             temperature=self.temperature_k,
             rock_comp=0.0,
         )
 
-        flash_ev = VL(comp_data)
-        flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE])
-        pr = flash_ev.eos["VL"]
+        property_container.flash_ev = ImmiscibleGasWaterFlash(epsilon)
 
-        property_container.flash_ev = ImmiscibleCO2WaterFlash(epsilon)
+        if self.case_config["use_air_properties"]:
+            gas_density_ev = IdealGasDensity(AIR_MW_G_PER_MOL)
+            gas_viscosity_ev = AirViscositySutherland()
+            ift_ev = ConstFunc(AIR_WATER_IFT_N_M)
+        else:
+            flash_ev = VL(comp_data)
+            flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE])
+            pr = flash_ev.eos["VL"]
+            gas_density_ev = EoSDensity(eos=pr, Mw=molecular_weights)
+            gas_viscosity_ev = Fenghour1998()
+            ift_ev = IFT_multicomponent_MCM(components_names)
 
         property_container.density_ev = {
-            "G": EoSDensity(eos=pr, Mw=comp_data.Mw),
+            "G": gas_density_ev,
             "L": Garcia2001(components_names),
         }
         property_container.viscosity_ev = {
-            "G": Fenghour1998(),
+            "G": gas_viscosity_ev,
             "L": Islam2012(components_names),
         }
         property_container.rel_perm_ev = {
             "G": PhaseRelPerm("gas", swc=0.0, sgr=0.0, n=1.0),
             "L": PhaseRelPerm("oil", swc=0.0, sgr=0.0, n=1.0),
         }
-        property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
+        property_container.IFT_ev = ift_ev
 
         self.physics.add_property_region(property_container)
 
@@ -190,7 +228,7 @@ class Model(DartsModel):
     def set_injection_rate(self):
         mw = np.asarray(self.physics.property_containers[0].Mw)
         component_mass_rates = np.array(
-            [self.mass_rate_co2_kg_s, self.mass_rate_h2o_kg_s]
+            [self.mass_rate_gas_kg_s, self.mass_rate_h2o_kg_s]
         )
         component_molar_rates = component_mass_rates / mw * 24.0 * 60.0 * 60.0
         self.injection_component_molar_rates_kmol_day = component_molar_rates
@@ -245,7 +283,7 @@ class Model(DartsModel):
             {
                 "composition": self.injection_composition,
                 "phase_mass_rates": {
-                    "G": self.mass_rate_co2_kg_s,
+                    "G": self.mass_rate_gas_kg_s,
                     "L": self.mass_rate_h2o_kg_s,
                 },
             },
@@ -278,7 +316,7 @@ class Model(DartsModel):
             well_indexD=0.0,
         )
 
-    def _co2_mole_fraction_for_gas_saturation(self, pressure_bar, target_sg):
+    def _gas_mole_fraction_for_gas_saturation(self, pressure_bar, target_sg):
         pc = self.physics.property_containers[0]
         g_idx = self.physics.phases.index("G")
         lo = self.zero
@@ -304,10 +342,10 @@ class Model(DartsModel):
         state = initial_conditions.initial_conditions_vector
         for seg_idx, (p_pa, sg) in enumerate(zip(pressure_pa, gas_saturation)):
             p_bar = p_pa / 1.0e5
-            z_co2 = self._co2_mole_fraction_for_gas_saturation(p_bar, sg)
+            z_gas = self._gas_mole_fraction_for_gas_saturation(p_bar, sg)
             start = seg_idx * self.physics.n_vars
             state[start] = p_bar
-            state[start + 1] = z_co2
+            state[start + 1] = z_gas
 
     def set_initial_conditions(self):
         input_distribution = {
