@@ -1,15 +1,14 @@
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
 
 CASE_DIR = Path(__file__).resolve().parent
 COMPARISON_DIR = CASE_DIR / "paper_comparison"
-SECONDS_PER_DAY = 24 * 60 * 60
+REFERENCE_PRESSURE_OFFSET_PA = 1.0e5
 REFERENCE_PROPERTY_COLUMNS = {
-    "Pressure": "pressure_pa",
+    "Pressure": "pressure_bar",
     "Gas Saturation": "sG",
     "Gas Phase Velocity": "vG_m_s",
     "Drift Velocity": "drift_velocity_m_s",
@@ -28,37 +27,8 @@ def _final_profile(model):
     final["vL_m_s"] = model.mass_rate_h2o_kg_s / (final["rhoL"] * final["sL"] * area)
 
     # The first segment is the artificial top pressure block.
-    return final.iloc[1:].reset_index(drop=True)
-
-
-def _make_summary(model, profile):
-    p_top = float(profile["pressure"].iloc[0])
-    p_bottom = float(profile["pressure"].iloc[-1])
-    sg_top = float(profile["sG"].iloc[0])
-    sg_bottom = float(profile["sG"].iloc[-1])
-    vg_top = float(profile["vG_m_s"].iloc[0])
-    vg_bottom = float(profile["vG_m_s"].iloc[-1])
-
-    rows = [
-        ("paper_well_length_m", model.well_length_m),
-        ("paper_grid_resolution_m", model.physical_segment_length_m),
-        ("paper_temperature_C", model.temperature_k - 273.15),
-        ("paper_top_pressure_Pa", model.top_pressure_bar * 1.0e5),
-        ("paper_wall_roughness_m", model.wall_roughness_m),
-        ("paper_co2_mass_rate_kg_s", model.mass_rate_co2_kg_s),
-        ("paper_h2o_mass_rate_kg_s", model.mass_rate_h2o_kg_s),
-        ("paper_total_mass_flux_kg_m2_s", 50.0),
-        ("paper_steady_time_s", 0.456869e9),
-        ("darts_final_time_s", model.physics.engine.t * SECONDS_PER_DAY),
-        ("darts_top_physical_pressure_Pa", p_top * 1.0e5),
-        ("darts_bottom_pressure_Pa", p_bottom * 1.0e5),
-        ("darts_top_physical_gas_saturation", sg_top),
-        ("darts_bottom_gas_saturation", sg_bottom),
-        ("darts_top_gas_velocity_m_s", vg_top),
-        ("darts_near_bottom_gas_velocity_m_s", vg_bottom),
-    ]
-    summary = pd.DataFrame(rows, columns=["metric", "value"])
-    summary.to_csv(COMPARISON_DIR / "summary.csv", index=False)
+    final = final.iloc[1:].reset_index(drop=True)
+    return final
 
 
 def _load_reference_profiles():
@@ -68,6 +38,10 @@ def _load_reference_profiles():
         reference_long["quantity"] = reference_long["property"].map(
             REFERENCE_PROPERTY_COLUMNS
         )
+        pressure_rows = reference_long["quantity"] == "pressure_bar"
+        reference_long.loc[pressure_rows, "value"] = (
+            reference_long.loc[pressure_rows, "value"] + REFERENCE_PRESSURE_OFFSET_PA
+        ) / 1.0e5
         return reference_long.dropna(subset=["quantity"]), True
 
     reference_path = CASE_DIR / "paper_reference" / "figure_a1_digitized.csv"
@@ -82,73 +56,59 @@ def _load_reference_profiles():
         value_name="value",
     )
     reference_long["solution"] = "T2Well Figure A1"
+    pressure_rows = reference_long["quantity"] == "pressure_pa"
+    reference_long.loc[pressure_rows, "quantity"] = "pressure_bar"
+    reference_long.loc[pressure_rows, "value"] = (
+        reference_long.loc[pressure_rows, "value"] + REFERENCE_PRESSURE_OFFSET_PA
+    ) / 1.0e5
     return reference_long, False
 
 
 def plot_comparison(model):
     COMPARISON_DIR.mkdir(exist_ok=True)
     profile = _final_profile(model)
-    profile.to_csv(COMPARISON_DIR / "darts_final_profile.csv", index=False)
-    _make_summary(model, profile)
-
     reference_long, has_long_reference = _load_reference_profiles()
 
     profile_plot = profile.copy()
-    profile_plot["pressure_pa"] = profile_plot["pressure"] * 1.0e5
+    profile_plot["pressure_bar"] = profile_plot["pressure"]
     profile_plot["drift_velocity_m_s"] = profile_plot["vG_m_s"] - (
         profile_plot["sG"] * profile_plot["vG_m_s"]
         + profile_plot["sL"] * profile_plot["vL_m_s"]
     )
 
-    if reference_long is not None:
-        metric_rows = []
-        for column in ["pressure_pa", "sG", "vG_m_s", "drift_velocity_m_s"]:
-            for solution in reference_long["solution"].unique():
-                reference_subset = reference_long[
-                    (reference_long["quantity"] == column)
-                    & (reference_long["solution"] == solution)
-                ]
-                darts_interp = np.interp(
-                    reference_subset["depth_m"],
-                    profile_plot["depth_m"],
-                    profile_plot[column],
-                )
-                diff = darts_interp - reference_subset["value"]
-                metric_rows.append(
-                    {
-                        "reference_solution": solution,
-                        "quantity": column,
-                        "rmse": float(np.sqrt(np.mean(diff**2))),
-                        "max_abs_error": float(np.max(np.abs(diff))),
-                    }
-                )
-        pd.DataFrame(metric_rows).to_csv(
-            COMPARISON_DIR / "darts_vs_paper_metrics.csv", index=False
-        )
-
     plt.rcParams.update(
         {
-            "font.size": 10,
+            "font.size": 10.5,
             "axes.labelsize": 11,
             "axes.titlesize": 11,
-            "legend.fontsize": 9,
-            "figure.dpi": 150,
+            "axes.linewidth": 0.9,
+            "xtick.labelsize": 10,
+            "ytick.labelsize": 10,
+            "legend.fontsize": 9.5,
+            "figure.dpi": 300,
+            "savefig.dpi": 600,
+            "pdf.fonttype": 42,
+            "ps.fonttype": 42,
         }
     )
 
-    fig, axes = plt.subplots(2, 2, figsize=(7.2, 7.0), sharey=True)
+    fig, axes = plt.subplots(2, 2, figsize=(7.2, 6.8), sharey=True)
     axes = axes.ravel()
 
     panels = [
-        ("pressure_pa", "Pressure (Pa)", "(a)"),
-        ("sG", "Gas saturation", "(b)"),
+        ("pressure_bar", "Pressure [bar]", "(a)"),
+        ("sG", "Gas saturation [-]", "(b)"),
         ("vG_m_s", "Gas phase velocity (m/s)", "(c)"),
         ("drift_velocity_m_s", "Drift velocity (m/s)", "(d)"),
     ]
     reference_styles = {
-        "Analytical": {"color": "#d62728", "lw": 2.0, "ls": "-"},
-        "T2Well": {"color": "#2ca02c", "lw": 2.0, "ls": "--"},
-        "T2Well Figure A1": {"color": "#d62728", "lw": 2.0, "ls": "-"},
+        "Analytical": {"color": "#000000", "lw": 2.4, "ls": "-"},
+        "T2Well": {"color": "#0072B2", "lw": 2.4, "ls": "--"},
+        "T2Well Figure A1": {
+            "color": "#000000",
+            "lw": 2.4,
+            "ls": "-",
+        },
     }
     for ax, (column, xlabel, label) in zip(axes, panels):
         if reference_long is not None:
@@ -165,27 +125,41 @@ def plot_comparison(model):
                     reference_subset["value"],
                     reference_subset["depth_m"],
                     label=label_solution,
+                    solid_capstyle="round",
+                    dash_capstyle="round",
                     **style,
                 )
         ax.plot(
             profile_plot[column],
             profile_plot["depth_m"],
-            color="#1f77b4",
-            lw=1.8,
-            marker="o",
-            markersize=2.5,
-            markevery=5,
+            color="#D55E00",
+            lw=2.4,
             label="DARTS-well",
+            solid_capstyle="round",
+            zorder=5,
         )
         ax.set_xlabel(xlabel)
         ax.set_ylabel("Depth (m)")
         ax.set_title(label, loc="left", fontweight="bold")
         ax.set_ylim(model.well_length_m, 0.0)
-        ax.grid(True, color="0.88", linewidth=0.7)
-        ax.legend(frameon=False)
+        ax.grid(True, color="0.86", linewidth=0.6)
+        ax.tick_params(direction="in", top=True, right=True, length=4)
 
-    fig.suptitle("T2Well Figure A1 benchmark: DARTS-well final profiles", y=0.99)
-    fig.tight_layout()
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        ncol=3,
+        frameon=True,
+        facecolor="white",
+        edgecolor="0.75",
+        framealpha=0.95,
+        handlelength=3.2,
+        columnspacing=1.8,
+        bbox_to_anchor=(0.5, 1.0),
+    )
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.94), h_pad=1.6, w_pad=1.6)
     fig.savefig(COMPARISON_DIR / "darts_figure_a1_profiles.png", bbox_inches="tight")
     fig.savefig(COMPARISON_DIR / "darts_figure_a1_profiles.pdf", bbox_inches="tight")
     plt.close(fig)
