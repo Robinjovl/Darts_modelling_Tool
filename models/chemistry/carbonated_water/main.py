@@ -67,8 +67,14 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         if output:
             if domain == '1D': return plot_profiles(m, output_folder=output_folder)
             else: m.output.output_to_vtk(ith_step=ith_step)
+
     # to report timers upon receiving SIGTERM signal
     def _term(signum, frame):
+        if getattr(m.physics, 'cache', False):
+            try:
+                m.physics.write_cache()
+            except Exception as exc:
+                print(f"OBL cache flush on SIGTERM failed: {exc}")
         raise SystemExit(128 + signum)
     signal.signal(signal.SIGTERM, _term)
     try:
