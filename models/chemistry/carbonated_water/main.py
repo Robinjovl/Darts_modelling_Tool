@@ -76,7 +76,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         m.ni_dt_increase_cutoff = ni_dt_increase_cutoff
         m.ni_dt_decrease_cutoff = ni_dt_decrease_cutoff
 
-        # intialization without injection
+        # initialization without injection
         if minerals == ['calcite']:
             init_days = 0.1
             num_time_iterations = 7

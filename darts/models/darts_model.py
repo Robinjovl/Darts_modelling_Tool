@@ -607,7 +607,7 @@ class DartsModel:
 
     def run_simple(self, physics, data_ts, days, restart_dt=0.0):
         """
-        Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
+        Run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
         :param physics:
         :param data_ts:
@@ -688,7 +688,7 @@ class DartsModel:
         verbose: bool = True,
     ):
         """
-        Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
+        Run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
         :param days: Time increment [days]
         :type days: float
@@ -838,7 +838,8 @@ class DartsModel:
         if save_reservoir_data:
             self.output.save_data_to_h5(kind="reservoir")
 
-        # Flush OBL adaptive cache between snapshots so progress survives SIGTERM / job cancel.
+        # If adaptive OBL-point caching is enabled, flush OBL cache at the end of each run/report interval
+        # to preserve newly evaluated points, so the cache progress survives SIGTERM/job cancel.
         if getattr(self.physics, 'cache', False):
             self.physics.write_cache()
 
@@ -853,7 +854,7 @@ class DartsModel:
 
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         """
-        Method to solve Newton loop for specified timestep
+        Solve Newton loop for specified timestep
 
         :param dt: Timestep size [days]
         :type dt: float
