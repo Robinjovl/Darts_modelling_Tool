@@ -1,6 +1,7 @@
 #!/usr/bin/env pvpython
 # -*- coding: utf-8 -*-
-"""ParaView rendering script (5.9.x).
+"""
+ParaView rendering script (5.9.x).
 
 Loads ``state.pvsm`` while remapping the embedded Windows data path to the
 local Linux ``vtk_files`` directory, equalizes the camera across all render
@@ -28,7 +29,8 @@ import time
 
 
 def _pdeathsig_preexec():
-    """Linux preexec_fn: send SIGTERM to the child when its parent dies.
+    """
+    Linux preexec_fn: send SIGTERM to the child when its parent dies.
 
     Lets the spawned X server reliably go away when pvbatch exits, no matter
     how chaotic ParaView's interpreter shutdown is.
@@ -44,7 +46,8 @@ def _pdeathsig_preexec():
 
 
 def _ensure_display():
-    """Ensure a usable X DISPLAY exists; spawn Xvnc/Xvfb headlessly if not.
+    """
+    Ensure a usable X DISPLAY exists; spawn Xvnc/Xvfb headlessly if not.
 
     Required for ParaView 5.9 X11 builds that can't render offscreen on their
     own. Picks the first free display number in [99, 199]. The child is set
@@ -195,7 +198,8 @@ def log(msg):
 
 
 def rewrite_state_paths(state_path, data_dir):
-    """Rewrite absolute file paths inside a .pvsm so they point at ``data_dir``.
+    """
+    Rewrite absolute file paths inside a .pvsm so they point at ``data_dir``.
 
     The Windows/Linux state files store FileName values as absolute paths.
     This helper replaces the path of any reference whose basename exists in
@@ -272,8 +276,10 @@ def set_camera_on_views(views, position, focal, viewup):
 
 
 def apply_threshold_overrides():
-    """Override (lower, upper) bounds of any Threshold filter whose scalar
-    matches a key in THRESHOLD_BOUNDS."""
+    """
+    Override (lower, upper) bounds of any Threshold filter whose scalar
+    matches a key in THRESHOLD_BOUNDS.
+    """
     if not THRESHOLD_BOUNDS:
         return
     found = 0
@@ -416,7 +422,9 @@ def encode_with_ffmpeg(out_path):
 
 
 def encode_with_vtk_ogg(out_path):
-    """Encode rendered PNGs to .ogv via vtkOggTheoraWriter (no ffmpeg needed)."""
+    """
+    Encode rendered PNGs to .ogv via vtkOggTheoraWriter (no ffmpeg needed).
+    """
     try:
         from vtkmodules.vtkIOImage import vtkPNGReader
         from vtkmodules.vtkIOOggTheora import vtkOggTheoraWriter

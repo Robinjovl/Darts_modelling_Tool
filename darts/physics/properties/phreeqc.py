@@ -18,7 +18,8 @@ _DEFAULT_DB_DIR = Path(__file__).parent / 'databases'
 
 
 class PhreeqcFlashError(FlashError):
-    """Raised when PHREEQC cannot equilibrate a state.
+    """
+    Raised when PHREEQC cannot equilibrate a state.
 
     A :class:`FlashError` subclass so callers (e.g. the model's Newton loop) can catch
     *any* flash non-convergence and convert it into a timestep cut, without masking
@@ -303,13 +304,16 @@ class Flash:
         self.reset_dilution_tracker()
 
     def reset_dilution_tracker(self):
-        """Clear the accumulated record of diluted states (call once per Newton iteration)."""
+        """
+        Clear the accumulated record of diluted states (call once per Newton iteration).
+        """
         self._diluted_states = []
         self._diluted_factors = []
         self._diluted_molality = []
 
     def pop_dilution_report(self):
-        """Return per-iteration dilution statistics and clear the tracker.
+        """
+        Return per-iteration dilution statistics and clear the tracker.
 
         :return: ``None`` if no dilution occurred since the last reset, otherwise a dict with
             ``count`` (number of diluted supporting points), component-wise ``state_min`` /
@@ -578,7 +582,8 @@ class Flash:
         )
 
     def _solve_with_dilution(self, build_input, water_mass, state):
-        """Find the smallest extra-solvent dilution at which PHREEQC converges.
+        """
+        Find the smallest extra-solvent dilution at which PHREEQC converges.
 
         Geometric escalation brackets a converging dilution factor, then a few bisection
         steps refine it back toward the convergence edge so the reported speciation stays as

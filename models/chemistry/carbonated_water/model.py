@@ -387,7 +387,9 @@ class Model(CICDModel):
         self.inj_stream = correct_composition(self.inj_stream, self.min_z)
 
     def get_evaluator_factory(self, region):
-        """Return a picklable factory that constructs a fresh ReservoirOperators per worker."""
+        """
+        Return a picklable factory that constructs a fresh ReservoirOperators per worker.
+        """
         from darts.physics.chemistry.operator_evaluator import ReservoirOperators
 
         # Capture construction parameters (all picklable plain data)
@@ -699,7 +701,8 @@ class Model(CICDModel):
                                        target=self.pressure_init)
 
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
-        """Newton loop with PHREEQC dilution-fallback policing.
+        """
+        Newton loop with PHREEQC dilution-fallback policing.
 
         Delegates to the base Newton loop but (1) resets the per-timestep dilution budget
         and the flashes' per-iteration trackers, and (2) converts any :class:`FlashError`
@@ -743,7 +746,8 @@ class Model(CICDModel):
             return 0  # converged = False -> run() else-branch cuts dt
 
     def apply_rhs_flux(self, dt: float, t: float):
-        """Apply the injection RHS flux, then police the PHREEQC dilution fallback.
+        """
+        Apply the injection RHS flux, then police the PHREEQC dilution fallback.
 
         Called once per Newton iteration immediately after ``assemble_linear_system`` (so any
         supporting-point dilution that happened during this assembly is now recorded in the

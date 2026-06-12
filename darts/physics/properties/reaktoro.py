@@ -34,7 +34,8 @@ else:
 
 
 class ReaktoroFlashError(FlashError):
-    """Raised when the Reaktoro equilibrium solver fails or does not converge.
+    """
+    Raised when the Reaktoro equilibrium solver fails or does not converge.
 
     A :class:`FlashError` subclass so the model's Newton loop catches it the same way as a
     PHREEQC failure and converts it into a timestep cut (keeping the simulation alive),

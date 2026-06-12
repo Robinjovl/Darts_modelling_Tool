@@ -8,7 +8,8 @@ from visualization import plot_profiles, plot_new_profiles, animate_1d
 
 
 def build_report_timesteps(segments):
-    """Build a per-step dt array from (upper_cum, n_steps) segments.
+    """
+    Build a per-step dt array from (upper_cum, n_steps) segments.
 
     Each segment [lower, upper] is divided into n_steps equal substeps.
     lower is 0 for the first segment, and the previous upper thereafter.
