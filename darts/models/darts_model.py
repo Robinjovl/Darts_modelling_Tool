@@ -980,7 +980,14 @@ class DartsModel:
                         )
                 else:
                     # compile-time C++ linear solvers
-                    self.physics.engine.solve_linear_equation()
+                    rc = self.physics.engine.solve_linear_equation()
+                    if rc != 0:
+                        # Abort the Newton loop on a failed linear solve so that
+                        # post_newtonloop sees linear_solver_error_last_dt != 0 and
+                        # returns converged=0 without burning the full max_newt
+                        # budget on stale dX updates.
+                        self._linear_solver_rc_last = rc
+                        break
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()

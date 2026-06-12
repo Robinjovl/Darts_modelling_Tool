@@ -156,7 +156,7 @@ class Model(CICDModel):
         self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, tol_linear=1e-6, it_newton=15, it_linear=200)
         self.params.newton_type = sim_params.newton_local_chop
         # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
-        self.params.linear_type = sim_params.cpu_superlu
+        # self.params.linear_type = sim_params.cpu_superlu
         self.params.newton_params[0] = 0.2
         self.runtime = 1
         # default timestep control thresholds (overridable by callers)
@@ -300,11 +300,6 @@ class Model(CICDModel):
 
         self.nc = len(self.elements)
 
-        # Stash construction parameters for get_evaluator_factory()
-        self.Mw = Mw
-        self.stoich_matrix = stoich_matrix
-        self.rock_props = rock_props
-
         # Create property containers:
         property_container = PropertyContainer(phases=self.phases, components_name=self.elements, Mw=Mw,
                                             stoich_matrix=stoich_matrix, eps_z=self.obl_min, temperature=self.temperature,
@@ -366,10 +361,11 @@ class Model(CICDModel):
 
         # Flashes whose per-iteration dilution fallback we police in run_timestep /
         # apply_rhs_flux. Only those exposing pop_dilution_report() (PHREEQC) qualify; the
-        # reaktoro flash is silently ignored. NOTE: with parallel_evaluation=True the engine
-        # uses per-worker flash copies (see get_evaluator_factory), so the budget/warning are
-        # only enforced in the default in-process (parallel_evaluation=False) path; the flash
-        # still degrades gracefully per worker regardless.
+        # reaktoro flash is silently ignored. NOTE: with parallel_evaluation=True the model is
+        # reconstructed per worker (base DartsModel.get_evaluator_factory / ModelEvaluatorFactory),
+        # so each worker uses its own flash copy; the budget/warning are only enforced in the
+        # default in-process (parallel_evaluation=False) path; the flash still degrades
+        # gracefully per worker regardless.
         self._tracked_flashes = [
             property_container.flash_ev
         ] if hasattr(property_container.flash_ev, 'pop_dilution_report') else []
@@ -385,84 +381,6 @@ class Model(CICDModel):
         self.inj_stream_components[self.components.index('CO2')] = mole_fraction_co2       # CO2
         self.inj_stream = convert_composition(self.inj_stream_components, self.E)
         self.inj_stream = correct_composition(self.inj_stream, self.min_z)
-
-    def get_evaluator_factory(self, region):
-        """
-        Return a picklable factory that constructs a fresh ReservoirOperators per worker.
-        """
-        from darts.physics.chemistry.operator_evaluator import ReservoirOperators
-
-        # Capture construction parameters (all picklable plain data)
-        phases = dict(self.phases)
-        elements = list(self.elements)
-        Mw = dict(self.Mw)
-        stoich_matrix = self.stoich_matrix.copy()
-        fc_mask = self.fc_mask.copy()
-        obl_min = self.obl_min
-        temperature = self.temperature
-        flash_type = self.flash
-        database = self.database
-        n_solid = self.n_solid
-        nc = self.nc
-        kinetic_mechanisms = list(self.kinetic_mechanisms)
-        rock_props = dict(self.rock_props)
-        permporo = self.permporo
-        dz = self.physics.dz
-
-        def factory():
-            from darts.physics.chemistry.property_container import PropertyContainer
-            from darts.physics.properties.density import DensityBasic
-            from darts.physics.properties.basic import ConstFunc
-            from darts.physics.properties.kinetics import KineticRate, LinearReactionSurfaceArea
-            from darts.physics.properties.phreeqc import Flash as PhreeqcFlash
-            from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
-
-            pc = PropertyContainer(
-                phases=phases, components_name=elements, Mw=Mw,
-                stoich_matrix=stoich_matrix, eps_z=obl_min,
-                temperature=temperature, fc_mask=fc_mask,
-            )
-            pc.permporo_mult_ev = permporo
-            pc.diffusion_ev = {
-                ph: ConstFunc(np.concatenate([
-                    np.zeros(n_solid), np.ones(nc - n_solid)
-                ]) * 5.2e-10 * 86400)
-                for ph in phases
-            }
-            pc.rel_perm_ev = {ph: CustomRelPerm(2) for ph in phases}
-            pc.viscosity_ev = {'gas': GasViscosity(), 'liq': LiquidViscosity()}
-
-            if flash_type == 'phreeqc':
-                db_filename = f"{database}.dat"
-                pc.flash_ev = PhreeqcFlash(
-                    min_z=pc.eps_z, minerals=pc.minerals,
-                    components=pc.components_name[pc.fc_mask],
-                    temperature=pc.temperature, database_filename=db_filename,
-                )
-            elif flash_type == 'reaktoro':
-                db_filename = 'supcrtbl' if database == 'supcrtbl' else f"{database}.dat"
-                pc.flash_ev = ReaktoroFlash(
-                    min_z=pc.eps_z, minerals=pc.minerals,
-                    components=pc.components_name[pc.fc_mask],
-                    temperature=pc.temperature, database_filename=db_filename,
-                )
-
-            surface_area_ev = LinearReactionSurfaceArea(initial_area_per_mol=0.925)
-            pc.kinetic_rate_ev = {
-                m: KineticRate(
-                    min_z=obl_min, mineral_name=m.split('_', 1)[1],
-                    mechanisms=kinetic_mechanisms, surface_area_ev=surface_area_ev,
-                )
-                for m in pc.minerals
-            }
-            for mn, props in rock_props.items():
-                pc.rock_compr_ev[mn] = ConstFunc(props['compressibility'])
-                pc.rock_density_ev[mn] = DensityBasic(
-                    compr=props['compressibility'], dens0=props['density'], p0=1.)
-
-            return ReservoirOperators(pc, thermal=False, extrapolation_flag=False, dz=dz)
-
-        return factory
 
     def set_reservoir(self, domain, nx, mesh_filename, poro_filename):
         self.domain = domain
