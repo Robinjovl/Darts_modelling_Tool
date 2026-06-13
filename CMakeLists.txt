@@ -271,6 +271,14 @@ message(STATUS "  OBL max dimensions / engine max NC: ${OPENDARTS_MAX_DIMS}")
 # sees a consistent value. Interpolators target picks up MAX_DIMS via its own
 # target_compile_definitions in interpolation/pybind11/CMakeLists.txt.
 add_compile_definitions(MAX_NC=${OPENDARTS_MAX_DIMS})
+# Cap the mechanical engines' compositional dimensionality independently of
+# OPENDARTS_MAX_DIMS. Super-elastic blocks reach N_VARS = NC + 1 + ND, which at
+# the global MAX_NC requires linsolv_bos_fs_cpr<N> template instantiations the
+# proprietary darts-linear-solvers archive doesn't carry. Fixing this at NC=3
+# keeps mech blocks within the existing fs_cpr<4..12> instantiation set (thermal
+# super-elastic at NC=3 → N_VARS=7) while still letting flow engines run at the
+# full OPENDARTS_MAX_DIMS.
+add_compile_definitions(MAX_NC_MECH=3)
 # ------------------------------------------------------------------------------
 
 

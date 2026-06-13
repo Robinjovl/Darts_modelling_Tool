@@ -20,7 +20,9 @@
  * @tparam N_DIMS The number of dimensions in paramter space
  * @tparam N_OPS The number of operators to be interpolated
  */
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+// N_OPS widened to uint16_t at NC=30 / NP=3 thermal (super-engine N_OPS up to 273) —
+// a uint8_t template parameter would silently narrow point_data_t and operator-index arithmetic.
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 class multilinear_interpolator_base : public interpolator_base
 {
 public:

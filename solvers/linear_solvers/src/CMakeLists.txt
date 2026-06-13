@@ -1,5 +1,27 @@
 # Build libopendarts_linear_solvers --------------------------------------------
 
+# Auto-generated explicit template instantiations
+# ------------------------------------------------------------------------------
+# Solver classes parameterized by block size N (e.g. linsolv_superlu<N>) need an
+# explicit `template class linsolv_superlu<N>;` directive per N to emit out-of-
+# line definitions into the static archive. Hand-maintaining that list and
+# keeping it in sync with OPENDARTS_MAX_DIMS is error-prone; instead drive it
+# from CMake via od_emit_template_instantiations(). Same pattern can be applied
+# to other solvers (linsolv_bos_cpr, linsolv_bos_bilu0, linsolv_bos_gmres, ...)
+# as the need arises.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/od_emit_template_instantiations.cmake)
+
+math(EXPR _od_linsolv_max_n "${OPENDARTS_MAX_DIMS} + 1")
+set(_od_linsolv_gen_dir ${CMAKE_CURRENT_BINARY_DIR}/generated)
+file(MAKE_DIRECTORY ${_od_linsolv_gen_dir})
+
+# linsolv_superlu — N_VARS up to OPENDARTS_MAX_DIMS+1 (thermal block = NC+1).
+od_emit_template_instantiations(
+  CLASS linsolv_superlu
+  MAX_N ${_od_linsolv_max_n}
+  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_superlu_instantiations.inc
+)
+
 # Set library files
 
 # First the source files (private headers should also go here)
@@ -62,6 +84,9 @@ target_include_directories(linear_solvers
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/interpolation/include>
     $<INSTALL_INTERFACE:include>
+  PRIVATE
+    # Auto-generated instantiation .inc files live here (see od_emit_template_instantiations).
+    $<BUILD_INTERFACE:${_od_linsolv_gen_dir}>
 )
 
 # Setup IDE directory structure for opendarts_linear_solvers

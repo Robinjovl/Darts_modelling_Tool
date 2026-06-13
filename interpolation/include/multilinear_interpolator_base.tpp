@@ -14,7 +14,7 @@
 // (axis_point_mult, axis_hypercube_mult, axes_max_internal) are left empty —
 // adaptive subclasses override interpolate()/interpolate_with_derivatives() and
 // never touch them.
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
                                                                                               const std::vector<double> &axes_origin_,
                                                                                               const std::vector<double> &axes_step_)
@@ -27,7 +27,7 @@ multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_inte
 
 // Bounded dense grid (static): builds the flat mixed-radix multipliers used by the
 // dense storage path, and copies the derived axes_max into value_t precision.
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
                                                                                               const std::vector<double> &axes_origin_,
                                                                                               const std::vector<double> &axes_step_,
@@ -53,7 +53,7 @@ multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_inte
   }
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 void multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_point_coordinates(index_t point_index, point_coordinates_t &coordinates)
 {
   auto remainder_idx = point_index;
@@ -65,7 +65,7 @@ void multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_point_c
   }
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 void multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_points(index_t hypercube_idx, hypercube_points_index_t &hypercube_points)
 {
   index_t remainder_idx = hypercube_idx;
@@ -88,7 +88,7 @@ void multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_hypercu
   }
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate(const std::vector<double> &point, std::vector<double> &values)
 {
   // let it be a but less efficient but general,
@@ -106,7 +106,7 @@ int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate(
 }
 
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate_with_derivatives(const double *point,
                                                                                                  double *values,
                                                                                                  double *derivatives)
@@ -132,7 +132,7 @@ int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate_
   return 0;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::interpolate_with_derivatives(const std::vector<double> &points, const std::vector<int> &points_idxs,
                                                                                                  std::vector<double> &values, std::vector<double> &derivatives)
 {

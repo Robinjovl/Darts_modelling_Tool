@@ -123,8 +123,10 @@ public:
 	// get the number of primary unknowns (per block)
 	virtual uint8_t get_n_vars() const = 0;
 
-	// get the number of operators (per block)
-	virtual uint8_t get_n_ops() const = 0;
+	// get the number of operators (per block) — widened to uint16_t: super-engine
+	// N_OPS up to 272 (273 for super-elastic) at NC=30 / NP=3 thermal exceeds uint8_t.
+	// Every override across CPU/GPU/elastic/mech engines must match this signature.
+	virtual uint16_t get_n_ops() const = 0;
 
 	// get the number of components
 	virtual uint8_t get_n_comps() const = 0;
@@ -148,7 +150,8 @@ public:
 
 	// Allocate / resize the history-aware scratch buffers used by build_Xop and project_xop_ders.
 	// No-op when no history variables are active.
-	void ensure_history_buffers(const index_t n_total, const uint8_t n_ops_)
+	// n_ops_ widened to uint16_t to receive super-engine N_OPS up to 273 without truncation.
+	void ensure_history_buffers(const index_t n_total, const uint16_t n_ops_)
 	{
 		const uint8_t n_history = get_n_history();
 		if (n_history == 0)
@@ -386,7 +389,9 @@ public:
 	operator_set_gradient_evaluator_iface* thermal_var_etor;
 
 	uint8_t n_vars;
-	uint8_t n_ops;
+	// Widened to uint16_t: caches get_n_ops() up to 273 at NC=30 / NP=3 thermal. Used as
+	// stride into op_vals_arr / op_ders_arr; uint8_t would silently truncate to 16 mod 256.
+	uint16_t n_ops;
 	uint8_t nc;
 	uint8_t z_var_idx;
 	// number of mineral/solid species

@@ -16,9 +16,9 @@ void pybind_mech_operators(py::module &m)
 	py::class_<mech_operators>(m, "mech_operators") \
 		.def(py::init<>()) \
 		.def("init", (void (mech_operators::*)(conn_mesh *, pm_discretizer*, uint8_t, uint8_t, uint8_t,
-			uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t)) &mech_operators::init) \
+			uint8_t, uint16_t, uint8_t, uint16_t, uint16_t, uint16_t)) &mech_operators::init) \
 		.def("init", (void (mech_operators::*)(conn_mesh *, pm_discretizer*, uint8_t, uint8_t, uint8_t,
-			uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t, uint8_t)) &mech_operators::init) \
+			uint8_t, uint8_t, uint8_t, uint16_t, uint8_t, uint16_t, uint16_t, uint16_t)) &mech_operators::init) \
 		.def("prepare", &mech_operators::prepare) \
 		.def("eval_stresses", (void(mech_operators::*)(std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, std::vector<value_t>&, const std::vector<value_t>&)) &mech_operators::eval_stresses) \
 		.def("eval_porosities", (void(mech_operators::*)(std::vector<value_t>&, std::vector<value_t>&)) &mech_operators::eval_porosities) \
@@ -35,4 +35,3 @@ void pybind_mech_operators(py::module &m)
 };
 
 #endif /* PYBIND11_ENABLED */
-

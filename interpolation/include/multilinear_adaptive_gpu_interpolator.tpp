@@ -18,34 +18,34 @@
 
 // ─── kernel forward declarations ───────────────────────────────────────────────
 
-template <typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void multilinear_adaptive3_check_hypercube_ready_kernel(
     const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
     const value_t *axis_min_d, const value_t *axis_step_inv_d,
     gpu_hashmap_async::gpu_hash_map<value_t, (1 << N_DIMS) * N_OPS> *hypercube_data_d,
     cell_key_t<N_DIMS> *state_hc_keys);
 
-template <typename value_t, uint8_t N_DIMS, uint8_t N_OPS, bool FIRST_STAGE>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS, bool FIRST_STAGE>
 __global__ void multilinear_adaptive_interpolate_thread_per_state_stages_kernel(
     const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
     const value_t *axis_min_d, const value_t *axis_step_d, const value_t *axis_step_inv_d,
     gpu_hashmap_async::gpu_hash_map<value_t, (1 << N_DIMS) * N_OPS> *hypercube_data_d,
     const cell_key_t<N_DIMS> *state_hc_keys, double *values_d, double *derivatives_d);
 
-template <typename value_t, uint8_t N_DIMS, uint8_t N_OPS, bool FIRST_STAGE>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS, bool FIRST_STAGE>
 __global__ void multilinear_adaptive_interpolate_thread_per_operator_stages_kernel(
     const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
     const value_t *axis_min_d, const value_t *axis_step_d, const value_t *axis_step_inv_d,
     gpu_hashmap_async::gpu_hash_map<value_t, (1 << N_DIMS) * N_OPS> *hypercube_data_d,
     const cell_key_t<N_DIMS> *state_hc_keys, double *values_d, double *derivatives_d);
 
-template <typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void add_hypercubes_to_hashmap(
     const unsigned int n_new_hypercubes, const cell_key_t<N_DIMS> *new_hypercube_keys_d,
     const value_t *new_hypercube_data_d,
     gpu_hashmap_async::gpu_hash_map<value_t, (1 << N_DIMS) * N_OPS> *hypercube_data_d);
 
-template <typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void check_if_hashmap_expansion_needed(
     const float threshold,
     gpu_hashmap_async::gpu_hash_map<value_t, (1 << N_DIMS) * N_OPS> *hypercube_data_d,
@@ -53,7 +53,7 @@ __global__ void check_if_hashmap_expansion_needed(
 
 // ─── constructor / destructor / init ───────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinear_adaptive_gpu_interpolator(
     operator_set_evaluator_iface *supporting_point_evaluator,
     const std::vector<double> &axes_origin,
@@ -79,19 +79,19 @@ multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilin
   hashmap_expansion_needed_d.resize(1);
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::~multilinear_adaptive_gpu_interpolator()
 {
   gpu_hashmap_async::delete_hashmap(hypercube_data_d);
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
 {
   return 0;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::write_to_file(const std::string filename)
 {
   return 0;
@@ -99,7 +99,7 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::writ
 
 // ─── supporting-point access (host) ────────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 const typename multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::point_data_t &
 multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_point_data(const key_t &point_key)
 {
@@ -128,7 +128,7 @@ multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_poin
   return insert_result.first->second;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::generate_hypercube(
     const key_t &hc_key, value_t *new_hypercube)
 {
@@ -151,7 +151,7 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::gene
 
 // ─── batch evaluation ──────────────────────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::evaluate_with_derivatives_d(
     int n_states_idxs, double *states_d, int *states_idxs_d,
     double *values_d, double *derivatives_d)
@@ -320,7 +320,7 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::eval
 
 // ─── kernel definitions ────────────────────────────────────────────────────────
 
-template <typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void multilinear_adaptive3_check_hypercube_ready_kernel(
     const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
     const value_t *axis_min_d, const value_t *axis_step_inv_d,
@@ -353,7 +353,7 @@ __global__ void multilinear_adaptive3_check_hypercube_ready_kernel(
   }
 }
 
-template <typename value_t, uint8_t N_DIMS, uint8_t N_OPS, bool FIRST_STAGE>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS, bool FIRST_STAGE>
 __global__ void multilinear_adaptive_interpolate_thread_per_state_stages_kernel(
     const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
     const value_t *axis_min_d, const value_t *axis_step_d, const value_t *axis_step_inv_d,
@@ -412,7 +412,7 @@ __global__ void multilinear_adaptive_interpolate_thread_per_state_stages_kernel(
   }
 }
 
-template <typename value_t, uint8_t N_DIMS, uint8_t N_OPS, bool FIRST_STAGE>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS, bool FIRST_STAGE>
 __global__ void multilinear_adaptive_interpolate_thread_per_operator_stages_kernel(
     const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
     const value_t *axis_min_d, const value_t *axis_step_d, const value_t *axis_step_inv_d,
@@ -472,7 +472,7 @@ __global__ void multilinear_adaptive_interpolate_thread_per_operator_stages_kern
   }
 }
 
-template <typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void add_hypercubes_to_hashmap(
     const unsigned int n_new_hypercubes, const cell_key_t<N_DIMS> *new_hypercube_keys_d,
     const value_t *new_hypercube_data_d,
@@ -508,7 +508,7 @@ __global__ void add_hypercubes_to_hashmap(
     return;
 }
 
-template <typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void check_if_hashmap_expansion_needed(
     const float threshold,
     gpu_hashmap_async::gpu_hash_map<value_t, (1 << N_DIMS) * N_OPS> *hypercube_data_d,

@@ -32,8 +32,12 @@ static std::ofstream log_stream;
 // Driven by the OPENDARTS_MAX_DIMS cmake variable (-DMAX_NC=N) so it stays in
 // sync with MAX_DIMS in interpolation_config.h — for thermal physics the
 // interpolator parameter-space dim is NC+1, so MAX_DIMS must be ≥ MAX_NC.
+//
+// Fail loudly rather than silently defaulting: a TU compiled without -DMAX_NC
+// would land at a different value than the rest of the binary and produce
+// ODR-incoherent template instantiations with silent runtime corruption.
 #ifndef MAX_NC
-#define MAX_NC 8
+#error "MAX_NC must be defined (typically via the OPENDARTS_MAX_DIMS CMake variable, propagated as -DMAX_NC=N)."
 #endif
 
 #define GET_RAND_I(START, END) \

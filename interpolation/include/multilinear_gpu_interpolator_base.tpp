@@ -11,7 +11,7 @@
 // Unbounded grid (adaptive GPU): (origin, step) only. The static-only device arrays
 // (axes_points_d, axes_max_d, axis_*_mult_d) are left empty — the adaptive kernels use
 // only axes_origin_d / axes_step_d / axes_step_inv_d with signed multi-index keys.
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_gpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
                                                                                                       const std::vector<double> &axes_origin_,
                                                                                                       const std::vector<double> &axes_step_)
@@ -43,7 +43,7 @@ multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_
 
 // Bounded dense grid (static GPU): builds the flat mixed-radix multipliers + axes_max
 // and uploads the bounded device arrays used by the static kernel.
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_gpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
                                                                                                       const std::vector<double> &axes_origin_,
                                                                                                       const std::vector<double> &axes_step_,
@@ -100,7 +100,7 @@ multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::multilinear_
   new_operator_values.resize(N_OPS);
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::evaluate_d(double *state_d, double *values_d)
 {
   thrust::device_vector<int> index_d(1);
@@ -111,7 +111,7 @@ int multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::evaluate
   return 0;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 void multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_point_coordinates(index_t point_index, point_coordinates_t &coordinates)
 {
   auto remainder_idx = point_index;
@@ -123,7 +123,7 @@ void multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_poi
   }
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 void multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_points(index_t hypercube_idx, hypercube_points_index_t &hypercube_points)
 {
   auto remainder_idx = hypercube_idx;
@@ -145,36 +145,36 @@ void multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_hyp
     }
   }
 }
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_axis_n_points(int axis) const
 {
   // Unbounded grids have no finite point count; report 0 (the OBL-stats print guards
   // against this). Bounded grids return the real per-axis count.
   return axes_points.empty() ? 0 : axes_points[axis];
 }
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 double multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_axis_max(int axis) const
 {
   // Unbounded grids have no upper bound; report +inf so any engine-side axis clamp
   // becomes a no-op on the upper side — consistent with the adaptive cache extrapolating.
   return axes_max.empty() ? std::numeric_limits<double>::max() : axes_max[axis];
 }
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 double multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_axis_min(int axis) const
 {
   return axes_origin[axis];
 }
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 uint64_t multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_n_interpolations() const
 {
   return n_interpolations;
 }
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 uint64_t multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_n_points_total() const
 {
   return n_points_total;
 }
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 uint64_t multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_n_points_used() const
 {
   return n_points_used;

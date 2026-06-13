@@ -11,7 +11,7 @@
 
 #include "multilinear_adaptive_cpu_interpolator.hpp"
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
     multilinear_adaptive_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator_,
                                           const std::vector<double> &axes_origin_,
@@ -23,7 +23,7 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
 
 // ─── multi-index key utilities ──────────────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_point_coordinates_from_key(
     const key_t &k, point_coordinates_t &coordinates) const
 {
@@ -33,7 +33,7 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get
   }
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_vertex_keys(
     const key_t &hc_key, hypercube_vertex_keys_t &vertex_keys) const
 {
@@ -52,7 +52,7 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get
 
 // ─── cache accessors ────────────────────────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 const typename multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::point_data_t &
 multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_point_data(const key_t &point_key)
 {
@@ -83,7 +83,7 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_poin
   return insert_result.first->second;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 const typename multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::hypercube_data_t &
 multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_data(const key_t &hypercube_key)
 {
@@ -112,7 +112,7 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hype
 
 // ─── hypercube-key export (multi-index view) ───────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 std::vector<typename multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::key_t>
 multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_keys() const
 {
@@ -125,7 +125,7 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hype
 
 // ─── single-point interpolation (multi-index path) ─────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::interpolate(
     const std::vector<double> &point, std::vector<double> &values)
 {
@@ -161,7 +161,7 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
 
 // ─── batch materialization ─────────────────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::materialize_missing_cache(
     const std::vector<key_t> &missing_hc)
 {
@@ -271,7 +271,7 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::mat
 
 // ─── batch interpolation (multi-index path) ────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::interpolate_with_derivatives(
     const std::vector<double> &points, const std::vector<int> &points_idxs,
     std::vector<double> &values, std::vector<double> &derivatives)

@@ -32,7 +32,8 @@
  * @tparam N_DIMS  number of dimensions in parameter space
  * @tparam N_OPS   number of operators to be interpolated
  */
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+// N_OPS widened to uint16_t — must match base class.
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 class multilinear_adaptive_gpu_interpolator : public multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>
 {
 public:

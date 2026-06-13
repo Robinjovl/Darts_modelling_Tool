@@ -8,7 +8,7 @@
 
 #include "multilinear_static_cpu_interpolator.hpp"
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinear_static_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
                                                                                                           const std::vector<double> &axes_origin,
                                                                                                           const std::vector<double> &axes_step,
@@ -19,7 +19,7 @@ multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinea
   this->n_points_used = this->n_points_total;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
 {
   // initialize base class first
@@ -80,14 +80,14 @@ int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
   return 0;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 const typename multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::hypercube_data_t &multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_data(const index_t hypercube_index)
 {
 
   return hypercube_data[hypercube_index];
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::write_to_file(const std::string filename)
 {
   std::ofstream txtFile;

@@ -27,8 +27,8 @@ public:
   // get the number of primary unknowns (per block)
   virtual uint8_t get_n_vars() const override = 0;
 
-  // get the number of operators (per block)
-  virtual uint8_t get_n_ops() const override = 0;
+  // get the number of operators (per block) — must match widened base signature.
+  virtual uint16_t get_n_ops() const override = 0;
 
   // get the number of components
   virtual uint8_t get_n_comps() const override = 0;

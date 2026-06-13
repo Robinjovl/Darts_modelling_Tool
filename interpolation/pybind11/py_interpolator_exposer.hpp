@@ -16,7 +16,7 @@
 
 namespace py = pybind11;
 
-template <uint8_t N_DIMS, uint8_t N_OPS>
+template <uint8_t N_DIMS, uint16_t N_OPS>
 struct interpolator_exposer
 {
   // template function used to expose different interpolators with the same Python interface

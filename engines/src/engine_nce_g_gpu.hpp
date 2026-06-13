@@ -60,7 +60,7 @@ public:
   }
 
   uint8_t get_n_vars() const { return N_VARS; };
-  uint8_t get_n_ops() const { return N_OPS; };
+  uint16_t get_n_ops() const { return N_OPS; };
   uint8_t get_n_comps() const { return NC; };
   uint8_t get_z_var_idx() const { return Z_VAR; };
 

@@ -46,9 +46,11 @@ public:
   // number of operators: NE accumulation operators, NE*NP flux operators, NP density, NP up_constant, NE*NP gradient,
   //                      NE kinetic rate operators, 2*NP gravity and capillarity, 1 multiplier, NP phase mobility,
   //                      NP saturation, NP enthalpy, 2 temperature and pressure
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
-                               NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
-                               NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/;
+  // Widened from uint8_t to uint16_t: at NC=30 / NP=3 thermal, N_OPS = 272 and the
+  // late-layout operator indices PC_OP..PRES_OP reach 257..271 — all overflow uint8_t.
+  const static uint16_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
+                                NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
+                                NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/;
 
 
   // order of operators:
@@ -60,15 +62,15 @@ public:
   const static uint8_t GRAD_OP = NE + NE * NP + NP + NP;
   // kinetic reaction
   const static uint8_t KIN_OP = NE + NE * NP + NP + NP + NE * NP;
-  // extra operators
-  const static uint8_t GRAV_OP = NE + NE * NP + NP + NP + NE * NP + NE;
-  const static uint8_t PC_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP;
-  const static uint8_t MULT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP;
-  const static uint8_t LAMBDA_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1;
-  const static uint8_t SAT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
-  const static uint8_t ENTH_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
-  const static uint8_t TEMP_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
-  const static uint8_t PRES_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
+  // extra operators (widened — see N_OPS note above)
+  const static uint16_t GRAV_OP = NE + NE * NP + NP + NP + NE * NP + NE;
+  const static uint16_t PC_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP;
+  const static uint16_t MULT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP;
+  const static uint16_t LAMBDA_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1;
+  const static uint16_t SAT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
+  const static uint16_t ENTH_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
+  const static uint16_t TEMP_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
+  const static uint16_t PRES_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
@@ -91,7 +93,7 @@ public:
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   uint8_t get_n_vars() const override { return N_VARS; };
-  uint8_t get_n_ops() const override { return N_OPS; };
+  uint16_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_comps() const override { return NC; };
   uint8_t get_z_var_idx() const override { return Z_VAR; };
 

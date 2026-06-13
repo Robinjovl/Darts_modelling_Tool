@@ -13,7 +13,7 @@
 
 #define USE_THREAD_PER_OPERATOR_KERNEL
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void
 multilinear_static_interpolate_thread_per_state_kernel(const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
                                                        const int *axis_points_d, const index_t *axis_hypercube_mult_d,
@@ -22,7 +22,7 @@ multilinear_static_interpolate_thread_per_state_kernel(const unsigned int n_stat
                                                        const value_t *hypercube_data_d,
                                                        double *values_d, double *derivatives_d);
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void
 multilinear_static_interpolate_thread_per_operator_kernel(const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
                                                           const int *axis_points_d, const index_t *axis_hypercube_mult_d,
@@ -31,7 +31,7 @@ multilinear_static_interpolate_thread_per_operator_kernel(const unsigned int n_s
                                                           const value_t *hypercube_data_d,
                                                           double *values_d, double *derivatives_d);
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinear_static_gpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
                                                                                                           const std::vector<double> &axes_origin,
                                                                                                           const std::vector<double> &axes_step,
@@ -60,7 +60,7 @@ multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinea
 #endif
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
 {
   // Static interpolator strictly requires a bounded grid (dense vector storage). The
@@ -119,7 +119,7 @@ int multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
   return 0;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
     evaluate_with_derivatives_d(int n_states_idxs, double *states_d, int *states_idxs_d,
                                 double *values_d, double *derivatives_d)
@@ -151,7 +151,7 @@ int multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
   return 0;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void
 multilinear_static_interpolate_thread_per_state_kernel(const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
                                                        const int *axis_points_d, const index_t *axis_hypercube_mult_d,
@@ -186,7 +186,7 @@ multilinear_static_interpolate_thread_per_state_kernel(const unsigned int n_stat
                                                              derivatives_d + state_idx * N_OPS * N_DIMS);
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void
 multilinear_static_interpolate_thread_per_operator_kernel(const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
                                                           const int *axis_points_d, const index_t *axis_hypercube_mult_d,
