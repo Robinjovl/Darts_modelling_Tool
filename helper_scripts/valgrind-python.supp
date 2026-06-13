@@ -198,3 +198,30 @@
    fun:PyArray_AssignFromCache_Recursive
    ...
 }
+# Catch-all for the remaining numpy-internal uninitialised-value false positives
+# under Python 3.11 / numpy >= 2.4 / Valgrind 3.24 (the manylinux wheel on the CI
+# image surfaces a few more contexts in both the main process and the numpy-import
+# child than the setitem case above). These match only errors whose *innermost*
+# frame is inside a numpy shared object (numpy/_core/_multiarray_umath, the CPU
+# dispatch modules, and the bundled BLAS in numpy.libs), so genuine DARTS bugs
+# (engines/discretizer/interpolators/libIPhreeqc .so) are still reported.
+{
+   numpy-internal-cond
+   Memcheck:Cond
+   obj:*/numpy/*.so
+}
+{
+   numpy-internal-value8
+   Memcheck:Value8
+   obj:*/numpy/*.so
+}
+{
+   numpy-libs-cond
+   Memcheck:Cond
+   obj:*/numpy.libs/*
+}
+{
+   numpy-libs-value8
+   Memcheck:Value8
+   obj:*/numpy.libs/*
+}
