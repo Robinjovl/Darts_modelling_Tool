@@ -12,6 +12,7 @@
 - Package:
   - removed `vtk` dependency ([!314](https://gitlab.com/open-darts/open-darts/-/merge_requests/314))
   - added "viz" option to install `vtk` and `pyvista`; added "all" option to install "viz" and "solvers" groups. Usage pip install open-darts[viz].
+- Switched to Python 3.11 by default (CI/CD pipelines, ReadTheDocs build, `ruff` lint target, and the recommended developer environment); Python 3.10–3.13 remain supported and tested.
 
 # 1.5.0 [27-05-2026]
 - Fluid heat capacity is added into the input data for THM models ([!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270))

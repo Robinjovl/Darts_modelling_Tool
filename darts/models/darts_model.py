@@ -874,7 +874,7 @@ class DartsModel:
 
     def run_simple(self, physics, data_ts, days, restart_dt=0.0):
         """
-        Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
+        Run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
         :param physics:
         :param data_ts:
@@ -955,7 +955,7 @@ class DartsModel:
         verbose: bool = True,
     ):
         """
-        Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
+        Run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
         :param days: Time increment [days]
         :type days: float
@@ -1106,6 +1106,11 @@ class DartsModel:
         if save_reservoir_data:
             self.output.save_data_to_h5(kind="reservoir")
 
+        # If adaptive OBL-point caching is enabled, flush OBL cache at the end of each run/report interval
+        # to preserve newly evaluated points, so the cache progress survives SIGTERM/job cancel.
+        if getattr(self.physics, 'cache', False):
+            self.physics.write_cache()
+
         if verbose:
             print(
                 f"----- TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), "
@@ -1117,7 +1122,7 @@ class DartsModel:
 
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         """
-        Method to solve Newton loop for specified timestep
+        Solve Newton loop for specified timestep
 
         :param dt: Timestep size [days]
         :type dt: float
@@ -1131,6 +1136,7 @@ class DartsModel:
         max_newt = self.data_ts.newton_max_iter
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
+        self._linear_solver_rc_last = 0
         self.timer.node["simulation"].start()
 
         residual_history = []
@@ -1227,7 +1233,17 @@ class DartsModel:
                         print("Stationary point detected!")
                     break
             else:
-                self._solve_linear_equation()
+                # Unified dispatch (self.solver = LinearSolverSpec): _solve_linear_equation()
+                # routes to the Python-resident solver (PETSc / Pardiso spec) or the C++
+                # engine solver and returns the engine's return code (0 for the Python path).
+                rc = self._solve_linear_equation()
+                if rc != 0:
+                    # Abort the Newton loop on a failed linear solve so that
+                    # post_newtonloop sees linear_solver_error_last_dt != 0 and
+                    # returns converged=0 without burning the full max_newt
+                    # budget on stale dX updates.
+                    self._linear_solver_rc_last = rc
+                    break
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
@@ -1747,12 +1763,16 @@ class DartsModel:
 
         Centralised here so the Newton loop -- and the live-plotting loop --
         carry a single call instead of duplicating the branch.
+
+        Returns the linear-solver return code: 0 on success (and always for the
+        Python-resident path, which raises on failure), or the C++ engine's
+        non-zero code so the Newton loop can abort a failed solve.
         """
         python_solver = getattr(self, "_python_solver", None)
         if python_solver is not None:
             # Python-resident solver (PETSc / Pardiso); stateful, it performs
             # its one-time setup on the first call.
             python_solver.solve_system(self.physics.engine)
-            return
+            return 0
         # C++ linear solver held by the engine
-        self.physics.engine.solve_linear_equation()
+        return self.physics.engine.solve_linear_equation()

@@ -377,8 +377,8 @@ goto :reaktoro_install
 for /f %%v in ('python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"') do set "py_version=%%v"
 echo Warning: Reaktoro on conda-forge requires Python ^>=3.10 and ^<3.13, but the current environment has Python !py_version!.
 echo.
-echo To install Reaktoro, create a compatible conda environment (e.g., Python 3.12):
-echo   conda create -n darts-rkt python=3.12 -y
+echo To install Reaktoro, create a compatible conda environment (e.g., Python 3.11):
+echo   conda create -n darts-rkt python=3.11 -y
 echo   conda activate darts-rkt
 echo.
 echo Then re-run this script with the -p flag.

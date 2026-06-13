@@ -38,7 +38,7 @@ Solution: upgrade conda's libstdc++:
 
 ### Installation issues
 
-For installing open-DARTS using `helper_scripts\build_install_darts.bat`, Python version 3.10 is required. Using a different Python version may result in errors, displaying the following message:
+For installing open-DARTS using `helper_scripts\build_install_darts.bat`, Python version 3.11 is required. Using a different Python version may result in errors, displaying the following message:
 
 `ERROR: open_darts-1.2.2-cp39-cp39-win_amd64.whl is not a supported wheel on this platform.`
 
