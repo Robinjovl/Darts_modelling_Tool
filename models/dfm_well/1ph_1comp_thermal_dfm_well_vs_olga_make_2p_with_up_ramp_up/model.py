@@ -185,7 +185,9 @@ class Model(CICDModel):
 
         ramp_up_rate = UpstreamRampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first,
                                           inj_segment_idx, target_inj_rate, ramp_up_period, inj_phase_comp,
-                                          injected_fluid_pressure, injected_fluid_temperature, inj_phase_name,
+                                          pressure=injected_fluid_pressure,
+                                          temperature=injected_fluid_temperature,
+                                          phase_name=inj_phase_name,
                                           verbose=verbose)
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
         source_sinks = {"UpstreamRampUpRate1": ramp_up_rate}
