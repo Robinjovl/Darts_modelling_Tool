@@ -24,7 +24,7 @@ from darts.pipes.linear_dfm_well_ipr import (
     PI_Type,
 )
 from darts.pipes.set_initial_conditions import SingleAmbientTemperature
-from darts.pipes.ramp_up_rate import RampUpRate
+from darts.pipes.upstream_ramp_up_rate import UpstreamRampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
@@ -168,17 +168,18 @@ class Model(CICDModel):
 
         #%% Add source/sink terms
         inj_segment_idx = 0
-        inflow_or_outflow = "inflow"
         target_inj_rate = 58895.98 / 15  # in kmol/day
         ramp_up_period = 0.0
 
         # Use zero water in the injected fluid in order to avoid sustained accumulation of water in the bottom-hole
         inj_phase_comp = np.array([1 - self.zero, self.zero])
-        inj_fluid_props = {"composition": inj_phase_comp}
+        inj_phase_name = "G"
 
-        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx,
-                                  inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
-                                  verbose=verbose)
+        ramp_up_rate = UpstreamRampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first,
+                                          inj_segment_idx, target_inj_rate, ramp_up_period,
+                                          composition=inj_phase_comp, pressure=pipe_head_pressure,
+                                          temperature=ambient_temperature, phase_name=inj_phase_name, verbose=verbose,
+                                          )
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
         source_sinks = {"RampUpRate1": ramp_up_rate}
 
