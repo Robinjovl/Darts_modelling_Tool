@@ -77,11 +77,14 @@ set_target_properties(cudss_imported PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${CUDSS_INCLUDE_DIR}")
 add_library(cudss::cudss ALIAS cudss_imported)
 
-# Bundle the runtime library into the darts/ install tree: the Python
-# extension modules are linked with RPATH=$ORIGIN, so a copy of
-# libcudss.so.0 next to engines.so resolves without LD_LIBRARY_PATH
-# (mirrors the libamgxsh / IPhreeqc bundling).
-install(FILES "${CUDSS_LIBRARY}" DESTINATION "${CMAKE_INSTALL_PREFIX}")
+# Bundle the runtime library NEXT TO the extension that links it. cudss::cudss
+# is linked (PUBLIC) into opendarts_solvers, whose shared lib + pybind module
+# install into darts/solvers/ with RPATH=$ORIGIN -- so the loader resolves the
+# NEEDED libcudss.so.0 from darts/solvers/, NOT darts/. Installing it there (and
+# adding 'libcudss.so*' to the darts.solvers wheel package_data in pyproject.toml,
+# since the versioned soname is not matched by the '*.so' glob) makes the wheel
+# self-contained, with no LD_LIBRARY_PATH. (mirrors the libamgxsh / IPhreeqc bundling.)
+install(FILES "${CUDSS_LIBRARY}" DESTINATION "${CMAKE_INSTALL_PREFIX}/solvers")
 
 message(STATUS "  cuDSS: ${CUDSS_LIBRARY} (includes: ${CUDSS_INCLUDE_DIR})")
 unset(_cudss_hint_dirs)
