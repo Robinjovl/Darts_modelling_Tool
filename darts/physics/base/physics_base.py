@@ -4,7 +4,10 @@ import hashlib
 import os
 import pickle
 import signal
+import struct
 import tempfile
+import threading
+import zlib
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
@@ -75,6 +78,10 @@ class PhysicsBase:
     well_operators: operator_set_evaluator_iface
     well_ctrl_operators: WellCtrlOperators
     thermal_var_operator: ThermalVarOperator
+
+    # Append-only cache frames keep the legacy base pickle while avoiding full rewrites.
+    _OBL_DELTA_MAGIC = b'DARTS_OBL_DELTA_V1\n'
+    _OBL_DELTA_HEADER = struct.Struct('<QI')
 
     @total_ordering
     class StateSpecification(Enum):
@@ -160,7 +167,12 @@ class PhysicsBase:
         # is used on destruction to save cache data
         if self.cache:
             self.created_itors = []
-            atexit.register(self.write_cache)
+            self._cache_finalized = False
+            self._last_flushed_sizes = {}
+            # Fallback key set for interpolators without native dirty-point tracking.
+            self._flushed_point_keys = {}
+            atexit.register(self._finalize_cache)
+            self._install_signal_handlers()
 
         self.regions = []
         self.property_containers = {}
@@ -1115,7 +1127,16 @@ class PhysicsBase:
                 loaded_point_data = self._safe_pickle_load(itor_cache_filename)
                 if loaded_point_data is not None:
                     itor.point_data = loaded_point_data
-                    print(len(itor.point_data.keys()), "points loaded")
+                    loaded_size = len(loaded_point_data)
+                    print(loaded_size, "points loaded")
+                    self._last_flushed_sizes[id(itor)] = loaded_size
+                    # Loaded points are already on disk, so reset dirty bookkeeping.
+                    if hasattr(itor, 'clear_point_data_delta'):
+                        itor.clear_point_data_delta()
+                    else:
+                        self._flushed_point_keys[id(itor)] = set(
+                            loaded_point_data.keys()
+                        )
                     cache_loaded = 1
                 else:
                     print("Cached point data is invalid, ignoring.")
@@ -1166,22 +1187,26 @@ class PhysicsBase:
 
     def write_cache(self) -> None:
         """
-        Flush cached interpolator point data to disk once per physics object.
+        Flush cached interpolator point data to disk.
+
+        Safe to call repeatedly: per-itor skip when ``point_data`` has not grown
+        since the previous flush. Existing cache files are updated by appending
+        framed delta records containing only supporting points materialized since
+        the last successful flush.
         """
-        # this function can be called two ways
-        #   1. Destructor (__del__) method
-        #   2. Via atexit function, before interpreter exits
-        # In either case it should only be invoked by the earliest call (which can be 1 or 2 depending on situation)
-        # Switch cache off to prevent the second call
-        self.cache = False
+        if not getattr(self, 'created_itors', None):
+            return
+        if not hasattr(self, '_last_flushed_sizes'):
+            self._last_flushed_sizes = {}
+        if not hasattr(self, '_flushed_point_keys'):
+            self._flushed_point_keys = {}
         for itor, fname in self.created_itors:
-            filename = fname
-            if hasattr(self, 'cache_dir'):
-                if (
-                    os.path.basename(fname) == fname
-                ):  # could already have a folder in fname
-                    filename = os.path.join(self.cache_dir, fname)
-            print("Writing point data for ", type(itor).__name__, 'to', filename)
+            filename = self._cache_filename(fname)
+            itor_id = id(itor)
+            cur_size = self._point_data_size(itor)
+            if self._last_flushed_sizes.get(id(itor), -1) == cur_size:
+                continue
+
             # Temporarily ignore SIGINT/SIGTERM to avoid partial writes during sudden termination
             prev_int = None
             prev_term = None
@@ -1194,7 +1219,33 @@ class PhysicsBase:
                     prev_term = signal.signal(signal.SIGTERM, signal.SIG_IGN)
                 except Exception:
                     prev_term = None
-                self._atomic_pickle_dump(itor.point_data, filename)
+                if not os.path.exists(filename):
+                    # First flush writes a normal pickle for backward-compatible cache files.
+                    print(
+                        "Writing point data for ",
+                        type(itor).__name__,
+                        f'({cur_size} points) to',
+                        filename,
+                    )
+                    point_data = itor.point_data
+                    self._atomic_pickle_dump(point_data, filename)
+                    self._mark_point_data_flushed(itor, point_data, cur_size)
+                    continue
+
+                # Existing cache files receive only the points materialized since last flush.
+                delta = self._point_data_delta(itor)
+                if not delta:
+                    self._last_flushed_sizes[itor_id] = cur_size
+                    continue
+
+                print(
+                    "Appending point data for ",
+                    type(itor).__name__,
+                    f'({len(delta)} new / {cur_size} total points) to',
+                    filename,
+                )
+                self._append_pickle_delta(delta, filename)
+                self._mark_point_data_delta_flushed(itor, delta, cur_size)
             finally:
                 if prev_int is not None:
                     try:
@@ -1206,6 +1257,89 @@ class PhysicsBase:
                         signal.signal(signal.SIGTERM, prev_term)
                     except Exception:
                         pass
+
+    def _cache_filename(self, fname: str) -> str:
+        filename = fname
+        if hasattr(self, 'cache_dir'):
+            if os.path.basename(fname) == fname:  # could already have a folder in fname
+                filename = os.path.join(self.cache_dir, fname)
+        return filename
+
+    @staticmethod
+    def _point_data_size(itor) -> int:
+        if hasattr(itor, 'point_data_size'):
+            return itor.point_data_size()
+        return len(itor.point_data)
+
+    def _point_data_delta(self, itor) -> dict:
+        # Prefer native dirty-point tracking to avoid copying large C++ maps.
+        if hasattr(itor, 'point_data_delta'):
+            return dict(itor.point_data_delta())
+
+        itor_id = id(itor)
+        known = self._flushed_point_keys.setdefault(itor_id, set())
+        point_data = itor.point_data
+        return {key: value for key, value in point_data.items() if key not in known}
+
+    def _mark_point_data_flushed(self, itor, point_data: dict, size: int) -> None:
+        itor_id = id(itor)
+        self._last_flushed_sizes[itor_id] = size
+        if hasattr(itor, 'clear_point_data_delta'):
+            itor.clear_point_data_delta()
+            self._flushed_point_keys.pop(itor_id, None)
+        else:
+            self._flushed_point_keys[itor_id] = set(point_data.keys())
+
+    def _mark_point_data_delta_flushed(self, itor, delta: dict, size: int) -> None:
+        itor_id = id(itor)
+        self._last_flushed_sizes[itor_id] = size
+        if hasattr(itor, 'clear_point_data_delta'):
+            itor.clear_point_data_delta()
+            self._flushed_point_keys.pop(itor_id, None)
+        else:
+            self._flushed_point_keys.setdefault(itor_id, set()).update(delta.keys())
+
+    def _finalize_cache(self):
+        # Single-shot wrapper around write_cache used by atexit and __del__.
+        if getattr(self, '_cache_finalized', False):
+            return
+        self._cache_finalized = True
+        self.write_cache()
+
+    def _install_signal_handlers(self):
+        # Flush OBL cache on SIGTERM/SIGINT before re-raising, so adaptive point data
+        # survives external termination (job timeout, manual kill). SIGKILL cannot be intercepted.
+        # Signal handlers can only be installed from the main thread.
+        if threading.current_thread() is not threading.main_thread():
+            return
+        if not hasattr(self, '_prev_signal_handlers'):
+            self._prev_signal_handlers = {}
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                prev = signal.getsignal(sig)
+                if prev is self._signal_flush_handler:
+                    continue
+                self._prev_signal_handlers[sig] = prev
+                signal.signal(sig, self._signal_flush_handler)
+            except (ValueError, OSError):
+                pass
+
+    def _signal_flush_handler(self, signum, frame):
+        try:
+            self._finalize_cache()
+        except Exception as exc:
+            try:
+                print(f"OBL cache flush on signal {signum} failed: {exc}")
+            except Exception:
+                pass
+        # Restore previous handler and re-raise so original termination semantics take effect
+        # (default action on SIGTERM, KeyboardInterrupt on SIGINT).
+        prev = self._prev_signal_handlers.get(signum, signal.SIG_DFL)
+        try:
+            signal.signal(signum, prev if prev is not None else signal.SIG_DFL)
+        except Exception:
+            pass
+        os.kill(os.getpid(), signum)
 
     def _atomic_pickle_dump(self, obj: Any, final_path: str) -> None:
         """
@@ -1247,13 +1381,41 @@ class PhysicsBase:
             except Exception:
                 pass
 
+    def _append_pickle_delta(self, delta: dict, final_path: str) -> None:
+        """
+        Append one checksummed pickle-delta frame to an existing OBL cache file.
+        """
+        directory = os.path.dirname(final_path) or "."
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except Exception:
+            pass
+
+        payload = pickle.dumps(delta, protocol=4)
+        checksum = zlib.crc32(payload) & 0xFFFFFFFF
+        # Length + CRC lets the loader ignore a torn final append safely.
+        header = self._OBL_DELTA_MAGIC + self._OBL_DELTA_HEADER.pack(
+            len(payload), checksum
+        )
+
+        with open(final_path, "ab") as fp:
+            fp.write(header)
+            fp.write(payload)
+            fp.flush()
+            try:
+                os.fsync(fp.fileno())
+            except Exception:
+                pass
+
     def _safe_pickle_load(self, path: str) -> Any | None:
         """
-        Load a pickle file and drop it if it is corrupted or truncated.
+        Load a pickle cache and merge any appended delta frames.
         """
         try:
             with open(path, "rb") as fp:
-                return pickle.load(fp)
+                data = pickle.load(fp)
+                self._load_pickle_delta_frames(fp, data, path)
+                return data
         except Exception as err:
             print(
                 "Failed to read cached point data from",
@@ -1268,6 +1430,57 @@ class PhysicsBase:
             except Exception:
                 pass
             return None
+
+    def _load_pickle_delta_frames(self, fp, data: Any, path: str) -> None:
+        """
+        Merge framed delta records appended after the legacy base pickle object.
+
+        A truncated or corrupt final frame is ignored instead of invalidating the
+        base cache, which is important when a job is killed during append.
+        """
+        if not hasattr(data, 'update'):
+            return
+
+        while True:
+            magic = fp.read(len(self._OBL_DELTA_MAGIC))
+            if not magic:
+                return
+            if magic != self._OBL_DELTA_MAGIC:
+                print(
+                    "Ignoring unrecognized trailing OBL cache data in",
+                    path,
+                )
+                return
+
+            header = fp.read(self._OBL_DELTA_HEADER.size)
+            if len(header) != self._OBL_DELTA_HEADER.size:
+                print("Ignoring truncated OBL cache delta header in", path)
+                return
+
+            payload_len, expected_crc = self._OBL_DELTA_HEADER.unpack(header)
+            payload = fp.read(payload_len)
+            if len(payload) != payload_len:
+                print("Ignoring truncated OBL cache delta payload in", path)
+                return
+
+            actual_crc = zlib.crc32(payload) & 0xFFFFFFFF
+            if actual_crc != expected_crc:
+                print("Ignoring corrupt OBL cache delta payload in", path)
+                return
+
+            try:
+                delta = pickle.loads(payload)
+            except Exception as err:
+                print(
+                    "Ignoring unreadable OBL cache delta payload in",
+                    path,
+                    "-",
+                    type(err).__name__,
+                    str(err),
+                )
+                return
+            if hasattr(delta, 'items'):
+                data.update(delta)
 
     def body_path_start(self, output_folder: str) -> None:
         """
@@ -1305,7 +1518,7 @@ class PhysicsBase:
     def __del__(self) -> None:
         # first write cache
         if self.cache:
-            self.write_cache()
+            self._finalize_cache()
         # Now destroy all objects in physics
         for name in list(vars(self).keys()):
             delattr(self, name)
