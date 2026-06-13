@@ -85,7 +85,7 @@ Local pre-commit (via hooks) uses the `files` patterns defined in `.pre-commit-c
 ---
 
 ## CI Pipeline Integration
-The pre-commit job runs in the `pre_commit` stage using `python:3.10`, installs `pre-commit`, selects target files and executes:
+The pre-commit job runs in the `pre_commit` stage using `python:3.11`, installs `pre-commit`, selects target files and executes:
 
 ```bash
 pre-commit run --files $FILES --show-diff-on-failure --color always

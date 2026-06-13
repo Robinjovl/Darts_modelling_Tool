@@ -22,7 +22,7 @@ open-DARTS uses **Ruff** for Python linting and formatting, orchestrated through
 ```toml
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
