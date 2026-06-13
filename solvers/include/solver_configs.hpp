@@ -215,6 +215,18 @@ namespace opendarts
       // No amg_tolerance: BoomerAMG is configured with tol=0 since it is used
       // as a preconditioner stage of CPR; convergence is driven by the outer
       // Krylov, the AMG sweep budget is set by amg_max_iters.
+
+      // Hierarchy-reuse policy (mirrors mgr::SolverParameters' BCSR-CPR knobs).
+      // OFF by default -- rebuild AMG/ILU every Newton iteration, the proven
+      // baseline behaviour. With reuse on, *Setup is skipped while the outer
+      // Krylov converges within adaptive_iter_threshold iterations (the outer
+      // linsolv_gmres feeds the count back after every solve); the adaptive
+      // rebuild forces a fresh hierarchy after adaptive_consecutive_bad
+      // over-threshold solves in a row.
+      bool reuse_amg_hierarchy = false;
+      bool adaptive_amg_rebuild = false;
+      int adaptive_iter_threshold = 15;
+      int adaptive_consecutive_bad = 2;
     };
 
     /** Configuration for the open-source FS-CPR (Full-System CPR) 4-block

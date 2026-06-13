@@ -4,6 +4,9 @@
 #include <vector>
 #include <unordered_map>
 #include <cmath>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 
 #include "engine_base.h"
@@ -18,6 +21,10 @@
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "linsolv_bicgstab.hpp"
 #include "linsolv_cusparse_ilu.hpp"
+#include "linsolv_cusolv.hpp"
+#ifdef WITH_CUDSS
+#include "linsolv_cudss.hpp"
+#endif
 #else
 #include "linsolv_bicgstab.h"
 #endif
@@ -212,6 +219,16 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   struct tm *timeinfo;
   char buffer[1024];
 
+#ifdef _OPENMP
+  // Mirror the CPU engine contract (engine_base::print_header): the
+  // Jacobian's row_thread_starts partition is sized for
+  // omp_get_max_threads() at allocate/init time, so dynamic team sizing must
+  // be off BEFORE init_jacobian_structure's first-touch / assembly regions
+  // run. The GPU engine reaches print_header() only after structure init,
+  // hence the explicit early call here.
+  omp_set_dynamic(0);
+#endif
+
   mesh = mesh_;
   wells = well_list_;
   acc_flux_op_set_list = acc_flux_op_set_list_;
@@ -299,10 +316,43 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   {
 #ifdef OPENDARTS_LINEAR_SOLVERS
     // Open-source GPU build: the proprietary bos GMRES/CPR/AMG solvers are
-    // stubbed out, so the linear_type-driven factory below cannot run. Use
-    // the open-source GPU BiCGStab Krylov solver with a cuSPARSE block-ILU(0)
+    // stubbed out, so the full linear_type-driven factory below cannot run.
+    // Honor the explicitly requested in-tree GPU solvers (direct solvers:
+    // cuDSS when built, cuSOLVER QR always); otherwise fall back to the
+    // open-source GPU BiCGStab Krylov solver with a cuSPARSE block-ILU(0)
     // preconditioner. AMGX-based linear_type values were already redirected
-    // above; the remaining linear_type is advisory in this configuration.
+    // above when AMGX is absent.
+    if (params->linear_type == sim_params::GPU_CUDSS)
+    {
+#ifdef WITH_CUDSS
+      linear_solver = new linsolv_cudss<N_VARS>();
+      linear_solver_type_str = "GPU_CUDSS";
+#else
+      std::cout << "cuDSS not built (WITH_CUDSS=OFF); using the BiCGStab + "
+                   "cuSPARSE-ILU(0) GPU solver instead." << std::endl;
+#endif
+    }
+    else if (params->linear_type == sim_params::GPU_CUSOLVER)
+    {
+      linear_solver = new linsolv_cusolv<N_VARS>();
+      linear_solver_type_str = "GPU_CUSOLVER";
+    }
+#ifdef OPENDARTS_GPU_HAS_AMGX
+    else if (params->linear_type == sim_params::GPU_BICGSTAB_CPR_AMGX
+             || params->linear_type == sim_params::GPU_GMRES_CPR_AMGX_ILU)
+    {
+      // TODO(MR280 follow-up): the in-tree AMGX-CPR stack (BiCGStab +
+      // linsolv_bos_cpr_gpu + linsolv_amgx) is built under WITH_AMGX but
+      // linsolv_bos_cpr_gpu::init still expects the legacy csr_matrix<N>
+      // device layout and segfaults on the open-source block_csr_matrix
+      // Jacobian (verified on 2ph_do). Until that port lands, serve AMGX-CPR
+      // requests with the proven BiCGStab + cuSPARSE-ILU(0) solver.
+      std::cout << "In-tree AMGX-CPR is not yet block_csr_matrix-ready; "
+                   "using the BiCGStab + cuSPARSE-ILU(0) GPU solver instead."
+                << std::endl;
+    }
+#endif // OPENDARTS_GPU_HAS_AMGX
+    if (!linear_solver)
     {
       linsolv_bicgstab<N_VARS> *bicgstab = new linsolv_bicgstab<N_VARS>();
       bicgstab->set_prec(new linsolv_cusparse_ilu<N_VARS>());

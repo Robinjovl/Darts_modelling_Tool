@@ -376,7 +376,9 @@ fi
 cmake_options+=" -D OPENDARTS_CONFIG=$build"
 
 if [[ ! -z "$bos_solvers_dir" ]]; then
-    cmake_options+=" -D BOS_SOLVERS_DIR=${bos_solvers_dir}"
+    # ENABLE_BOS_SOLVERS is the CMake switch (default OFF -> in-tree
+    # open-source solvers); BOS_SOLVERS_DIR carries the library location.
+    cmake_options+=" -D ENABLE_BOS_SOLVERS=ON -D BOS_SOLVERS_DIR=${bos_solvers_dir}"
 fi
 
 # Pass WITH_PHREEQC to CMake to copy shared library

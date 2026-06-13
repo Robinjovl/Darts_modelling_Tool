@@ -53,3 +53,8 @@ solution.pvd
 *.sol
 *.csr
 *.rhs
+*.vtu
+*.vtk
+*.txt
+*.pvd
+*.vtp

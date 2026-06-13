@@ -83,6 +83,28 @@ message(STATUS "  git refspec: ${GITREFSPEC}")
 message(STATUS "  git hash: ${GIT_SHA1}")
 message(STATUS "  git dirtiness: ${GIT_DIRTY}")
 
+# Proprietary BOS solvers linkage -----------------------------------------------
+# ENABLE_BOS_SOLVERS is the single switch between the in-tree open-source
+# solver stack (OFF, default -- darts.solvers registry, FGMRES+CPR CPU
+# default) and the proprietary darts-linear-solvers (`bos`) stack (ON --
+# requires BOS_SOLVERS_DIR pointing at its lib/include tree; the C++ default
+# CPU solver then comes from the engine factory: CPU_GMRES_CPR_AMG for flow
+# engines, CPU_GMRES_FS_CPR for mechanics engines). Every CMake guard that
+# used to test `DEFINED BOS_SOLVERS_DIR` now tests this option, so the
+# OPENDARTS_LINEAR_SOLVERS compile macro tracks exactly NOT ENABLE_BOS_SOLVERS.
+option(ENABLE_BOS_SOLVERS "Link the proprietary BOS solvers instead of the in-tree open-source stack" OFF)
+add_feature_info(ENABLE_BOS_SOLVERS ENABLE_BOS_SOLVERS "Link the proprietary BOS solvers")
+# Back-compat: an explicit BOS_SOLVERS_DIR used to be the switch; keep old
+# invocations working by implying ENABLE_BOS_SOLVERS=ON.
+if(DEFINED BOS_SOLVERS_DIR AND NOT ENABLE_BOS_SOLVERS)
+  message(STATUS "  BOS_SOLVERS_DIR given -> ENABLE_BOS_SOLVERS=ON (back-compat)")
+  set(ENABLE_BOS_SOLVERS ON)
+endif()
+if(ENABLE_BOS_SOLVERS AND NOT DEFINED BOS_SOLVERS_DIR)
+  message(FATAL_ERROR "ENABLE_BOS_SOLVERS=ON requires -D BOS_SOLVERS_DIR=<path to darts-linear-solvers>")
+endif()
+# --------------------------------------------------------------------------------
+
 # Check the build type:
 #   ST: single threaded (Default)
 #   MT: multi threaded
@@ -106,7 +128,7 @@ elseif(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
   if (GPU_CONFIG)
     set(CUDA 1)
   endif()
-  if(NOT DEFINED BOS_SOLVERS_DIR)
+  if(NOT ENABLE_BOS_SOLVERS)
     message(STATUS "  openDARTS ${OPENDARTS_CONFIG} build using the in-tree open-source solvers (no BOS_SOLVERS_DIR)")
   endif()
 else()
@@ -117,7 +139,7 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 
 # Determine the type of compiler we have and set compiler flags and other compiler
 # specific flags
-if(DEFINED BOS_SOLVERS_DIR)
+if(ENABLE_BOS_SOLVERS)
   add_compile_definitions(WITH_HYPRE)
 endif()
 
@@ -167,8 +189,14 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   # Linker flags
   set(opendarts_cxx_linker_flags "")
 
-  if(${OPENDARTS_CONFIG} STREQUAL "MT")
-    list(APPEND opendarts_cxx_compiler_flags "-fopenmp")
+  if(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
+    # Host-side OpenMP for both the MT and the GPU build. The GPU build's
+    # host code (engine assembly partition, in-tree GMRES kernels, HYPRE
+    # consumers) is the same OpenMP code the MT build runs; GPU TUs compiled
+    # by nvcc need the flag forwarded to the host compiler -- raw -fopenmp is
+    # not an nvcc option, so pass the -Xcompiler form for CUDA sources.
+    list(APPEND opendarts_cxx_compiler_flags "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-fopenmp>")
+    list(APPEND opendarts_cxx_compiler_flags "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp>")
     list(APPEND opendarts_cxx_linker_flags "-fopenmp")
   endif()
 
@@ -191,8 +219,10 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   #                    we deactivate compact unwinding warnings.
   set(opendarts_cxx_linker_flags "-Wl,-no_compact_unwind")
 
-  if(${OPENDARTS_CONFIG} STREQUAL "MT")
-    list(APPEND opendarts_cxx_compiler_flags "-fopenmp")
+  if(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
+    # Same MT-or-GPU OpenMP policy as the GNU block above.
+    list(APPEND opendarts_cxx_compiler_flags "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-fopenmp>")
+    list(APPEND opendarts_cxx_compiler_flags "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp>")
     list(APPEND opendarts_cxx_linker_flags "-fopenmp")
   endif()
 
@@ -253,6 +283,15 @@ add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
 # toolkit, so AMGX support is opt-in. Enable with -D WITH_AMGX=ON for a GPU build.
 option(WITH_AMGX "Build the AMGX GPU solver (requires the thirdparty/AMGX submodule)" OFF)
 add_feature_info(WITH_AMGX WITH_AMGX "Build the AMGX GPU solver")
+# cuDSS (NVIDIA sparse direct solver) is a PREBUILT dependency (no source
+# build, unlike AMGX). ON by default -- it is only consumed inside the GPU
+# (CUDA) branch, so this is effectively "on for GPU builds, ignored on CPU".
+# The library is located by thirdparty/thirdparty_cudss.cmake (pip wheel
+# nvidia-cudss-cu13, CUDSS_ROOT, or a CMake config package); if it is not
+# found the GPU stack is built WITHOUT cuDSS (warning, not error), so a
+# cuDSS-less GPU machine still builds. Disable explicitly with -D WITH_CUDSS=OFF.
+option(WITH_CUDSS "Build the cuDSS GPU direct solver (prebuilt NVIDIA library)" ON)
+add_feature_info(WITH_CUDSS WITH_CUDSS "Build the cuDSS GPU direct solver")
 
 
 # Report options for this build
@@ -285,14 +324,14 @@ if(NOT ONLY_SOLVERS)
 endif()
 
 #   thirdparty/SuperLU ---------------------------------------------------------
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   include(thirdparty/thirdparty_superlu.cmake)
 endif()
 
 include(thirdparty/thirdparty_hypre.cmake)
 
 #   thirdparty/bos_solvers ------------------------------------------------------
-if(BOS_SOLVERS_DIR)
+if(ENABLE_BOS_SOLVERS)
   include(thirdparty/thirdparty_bos_solvers.cmake)
 endif()
 
@@ -373,6 +412,18 @@ if(CUDA)
             add_compile_definitions(WITH_AMGX)
             unset(_amgx_dir)
         endif()
+
+        # cuDSS GPU direct solver (prebuilt library -- imported target, no source
+        # build). ON by default for GPU builds; thirdparty/thirdparty_cudss.cmake
+        # sets WITH_CUDSS=OFF (FORCE) with a warning if the prebuilt library is not
+        # found, so a cuDSS-less GPU build still succeeds. Re-check WITH_CUDSS after
+        # the include before defining the compile macro / pulling in the source.
+        if(WITH_CUDSS)
+            include(thirdparty/thirdparty_cudss.cmake)
+        endif()
+        if(WITH_CUDSS)
+            add_compile_definitions(WITH_CUDSS)
+        endif()
     else()
         message(FATAL_ERROR "CUDA requested but not found!")
     endif()
@@ -411,7 +462,7 @@ endif()
 
 
 # openDARTS Linear solvers -----------------------------------------------------
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   add_subdirectory(solvers)
 endif()
 # ------------------------------------------------------------------------------

@@ -84,7 +84,8 @@ public:
     GPU_GMRES_CPR_NF,
     GPU_BICGSTAB_CPR_AMGX,
     GPU_CUSOLVER,
-    CPU_GMRES_MGR
+    CPU_GMRES_MGR,
+    GPU_CUDSS // cuDSS sparse direct solver (GPU build with WITH_CUDSS)
   };
 
   enum nonlinear_norm_t

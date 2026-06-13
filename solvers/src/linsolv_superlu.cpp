@@ -34,10 +34,17 @@ namespace opendarts
   {
     template <uint8_t N_BLOCK_SIZE> linsolv_superlu<N_BLOCK_SIZE>::~linsolv_superlu()
     {
+      delete[] this->perm_r;
+      delete[] this->perm_c;
 #ifndef SLU_SIMPLE
-      delete this->etree delete this->R delete this->C
+      delete[] this->etree;
+      delete[] this->R;
+      delete[] this->C;
+#ifdef SLU_PREALLOC_WORK
+      if (this->work)
+        SUPERLU_FREE(this->work);
+#endif // SLU_PREALLOC_WORK
 #endif // SLU_SIMPLE
-          ;
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -75,10 +82,15 @@ namespace opendarts
       const opendarts::config::index_t block_size =
           A_input != nullptr ? A_input->n_row_size : N_BLOCK_SIZE;
       this->n_rows = A_input->n_rows * block_size;
+      delete[] this->perm_r; // re-init: drop any previous workspace
+      delete[] this->perm_c;
       this->perm_r = new int[this->n_rows];
       this->perm_c = new int[this->n_rows];
 
 #ifndef SLU_SIMPLE
+      delete[] this->etree;
+      delete[] this->R;
+      delete[] this->C;
       this->etree = new int[this->n_rows];
       this->R = new double[this->n_rows];
       this->C = new double[this->n_rows];
@@ -176,11 +188,22 @@ namespace opendarts
       double ferr, berr;
 #endif // SLU_SIMPLE
 
+      if (this->A_base == nullptr)
+      {
+        return -1;
+      }
+
       set_default_options(&options_superlu);
       options_superlu.IterRefine = SLU_DOUBLE;
       options_superlu.ColPerm = COLAMD;
 
       StatInit(&stat_superlu);
+
+      // dgssv assigns L/U only once it reaches the factorization; null the
+      // Store pointers so the cleanup below can tell "allocated" from
+      // "never touched" when the solve bails out early.
+      L_superlu.Store = nullptr;
+      U_superlu.Store = nullptr;
 
       // Resolve the scalar-CSR triple SuperLU consumes. Preferred path
       // (block Jacobian + cached adapter): zero-alloc, structure-shared,
@@ -201,11 +224,6 @@ namespace opendarts
       // them in COLAMD/SamePattern paths -- safe to const_cast.
       opendarts::config::index_t *cols_ptr = nullptr;
       opendarts::config::index_t *rows_ptr = nullptr;
-
-      if (this->A_base == nullptr)
-      {
-        return -1;
-      }
 
       if (this->scalar_adapter_)
       {
@@ -272,19 +290,31 @@ namespace opendarts
       if (this->timer_solve)
         this->timer_solve->node["SUPERLU"].stop();
 
+      // Release everything SuperLU allocated for this solve. The Store
+      // wrappers do not own the user arrays (adapter / A_as_nb_1), so
+      // Destroy_SuperMatrix_Store is the correct (and required) call --
+      // omitting A_superlu's Store and StatFree leaked per Newton iteration.
+      Destroy_SuperMatrix_Store(&A_superlu);
       Destroy_SuperMatrix_Store(&B_superlu);
 
 #ifndef SLU_PREALLOC_WORK
-      Destroy_SuperNode_Matrix(&L_superlu);
-      Destroy_CompCol_Matrix(&U_superlu);
+      if (L_superlu.Store != nullptr)
+        Destroy_SuperNode_Matrix(&L_superlu);
+      if (U_superlu.Store != nullptr)
+        Destroy_CompCol_Matrix(&U_superlu);
 #endif // SLU_PREALLOC_WORK
+
+      StatFree(&stat_superlu);
 
       if (delete_A_as_nb_1)
       {
         delete A_as_nb_1;
       }
 
-      return 0;
+      // Propagate factorization/solve failure (singular pivot, alloc
+      // failure) so the Newton loop can cut the timestep instead of
+      // silently consuming a garbage solution.
+      return info_superlu == 0 ? 0 : -1;
     }
 
     template <uint8_t N_BLOCK_SIZE> opendarts::config::index_t linsolv_superlu<N_BLOCK_SIZE>::get_n_iters() { return 1; }

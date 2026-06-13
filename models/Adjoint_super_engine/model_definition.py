@@ -88,10 +88,10 @@ class Model(CICDModel, OptModuleSettings):
             **(adjoint_mgr_options or {}),
         )
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
-                            tol_newton=1e-6, tol_linear=1e-3, it_newton=10, it_linear=50,
-                            newton_type=sim_params.newton_local_chop)
-        self.use_bcsr_cpr_pressureguard_thr10_profile()
+        # Time-stepping and the forward/adjoint linear solvers are configured in
+        # set_solver()/reset() (the unified set_solver pattern), invoked during
+        # init(). adjoint_mgr_options / adjoint_solver_mode are already set above,
+        # so set_adjoint_solver() (called from reset()) has everything it needs.
 
         self.timer.node["initialization"].stop()
 
@@ -103,30 +103,6 @@ class Model(CICDModel, OptModuleSettings):
         if solver not in {"mgr", "superlu", "cpra"}:
             raise ValueError("adjoint_solver must be 'mgr', 'superlu', or 'cpra'")
         return solver
-
-    def use_bcsr_cpr_pressureguard_thr10_profile(self, reduction_type=None):
-        self.use_mgr_cpr_pressureguard_thr10 = True
-        self.bcsr_cpr_reduction_type = (
-            sim_params.mgrCprReductionTrueIMPES
-            if reduction_type is None
-            else reduction_type
-        )
-        if self.adjoint_solver_mode == "mgr":
-            self.use_adjoint_mgr_profile()
-        elif self.adjoint_solver_mode == "cpra":
-            self.use_adjoint_cpra_profile()
-        else:
-            self.use_adjoint_superlu_profile()
-        self.set_solver()
-
-    def use_bcsr_cpr_levelaware_pressureguard_thr10_profile(self):
-        self.use_bcsr_cpr_pressureguard_thr10_profile(
-            getattr(
-                sim_params,
-                "mgrCprReductionTrueIMPESWellElim",
-                sim_params.mgrCprReductionTrueIMPES,
-            )
-        )
 
     def _make_adjoint_mgr_options(self, profile="physical", **overrides):
         profile = "physical" if profile is None else str(profile).lower()
@@ -325,21 +301,6 @@ class Model(CICDModel, OptModuleSettings):
 
         return
 
-    def set_sim_params(self, *args, **kwargs):
-        super().set_sim_params(*args, **kwargs)
-
-        self.data_ts.linear_type = sim_params.cpu_gmres_mgr
-        if self.data_ts.linear_print_level is None:
-            self.data_ts.linear_print_level = 0
-
-        self.params.linear_type = sim_params.cpu_gmres_mgr
-        self.params.linear_print_level = self.data_ts.linear_print_level
-
-        if getattr(self, "use_mgr_cpr_pressureguard_thr10", False):
-            self.set_solver()
-        if getattr(self, "adjoint_solver_mode", "mgr") in {"mgr", "cpra"}:
-            self.set_adjoint_solver()
-
     def _reservoir_block_count(self):
         mesh = getattr(self.reservoir, "mesh", None)
         return None if mesh is None else mesh.n_res_blocks
@@ -354,16 +315,21 @@ class Model(CICDModel, OptModuleSettings):
         # valid.
         if self.solver is not None:
             return
-        # Forward MGR (BCSR-CPR) via the unified spec API (self.solver = MGRSolverSpec).
-        # The base DartsModel._apply_solver hook builds + injects it before engine.init
-        # in the open-source CPU build; the adjoint solver is injected separately by
-        # _attach_mgr_solvers_to_engine(). In the proprietary -a build the spec is
-        # ignored and the engine factory uses params.linear_type. Mirrors 2ph_comp's
+        # Single per-model home for time-stepping / Newton config (the unified
+        # set_solver pattern); the base reset() calls this before engine.init.
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
+                            tol_newton=1e-6, tol_linear=1e-3, it_newton=10, it_linear=50,
+                            newton_type=sim_params.newton_local_chop)
+        if self.data_ts.linear_print_level is None:
+            self.data_ts.linear_print_level = 0
+        self.params.linear_print_level = self.data_ts.linear_print_level
+        # Forward MGR (BCSR-CPR) via the single unified spec API (self.solver =
+        # MGRSolverSpec). The base DartsModel._apply_solver hook builds + injects it
+        # before engine.init on the open-source CPU build; the adjoint solver is
+        # injected separately by _attach_mgr_solvers_to_engine(). On the proprietary -a
+        # build the spec is not built; _apply_solver applies proprietary_linear_type
+        # (cpu_gmres_cpr_amg) to params.linear_type instead. Mirrors 2ph_comp's
         # MGRSolverSpec (here diagnostics are off, as in the former raw build).
-        if not self.open_source_solvers_available():
-            self.solver = None
-            self.params.linear_type = sim_params.cpu_gmres_cpr
-            return
         block_size = self.physics.n_vars
         reservoir_blocks = self._reservoir_block_count() or 0
 
@@ -378,6 +344,7 @@ class Model(CICDModel, OptModuleSettings):
             tolerance=self.params.tolerance_linear,
             max_iterations=self.params.max_i_linear,
             log_level=self.params.linear_print_level,
+            proprietary_linear_type=sim_params.cpu_gmres_cpr_amg,
             kdim=150,
             use_mgr=True,
             use_flex_gmres=True,
@@ -416,9 +383,9 @@ class Model(CICDModel, OptModuleSettings):
                 solve_tolerance=0.0,
             ),
             bcsr_cpr=BCSRCPRSpec(
-                reduction_type=getattr(
-                    self, "bcsr_cpr_reduction_type", BCSRCPRReduction.TRUE_IMPES
-                ),
+                # Forward solver uses True-IMPES reduction; the adjoint solver's
+                # reduction is configured separately via adjoint_mgr_options.
+                reduction_type=BCSRCPRReduction.TRUE_IMPES,
                 pressure_variable=0,
                 weight_max=1e6,
                 reuse_amg_hierarchy=True,
@@ -595,12 +562,14 @@ class Model(CICDModel, OptModuleSettings):
     def set_adjoint_cpra_solver(self):
         block_size = self.physics.n_vars
         options = getattr(self, "adjoint_cpra_options", {})
+        # No amg_tolerance: BoomerAMG inside CPR always runs with tol=0 as a
+        # preconditioner stage (the parameter was removed in the spec-surface
+        # cleanup; the sweep budget amg_max_iters is the only AMG knob).
         cpr_spec = solvers.CPRSolverSpec(
             tolerance=self.adjoint_linear_tol,
             max_iterations=self.adjoint_linear_max_iter,
             print_level=self.params.linear_print_level,
             amg_max_iters=int(options.get("cpr_amg_max_iters", 2)),
-            amg_tolerance=float(options.get("cpr_amg_tolerance", 1e-2)),
             ilu_fill_level=int(options.get("cpr_ilu_fill_level", 0)),
         )
         gmres_spec = solvers.GMRESSolverSpec(
@@ -647,11 +616,13 @@ class Model(CICDModel, OptModuleSettings):
             )
 
     def reset(self):
-        if getattr(self, "use_mgr_cpr_pressureguard_thr10", False):
-            self.set_solver()
+        # super().reset() runs set_solver() (time-stepping + forward MGR spec) and
+        # engine.init via the base hook. The adjoint solver is then (re)built fresh
+        # each reset -- params.linear_print_level is set by set_solver() above, and
+        # _attach_mgr_solvers_to_engine() corrects its post-init reservoir-block count.
+        super().reset()
         if getattr(self, "adjoint_solver_mode", "mgr") in {"mgr", "cpra"}:
             self.set_adjoint_solver()
-        super().reset()
         self._attach_mgr_solvers_to_engine()
 
     def grad_adjoint_method_all(self, x):

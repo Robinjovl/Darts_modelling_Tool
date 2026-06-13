@@ -60,19 +60,18 @@ class Model(THMCModel):
             n_fracs=0,
             n_wells=n_blocks - n_res_blks,
         )
+        # Single solver declaration: the FS-CPR spec drives _apply_solver on the
+        # open-source CPU build; on the proprietary build _apply_solver applies
+        # proprietary_linear_type (bos_fs_cpr) to params.linear_type. No model-level
+        # params.linear_type needed -- its open-source value was the engine default
+        # (cpu_superlu) anyway.
         self.solver = GMRESSolverSpec(
             prec=fs_cpr,
             tolerance=1e-8,
             max_iterations=200,
             restart=50,
+            proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
         )
-        # params.linear_type is only a placeholder in the open-source build -- the
-        # FS-CPR spec above drives _apply_solver, so it must stay a
-        # factory-safe value (cpu_superlu); the neutralised cpu_gmres_fs_cpr factory
-        # path crashes there. In the proprietary build it is the real selector
-        # (bos_fs_cpr).
-        self.params.linear_type = (sim_params.cpu_superlu if self.open_source_solvers_available()
-                                   else sim_params.cpu_gmres_fs_cpr)
 
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2

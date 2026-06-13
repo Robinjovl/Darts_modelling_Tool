@@ -880,7 +880,7 @@ after N linear failures; escalate `kdim`/levels on rising iteration counts.
 | **C5** | Port the 5 GPU wrappers onto open-DARTS `csr_matrix`/`linear_solver`; relicense headers; drop `adgprs_nf`/`aips`. | GPU build |
 | **C6** | `thirdparty/AMGX` submodule + `WITH_GPU` CMake; decouple GPU from `BOS_SOLVERS_DIR`; GPU buildable from in-tree source. | GPU build + GPU model run |
 | **C7** | `darts/solvers/` Python package — `LinearSolverSpec` hierarchy, `enums.py`; rename compiled module → `_solvers`. | model suite |
-| **C8** | Unified dispatch — wrap PETSc/Pardiso; collapse the Newton-loop branch; `default_linear_solver()`; **flip CPU default → MGR**; migrate models. | model suite |
+| **C8** | Unified dispatch — wrap PETSc/Pardiso; collapse the Newton-loop branch; `default_linear_solver()`; **flip CPU default → FGMRES+CPR** (`GMRESSolverSpec(prec=CPRSolverSpec())`; MGR is the recommended fallback); migrate models. | model suite |
 | **C9** | `AdaptiveSolverSpec` + policy hook; mid-run switching. | new tests |
 | **C10** | CI: GPU-from-source job; solver-comparison job; wire ctests; keep `-a` proprietary path. | full pipeline |
 | **C11** | Docs (docstrings + Sphinx); OD-6 assert guard; remove dead code (`solvers/linear_solvers/`, `engines/lib/CMakeLists.txt`). | — |
@@ -1336,7 +1336,7 @@ unit tests were run.
 | `linsolv_gmres` (GMRES/FGMRES) | done | restarted right-preconditioned MGS+Givens, mirrors bos `gmres_solver2`; `solve_transposed` wired through to the preconditioner |
 | `linsolv_cpr` (CPR + CPRA) | done | two-stage CPR (Wallis 1983): HYPRE BoomerAMG on the (0,0)-extracted pressure subsystem `A_p` + HYPRE_ILU(0) on the scalar-expanded full system `A_s`. **HYPRE is driven directly** (no `linsolv_hypre_amg` / `linsolv_hypre_ilu` wrappers — those are tuned for elasticity); BoomerAMG config mirrors `mgr::CompositionalFlowStrategy::setupPressureAMG` (aggressive PMIS + multipass interp + C-F relax). Adjoint **CPRA** (Han et al. 2013) is implemented with separate AMG hierarchies on `A_p^T` and ILU on `A_s^T` — `HYPRE_BoomerAMGSolveT` was tried first but has limited relax-type coverage and was unreliable under our coarsening config. Setup uses a `first_setup_` flag: HYPRE handles are created once and reused across Newton iterations (subsequent setups refresh IJ matrix values and re-run `BoomerAMGSetup` / `ILUSetup` on the same handles — a destroy/recreate cycle on every iteration crashed `BoomerAMGSetup` on the second call). **Validated end-to-end** with `GMRESSolverSpec(prec=CPRSolverSpec())` on `2ph_comp`: 19 timesteps to T=10 days, 1 linear iter / Newton, no NaN / segfault. Smoke-test on the `2ph_comp` matrix dumps: forward reaches ~1e-15 relative residual; CPRA transpose reaches ~3-5e-11 in a single apply. |
 | `linsolv_hypre_amg`, `linsolv_hypre_ilu` | retained | now scoped to **elasticity / mechanical engines only**; flow no longer uses them |
-| `linsolv_superlu` | done | latent bug: stores typed `csr_matrix<N>*` from the iface_bos down-cast and segfaults on `block_csr_matrix` — fix is queued |
+| `linsolv_superlu` | done | block-CSR down-cast crash fixed via `scalar_csr_adapter` (see §0a). **Remaining (verified 2026-06-12):** per-solve resource leaks on the default path — `Destroy_SuperMatrix_Store`/`StatFree`/`free(perm_r/perm_c)` missing, plus malformed dead `#ifndef SLU_SIMPLE` destructor block. Prime suspect for the valgrind-check leaks (110 KB definitely-lost). Fix queued under the code-quality workstream. |
 
 ### SPE10 benchmark — BOS vs the open-source MGR (historical baseline)
 

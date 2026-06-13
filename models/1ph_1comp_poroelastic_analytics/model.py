@@ -42,24 +42,23 @@ class Model(THMCModel):
             n_fracs=0,
             n_wells=n_blocks - n_res_blks,
         )
+        # Single solver declaration. The FS-CPR spec drives _apply_solver on the
+        # open-source CPU build. On the proprietary build _apply_solver applies
+        # proprietary_linear_type (bos_fs_cpr) to params.linear_type -- but only for
+        # mech_discretizer; pm_discretizer keeps its mechanics multi-stage backend
+        # (engine.ls_params), so its spec carries no proprietary fallback (None).
         self.solver = GMRESSolverSpec(
             prec=fs_cpr,
             tolerance=1e-8,
             max_iterations=200,
             restart=50,
+            proprietary_linear_type=(sim_params.cpu_gmres_fs_cpr
+                                     if self.discretizer_name == 'mech_discretizer' else None),
         )
-        # params.linear_type is only a placeholder in the open-source build -- the
-        # FS-CPR spec above drives _apply_solver, so it must stay a
-        # factory-safe value (cpu_superlu); the neutralised cpu_gmres_fs_cpr factory
-        # path crashes there. In the proprietary build it is the real selector
-        # (bos_fs_cpr).
-        linear_type = (sim_params.cpu_superlu if self.open_source_solvers_available()
-                       else sim_params.cpu_gmres_fs_cpr)
-
-        if self.discretizer_name == 'mech_discretizer':
-            self.params.linear_type = linear_type
-        elif self.discretizer_name == 'pm_discretizer':
-            self.physics.engine.ls_params[-1].linear_type = linear_type
+        if self.discretizer_name == 'pm_discretizer':
+            self.physics.engine.ls_params[-1].linear_type = (
+                sim_params.cpu_superlu if self.open_source_solvers_available()
+                else sim_params.cpu_gmres_fs_cpr)
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,

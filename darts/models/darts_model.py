@@ -385,10 +385,19 @@ class DartsModel:
             # the GPU engine factory builds the actual solver. Translate it here.
             self._apply_gpu_solver()
             return
-        # Backend guard: never call spec.build() without the compiled registry, and
-        # only on the CPU platform. Proprietary falls through to the engine factory
-        # (params.linear_type).
-        if not _HAVE_SOLVER_REGISTRY or platform != "cpu":
+        # Backend guard: never call spec.build() without the compiled registry.
+        # Proprietary build (no registry): the engine factory selects from
+        # params.linear_type. Honour the spec's proprietary fallback enum so a model
+        # declares its solver only via self.solver -- no model-level
+        # params.linear_type. None leaves params.linear_type as init() set it.
+        if not _HAVE_SOLVER_REGISTRY:
+            spec = self._resolve_solver_spec()
+            proprietary_type = getattr(spec, "proprietary_linear_type", None)
+            if proprietary_type is not None:
+                self.params.linear_type = proprietary_type
+            return
+        # Other non-CPU platforms (gpu handled above): leave the factory in charge.
+        if platform != "cpu":
             return
         spec = self._resolve_solver_spec()
         if not isinstance(spec, LinearSolverSpec):

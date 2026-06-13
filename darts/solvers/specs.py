@@ -52,6 +52,15 @@ class LinearSolverSpec:
     max_iterations: int = 50
     print_level: int = 0
 
+    #: ``darts.engines.linear_solver_t`` enum the *engine factory* should select
+    #: on builds without the open-source registry (proprietary ``-a`` build), where
+    #: :meth:`build` is unavailable. This is the cross-build fallback that lets a
+    #: model declare its solver **only** through ``self.solver`` -- the base
+    #: ``_apply_solver`` writes it to ``params.linear_type`` on the proprietary path.
+    #: ``None`` => leave ``params.linear_type`` as ``init()`` set it (e.g. the engine
+    #: default / GPU default). Ignored on the open-source CPU build (the spec drives).
+    proprietary_linear_type: int | None = None
+
     #: Name the solver is registered under in the C++ solver registry.
     registry_name: ClassVar[str] = ""
 
@@ -402,6 +411,20 @@ class GMRESSolverSpec(LinearSolverSpec):
         The inner solver is also stored on this spec so it outlives any local
         reference at the call site -- the C++ GMRES holds a raw pointer to it.
         """
+        if isinstance(self.prec, MGRSolverSpec):
+            # MGR is a full iterative solver (it runs its own FlexGMRES /
+            # MGR cycle to a tolerance), i.e. a *varying* operator. Wrapping
+            # it inside this non-flexible outer GMRES is mathematically
+            # unsound (the Krylov relations no longer hold) and is the known
+            # root cause of the HYPRE NaN warnings on 2ph_comp. Use
+            # MGRSolverSpec standalone instead -- it already embeds its own
+            # (flexible) outer Krylov.
+            raise ValueError(
+                "GMRESSolverSpec(prec=MGRSolverSpec(...)) is not supported: "
+                "MGR is an iterative solver, not a constant-operator "
+                "preconditioner, and the composition diverges (HYPRE NaNs). "
+                "Use MGRSolverSpec(...) directly as self.solver instead."
+            )
         gmres = solvers.create_linear_solver(
             self.registry_name, self._make_config(), block_size
         )
@@ -429,12 +452,25 @@ class CPRSolverSpec(LinearSolverSpec):
         BoomerAMG is configured with tol=0 (preconditioner stage); the sweep
         budget is the only AMG knob -- the outer Krylov drives convergence.
     :param ilu_fill_level: full-system ILU(k) fill level (currently 0).
+    :param reuse_amg_hierarchy: skip the BoomerAMG/ILU setup on subsequent
+        Newton iterations (reuse the existing hierarchies on refreshed matrix
+        values). OFF by default -- the per-Newton rebuild is the proven
+        baseline; reuse halves the per-Newton CPR setup cost on
+        well-converging runs.
+    :param adaptive_amg_rebuild: with reuse on, force a fresh hierarchy after
+        ``adaptive_consecutive_bad`` solves in a row exceeded
+        ``adaptive_iter_threshold`` outer iterations (the outer GMRES feeds
+        the count back after each solve).
     """
 
     registry_name: ClassVar[str] = "cpr"
 
     amg_max_iters: int = 2
     ilu_fill_level: int = 0
+    reuse_amg_hierarchy: bool = False
+    adaptive_amg_rebuild: bool = False
+    adaptive_iter_threshold: int = 15
+    adaptive_consecutive_bad: int = 2
 
     def _make_config(self) -> solvers.CPRSolverConfig:
         config = solvers.CPRSolverConfig()
@@ -442,6 +478,10 @@ class CPRSolverSpec(LinearSolverSpec):
         config.max_iterations = self.max_iterations
         config.amg_max_iters = self.amg_max_iters
         config.ilu_fill_level = self.ilu_fill_level
+        config.reuse_amg_hierarchy = self.reuse_amg_hierarchy
+        config.adaptive_amg_rebuild = self.adaptive_amg_rebuild
+        config.adaptive_iter_threshold = self.adaptive_iter_threshold
+        config.adaptive_consecutive_bad = self.adaptive_consecutive_bad
         return config
 
 
@@ -635,6 +675,38 @@ class GPUGMRESILU0SolverSpec(GPUSolverSpec):
     """
 
     linear_type_name: ClassVar[str] = "gpu_gmres_ilu0"
+
+
+@dataclass
+class CuDSSSolverSpec(GPUSolverSpec):
+    """GPU sparse DIRECT solver via NVIDIA cuDSS (``linsolv_cudss``).
+
+    cuDSS (https://docs.nvidia.com/cuda/cudss/) is NVIDIA's sparse
+    direct-solver library, the successor of the deprecated cusolverSp QR
+    wrapped by ``GPUCuSolverSpec``. Exact solve -- one "linear iteration" per
+    Newton step; intended as the GPU counterpart of ``SuperLUSolverSpec`` /
+    ``PardisoSolverSpec`` and as a robustness fallback when iterative GPU
+    solvers struggle. Memory-bound: feasible for small/medium systems, not
+    for million-cell models.
+
+    Requires a GPU build configured with ``-D WITH_CUDSS=ON`` (a build
+    without it falls back to the BiCGStab + cuSPARSE-ILU(0) GPU solver with
+    a console notice). Maps to ``linear_solver_t.gpu_cudss``.
+    """
+
+    linear_type_name: ClassVar[str] = "gpu_cudss"
+
+
+@dataclass
+class GPUCuSolverSpec(GPUSolverSpec):
+    """GPU sparse direct solver via cuSOLVER QR (``linsolv_cusolv``).
+
+    Legacy GPU direct solve (``cusolverSpDcsrlsvqr``, deprecated by NVIDIA in
+    favour of cuDSS -- prefer :class:`CuDSSSolverSpec` when available). Maps
+    to ``linear_solver_t.gpu_cusolver``.
+    """
+
+    linear_type_name: ClassVar[str] = "gpu_cusolver"
 
 
 def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:

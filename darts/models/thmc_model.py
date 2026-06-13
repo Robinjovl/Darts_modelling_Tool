@@ -86,22 +86,29 @@ class THMCModel(DartsModel):
         self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
         self.params.max_i_newton = 10
 
+        # Per-engine default (decision 2026-06-12): in a BOS build
+        # (ENABLE_BOS_SOLVERS, no open-source registry) mechanics engines
+        # default to the proprietary fixed-stress CPR -- the flow-tuned
+        # CPU_GMRES_CPR_AMG factory default is not supported on mechanics
+        # engines. The open-source build keeps the direct SuperLU default
+        # (the in-tree 'fs_cpr' registry solver is opt-in via FSCPRSolverSpec).
+        mech_default = (
+            sim_params.cpu_superlu
+            if self.open_source_solvers_available()
+            else sim_params.cpu_gmres_fs_cpr
+        )
         if self.discretizer_name == 'mech_discretizer':
             self.params.tolerance_linear = (
                 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
             )
-            self.params.linear_type = (
-                sim_params.cpu_superlu
-            )  # cpu_gmres_fs_cpr # cpu_superlu
+            self.params.linear_type = mech_default
             self.params.max_i_linear = 5000
         elif self.discretizer_name == 'pm_discretizer':
             # Idempotent: set_solver() runs on every reset(), but ls_params is
             # appended once (subclasses then tune ls_params[-1]).
             if len(self.physics.engine.ls_params) == 0:
                 ls1 = linear_solver_params()
-                ls1.linear_type = (
-                    sim_params.cpu_superlu
-                )  # cpu_gmres_fs_cpr # cpu_superlu
+                ls1.linear_type = mech_default
                 ls1.tolerance_linear = 1.0e-12
                 ls1.max_i_linear = 500
                 self.physics.engine.ls_params.append(ls1)

@@ -1,4 +1,11 @@
 # #.#.# [Future]
+- Solvers ([!280](https://gitlab.com/open-darts/open-darts/-/merge_requests/280)):
+  - Open-source linear-solver stack moved in-tree (FGMRES+CPR default, MGR with BCSR-CPR/True-IMPES, SuperLU; AMGX + GPU wrappers; unified `LinearSolverSpec` API via `self.solver`)
+  - New: NVIDIA **cuDSS** GPU sparse direct solver (`CuDSSSolverSpec`, opt-in `-D WITH_CUDSS=ON`; prebuilt library located via the `nvidia-cudss-cu*` wheel or `CUDSS_ROOT`); cuSOLVER QR direct solver (`GPUCuSolverSpec`) made selectable
+  - **OpenMP enabled in the GPU build** (host assembly/Krylov kernels; deterministic across thread counts)
+  - New CMake option **`ENABLE_BOS_SOLVERS`** (default OFF) replaces the implicit `BOS_SOLVERS_DIR` switch for linking the proprietary BOS solvers; mechanics models default to `cpu_gmres_fs_cpr` in BOS builds
+  - CI consolidated to the open-source (formerly "-ODLS") build/test jobs; the proprietary `-a` twins removed after the solver migration study (`SOLVER_PERF_STUDY.md`)
+  - Fixes: SuperLU per-solve resource leaks + silent acceptance of singular factorizations; HYPRE failures in CPR now propagate as timestep cuts instead of `std::exit`; `GMRESSolverSpec(prec=MGRSolverSpec())` rejected (unsound composition); AMGX thirdparty compile flags no longer leak into consumer CUDA code; first unit-test coverage for the solver registry / FGMRES+CPR / CPRA / SuperLU-on-block-CSR
 - Add hysteresis support for OBL-based compositional simulations through per-cell history variables, including Killough scanning-curve handling; the feature is disabled by default and enabled only when history variables are explicitly declared in the physics setup ([!310](https://gitlab.com/open-darts/open-darts/-/merge_requests/310)).
 - Output:
   - output which was using `vtk` module, has been changed to use `meshio` (struct reservoir, cpg reservoir) and darts/tools/vtk_io.py (writing vtp files with dynamic results along well trajectories)

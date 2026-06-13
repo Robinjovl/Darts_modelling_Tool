@@ -20,6 +20,7 @@
 #endif
 
 #include "linsolv_gmres.hpp"
+#include "linsolv_cpr.hpp"
 
 namespace opendarts
 {
@@ -323,6 +324,10 @@ namespace opendarts
 
       int iter = 0;
       int i = 0;
+      // Whether at least one Arnoldi step ran. `iter` alone cannot tell: the
+      // inner loop's convergence break fires before its `++iter`, so a solve
+      // that converged in a single step also ends with iter == 0.
+      bool did_arnoldi = false;
       while (iter < max_iter)
       {
         rs[0] = r_norm;
@@ -334,6 +339,7 @@ namespace opendarts
 
         for (i = 1; i < m && iter < max_iter; ++i, ++iter)
         {
+          did_arnoldi = true;
           mat_float *cur_p_i = p + static_cast<std::size_t>(i) * n;
           // r_buf = M^{-1} p_{i-1}; if no prec, r_buf = p_{i-1}.
           if (prec_)
@@ -453,8 +459,21 @@ namespace opendarts
           axpy(p, rs[j], p + static_cast<std::size_t>(j) * n, n);
       }
 
-      n_iters_ = iter + 1;
+      // iter + 1 is the legacy bos counting convention (the references and the
+      // engine's n_linear totals are calibrated to it; a single-step converged
+      // solve reports 1 with iter still 0). Report 0 only when the entry
+      // residual already met the tolerance and no Arnoldi step ran at all.
+      n_iters_ = did_arnoldi ? (iter + 1) : 0;
       final_resid_ = (den_norm > 1.0e-12) ? (r_norm / den_norm) : r_norm;
+      // Feed the iteration count back to a CPR preconditioner so its
+      // hierarchy-reuse / adaptive-rebuild policy (opt-in via
+      // cpr_solver_config) can decide whether the next setup() may skip the
+      // BoomerAMG/ILU rebuild. No-op for other preconditioners.
+      if (prec_ != nullptr)
+      {
+        if (auto *cpr = dynamic_cast<opendarts::linear_solvers::linsolv_cpr<N_BLOCK_SIZE> *>(prec_))
+          cpr->set_last_outer_iters(n_iters_);
+      }
       return 0;
     }
 

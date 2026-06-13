@@ -190,6 +190,13 @@ if(CUDA)
     list(APPEND OD_GPU_SOLVERS_HEADER_FILES ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_amgx.hpp)
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/linsolv_amgx.cpp PROPERTIES LANGUAGE CUDA)
   endif()
+  # cuDSS is opt-in (-D WITH_CUDSS=ON); prebuilt NVIDIA library, imported via
+  # thirdparty/thirdparty_cudss.cmake as cudss::cudss.
+  if(WITH_CUDSS)
+    list(APPEND OD_GPU_SOLVERS_SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cudss.cpp)
+    list(APPEND OD_GPU_SOLVERS_HEADER_FILES ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cudss.hpp)
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cudss.cpp PROPERTIES LANGUAGE CUDA)
+  endif()
 endif()
 # ------------------------------------------------------------------------------
 
@@ -231,11 +238,25 @@ if(CUDA)
   if(WITH_AMGX)
     # AMGX builds a static (amgx) and a shared (amgxsh) target; link the
     # static one so no extra runtime .so has to be shipped.
-    target_link_libraries(linear_solvers PUBLIC amgx)
+    #
+    # PRIVATE on purpose: the amgx target's INTERFACE carries AMGX-internal
+    # compile flags (-DTHRUST_CUB_WRAPPED_NAMESPACE=amgx, -Werror
+    # cross-execution-space-call, its own -Xcompiler block, ...). Linking
+    # PUBLIC leaks them into every consumer's CUDA TU, wrapping Thrust into
+    # the amgx:: namespace and breaking plain thrust:: usage in
+    # interpolation/ and engines/. linsolv_amgx.hpp does not expose any AMGX
+    # header (implementation-only dependency), so consumers need neither the
+    # flags nor the include dir; CMake still propagates the static-link
+    # requirement itself for PRIVATE deps of a static library.
+    target_link_libraries(linear_solvers PRIVATE amgx)
     target_include_directories(linear_solvers
-      PUBLIC
+      PRIVATE
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/thirdparty/AMGX/include>
     )
+  endif()
+  if(WITH_CUDSS)
+    # Prebuilt shared library; the imported target carries its include dir.
+    target_link_libraries(linear_solvers PUBLIC cudss::cudss)
   endif()
 endif()
 

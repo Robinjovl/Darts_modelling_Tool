@@ -220,7 +220,9 @@ if %phreeqc%==true (
   echo Phreeqc support: DISABLED
 )
 if not %bos_solvers_dir%=="" (
-  set cmake_options=%cmake_options% -D BOS_SOLVERS_DIR=%bos_solvers_dir%
+  rem ENABLE_BOS_SOLVERS is the CMake switch (default OFF = in-tree
+  rem open-source solvers); BOS_SOLVERS_DIR carries the library location.
+  set cmake_options=%cmake_options% -D ENABLE_BOS_SOLVERS=ON -D BOS_SOLVERS_DIR=%bos_solvers_dir%
 )
 if defined OD_CMAKE_ARGS (
   set cmake_options=%cmake_options% %OD_CMAKE_ARGS%

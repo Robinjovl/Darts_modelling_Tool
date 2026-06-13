@@ -189,6 +189,20 @@ namespace opendarts
       std::unique_ptr<opendarts::linear_solvers::csr_matrix<3>> P_block_3_;  // NE == 3
       std::unique_ptr<opendarts::linear_solvers::csr_matrix<4>> P_block_4_;  // NE == 4
       std::unique_ptr<opendarts::linear_solvers::csr_matrix<5>> P_block_5_;  // NE == 5
+      // NE > 1: scalar (nb=1) expansion of the PPSS block subsystem. The
+      // default pressure sub-preconditioner (hypre_amg_adapter<1>, see
+      // solver_factories) is a block-size-1 solver and cannot consume the
+      // block-NE matrix directly -- the former bare static_cast silently
+      // misread the block memory layout (caught by the checked
+      // linsolv_iface_bos down-cast). Expansion preserves the scalar DOF
+      // count (n_rows * NE), so the solve-side P_B_/P_X_ buffers and the
+      // AMG vector lengths are unchanged.
+      std::unique_ptr<opendarts::linear_solvers::csr_matrix<1>> P_scalar_ne_; // NE > 1
+
+      // Expand the block PPSS subsystem into P_scalar_ne_ (structure +
+      // values + diag_ind + diag-first column convention, matching the
+      // NE == 1 path) and run the pressure preconditioner setup on it.
+      int setup_p_prec_from_block_(opendarts::linear_solvers::csr_matrix_base *P_block);
 
       // Per-row sign flips from the positive-diagonal step.
       std::vector<mat_float> u_rhs_mults_;

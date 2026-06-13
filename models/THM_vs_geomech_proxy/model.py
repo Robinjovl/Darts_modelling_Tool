@@ -69,12 +69,12 @@ class Model(THMCModel):
             n_fracs=0,
             n_wells=mesh.n_blocks - n_res_blks,
         )
-        self.solver = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-8, max_iterations=200, restart=50)
-        # Placeholder in the open-source build (the spec drives the solve, and the
-        # neutralised cpu_gmres_fs_cpr factory path crashes there); real selector
-        # (bos_fs_cpr) in the proprietary build.
-        self.params.linear_type = (sim_params.cpu_superlu if self.open_source_solvers_available()
-                                   else sim_params.cpu_gmres_fs_cpr)
+        # Single solver declaration: the spec drives _apply_solver on the open-source
+        # CPU build; on the proprietary build _apply_solver applies
+        # proprietary_linear_type (bos_fs_cpr) to params.linear_type. No model-level
+        # params.linear_type needed (its open-source value was the engine default).
+        self.solver = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-8, max_iterations=200, restart=50,
+                                      proprietary_linear_type=sim_params.cpu_gmres_fs_cpr)
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2
         self.params.max_ts = 5

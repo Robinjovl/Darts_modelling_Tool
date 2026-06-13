@@ -71,7 +71,7 @@ endif()
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(engines
     PUBLIC
       OPENDARTS_LINEAR_SOLVERS

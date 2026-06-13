@@ -42,35 +42,11 @@ class Model(CICDModel):
 
         self.set_reservoir()
         self.set_physics()
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-3, tol_linear=1e-4,
-                            it_newton=20, it_linear=50, newton_type=sim_params.newton_local_chop)
-        self.params.linear_type = sim_params.cpu_gmres_mgr
-        self.params.linear_print_level = 0  # 0 = quiet, 1 = basic (default), 2 = verbose
-        self.solver = None
-        self.use_bcsr_cpr_pressureguard_thr10_profile()
-        # self.solver is built and injected by the base DartsModel.set_solver()
-        # hook during init() (reset -> _apply_set_solver), after engine.init.
+        # Time-stepping and linear-solver configuration live in set_solver(),
+        # which the base reset() calls before engine.init (see the unified
+        # self.solver = <LinearSolverSpec> API).
 
         self.timer.node["initialization"].stop()
-
-    def use_bcsr_cpr_pressureguard_thr10_profile(self, reduction_type=None):
-        self.use_mgr_cpr_pressureguard_thr10 = True
-        self.bcsr_cpr_reduction_type = (
-            sim_params.mgrCprReductionTrueIMPES
-            if reduction_type is None
-            else reduction_type
-        )
-        if getattr(self, "solver", None) is not None:
-            self.set_solver()
-
-    def use_bcsr_cpr_levelaware_pressureguard_thr10_profile(self):
-        self.use_bcsr_cpr_pressureguard_thr10_profile(
-            getattr(
-                sim_params,
-                "mgrCprReductionTrueIMPESWellElim",
-                sim_params.mgrCprReductionTrueIMPES,
-            )
-        )
 
     def set_reservoir(self):
         nx = 1000
@@ -122,31 +98,24 @@ class Model(CICDModel):
 
         return
 
-    def set_sim_params(self, *args, **kwargs):
-        super().set_sim_params(*args, **kwargs)
-
-        self.data_ts.linear_type = sim_params.cpu_gmres_mgr
+    def set_solver(self):
+        # Single per-model home for time-stepping / Newton + linear-solver config
+        # (the unified set_solver() pattern). Called by the base reset() before
+        # engine.init, so these settings feed engine.init().
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
+                            tol_newton=1e-3, tol_linear=1e-4, it_newton=20, it_linear=50,
+                            newton_type=sim_params.newton_local_chop)
         if self.data_ts.linear_print_level is None:
-            self.data_ts.linear_print_level = 0
-
-        self.params.linear_type = sim_params.cpu_gmres_mgr
+            self.data_ts.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
         self.params.linear_print_level = self.data_ts.linear_print_level
 
-        if getattr(self, "use_mgr_cpr_pressureguard_thr10", False):
-            self.set_solver()
-
-    def set_solver(self):
-        # MGR (BCSR-CPR) via the unified spec API (self.solver = MGRSolverSpec).
-        # The base DartsModel._apply_solver hook builds + injects it before
-        # engine.init on the open-source CPU build; in proprietary / GPU builds the
-        # spec is ignored and the engine factory selects from params.linear_type
-        # (set below for proprietary, and to cpu_gmres_mgr in __init__), so this is
-        # build-safe everywhere. Verified bit-for-bit against the former raw MGR
+        # MGR (BCSR-CPR) via the single unified spec API (self.solver = MGRSolverSpec).
+        # The base DartsModel._apply_solver hook builds + injects it before engine.init
+        # on the open-source CPU build. On the proprietary build the spec is not built;
+        # _apply_solver instead applies proprietary_linear_type (cpu_gmres_cpr_amg) to
+        # params.linear_type, so this is the only place the solver is declared and it
+        # stays build-safe everywhere. Verified bit-for-bit against the former raw MGR
         # build: TS=1009 / NI=2234 / LI=4188 (see verify_mgr_spec.py).
-        if not self.open_source_solvers_available():
-            self.solver = None
-            self.params.linear_type = sim_params.cpu_gmres_cpr
-            return
 
         # block_size = 1 (pressure) + (n_components - 1) fractions
         block_size = self.physics.n_vars
@@ -164,6 +133,7 @@ class Model(CICDModel):
             tolerance=self.params.tolerance_linear,
             max_iterations=self.params.max_i_linear,
             log_level=self.params.linear_print_level,
+            proprietary_linear_type=sim_params.cpu_gmres_cpr_amg,
             kdim=150,
             use_mgr=True,
             use_flex_gmres=True,
@@ -202,11 +172,8 @@ class Model(CICDModel):
                 solve_tolerance=0.0,
             ),
             bcsr_cpr=BCSRCPRSpec(
-                # Parametrised by the use_bcsr_cpr_*_profile() methods; the
-                # sim_params.mgrCprReduction* int values equal the enum values.
-                reduction_type=getattr(
-                    self, "bcsr_cpr_reduction_type", BCSRCPRReduction.TRUE_IMPES
-                ),
+                # True-IMPES pressure-equation reduction (== sim_params.mgrCprReductionTrueIMPES).
+                reduction_type=BCSRCPRReduction.TRUE_IMPES,
                 pressure_variable=0,
                 weight_max=1e6,
                 reuse_amg_hierarchy=True,
@@ -245,9 +212,8 @@ class Model(CICDModel):
         return
 
     # The MGRSolverSpec above is built and injected by the base
-    # DartsModel._apply_solver(stage="pre") hook (called from reset(), before
-    # engine.init). No init() override is needed -- self.solver_label names it in
-    # the engine log.
+    # DartsModel._apply_solver() hook (called from reset(), before engine.init).
+    # self.solver_label names it in the engine log.
 
     def set_initial_conditions(self):
         input_distribution = {self.physics.vars[0]: 50,

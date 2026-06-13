@@ -48,7 +48,6 @@ if __name__ == '__main__':
 
     redirect_darts_output('run.log')
     n = Model()
-    n.use_bcsr_cpr_pressureguard_thr10_profile()
     n.init()
     # n.physics.engine.print_linear_system = True
     n.set_output()

@@ -74,7 +74,35 @@ namespace opendarts
         P_block_4_ = std::make_unique<opendarts::linear_solvers::csr_matrix<4>>();
       else if (NE_ == 5)
         P_block_5_ = std::make_unique<opendarts::linear_solvers::csr_matrix<5>>();
+      if (NE_ > 1)
+        P_scalar_ne_ = std::make_unique<opendarts::linear_solvers::csr_matrix<1>>();
     }
+
+    namespace
+    {
+      // to_nb_1 expands structure + values but leaves diag_ind untouched;
+      // fill it by scanning each row (set_diag_first and the HYPRE IJ build
+      // both consume it).
+      void fill_scalar_diag_ind(opendarts::linear_solvers::csr_matrix<1> &M)
+      {
+        const opendarts::config::index_t n = M.n_rows;
+        const opendarts::config::index_t *rows = M.get_rows_ptr();
+        const opendarts::config::index_t *cols = M.get_cols_ind();
+        opendarts::config::index_t *diag = M.get_diag_ind();
+        for (opendarts::config::index_t i = 0; i < n; ++i)
+        {
+          diag[i] = rows[i];
+          for (opendarts::config::index_t j = rows[i]; j < rows[i + 1]; ++j)
+          {
+            if (cols[j] == i)
+            {
+              diag[i] = j;
+              break;
+            }
+          }
+        }
+      }
+    } // namespace
 
     // ====================================================================
     // set_prec overloads (FS_UP only; G overload removed)
@@ -357,7 +385,24 @@ namespace opendarts
 
         // Pressure-system preconditioner: 1 V-cycle, tolerance irrelevant
         // (preconditioner mode). See NE == 1 branch above.
-        p_system_preconditioner_->init(P_base,
+        //
+        // The default sub-prec (hypre_amg_adapter<1>) is a block-size-1
+        // solver; initialise it on the scalar (nb=1) expansion of the
+        // block-NE structure with unit values (mirrors the NE == 1 branch's
+        // init_rows_cols_to_unit_matrix -- to_nb_1 would copy uninitialised
+        // block values here). setup() refreshes the real values per Newton.
+        P_scalar_ne_->to_nb_1(P_base);
+        fill_scalar_diag_ind(*P_scalar_ne_);
+        {
+          mat_float *sv = P_scalar_ne_->get_values();
+          const index_t n_scalar_nnz =
+              P_scalar_ne_->get_rows_ptr()[P_scalar_ne_->n_rows];
+          std::fill_n(sv, n_scalar_nnz, static_cast<mat_float>(0.0));
+          const index_t *sdiag = P_scalar_ne_->get_diag_ind();
+          for (index_t i = 0; i < P_scalar_ne_->n_rows; ++i)
+            sv[sdiag[i]] = static_cast<mat_float>(1.0);
+        }
+        p_system_preconditioner_->init(P_scalar_ne_.get(),
             static_cast<index_t>(1),
             static_cast<mat_float>(0.0));
       }
@@ -561,7 +606,7 @@ namespace opendarts
               ps_rhs_mults_.data());
           apply_ps_relaxation<2>(*P_block_2_, x_sch_p_.data(),
               x_sch_s_.data(), ps_rhs_mults_.data());
-          p_system_preconditioner_->setup(P_block_2_.get());
+          setup_p_prec_from_block_(P_block_2_.get());
         }
         else if (NE == 3)
         {
@@ -569,7 +614,7 @@ namespace opendarts
               ps_rhs_mults_.data());
           apply_ps_relaxation<3>(*P_block_3_, x_sch_p_.data(),
               x_sch_s_.data(), ps_rhs_mults_.data());
-          p_system_preconditioner_->setup(P_block_3_.get());
+          setup_p_prec_from_block_(P_block_3_.get());
         }
         else if (NE == 4)
         {
@@ -577,7 +622,7 @@ namespace opendarts
               ps_rhs_mults_.data());
           apply_ps_relaxation<4>(*P_block_4_, x_sch_p_.data(),
               x_sch_s_.data(), ps_rhs_mults_.data());
-          p_system_preconditioner_->setup(P_block_4_.get());
+          setup_p_prec_from_block_(P_block_4_.get());
         }
         else if (NE == 5)
         {
@@ -585,7 +630,7 @@ namespace opendarts
               ps_rhs_mults_.data());
           apply_ps_relaxation<5>(*P_block_5_, x_sch_p_.data(),
               x_sch_s_.data(), ps_rhs_mults_.data());
-          p_system_preconditioner_->setup(P_block_5_.get());
+          setup_p_prec_from_block_(P_block_5_.get());
         }
       }
       else
@@ -701,6 +746,24 @@ namespace opendarts
     int linsolv_fs_cpr<N_BLOCK_SIZE>::refresh_u_prec_()
     {
       return u_system_preconditioner_->refresh(U_.get());
+    }
+
+    template <std::uint8_t N_BLOCK_SIZE>
+    int linsolv_fs_cpr<N_BLOCK_SIZE>::setup_p_prec_from_block_(
+        opendarts::linear_solvers::csr_matrix_base *P_block)
+    {
+      // Scalar-expand the block-NE PPSS subsystem for the block-size-1
+      // pressure sub-preconditioner (hypre_amg_adapter<1>): same scalar DOF
+      // count, memory-correct -- the former direct setup(P_block_N) was a
+      // misread of the block layout through a bare static_cast (caught by
+      // the checked linsolv_iface_bos down-cast). Matches the NE == 1 path's
+      // diag-first column convention for the HYPRE IJ build; P_scalar_ne_ is
+      // regenerated from the block matrix every setup, so no
+      // set_diag_in_order restore is needed.
+      P_scalar_ne_->to_nb_1(P_block);
+      fill_scalar_diag_ind(*P_scalar_ne_);
+      set_diag_first<1>(*P_scalar_ne_);
+      return p_system_preconditioner_->setup(P_scalar_ne_.get());
     }
 
     template <std::uint8_t N_BLOCK_SIZE>

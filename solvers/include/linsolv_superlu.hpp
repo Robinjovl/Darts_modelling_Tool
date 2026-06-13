@@ -81,18 +81,21 @@ namespace opendarts
       // in that case solve() takes the legacy to_nb_1 fallback below.
       std::unique_ptr<opendarts::linear_solvers::scalar_csr_adapter> scalar_adapter_;
 
-      opendarts::config::index_t n_rows;
-      opendarts::config::index_t nnz;
+      opendarts::config::index_t n_rows = 0;
+      opendarts::config::index_t nnz = 0;
 
-      opendarts::config::index_t *perm_r; /* row permutations from partial pivoting */
-      opendarts::config::index_t *perm_c; /* column permutation vector */
+      // Owned workspaces (released in the destructor; init() re-allocates,
+      // freeing any previous allocation so repeated init() does not leak).
+      opendarts::config::index_t *perm_r = nullptr; /* row permutations from partial pivoting */
+      opendarts::config::index_t *perm_c = nullptr; /* column permutation vector */
 
-      opendarts::config::index_t first;
-      void *work;
-      opendarts::config::index_t lwork;
-      opendarts::config::mat_float *R, *C;
+      opendarts::config::index_t first = 1;
+      void *work = nullptr;
+      opendarts::config::index_t lwork = 0;
+      opendarts::config::mat_float *R = nullptr;
+      opendarts::config::mat_float *C = nullptr;
 
-      opendarts::config::index_t *etree;
+      opendarts::config::index_t *etree = nullptr;
     };
   } // namespace linear_solvers
 } // namespace opendarts

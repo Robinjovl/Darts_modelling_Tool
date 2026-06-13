@@ -118,12 +118,20 @@ class Model(CICDModel):
 
         # Linear solver: this is a Geothermal DFM (discrete fracture matrix) model.
         # The default FGMRES+CPR (and MGR) stall on its wide, strongly-coupled
-        # fracture-matrix Jacobian -- the open-source builds (ODLS/GPU) hang.
-        # A direct solve is robust and fast here (the mesh is small); use it in the
-        # open-source build. In the proprietary build a Spec is ignored and the
-        # engine factory keeps using its iterative default (which converges there).
-        from darts.solvers import SuperLUSolverSpec
-        self.solver = SuperLUSolverSpec()
+        # fracture-matrix Jacobian -- iterative defaults hang on it (the former
+        # 2h CI timeouts on the open-source CPU *and* the GPU jobs, where the
+        # CPU-only SuperLU spec was silently ignored). A direct solve is robust
+        # and fast here (the mesh is small), so pick the platform's direct
+        # solver: cpu -> SuperLU (registry); gpu (open-source) -> in-tree
+        # cuSOLVER QR (gpu_cusolver; CuDSSSolverSpec is the faster alternative
+        # on WITH_CUDSS builds). Proprietary builds ignore CPU specs and lack
+        # an in-tree GPU direct solver -> keep their engine-factory default.
+        from darts.solvers import GPUCuSolverSpec, SuperLUSolverSpec
+        if getattr(self, "platform", "cpu") == "gpu":
+            if self.open_source_solvers_available():
+                self.solver = GPUCuSolverSpec()
+        else:
+            self.solver = SuperLUSolverSpec()
 
     def print_range(self, time, part='cells'):
         depth = np.array(self.reservoir.mesh.depth, copy=True)

@@ -24,6 +24,7 @@
 #include <iostream>
 #include <limits>
 #include <numeric>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -50,19 +51,26 @@ namespace opendarts
 
     namespace
     {
-      // Abort-on-error helper for HYPRE calls. Mirrors the policy in
-      // linsolv_hypre_amg / linsolv_hypre_ilu: HYPRE errors are not
-      // recoverable here -- coming from a malformed pressure subsystem they
-      // indicate a programmer bug, not runtime data.
+      // Error helper for HYPRE calls. A HYPRE failure here is not always a
+      // programmer bug -- a diverging Newton step can hand the preconditioner
+      // a degenerate pressure subsystem (NaN/Inf entries, singular
+      // decoupling), which is runtime data. Throwing (instead of the former
+      // std::exit(-1)) lets setup()/solve() translate the failure into a
+      // nonzero return, which engine_base::solve_linear_equation() converts
+      // into a timestep cut -- instead of killing the host Python process.
       inline void check_hypre(int res, const char *where)
       {
         if (res)
         {
           char msg[256];
           HYPRE_DescribeError(res, msg);
-          std::cerr << "linsolv_cpr: HYPRE error in " << where << " -- "
-                    << std::string(msg) << std::endl;
-          std::exit(-1);
+          std::string err = std::string("linsolv_cpr: HYPRE error in ") +
+                            where + " -- " + msg;
+          std::cerr << err << std::endl;
+          // Clear HYPRE's sticky global error flag so a recovered solver
+          // (after the timestep cut) does not keep tripping on it.
+          HYPRE_ClearAllErrors();
+          throw std::runtime_error(err);
         }
       }
 
@@ -562,7 +570,7 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_cpr<N_BLOCK_SIZE>::setup(csr_matrix_base *A_input)
+    int linsolv_cpr<N_BLOCK_SIZE>::setup_unguarded(csr_matrix_base *A_input)
     {
       // Ensure HYPRE is initialised; when CPR is used without MGR alive in
       // the process the wrappers would otherwise hit "[Generic error]" out of
@@ -817,7 +825,7 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_cpr<N_BLOCK_SIZE>::solve(mat_float *B, mat_float *X)
+    int linsolv_cpr<N_BLOCK_SIZE>::solve_unguarded(mat_float *B, mat_float *X)
     {
       if (!A_ || !amg_setup_done_)
         return -1;
@@ -898,7 +906,7 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_cpr<N_BLOCK_SIZE>::solve_transposed(mat_float *B, mat_float *X)
+    int linsolv_cpr<N_BLOCK_SIZE>::solve_transposed_unguarded(mat_float *B, mat_float *X)
     {
       if (!A_ || !amg_T_setup_done_ || !ilu_T_setup_done_)
         return -1;
@@ -978,6 +986,57 @@ namespace opendarts
     }
 
     // Explicit instantiations for the block sizes the engine uses.
+    // ---- Guarded public entry points --------------------------------------
+    // check_hypre() throws on a HYPRE failure (degenerate pressure subsystem,
+    // NaNs from a diverging Newton step). These wrappers translate that into
+    // the nonzero return engine_base::solve_linear_equation() expects, so the
+    // Newton loop cuts the timestep instead of the process dying. try/catch
+    // is zero-cost on the non-throwing hot path.
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_cpr<N_BLOCK_SIZE>::setup(csr_matrix_base *A_input)
+    {
+      try
+      {
+        return setup_unguarded(A_input);
+      }
+      catch (const std::exception &e)
+      {
+        std::cerr << "linsolv_cpr::setup failed: " << e.what()
+                  << " -- reporting failure to the Newton loop" << std::endl;
+        return -1;
+      }
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_cpr<N_BLOCK_SIZE>::solve(mat_float *B, mat_float *X)
+    {
+      try
+      {
+        return solve_unguarded(B, X);
+      }
+      catch (const std::exception &e)
+      {
+        std::cerr << "linsolv_cpr::solve failed: " << e.what()
+                  << " -- reporting failure to the Newton loop" << std::endl;
+        return -1;
+      }
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_cpr<N_BLOCK_SIZE>::solve_transposed(mat_float *B, mat_float *X)
+    {
+      try
+      {
+        return solve_transposed_unguarded(B, X);
+      }
+      catch (const std::exception &e)
+      {
+        std::cerr << "linsolv_cpr::solve_transposed failed: " << e.what()
+                  << " -- reporting failure to the Newton loop" << std::endl;
+        return -1;
+      }
+    }
+
     template class linsolv_cpr<1>;
     template class linsolv_cpr<2>;
     template class linsolv_cpr<3>;

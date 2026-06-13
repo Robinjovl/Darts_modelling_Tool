@@ -134,6 +134,17 @@ namespace opendarts
       void set_ilu_fill_level(int k) { ilu_fill_level_ = k; }
 
     private:
+      // Unguarded implementations of the public entry points. The public
+      // setup()/solve()/solve_transposed() wrap these in try/catch and
+      // translate a thrown HYPRE failure (see check_hypre in the .cpp) into
+      // a nonzero return, which engine_base::solve_linear_equation() turns
+      // into a timestep cut instead of aborting the host process.
+      int setup_unguarded(opendarts::linear_solvers::csr_matrix_base *A_input);
+      int solve_unguarded(opendarts::config::mat_float *B,
+          opendarts::config::mat_float *X);
+      int solve_transposed_unguarded(opendarts::config::mat_float *B,
+          opendarts::config::mat_float *X);
+
       // Extract the scalar pressure subsystem A_p (block (0,0) of each block)
       // into a csr_matrix<1> sharing the block-CSR structure.
       void build_pressure_subsystem(opendarts::linear_solvers::csr_matrix_base *A);

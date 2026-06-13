@@ -446,7 +446,11 @@ void bind_unified_solver_api(py::module &m)
         "no inner AMG tolerance knob -- amg_max_iters sets the sweep budget.")
         .def(py::init<>())
         .def_readwrite("amg_max_iters", &cpr_solver_config::amg_max_iters)
-        .def_readwrite("ilu_fill_level", &cpr_solver_config::ilu_fill_level);
+        .def_readwrite("ilu_fill_level", &cpr_solver_config::ilu_fill_level)
+        .def_readwrite("reuse_amg_hierarchy", &cpr_solver_config::reuse_amg_hierarchy)
+        .def_readwrite("adaptive_amg_rebuild", &cpr_solver_config::adaptive_amg_rebuild)
+        .def_readwrite("adaptive_iter_threshold", &cpr_solver_config::adaptive_iter_threshold)
+        .def_readwrite("adaptive_consecutive_bad", &cpr_solver_config::adaptive_consecutive_bad);
 
     // Open-source FS-CPR (poromechanics) preconditioner configuration.
     py::class_<fs_cpr_solver_config, solver_config>(m, "FSCPRSolverConfig",

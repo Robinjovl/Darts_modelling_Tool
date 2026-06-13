@@ -219,6 +219,7 @@ void pybind_globals(py::module &m)
     .value("gpu_gmres_cpr_nf", sim_params::linear_solver_t::GPU_GMRES_CPR_NF)
     .value("gpu_bicgstab_cpr_amgx", sim_params::linear_solver_t::GPU_BICGSTAB_CPR_AMGX)
     .value("gpu_cusolver", sim_params::linear_solver_t::GPU_CUSOLVER)
+    .value("gpu_cudss", sim_params::linear_solver_t::GPU_CUDSS)
     .export_values();
 
   py::enum_<sim_params::nonlinear_norm_t>(sim_params, "nonlinear_norm_t", "Available types of nonlinear norm")
