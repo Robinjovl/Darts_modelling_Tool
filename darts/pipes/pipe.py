@@ -1686,11 +1686,15 @@ class Pipe:
             NB0 = (pg.pipe_ID**2) * (
                 self.g * (rhoL0_face_filtered - rhoG0_face_filtered) / IFT0_face
             )
-            self.Ku0_filtered = np.sqrt(
-                self.Cku
-                / np.sqrt(NB0)
-                * (np.sqrt(1 + NB0 / (self.Cku**2 * self.Cw)) - 1)
-            )
+            if self.drift_flux_model == "tang_2019":
+                Dhat0 = np.sqrt(NB0)
+                self.Ku0_filtered = np.clip(3.587 - 19.105 / (Dhat0 + 3.333), 0.0, 3.2)
+            else:
+                self.Ku0_filtered = np.sqrt(
+                    self.Cku
+                    / np.sqrt(NB0)
+                    * (np.sqrt(1 + NB0 / (self.Cku**2 * self.Cw)) - 1)
+                )
             self.vC0_filtered = (
                 self.g
                 * IFT0_face
@@ -1715,8 +1719,10 @@ class Pipe:
                 beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
                 beta0 = np.clip(beta0, 0, 1)  # T2Well imposes 0 <= beta0 <= 1
                 eta0 = (beta0 - self.B) / (1 - self.B)
-                eta0 = np.clip(eta0, 0, 1)  # Shi et al. impose 0 <= eta <= 1
-                C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
+                eta0_squared = np.minimum(eta0**2, 1.0)
+                C00_filtered = self.profile_A / (
+                    1 + (self.profile_A - 1) * eta0_squared
+                )
             elif self.drift_flux_model == "bai_2023":
                 muG0_face = self.iter_phases_props0_face[6]
                 muL0_face = self.iter_phases_props0_face[7]
@@ -1884,9 +1890,10 @@ class Pipe:
                     * sL0_face_filtered
                 )
 
-                transition_argument = 50.0 * (
-                    np.sin(theta_filtered) + tang_params.m2 * vM0_filtered
+                transition_angle = theta_filtered + np.deg2rad(
+                    tang_params.m2 * vM0_filtered
                 )
+                transition_argument = 50.0 * np.sin(transition_angle)
                 transition = 1 - 2 / (
                     1 + np.exp(np.clip(transition_argument, -700.0, 700.0))
                 )
