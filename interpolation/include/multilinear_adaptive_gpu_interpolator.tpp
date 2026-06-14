@@ -124,6 +124,8 @@ multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_poin
     }
   }
   auto insert_result = point_data.emplace(point_key, new_point);
+  // Mark for append-only cache flush after this new point is materialized.
+  dirty_point_data.insert(point_key);
   this->n_points_used++;
   return insert_result.first->second;
 }

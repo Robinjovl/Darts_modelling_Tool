@@ -94,6 +94,9 @@ struct interpolator_exposer
             },
             [](interpolator_class& self, const py::dict& d) {
               self.point_data.clear();
+              // Keep dirty tracker in sync with the cache it shadows: a fresh reload
+              // through point_data_full means there are no unpersisted points yet.
+              self.dirty_point_data.clear();
               self.point_data.reserve(d.size());
               for (auto item : d) {
                 py::tuple tk = item.first.cast<py::tuple>();
@@ -126,12 +129,36 @@ struct interpolator_exposer
                 out.append(t);
               }
               return out;
-            }, "Multi-index keys of all generated hypercubes (list of int tuples)");
+            }, "Multi-index keys of all generated hypercubes (list of int tuples)")
+          // Append-only cache hooks (from development): expose just the supporting
+          // points materialized since the last clear_point_data_delta(), so Python
+          // can persist only newly evaluated points. Keys are exported in the same
+          // tuple-of-int shape as point_data_full.
+          .def("point_data_size", [](const interpolator_class &self) {
+            return self.point_data.size();
+          })
+          .def("point_data_delta", [](const interpolator_class &self) {
+            py::dict delta;
+            for (const auto &key : self.dirty_point_data) {
+              auto item = self.point_data.find(key);
+              if (item == self.point_data.end()) continue;
+              py::tuple tk(N_DIMS);
+              for (uint8_t d = 0; d < N_DIMS; ++d) tk[d] = key.idx[d];
+              py::tuple tv(N_OPS);
+              for (uint8_t op = 0; op < N_OPS; ++op) tv[op] = item->second[op];
+              delta[tk] = tv;
+            }
+            return delta;
+          })
+          .def("clear_point_data_delta", [](interpolator_class &self) {
+            self.dirty_point_data.clear();
+          });
       }
       else if constexpr (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>>)
       {
-        // Linear adaptive: storage is keyed on multi-index; expose point_data as
-        // a legacy integer-keyed dict for pickle cache compatibility.
+        // Linear adaptive: storage is keyed on multi-index (cell_key_t). Python
+        // cache I/O goes through the tuple-keyed point_data_full / point_data_delta
+        // exports below; the legacy integer-keyed point_data view is retired.
         using point_value_t = std::array<double, N_OPS>;
         py::class_<interpolator_class,
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
@@ -162,6 +189,9 @@ struct interpolator_exposer
             },
             [](interpolator_class& self, const py::dict& d) {
               self.point_data.clear();
+              // Keep dirty tracker in sync with the cache it shadows: a fresh reload
+              // through point_data_full means there are no unpersisted points yet.
+              self.dirty_point_data.clear();
               self.point_data.reserve(d.size());
               for (auto item : d) {
                 py::tuple tk = item.first.cast<py::tuple>();
@@ -181,6 +211,27 @@ struct interpolator_exposer
             })
           .def("get_n_cached_points", &interpolator_class::get_n_cached_points,
             "Number of supporting points currently in the adaptive cache (in-bounds + out-of-bounds)")
+          // Append-only cache hooks (from development): persist only newly evaluated
+          // supporting points. Keys exported as tuple-of-ints matching point_data_full.
+          .def("point_data_size", [](const interpolator_class &self) {
+            return self.point_data.size();
+          })
+          .def("point_data_delta", [](const interpolator_class &self) {
+            py::dict delta;
+            for (const auto &key : self.dirty_point_data) {
+              auto item = self.point_data.find(key);
+              if (item == self.point_data.end()) continue;
+              py::tuple tk(N_DIMS);
+              for (uint8_t d = 0; d < N_DIMS; ++d) tk[d] = key.idx[d];
+              py::tuple tv(N_OPS);
+              for (uint8_t op = 0; op < N_OPS; ++op) tv[op] = item->second[op];
+              delta[tk] = tv;
+            }
+            return delta;
+          })
+          .def("clear_point_data_delta", [](interpolator_class &self) {
+            self.dirty_point_data.clear();
+          })
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
       else if constexpr (std::is_same_v<interpolator_class, linear_static_cpu_interpolator<i_t, N_DIMS, N_OPS>>)
@@ -196,6 +247,9 @@ struct interpolator_exposer
           .def("write_to_file", &interpolator_class::write_to_file, "Write interpolator data to file")
           .def("evaluate", &interpolator_class::evaluate,
             "Evaluate operators", "state"_a, "values"_a)
+          // linear_static_cpu_interpolator stores point_data as std::vector<double>
+          // (dense supporting-point payload) and has no dirty_point_data tracker;
+          // the append-only delta hooks therefore do not apply to this branch.
           .def_readwrite("point_data", &interpolator_class::point_data)
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
@@ -232,6 +286,9 @@ struct interpolator_exposer
             },
             [](interpolator_class& self, const py::dict& d) {
               self.point_data.clear();
+              // Keep dirty tracker in sync with the cache it shadows: a fresh reload
+              // through point_data_full means there are no unpersisted points yet.
+              self.dirty_point_data.clear();
               self.point_data.reserve(d.size());
               for (auto item : d) {
                 py::tuple tk = item.first.cast<py::tuple>();
@@ -250,7 +307,28 @@ struct interpolator_exposer
               }
             })
           .def("get_n_cached_points", &interpolator_class::get_n_cached_points)
-          .def("get_n_cached_hypercubes", &interpolator_class::get_n_cached_hypercubes);
+          .def("get_n_cached_hypercubes", &interpolator_class::get_n_cached_hypercubes)
+          // Append-only cache hooks (from development): mirror the CPU adaptive
+          // interpolators so Python persists only newly evaluated supporting points.
+          .def("point_data_size", [](const interpolator_class &self) {
+            return self.point_data.size();
+          })
+          .def("point_data_delta", [](const interpolator_class &self) {
+            py::dict delta;
+            for (const auto &key : self.dirty_point_data) {
+              auto item = self.point_data.find(key);
+              if (item == self.point_data.end()) continue;
+              py::tuple tk(N_DIMS);
+              for (uint8_t d = 0; d < N_DIMS; ++d) tk[d] = key.idx[d];
+              py::tuple tv(N_OPS);
+              for (uint8_t op = 0; op < N_OPS; ++op) tv[op] = item->second[op];
+              delta[tk] = tv;
+            }
+            return delta;
+          })
+          .def("clear_point_data_delta", [](interpolator_class &self) {
+            self.dirty_point_data.clear();
+          });
       }
 #endif
       else {
@@ -310,12 +388,16 @@ struct interpolator_exposer
       // interpolator at construction, zero runtime cost after.
       // expose_class<uint32_t, double, multilinear_adaptive_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
       expose_class<uint64_t, double, multilinear_adaptive_cpu_interpolator<uint64_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
+      // __uint128_t exposure removed alongside the move to cell_key_t multi-index keys —
+      // see interpolation_config.h. uint64_t legacy_index is still enough for diagnostic
+      // counters; out-of-uint64 cells live in the multi-index map directly.
     }
     // expose_class<uint64_t, float, multilinear_adaptive_cpu_interpolator<uint64_t, float, N_DIMS, N_OPS>>(m, "multilinear_adaptive2_cpu_interpolator");
 
 #if !defined(OD_INTERP_PROFILE_MINIMAL)
     // Linear adaptive with 64-bit legacy index and 64-bit data — exposed under FULL.
     expose_class<uint64_t, double, linear_adaptive_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
+    // expose_class<__uint128_t, double, linear_adaptive_cpu_interpolator<__uint128_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
 #endif
     //expose_class<uint64_t, double, linear_static_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_static_cpu_interpolator");
     // we expose static versions only when needed

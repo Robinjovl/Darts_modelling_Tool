@@ -10,9 +10,10 @@
  *
  * Storage is keyed on a signed multi-index (cell_key_t<N_DIMS>) so the adaptive cache
  * no longer depends on axes_min/axes_max to bound the index space — out-of-window
- * supporting points are evaluated and cached on demand. The Python-visible point_data
- * property keeps the legacy integer-keyed format for in-bounds cells (pickle cache
- * compatibility); out-of-bounds cells live in memory only.
+ * supporting points are evaluated and cached on demand. Python cache I/O is exposed
+ * via the tuple-keyed `point_data_full` property (signed multi-index → operator tuple);
+ * the legacy integer-keyed `point_data` shim was retired alongside the multi-index
+ * migration since the unbounded grid has no integer-key packing.
  *
  * @tparam index_t legacy packed-integer index type (used by pybind/cache compat layer)
  * @tparam N_DIMS  number of dimensions in parameter space
@@ -31,9 +32,15 @@ public:
                                      bool _use_barycentric_interpolation);
 
     /**
-     * Adaptive supporting-point storage, keyed on signed multi-index.
+     * Adaptive supporting-point storage, keyed on signed multi-index (cell_key_t).
      */
     std::unordered_map<key_t, std::array<double, N_OPS>, key_hash_t> point_data;
+    /**
+     * Multi-index keys of supporting points materialized since the last external cache
+     * flush. Mirrors the development-branch dirty-set tracker but in the new key space,
+     * so the OBL cache writer can persist only the newly evaluated points.
+     */
+    std::unordered_set<key_t, key_hash_t> dirty_point_data;
 
     /**
      * @brief Interpolate with batch pre-fetching of missing supporting points.

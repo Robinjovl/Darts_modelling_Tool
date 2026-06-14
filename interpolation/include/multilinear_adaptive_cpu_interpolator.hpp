@@ -25,10 +25,11 @@
  * window are evaluated and cached on demand, letting the solver explore state space
  * freely without pre-allocated bookkeeping.
  *
- * Backward-compat: the Python-visible `point_data` property is still presented as a
- * dict with integer keys (mixed-radix packing of the multi-index using axes_points).
- * Cells whose multi-index is within [0, axes_points[i]-1] for every axis are exported
- * in this legacy format; out-of-bounds cells are kept in memory but skipped on export.
+ * Python cache I/O is exposed via the tuple-keyed `point_data_full` property
+ * (signed multi-index → operator tuple). The legacy integer-keyed `point_data`
+ * shim has been retired on adaptive interpolators since the unbounded grid has
+ * no integer-key packing; legacy caches written by older builds are detected on
+ * load and skipped (see physics_base.py).
  *
  * @tparam index_t type used for legacy packed-integer indexing (backward compat only)
  * @tparam value_t value type used for supporting point storage, hypercube storage and interpolation
@@ -93,6 +94,13 @@ public:
     */
    size_t get_n_cached_points() const { return point_data.size(); }
    size_t get_n_cached_hypercubes() const { return hypercube_data.size(); }
+
+   /**
+    * @brief Multi-index keys of supporting points materialized since the last external
+    * cache flush. Mirrors the development-branch tracker but in the cell_key_t key space
+    * so the OBL cache writer can persist only newly evaluated points.
+    */
+   std::unordered_set<key_t, key_hash_t> dirty_point_data;
 
    /**
     * @brief Single-point interpolation; overrides base to use multi-index path.

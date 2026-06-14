@@ -82,6 +82,15 @@ public:
   size_t get_n_cached_points() const { return point_data.size(); }
   size_t get_n_cached_hypercubes() const { return generated_hypercubes.size(); }
 
+  /**
+   * @brief Supporting points materialized since the last external cache flush.
+   *
+   * Mirrors the CPU adaptive interpolators so Python can persist only newly
+   * computed points (append-only OBL cache) instead of rewriting the full map.
+   * Keyed on cell_key_t to match the GPU point_data storage above.
+   */
+  std::unordered_set<key_t, key_hash_t> dirty_point_data;
+
 protected:
   /**
    * @brief Get values of operators at a given supporting point. Cell-key-driven.
