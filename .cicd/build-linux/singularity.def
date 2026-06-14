@@ -41,7 +41,6 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
     "$CONDA_DIR/bin/conda" tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main >/dev/null
     "$CONDA_DIR/bin/conda" tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r >/dev/null
 
-
     # cleanup & size reduction
     dnf -y remove gmp-devel mpfr-devel libmpc-devel isl-devel zlib-devel || true
     dnf -y autoremove
@@ -68,7 +67,7 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
         git clone "${DLS_URL}" /opt/darts-linear-solvers
         cd /opt/darts-linear-solvers
         export CUDA_ARCH={{CUDA_ARCH}}
-        ./helper_scripts/build_gpu.sh
+        ./helper_scripts/build_gpu.sh -j 16
 
         # Place library/include in standart folders and clean up rest
         mkdir -p build/lib build/include

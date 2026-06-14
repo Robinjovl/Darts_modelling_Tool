@@ -9,7 +9,7 @@ fi
 CLEAN_FLAG=""
 PHREEQC_FLAG=""
 DEBUG_FLAG=""
-JOBS_ARG="-j20"
+JOBS_ARG="-j 16"
 
 # Scan all args, including -j for parallel jobs
 while (( "$#" )); do
