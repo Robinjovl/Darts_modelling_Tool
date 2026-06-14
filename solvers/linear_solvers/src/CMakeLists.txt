@@ -11,15 +11,37 @@
 # as the need arises.
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/od_emit_template_instantiations.cmake)
 
+# Shared block-size range for the per-N solver templates (linsolv_superlu,
+# linsolv_bos_bilu0, linsolv_bos_cpr, linsolv_bos_gmres). The +1 covers thermal
+# super-engine blocks (N_VARS = NC + 1) when the engines are built against the
+# open-source solvers (ODLS path). The floor of 13 satisfies the unit-test contract
+# — tests/cpp/unit/linear_solvers/{superlu,bos_cpr,bos_bilu0,bos_gmres}.cpp
+# instantiate up to block size 13 via test_member_functions<N>() — regardless of
+# OPENDARTS_MAX_DIMS (default 8 would otherwise leave N=10..13 unbound and the unit
+# tests fail to link).
 math(EXPR _od_linsolv_max_n "${OPENDARTS_MAX_DIMS} + 1")
+if(_od_linsolv_max_n LESS 13)
+  set(_od_linsolv_max_n 13)
+endif()
 set(_od_linsolv_gen_dir ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${_od_linsolv_gen_dir})
 
-# linsolv_superlu — N_VARS up to OPENDARTS_MAX_DIMS+1 (thermal block = NC+1).
+# Solvers whose smallest meaningful block size is 1.
+foreach(_od_solver linsolv_superlu linsolv_bos_bilu0 linsolv_bos_gmres)
+  od_emit_template_instantiations(
+    CLASS ${_od_solver}
+    MAX_N ${_od_linsolv_max_n}
+    OUTPUT_FILE ${_od_linsolv_gen_dir}/${_od_solver}_instantiations.inc
+  )
+endforeach()
+
+# linsolv_bos_cpr starts at block size 2 — the constrained-pressure-residual split
+# is undefined for a 1x1 block (no non-pressure sub-block to decouple).
 od_emit_template_instantiations(
-  CLASS linsolv_superlu
+  CLASS linsolv_bos_cpr
+  MIN_N 2
   MAX_N ${_od_linsolv_max_n}
-  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_superlu_instantiations.inc
+  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_bos_cpr_instantiations.inc
 )
 
 # Set library files

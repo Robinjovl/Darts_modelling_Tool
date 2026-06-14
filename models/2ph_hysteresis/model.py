@@ -296,21 +296,25 @@ class Model(CICDModel):
             else []
         )
 
+        # Translate the legacy bounded-grid params (axes_min/axes_max/n_axes_points) to
+        # the new unbounded-grid API (axes_step/axes_origin). The old min_p/max_p kwargs
+        # were already shadowed by axes_min/axes_max here, so the visible behaviour is
+        # preserved one-for-one. See darts/physics/super/physics.py for the new contract.
+        axes_step = [
+            (amax - amin) / (npts - 1)
+            for amin, amax, npts in zip(axes_min, axes_max, n_axes_points)
+        ]
+        axes_origin = list(axes_min)
+
         self.physics = Compositional(
             components,
             phases,
             self.timer,
-            n_points,
-            min_p=200,
-            max_p=300,
-            min_z=zero / 10.0,
-            max_z=1.0 - zero / 10.0,
+            axes_step=axes_step,
+            axes_origin=axes_origin,
             epsilon_z=zero / 10.0,
             state_spec=state_spec,
             cache=False,
-            axes_min=axes_min,
-            axes_max=axes_max,
-            n_axes_points=n_axes_points,
             history_fields=history_fields,
         )
 
