@@ -13,6 +13,10 @@ from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
+from dartsflash.libflash import CubicEoS, FlashParams, EoS, InitialGuess
+from dartsflash.components import CompData
+from dartsflash.mixtures import DARTSFlash, VLAq
+
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import SingleAmbientTemperature
 from darts.pipes.ramp_up_rate import RampUpRate
@@ -75,9 +79,6 @@ class Model(CICDModel):
         return
 
     def set_physics(self):
-        from dartsflash.libflash import CubicEoS, FlashParams, EoS, InitialGuess
-        from dartsflash.components import CompData
-        from dartsflash.mixtures import DARTSFlash, VLAq
         components_names = ['CO2', 'H2O']
         phases_names = ['G', 'L']   # G is the CO2-rich phase and L is the aqueous phase
         comp_data = CompData(components_names, setprops=True)
@@ -128,7 +129,7 @@ class Model(CICDModel):
         for j, ph in enumerate(phases_names):
             property_container.output_props['s' + ph] = lambda jj=j: property_container.sat[jj]
             property_container.output_props['rho' + ph] = lambda jj=j: property_container.dens[jj]
-            property_container.output_props['miu' + ph] = lambda jj=j: property_container.mu[jj]
+            property_container.output_props['mu' + ph] = lambda jj=j: property_container.mu[jj]
             for i, comp in enumerate(components_names):
                 property_container.output_props[f'x{comp}_in_{ph}_mass'] = lambda jj=j, ii=i: property_container.x_mass[jj, ii]
 
@@ -189,7 +190,7 @@ class Model(CICDModel):
         self.reservoir.discretizer.len_cell_ydir[0, 0, 0] = 50.0
         self.reservoir.discretizer.len_cell_zdir[0, 0, 0] = 50.0
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
-                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_coupled_well_reservoir=True)
+                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_dfm_well=True)
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]

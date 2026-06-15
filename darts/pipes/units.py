@@ -214,11 +214,11 @@ def degree():
 
 def Darcy():
     # Gives permeability in m2
-    miu = centi() * Poise()
+    mu = centi() * Poise()
     delta_p = atm() / (centi() * meter())
     A = (centi() * meter()) ** 2
     rate = (centi() * meter()) ** 3 / second()
-    return rate * miu / (A * delta_p)
+    return rate * mu / (A * delta_p)
 
 
 def convertTo(value, unit_name):

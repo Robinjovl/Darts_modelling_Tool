@@ -1695,6 +1695,11 @@ class Output:
         )
         prop_names = self._vtk_property_names(output_data.keys())
 
+        if not hasattr(self, "_vtp_time_series"):
+            self._vtp_time_series = {}
+        output_key = os.path.abspath(output_directory)
+        output_time_series = self._vtp_time_series.setdefault(output_key, {})
+
         # Store well primary and seconday props in vtp files
         for well in self.reservoir.wells:
             w_name = well.name
@@ -1729,15 +1734,13 @@ class Output:
                 output_directory=output_directory,
             )
 
-            # Accumulate time-series entries and rewrite the .pvd for this well
-            if not hasattr(self, "_vtp_time_series"):
-                self._vtp_time_series = {}
-            entries = self._vtp_time_series.setdefault(w_name, [])
+            # Accumulate time-series entries for this well
+            entries = output_time_series.setdefault(w_name, [])
             vtp_filename = f"solution_well_{w_name}_ts{ith_step:d}.vtp"
             if not any(f == vtp_filename for _, f in entries):
                 entries.append((time, vtp_filename))
-            pvd_path = os.path.join(output_directory, f"well_{w_name}.pvd")
-            write_pvd(pvd_path, entries)
+
+        self._write_wells_pvd(output_directory, output_time_series)
 
         self.timer.node["vtp_output"].stop()
         self.timer.stop()
@@ -1923,6 +1926,18 @@ class Output:
 
         n_res_blocks = int(getattr(self.reservoir.mesh, "n_res_blocks", depth.size))
         return depth[:n_res_blocks]
+
+    def _write_wells_pvd(self, output_directory: str, output_time_series: dict):
+        """
+        Write one PVD collection containing all DFM well VTP files.
+        """
+        pvd_entries = []
+        for part, (w_name, entries) in enumerate(output_time_series.items(), start=1):
+            for time, vtp_filename in entries:
+                pvd_entries.append((time, vtp_filename, f"well_{w_name}", part))
+
+        pvd_entries.sort(key=lambda entry: (entry[0], entry[3], entry[1]))
+        write_pvd(os.path.join(output_directory, "wells.pvd"), pvd_entries)
 
     def well_output_properties(
         self,

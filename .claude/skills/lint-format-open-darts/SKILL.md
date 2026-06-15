@@ -13,7 +13,9 @@ Use the session conda environment. If the prompt defines one, use it. Otherwise,
 1. Confirm the session conda environment is active; create it once if needed.
 2. Run pre-commit for changed files or the full tracked file set.
 3. Apply safe Ruff fixes and formatting.
-4. Re-run checks until clean.
+4. Preserve existing line endings; do not keep line-ending-only rewrites unless
+   the user explicitly requested an EOL change.
+5. Re-run checks until clean.
 
 ## Primary commands
 

@@ -33,13 +33,13 @@ the rest of the session.
 Default session environment:
 
 ```bash
-conda create -y -n open-darts-session python=3.10
+conda create -y -n open-darts-session python=3.11
 conda activate open-darts-session
 ```
 
 Guidance:
 
-- Prefer Python 3.10 unless the task explicitly targets a different supported
+- Prefer Python 3.11 unless the task explicitly targets a different supported
   version.
 - Keep build, install, test, lint, docs, and follow-up smoke tests in the same
   session environment.

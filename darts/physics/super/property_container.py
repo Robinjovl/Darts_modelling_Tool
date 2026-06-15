@@ -240,6 +240,7 @@ class PropertyContainer(PropertyBase):
             a[:] = 0
         for j in range(self.np_fl):
             self.x[j][:] = 0
+            self.x_mass[j][:] = 0
 
     def compute_saturation(self, ph):
         # Get saturations [volume fraction]
@@ -271,7 +272,14 @@ class PropertyContainer(PropertyBase):
     def compute_total_enthalpy(self, state_pt):
         # Evaluate flash at PT
         pressure, temperature, zc = self.get_state(state_pt)
-        ph = self.run_flash(pressure, temperature, zc, evaluate_PT=True)
+        flash_type = getattr(self.flash_ev, "flash_type", 0)
+        flash_type_value = getattr(flash_type, "value", flash_type)
+        ph = self.run_flash(
+            pressure,
+            temperature,
+            zc,
+            evaluate_PT=self.evaluate_PT_bool or flash_type_value > 0,
+        )
 
         # Compute molar enthalpy of multiphase mixture
         enthalpy = 0.0
@@ -310,7 +318,7 @@ class PropertyContainer(PropertyBase):
             error_output += 1
 
         # Set present phase idxs
-        ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0])
+        ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0], dtype=int)
 
         if ph.size == 1:
             self.x[ph[0]] = zc_norm

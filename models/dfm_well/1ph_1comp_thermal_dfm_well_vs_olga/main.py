@@ -29,7 +29,7 @@ from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
 from model import Model
 
 
-redirect_darts_output('run.log')
+redirect_darts_output("run.log")
 coupled_model = Model()
 coupled_model.reservoir.grav_acceleration_for_spe = 9.80665
 coupled_model.init()
@@ -40,8 +40,8 @@ if 1:
     coupled_model.output.well_output_to_vtp(ith_step=0, output_properties=output_props)  # saves initial well conditions
 
     time_steps = [
-        10 / 24 / 60,   # 10 minutes
-                 ]
+        10 / 24 / 60,  # 10 minutes
+    ]
 
     for i, dt in enumerate(time_steps):
         coupled_model.run(dt)

@@ -13,9 +13,18 @@ from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
+from dartsflash.libflash import CubicEoS, FlashParams, EoS, InitialGuess
+from dartsflash.components import CompData
+from dartsflash.mixtures import DARTSFlash, VLAq
+
 from darts.pipes.define_pipe_geometry import PipeGeometry
+from darts.pipes.linear_dfm_well_ipr import (
+    LinearDFMWellIPR,
+    LinearDFMWellIPRConnection,
+    PI_Type,
+)
 from darts.pipes.set_initial_conditions import SingleAmbientTemperature
-from darts.pipes.ramp_up_rate import RampUpRate
+from darts.pipes.upstream_ramp_up_rate import UpstreamRampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
@@ -37,7 +46,7 @@ class Model(CICDModel):
                             it_newton=10, it_linear=10,
                             newton_type=sim_params.newton_local_chop,
                             coupled_well_res_norm_method=2,
-                            runtime = 100 / 60 / 60 / 24,  # This runtime will be used when CI test is conducted without the main file
+                            runtime = 5 / 60 / 24,  # This runtime will be used when CI test is conducted without the main file
                             )
 
         self.timer.node["initialization"].stop()
@@ -75,9 +84,6 @@ class Model(CICDModel):
         return
 
     def set_physics(self):
-        from dartsflash.libflash import CubicEoS, FlashParams, EoS, InitialGuess
-        from dartsflash.components import CompData
-        from dartsflash.mixtures import DARTSFlash, VLAq
         components_names = ['CO2', 'H2O']
         phases_names = ['G', 'L']   # G is the CO2-rich phase and L is the aqueous phase
         comp_data = CompData(components_names, setprops=True)
@@ -128,7 +134,7 @@ class Model(CICDModel):
         for j, ph in enumerate(phases_names):
             property_container.output_props['s' + ph] = lambda jj=j: property_container.sat[jj]
             property_container.output_props['rho' + ph] = lambda jj=j: property_container.dens[jj]
-            property_container.output_props['miu' + ph] = lambda jj=j: property_container.mu[jj]
+            property_container.output_props['mu' + ph] = lambda jj=j: property_container.mu[jj]
             for i, comp in enumerate(components_names):
                 property_container.output_props[f'x{comp}_in_{ph}_mass'] = lambda jj=j, ii=i: property_container.x_mass[jj, ii]
 
@@ -162,17 +168,18 @@ class Model(CICDModel):
 
         #%% Add source/sink terms
         inj_segment_idx = 0
-        inflow_or_outflow = "inflow"
         target_inj_rate = 58895.98 / 15  # in kmol/day
         ramp_up_period = 0.0
 
         # Use zero water in the injected fluid in order to avoid sustained accumulation of water in the bottom-hole
         inj_phase_comp = np.array([1 - self.zero, self.zero])
-        inj_fluid_props = {"composition": inj_phase_comp}
+        inj_phase_name = "G"
 
-        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx,
-                                  inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
-                                  verbose=verbose)
+        ramp_up_rate = UpstreamRampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first,
+                                          inj_segment_idx, target_inj_rate, ramp_up_period,
+                                          composition=inj_phase_comp, pressure=pipe_head_pressure,
+                                          temperature=ambient_temperature, phase_name=inj_phase_name, verbose=verbose,
+                                          )
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
         source_sinks = {"RampUpRate1": ramp_up_rate}
 
@@ -185,14 +192,30 @@ class Model(CICDModel):
         # Well with a single perforation
         well_1_perforated_segment = well_1_geometry.num_segments
 
-        # Reservoir cell sizes for the Peaceman model
-        self.reservoir.discretizer.len_cell_xdir[0, 0, 0] = 50.0
-        self.reservoir.discretizer.len_cell_ydir[0, 0, 0] = 50.0
-        self.reservoir.discretizer.len_cell_zdir[0, 0, 0] = 50.0
-        well_index = 0.0  # Zero well index since perforation is treated with a well injectivity/productivity index instead
-        well_index = 65.54393  # For the variable injectivity, which is equivalent to 1e5 kg/day/bar
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment, well_index=well_index,
-                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_coupled_well_reservoir=True)
+        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
+                                       well_diameter=well_1_geometry.pipe_ID,
+                                       # well_index=65.54393,  # For the variable injectivity, which is equivalent to 1e5 kg/day/bar
+                                       well_index=0.0,
+                                       well_indexD=0.0,
+                                       )
+
+        self.rhs_flux_hooks.append(
+            LinearDFMWellIPR(
+                self,
+                [
+                    LinearDFMWellIPRConnection(
+                        well_name=well_1_name,
+                        perforation_index=len(
+                            self.reservoir.get_well(well_1_name).perforations
+                        )
+                        - 1,
+                        pi=1e5,
+                        pi_type=PI_Type.MASS,
+                        ipr_pressure_offset=0.0,
+                    )
+                ],
+            )
+        )
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]

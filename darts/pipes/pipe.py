@@ -13,11 +13,14 @@ Notes:
         - Use 'L' as the name of the liquid phase (for a single liquid phase)
         - Use 'L_a' and 'L_b' as the names of the liquid phases (for two liquid phases)
         - Immobile phases after PropertyContainer.np_fl, or phases explicitly listed in Pipe.immobile_phase_names,
-          are returned with zero velocity. The drift-flux momentum closure itself is still gas/liquid. If an
-          immobile phase has nonzero holdup in a DFM pipe segment, the closure effectively treats that occupied
-          volume as part of the liquid fraction through terms such as (1 - sG); solid blockage or separate solid
-          holdup physics is not modeled, i.e., immobile phases are not considered in the pipe velocity calculation,
-          but their volume is still considered in the accumulation term of the conservation equations.
+          are returned with zero velocity. The drift-flux momentum closure itself is still gas/liquid.
+          Mobile-liquid holdup is tracked explicitly as sL (L or L_a + L_b). The C00-adjusted liquid saturations
+          retain the original (1 - C00 * sG) form, while explicitly mobile-liquid terms use sL. If an
+          immobile phase has nonzero holdup in a DFM pipe segment, the C00-adjusted non-gas factors can still
+          treat it as liquid-like holdup; solid blockage or separate immobile-holdup physics is not modeled.
+        - Source-boundary momentum calculations assume no immobile phase is present in the source segment. If
+          immobile holdup is present there, single-mobile-phase source velocities still use the full pipe area
+          rather than an area reduced by immobile-phase saturation.
 """
 
 import math
@@ -46,10 +49,23 @@ class AdjustmentFuncParams:
     lambdaa = 199.0  # lambdaa is used because lambda is a reserved keyword in Python
 
 
+@dataclass(frozen=True)
+class TangUnifiedDFParams:
+    A: float
+    B: float
+    a1: float
+    a2: float
+    N1: float
+    N2: float
+    N3: float
+    N4: float
+    m1: float
+    m2: float
+    m3: float
+
+
 class Pipe:
     g = 9.80665 * meter() / second() ** 2  # Gravitational acceleration
-    Cku = 142
-    Cw = 0.008
 
     adjustment_func_params = AdjustmentFuncParams()
 
@@ -62,6 +78,9 @@ class Pipe:
         initial_conditions: SingleAmbientTemperature | LinearAmbientTemperature,
         source_sinks: dict = None,
         immobile_phase_names: list[str] | None = None,
+        drift_flux_model: str = "shi_t2well",
+        tang_parameter_set: str = "olgas",
+        friction_model: str | None = None,
         Cmax: float = 1.2,
         Fv: float = 1,
         prop_eval_method: str = "direct",
@@ -88,6 +107,24 @@ class Pipe:
                                      velocity in the pipe, e.g. ["Ice"]. These phases are the immobile phases that
                                      are not considered as np_sol in the property container.
         :type immobile_phase_names: list[str] or None
+        :param drift_flux_model: Drift-flux closure to use:
+                                 - "shi_t2well" retains the historical Holmes/Shi/T2Well style closure
+                                 - "tang_2019" uses the unified all-inclination Tang et al. (2019) closure
+                                 - "bai_2023" uses the CO2-specific Bai, Lou, and Lu (2023) pipe-flow model, which adopts:
+                                   - the Bhagwat and Ghajar (2014) drift-flux correlation and
+                                   - the Wang et al. (2014) supercritical-CO2 friction-factor correlation
+                                 Important: in transient pipe/wellbore tests for liquid CO2 injection into an
+                                 initially gas-filled CO2 well, Wang friction alone is stable, but enabling the full
+                                 Bai drift-flux closure can destabilize the wellhead flashing/start-up state.
+        :type drift_flux_model: str
+        :param tang_parameter_set: If tang_2019 is used as the drift-flux model, parameterization of the
+                                   Tang et al. (2019) unified model. Allowed values are "olgas" and "tuffp".
+        :type tang_parameter_set: str
+        :param friction_model: Friction-factor closure to use:
+                               - None selects "wang_2014" for drift_flux_model="bai_2023" and "colebrook_white" otherwise
+                               - "colebrook_white" uses Colebrook-White correlation to calculate the friction factor
+                               - "wang_2014" uses the Wang et al. (2014) supercritical-CO2 friction factor adopted by Bai et al.
+        :type friction_model: str or None
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
                      could have a value between 1.0 and 1.5. It is set to:
                      --> 1.2 in ECLIPSE according to Shi et al. paper (Drift-Flux Modeling of Two-Phase Flow in Wellbores)
@@ -204,56 +241,135 @@ class Pipe:
             )
         self.source_sinks = source_sinks
 
-        self.Cmax = Cmax
-        self.B = 2 / Cmax - 1.0667
-        self.Fv = Fv
-
-        # I did not see anywhere to tell if I can use linear interp and extra here or not.
-        if Cmax == 1:
-            a1 = 0.06
-            a2 = 0.21
-            m0 = 1.85
-            n1 = 0.21
-            n2 = 0.95
-        elif 1 < Cmax < 1.2:
-            # Linear interpolation
-            a1 = 0.06
-            a2 = np.interp(Cmax, [1, 1.2], [0.21, 0.12])
-            m0 = np.interp(Cmax, [1, 1.2], [1.85, 1.27])
-            n1 = np.interp(Cmax, [1, 1.2], [0.21, 0.24])
-            n2 = np.interp(Cmax, [1, 1.2], [0.95, 1.08])
-        elif Cmax == 1.2:
-            a1 = 0.06
-            a2 = 0.12
-            m0 = 1.27
-            n1 = 0.24
-            n2 = 1.08
-        elif 1.2 < Cmax <= 1.5:
-            # Linear extrapolation
-            a1 = 0.06
-            a2 = np.interp(Cmax, [1, 1.2], [0.21, 0.12])
-            m0 = np.interp(Cmax, [1, 1.2], [1.85, 1.27])
-            n1 = np.interp(Cmax, [1, 1.2], [0.21, 0.24])
-            n2 = np.interp(Cmax, [1, 1.2], [0.95, 1.08])
-        else:
-            raise ValueError("Cmax value is out of the allowed range [1 to 1.5]")
-
-        if isinstance(pipe_geometry.inclination_angle_radian, float):
-            self.m = (
-                m0
-                * (np.cos(pipe_geometry.inclination_angle_radian) ** n1)
-                * (1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2
-                * np.ones(pipe_geometry.num_interfaces)
+        if drift_flux_model not in ("shi_t2well", "tang_2019", "bai_2023"):
+            raise ValueError(
+                "drift_flux_model must be either 'shi_t2well', 'tang_2019', or 'bai_2023'."
             )
-        elif isinstance(pipe_geometry.inclination_angle_radian, np.ndarray):
-            self.m = (
-                m0
-                * (np.cos(pipe_geometry.inclination_angle_radian) ** n1)
-                * (1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2
-            )
+        self.drift_flux_model = drift_flux_model
 
-        self.a1 = a1
-        self.a2 = a2
+        if friction_model is None:
+            friction_model = (
+                "wang_2014"
+                if self.drift_flux_model == "bai_2023"
+                else "colebrook_white"
+            )
+        if friction_model not in ("colebrook_white", "wang_2014"):
+            raise ValueError(
+                "friction_model must be either 'colebrook_white' or 'wang_2014'."
+            )
+        self.friction_model = friction_model
+
+        if tang_parameter_set not in ("olgas", "tuffp"):
+            raise ValueError("tang_parameter_set must be either 'olgas' or 'tuffp'.")
+        self.tang_parameter_set = tang_parameter_set
+
+        self.Cku = 142
+        self.Cw = 0.008
+
+        if self.drift_flux_model == "shi_t2well":
+            # I did not see anywhere to tell if I can use linear interp and extra here or not.
+            if Cmax == 1:
+                a1 = 0.06
+                a2 = 0.21
+                m0 = 1.85
+                n1 = 0.21
+                n2 = 0.95
+            elif 1 < Cmax < 1.2:
+                # Linear interpolation
+                a1 = 0.06
+                a2 = np.interp(Cmax, [1, 1.2], [0.21, 0.12])
+                m0 = np.interp(Cmax, [1, 1.2], [1.85, 1.27])
+                n1 = np.interp(Cmax, [1, 1.2], [0.21, 0.24])
+                n2 = np.interp(Cmax, [1, 1.2], [0.95, 1.08])
+            elif Cmax == 1.2:
+                a1 = 0.06
+                a2 = 0.12
+                m0 = 1.27
+                n1 = 0.24
+                n2 = 1.08
+            elif 1.2 < Cmax <= 1.5:
+                # Linear extrapolation
+                a1 = 0.06
+                a2 = np.interp(Cmax, [1, 1.2], [0.21, 0.12])
+                m0 = np.interp(Cmax, [1, 1.2], [1.85, 1.27])
+                n1 = np.interp(Cmax, [1, 1.2], [0.21, 0.24])
+                n2 = np.interp(Cmax, [1, 1.2], [0.95, 1.08])
+            else:
+                raise ValueError("Cmax value is out of the allowed range [1 to 1.5]")
+
+            self.Fv = Fv
+            self.profile_A = Cmax
+            self.B = 2 / Cmax - 1.0667
+            if isinstance(pipe_geometry.inclination_angle_radian, float):
+                self.m = (
+                    m0
+                    * (np.cos(pipe_geometry.inclination_angle_radian) ** n1)
+                    * (1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2
+                    * np.ones(pipe_geometry.num_interfaces)
+                )
+            elif isinstance(pipe_geometry.inclination_angle_radian, np.ndarray):
+                self.m = (
+                    m0
+                    * (np.cos(pipe_geometry.inclination_angle_radian) ** n1)
+                    * (1 + np.sin(pipe_geometry.inclination_angle_radian)) ** n2
+                )
+            self.a1 = a1
+            self.a2 = a2
+            self.tang_df_params = None
+        elif self.drift_flux_model == "tang_2019":
+            if tang_parameter_set == "olgas":
+                self.tang_df_params = TangUnifiedDFParams(
+                    A=1.000,
+                    B=0.773,
+                    a1=0.591,
+                    a2=0.786,
+                    N1=1.968,
+                    N2=1.759,
+                    N3=0.574,
+                    N4=0.477,
+                    m1=1.000,
+                    m2=2.300,
+                    m3=1.000,
+                )
+            elif tang_parameter_set == "tuffp":
+                self.tang_df_params = TangUnifiedDFParams(
+                    A=1.088,
+                    B=0.833,
+                    a1=0.577,
+                    a2=0.769,
+                    N1=1.981,
+                    N2=1.759,
+                    N3=0.574,
+                    N4=0.477,
+                    m1=1.017,
+                    m2=2.303,
+                    m3=1.000,
+                )
+            self.profile_A = self.tang_df_params.A
+            self.B = self.tang_df_params.B
+            self.a1 = self.tang_df_params.a1
+            self.a2 = self.tang_df_params.a2
+            self.m = np.ones(pipe_geometry.num_interfaces)
+            if isinstance(pipe_geometry.inclination_angle_radian, float):
+                self.tang_theta = (
+                    pipe_geometry.inclination_angle_radian - math.pi / 2.0
+                ) * np.ones(pipe_geometry.num_interfaces)
+            else:
+                self.tang_theta = pipe_geometry.inclination_angle_radian - math.pi / 2.0
+
+        elif self.drift_flux_model == "bai_2023":
+            self.profile_A = None
+            self.B = None
+            self.a1 = None
+            self.a2 = None
+            self.m = np.ones(pipe_geometry.num_interfaces)
+            self.tang_df_params = None
+            if isinstance(pipe_geometry.inclination_angle_radian, float):
+                self.bai_theta = (
+                    pipe_geometry.inclination_angle_radian - math.pi / 2.0
+                ) * np.ones(pipe_geometry.num_interfaces)
+            else:
+                self.bai_theta = pipe_geometry.inclination_angle_radian - math.pi / 2.0
 
         self.g_cos_theta = self.g * np.cos(pipe_geometry.inclination_angle_radian)
         if isinstance(self.g_cos_theta, float):
@@ -306,7 +422,9 @@ class Pipe:
 
         self._build_phase_vel_dense_der_indexers()
 
-        self.is_first_first_iter = True  # first_iter_in_first_ts_identifier
+        # is_first_first_iter is true only for the first iteration of the first time step.
+        self.is_first_first_iter = True
+        self._accepted_pipe_state = None
 
         self.lateral_heat_rate_eval = None
 
@@ -329,6 +447,60 @@ class Pipe:
         self.conn_local_col_idx = (
             self.conn_row_idx * n_vars + np.arange(vel_der_size)[None, :]
         )
+
+    @staticmethod
+    def _copy_pipe_state_value(value):
+        """Copy pipe-state entries without sharing mutable NumPy arrays."""
+        if isinstance(value, np.ndarray):
+            return value.copy()
+        if isinstance(value, list):
+            return [Pipe._copy_pipe_state_value(item) for item in value]
+        return value
+
+    def _current_pipe_state(self):
+        """Return a snapshot of the current pipe state."""
+        required_attrs = (
+            "iter_phases_props",
+            "rhoM_face",
+            "rhoM_vM",
+            "vM",
+            "vG",
+            "vL",
+        )
+        missing_attrs = [attr for attr in required_attrs if not hasattr(self, attr)]
+        if missing_attrs:
+            raise RuntimeError(
+                "Cannot accept pipe state before pipe properties have "
+                f"been evaluated. Missing attributes: {', '.join(missing_attrs)}"
+            )
+
+        return {
+            attr: self._copy_pipe_state_value(getattr(self, attr))
+            for attr in required_attrs
+        }
+
+    def reset_pipe_state(self):
+        """Clear accepted pipe state."""
+        self._accepted_pipe_state = None
+        self.is_first_first_iter = True
+
+    def accept_pipe_state(self):
+        """Store the current pipe state as the last converged (accepted) pipe state."""
+        accepted_state = self._current_pipe_state()
+
+        self._accepted_pipe_state = accepted_state
+        self.is_first_first_iter = False
+
+    def _load_accepted_pipe_state(self):
+        """Load the accepted pipe state."""
+        if self._accepted_pipe_state is None:
+            raise RuntimeError(
+                "Cannot load pipe state before an accepted pipe state has been stored."
+            )
+
+        for attr, value in self._accepted_pipe_state.items():
+            setattr(self, attr, self._copy_pipe_state_value(value))
+        return True
 
     def eval_phase_vels(
         self, Xn_dfm_well, X_dfm_well, dt, simulation_time, iter_counter, flag
@@ -376,6 +548,9 @@ class Pipe:
             la_idx = self.la_idx
             lb_idx = self.lb_idx
 
+        if iter_counter == 0 and not self.is_first_first_iter and flag == 1:
+            self._load_accepted_pipe_state()
+
         """ Calculate phase props of previous time step at centroids """
         if iter_counter == 0 and self.is_first_first_iter and flag == 1:
             if self.prop_eval_method == "OBL":
@@ -396,14 +571,15 @@ class Pipe:
 
                 sG0 = prop_arr0['sG']
                 rhoG0 = prop_arr0['rhoG']
-                miuG0 = prop_arr0['miuG'] * 1e-3  # convert cP to Pa.s
+                muG0 = prop_arr0['muG'] * 1e-3  # convert cP to Pa.s
                 xG_mass0 = np.zeros((num_segments, pc.nc_fl))
                 for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
                     xG_mass0[:, c_idx] = prop_arr0[f'x{c_name}_in_G_mass']
 
                 if self.n_mobile_phases == 2:
+                    sL0 = prop_arr0['sL']
                     rhoL0 = prop_arr0['rhoL']
-                    miuL0 = prop_arr0['miuL'] * 1e-3  # convert cP to Pa.s
+                    muL0 = prop_arr0['muL'] * 1e-3  # convert cP to Pa.s
                     xL_mass0 = np.zeros((num_segments, pc.nc_fl))
                     for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
                         xL_mass0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_mass']
@@ -411,10 +587,11 @@ class Pipe:
                 if self.n_mobile_phases == 3:
                     sL_a_0 = prop_arr0['sL_a']
                     sL_b_0 = prop_arr0['sL_b']
+                    sL0 = sL_a_0 + sL_b_0
                     rhoL_a_0 = prop_arr0['rhoL_a']
                     rhoL_b_0 = prop_arr0['rhoL_b']
-                    miuL_a_0 = prop_arr0['miuL_a'] * 1e-3  # convert cP to Pa.s
-                    miuL_b_0 = prop_arr0['miuL_b'] * 1e-3  # convert cP to Pa.s
+                    muL_a_0 = prop_arr0['muL_a'] * 1e-3  # convert cP to Pa.s
+                    muL_b_0 = prop_arr0['muL_b'] * 1e-3  # convert cP to Pa.s
                     xL_a_mass_0 = np.zeros((num_segments, pc.nc_fl))
                     for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
                         xL_a_mass_0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_a_mass']
@@ -423,17 +600,16 @@ class Pipe:
                         xL_b_mass_0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_b_mass']
 
                     # Calculate averaged liquid props
-                    den = sL_a_0 + sL_b_0
-                    mask = den > 0
+                    mask = sL0 > 0
                     rhoL0 = np.zeros(num_segments)
-                    miuL0 = np.zeros(num_segments)
+                    muL0 = np.zeros(num_segments)
                     xL_mass0 = np.zeros((num_segments, pc.nc_fl))
                     rhoL0[mask] = (
                         rhoL_a_0[mask] * sL_a_0[mask] + rhoL_b_0[mask] * sL_b_0[mask]
-                    ) / den[mask]
-                    miuL0[mask] = (
-                        miuL_a_0[mask] * sL_a_0[mask] + miuL_b_0[mask] * sL_b_0[mask]
-                    ) / den[mask]
+                    ) / sL0[mask]
+                    muL0[mask] = (
+                        muL_a_0[mask] * sL_a_0[mask] + muL_b_0[mask] * sL_b_0[mask]
+                    ) / sL0[mask]
                     xL_mass0[mask, :] = (
                         xL_a_mass_0[mask, :] * rhoL_a_0[mask, None] * sL_a_0[mask, None]
                         + xL_b_mass_0[mask, :]
@@ -446,10 +622,11 @@ class Pipe:
 
             elif self.prop_eval_method == "direct":
                 sG0 = np.zeros(num_segments)
+                sL0 = np.zeros(num_segments)
                 rhoG0 = np.zeros(num_segments)
                 rhoL0 = np.zeros(num_segments)
-                miuG0 = np.zeros(num_segments)
-                miuL0 = np.zeros(num_segments)
+                muG0 = np.zeros(num_segments)
+                muL0 = np.zeros(num_segments)
                 xG_mass0 = np.zeros((num_segments, pc.nc_fl))
                 xL_mass0 = np.zeros((num_segments, pc.nc_fl))
 
@@ -458,8 +635,8 @@ class Pipe:
                     sL_b_0 = np.zeros(num_segments)
                     rhoL_a_0 = np.zeros(num_segments)
                     rhoL_b_0 = np.zeros(num_segments)
-                    miuL_a_0 = np.zeros(num_segments)
-                    miuL_b_0 = np.zeros(num_segments)
+                    muL_a_0 = np.zeros(num_segments)
+                    muL_b_0 = np.zeros(num_segments)
                     xL_a_mass_0 = np.zeros((num_segments, pc.nc_fl))
                     xL_b_mass_0 = np.zeros((num_segments, pc.nc_fl))
 
@@ -471,10 +648,11 @@ class Pipe:
 
                     sG0[i] = pc.sat[g_idx]
                     rhoG0[i] = pc.dens[g_idx]
-                    miuG0[i] = pc.mu[g_idx] * 1e-3  # convert cP to Pa.s
+                    muG0[i] = pc.mu[g_idx] * 1e-3  # convert cP to Pa.s
                     if self.n_mobile_phases == 2:
+                        sL0[i] = pc.sat[l_idx]
                         rhoL0[i] = pc.dens[l_idx]
-                        miuL0[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
+                        muL0[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                         # Calculate mass fractions of components in each phase
                         x_mass0 = np.zeros((pc.np_fl, pc.nc_fl))
                         for j in pc.ph:
@@ -488,8 +666,9 @@ class Pipe:
 
                     if self.n_mobile_phases == 3:
                         sL_a_0[i], sL_b_0[i] = pc.sat[la_idx], pc.sat[lb_idx]
+                        sL0[i] = sL_a_0[i] + sL_b_0[i]
                         rhoL_a_0[i], rhoL_b_0[i] = pc.dens[la_idx], pc.dens[lb_idx]
-                        miuL_a_0[i], miuL_b_0[i] = (
+                        muL_a_0[i], muL_b_0[i] = (
                             pc.mu[la_idx] * 1e-3,
                             pc.mu[lb_idx] * 1e-3,
                         )
@@ -512,8 +691,8 @@ class Pipe:
                             if (sL_a_0[i] + sL_b_0[i]) > 0
                             else 0
                         )
-                        miuL0[i] = (
-                            (miuL_a_0[i] * sL_a_0[i] + miuL_b_0[i] * sL_b_0[i])
+                        muL0[i] = (
+                            (muL_a_0[i] * sL_a_0[i] + muL_b_0[i] * sL_b_0[i])
                             / (sL_a_0[i] + sL_b_0[i])
                             if (sL_a_0[i] + sL_b_0[i]) > 0
                             else 0
@@ -532,16 +711,17 @@ class Pipe:
                 xG_mass0,
                 xL_mass0,
                 sG0,
+                sL0,
                 rhoG0,
                 rhoL0,
-                miuG0,
-                miuL0,
+                muG0,
+                muL0,
             ]
 
         elif iter_counter == 0 and not self.is_first_first_iter and flag == 1:
             self.iter_phases_props0 = self.iter_phases_props
 
-        xG_mass0, xL_mass0, sG0, rhoG0, rhoL0, miuG0, miuL0 = self.iter_phases_props0
+        xG_mass0, xL_mass0, sG0, sL0, rhoG0, rhoL0, muG0, muL0 = self.iter_phases_props0
 
         """ Calculate phase props of current time step at centroids """
         if self.prop_eval_method == "OBL":
@@ -562,14 +742,15 @@ class Pipe:
 
             sG = prop_arr['sG']
             rhoG = prop_arr['rhoG']
-            miuG = prop_arr['miuG'] * 1e-3  # convert cP to Pa.s
+            muG = prop_arr['muG'] * 1e-3  # convert cP to Pa.s
             xG_mass = np.zeros((num_segments, pc.nc_fl))
             for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
                 xG_mass[:, c_idx] = prop_arr[f'x{c_name}_in_G_mass']
 
             if self.n_mobile_phases == 2:
+                sL = prop_arr['sL']
                 rhoL = prop_arr['rhoL']
-                miuL = prop_arr['miuL'] * 1e-3  # convert cP to Pa.s
+                muL = prop_arr['muL'] * 1e-3  # convert cP to Pa.s
                 xL_mass = np.zeros((num_segments, pc.nc_fl))
                 for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
                     xL_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_mass']
@@ -577,10 +758,11 @@ class Pipe:
             if self.n_mobile_phases == 3:
                 sL_a = prop_arr['sL_a']
                 sL_b = prop_arr['sL_b']
+                sL = sL_a + sL_b
                 rhoL_a = prop_arr['rhoL_a']
                 rhoL_b = prop_arr['rhoL_b']
-                miuL_a = prop_arr['miuL_a'] * 1e-3  # convert cP to Pa.s
-                miuL_b = prop_arr['miuL_b'] * 1e-3  # convert cP to Pa.s
+                muL_a = prop_arr['muL_a'] * 1e-3  # convert cP to Pa.s
+                muL_b = prop_arr['muL_b'] * 1e-3  # convert cP to Pa.s
                 xL_a_mass = np.zeros((num_segments, pc.nc_fl))
                 for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
                     xL_a_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_a_mass']
@@ -589,17 +771,16 @@ class Pipe:
                     xL_b_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_b_mass']
 
                 # Calculate averaged liquid props
-                den = sL_a + sL_b
-                mask = den > 0
+                mask = sL > 0
                 rhoL = np.zeros(num_segments)
-                miuL = np.zeros(num_segments)
+                muL = np.zeros(num_segments)
                 xL_mass = np.zeros((num_segments, pc.nc_fl))
                 rhoL[mask] = (
                     rhoL_a[mask] * sL_a[mask] + rhoL_b[mask] * sL_b[mask]
-                ) / den[mask]
-                miuL[mask] = (
-                    miuL_a[mask] * sL_a[mask] + miuL_b[mask] * sL_b[mask]
-                ) / den[mask]
+                ) / sL[mask]
+                muL[mask] = (muL_a[mask] * sL_a[mask] + muL_b[mask] * sL_b[mask]) / sL[
+                    mask
+                ]
                 xL_mass[mask, :] = (
                     xL_a_mass[mask, :] * rhoL_a[mask, None] * sL_a[mask, None]
                     + xL_b_mass[mask, :] * rhoL_b[mask, None] * sL_b[mask, None]
@@ -610,10 +791,11 @@ class Pipe:
 
         elif self.prop_eval_method == "direct":
             sG = np.zeros(num_segments)
+            sL = np.zeros(num_segments)
             rhoG = np.zeros(num_segments)
             rhoL = np.zeros(num_segments)
-            miuG = np.zeros(num_segments)
-            miuL = np.zeros(num_segments)
+            muG = np.zeros(num_segments)
+            muL = np.zeros(num_segments)
             xG_mass = np.zeros((num_segments, pc.nc_fl))
             xL_mass = np.zeros((num_segments, pc.nc_fl))
 
@@ -622,8 +804,8 @@ class Pipe:
                 sL_b = np.zeros(num_segments)
                 rhoL_a = np.zeros(num_segments)
                 rhoL_b = np.zeros(num_segments)
-                miuL_a = np.zeros(num_segments)
-                miuL_b = np.zeros(num_segments)
+                muL_a = np.zeros(num_segments)
+                muL_b = np.zeros(num_segments)
                 xL_a_mass = np.zeros((num_segments, pc.nc_fl))
                 xL_b_mass = np.zeros((num_segments, pc.nc_fl))
 
@@ -635,10 +817,11 @@ class Pipe:
 
                 sG[i] = pc.sat[g_idx]
                 rhoG[i] = pc.dens[g_idx]
-                miuG[i] = pc.mu[g_idx] * 1e-3  # convert cP to Pa.s
+                muG[i] = pc.mu[g_idx] * 1e-3  # convert cP to Pa.s
                 if self.n_mobile_phases == 2:
+                    sL[i] = pc.sat[l_idx]
                     rhoL[i] = pc.dens[l_idx]
-                    miuL[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
+                    muL[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                     # Calculate mass fractions of components in each phase
                     x_mass = np.zeros((pc.np_fl, pc.nc_fl))
                     for j in pc.ph:
@@ -647,8 +830,9 @@ class Pipe:
 
                 if self.n_mobile_phases == 3:
                     sL_a[i], sL_b[i] = pc.sat[la_idx], pc.sat[lb_idx]
+                    sL[i] = sL_a[i] + sL_b[i]
                     rhoL_a[i], rhoL_b[i] = pc.dens[la_idx], pc.dens[lb_idx]
-                    miuL_a[i], miuL_b[i] = pc.mu[la_idx] * 1e-3, pc.mu[lb_idx] * 1e-3
+                    muL_a[i], muL_b[i] = pc.mu[la_idx] * 1e-3, pc.mu[lb_idx] * 1e-3
                     # Calculate mass fractions of components in each phase
                     x_mass = np.zeros((pc.np_fl, pc.nc_fl))
                     for j in pc.ph:
@@ -666,9 +850,8 @@ class Pipe:
                         if (sL_a[i] + sL_b[i]) > 0
                         else 0
                     )
-                    miuL[i] = (
-                        (miuL_a[i] * sL_a[i] + miuL_b[i] * sL_b[i])
-                        / (sL_a[i] + sL_b[i])
+                    muL[i] = (
+                        (muL_a[i] * sL_a[i] + muL_b[i] * sL_b[i]) / (sL_a[i] + sL_b[i])
                         if (sL_a[i] + sL_b[i]) > 0
                         else 0
                     )
@@ -682,22 +865,24 @@ class Pipe:
                         else 0
                     )
 
-        self.iter_phases_props = [xG_mass, xL_mass, sG, rhoG, rhoL, miuG, miuL]
+        self.iter_phases_props = [xG_mass, xL_mass, sG, sL, rhoG, rhoL, muG, muL]
 
         # If the differentiation method is OBL, calculate phase property derivatives
         if self.diff_method == "OBL":
             sG_der = self.get_op_der_matrix(op_idx=SAT_OP + g_idx)
             rhoG_der = self.get_op_der_matrix(op_idx=GRAV_OP + g_idx)
             if self.n_mobile_phases == 2:
+                sL_der = self.get_op_der_matrix(op_idx=SAT_OP + l_idx)
                 rhoL_der = self.get_op_der_matrix(op_idx=GRAV_OP + l_idx)
             elif self.n_mobile_phases == 3:
                 rhoL_a_der = self.get_op_der_matrix(op_idx=GRAV_OP + la_idx)
                 rhoL_b_der = self.get_op_der_matrix(op_idx=GRAV_OP + lb_idx)
                 sL_a_der = self.get_op_der_matrix(op_idx=SAT_OP + la_idx)
                 sL_b_der = self.get_op_der_matrix(op_idx=SAT_OP + lb_idx)
+                sL_der = sL_a_der + sL_b_der
 
-                den = sL_a + sL_b
-                mask = den > 0
+                sL = sL_a + sL_b
+                mask = sL > 0
                 rhoL_der = np.zeros_like(rhoL_a_der)
                 num = (sL_a[:, None] + sL_b[:, None]) * (
                     sL_a[:, None] * rhoL_a_der
@@ -707,17 +892,18 @@ class Pipe:
                 ) - (
                     rhoL_a[:, None] * sL_a[:, None] + rhoL_b[:, None] * sL_b[:, None]
                 ) * (sL_a_der + sL_b_der)
-                rhoL_der[mask, :] = num[mask, :] / (den[mask, None] ** 2)
+                rhoL_der[mask, :] = num[mask, :] / (sL[mask, None] ** 2)
 
         """ Calculate phase props of previous time step at interfaces """
         if iter_counter == 0 and flag == 1:
             sG0_face = (sG0[:-1] + sG0[1:]) / 2
+            sL0_face = (sL0[:-1] + sL0[1:]) / 2
 
             # Initialize arrays to store interface properties
             rhoG0_face = np.zeros(num_segments - 1)
             rhoL0_face = np.zeros(num_segments - 1)
-            miuG0_face = np.zeros(num_segments - 1)
-            miuL0_face = np.zeros(num_segments - 1)
+            muG0_face = np.zeros(num_segments - 1)
+            muL0_face = np.zeros(num_segments - 1)
             # xG_mass0_face and xL_mass0_face for IFT calculation
             xG_mass0_face = np.zeros((num_segments - 1, pc.nc_fl))
             xL_mass0_face = np.zeros((num_segments - 1, pc.nc_fl))
@@ -727,57 +913,68 @@ class Pipe:
                 if sG0[i] == 0:
                     # If no gas in segment i, use properties from segment i+1
                     rhoG0_face[i] = rhoG0[i + 1]
-                    miuG0_face[i] = miuG0[i + 1]
+                    muG0_face[i] = muG0[i + 1]
                     xG_mass0_face[i] = xG_mass0[i + 1]
                 elif sG0[i + 1] == 0:
                     # If no gas in segment i+1, use properties from segment i
                     rhoG0_face[i] = rhoG0[i]
-                    miuG0_face[i] = miuG0[i]
+                    muG0_face[i] = muG0[i]
                     xG_mass0_face[i] = xG_mass0[i]
                 else:
                     # If both segments have gas, use averaging
                     rhoG0_face[i] = (rhoG0[i] + rhoG0[i + 1]) / 2
-                    miuG0_face[i] = (miuG0[i] + miuG0[i + 1]) / 2
+                    muG0_face[i] = (muG0[i] + muG0[i + 1]) / 2
 
                     xG_mass0_face[i] = (
                         xG_mass0[i] * rhoG0[i] * sG0[i]
                         + xG_mass0[i + 1] * rhoG0[i + 1] * sG0[i + 1]
                     ) / (rhoG0[i] * sG0[i] + rhoG0[i + 1] * sG0[i + 1])
 
-                if sG0[i] == 1:
+                liquid_weight_i = rhoL0[i] * sL0[i]
+                liquid_weight_ip1 = rhoL0[i + 1] * sL0[i + 1]
+                liquid_weight_sum = liquid_weight_i + liquid_weight_ip1
+
+                if liquid_weight_i == 0 and liquid_weight_ip1 > 0:
                     # If no liquid in segment i, use properties from segment i+1
                     rhoL0_face[i] = rhoL0[i + 1]
-                    miuL0_face[i] = miuL0[i + 1]
+                    muL0_face[i] = muL0[i + 1]
                     xL_mass0_face[i] = xL_mass0[i + 1]
-                elif sG0[i + 1] == 1:
+                elif liquid_weight_ip1 == 0 and liquid_weight_i > 0:
                     # If no liquid in segment i+1, use properties from segment i
                     rhoL0_face[i] = rhoL0[i]
-                    miuL0_face[i] = miuL0[i]
+                    muL0_face[i] = muL0[i]
                     xL_mass0_face[i] = xL_mass0[i]
-                else:
+                elif liquid_weight_sum > 0:
                     # If both segments have liquid, use averaging
                     rhoL0_face[i] = (rhoL0[i] + rhoL0[i + 1]) / 2
-                    miuL0_face[i] = (miuL0[i] + miuL0[i + 1]) / 2
+                    muL0_face[i] = (muL0[i] + muL0[i + 1]) / 2
 
                     xL_mass0_face[i] = (
-                        xL_mass0[i] * rhoL0[i] * (1 - sG0[i])
-                        + xL_mass0[i + 1] * rhoL0[i + 1] * (1 - sG0[i + 1])
-                    ) / (rhoL0[i] * (1 - sG0[i]) + rhoL0[i + 1] * (1 - sG0[i + 1]))
+                        xL_mass0[i] * rhoL0[i] * sL0[i]
+                        + xL_mass0[i + 1] * rhoL0[i + 1] * sL0[i + 1]
+                    ) / liquid_weight_sum
+                else:
+                    rhoL0_face[i] = 0.0
+                    muL0_face[i] = 0.0
+                    xL_mass0_face[i] = 0.0
 
             self.iter_phases_props0_face = [
                 xG_mass0_face,
                 xL_mass0_face,
                 sG0_face,
+                sL0_face,
                 rhoG0_face,
                 rhoL0_face,
-                miuG0_face,
-                miuL0_face,
+                muG0_face,
+                muL0_face,
             ]
 
         """ Calculate phase props of current time step at interfaces """
         sG_face = (sG[:-1] + sG[1:]) / 2
+        sL_face = (sL[:-1] + sL[1:]) / 2
         if self.diff_method == "OBL":
             sG_face_der = (sG_der[:-1, :] + sG_der[1:, :]) / 2
+            sL_face_der = (sL_der[:-1, :] + sL_der[1:, :]) / 2
 
         # Initialize arrays to store interface properties
         rhoG_face = np.zeros(num_segments - 1)
@@ -806,12 +1003,12 @@ class Pipe:
                 if self.diff_method == "OBL":
                     rhoG_face_der[i, :] = (rhoG_der[i, :] + rhoG_der[i + 1, :]) / 2
 
-            if sG[i] == 1:
+            if sL[i] == 0:
                 # If no liquid in segment i, use properties from segment i+1
                 rhoL_face[i] = rhoL[i + 1]
                 if self.diff_method == "OBL":
                     rhoL_face_der[i, :] = rhoL_der[i + 1, :]
-            elif sG[i + 1] == 1:
+            elif sL[i + 1] == 0:
                 # If no liquid in segment i+1, use properties from segment i
                 rhoL_face[i] = rhoL[i]
                 if self.diff_method == "OBL":
@@ -823,10 +1020,11 @@ class Pipe:
                 if self.diff_method == "OBL":
                     rhoL_face_der[i, :] = (rhoL_der[i, :] + rhoL_der[i + 1, :]) / 2
 
-        self.iter_phases_props_face = [sG_face, rhoG_face, rhoL_face]
+        self.iter_phases_props_face = [sG_face, sL_face, rhoG_face, rhoL_face]
         if self.diff_method == "OBL":
             self.iter_phases_props_face_ders = [
                 sG_face_der,
+                sL_face_der,
                 rhoG_face_der,
                 rhoL_face_der,
             ]
@@ -860,9 +1058,9 @@ class Pipe:
 
         if iter_counter == 0 and flag == 1:
             # To increase the numerical stability, you may need to use an upwind scheme for the momentum flux like
-            # in the paper "A transient gothermal wellbore simulator (2023)
+            # in the paper "A transient geothermal wellbore simulator (2023)"
             delta_interface0 = pg.pipe_internal_A * (
-                rhoG0_face * sG0_face * vG0**2 + rhoL0_face * (1 - sG0_face) * vL0**2
+                rhoG0_face * sG0_face * vG0**2 + rhoL0_face * sL0_face * vL0**2
             )
 
             """ Add momentum boundary conditions """
@@ -889,48 +1087,65 @@ class Pipe:
 
                 pipe_internal_A = self.geometry.pipe_internal_A
 
-                # The props of the fluid of the segment on which the constant mass rate source is defined are used.
-                sG0_source = sG0[segment_idx_source]
-                rhoG0_source = rhoG0[segment_idx_source]
-                rhoL0_source = rhoL0[segment_idx_source]
-
-                if sG0_source == 0:
-                    vG0_source = 0
-                    liquid_mass_fraction0 = 1
-                    liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
-                    vL0_source = (
-                        liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * 1)
+                # If UpstreamRampUpRate is used, which calculates boundary momentum using the properties of the boundary itself:
+                if hasattr(sink_source, "get_boundary_momentum_flux"):
+                    delta_at_bc_interface0 = sink_source.get_boundary_momentum_flux(
+                        pc, pipe_internal_A, rate_source
                     )
-                elif sG0_source == 1:
-                    vL0_source = 0
-                    gas_mass_fraction0 = 1
-                    gas_mass_rate0 = mass_rate * gas_mass_fraction0
-                    vG0_source = gas_mass_rate0 / rhoG0_source / (pipe_internal_A * 1)
-                elif 0 < sG0_source < 1:
-                    gas_mass_fraction0 = (
-                        sG0_source
-                        * rhoG0_source
-                        / (sG0_source * rhoG0_source + (1 - sG0_source) * rhoL0_source)
-                    )
-                    gas_mass_rate0 = mass_rate * gas_mass_fraction0
-                    vG0_source = (
-                        gas_mass_rate0 / rhoG0_source / (pipe_internal_A * sG0_source)
-                    )
-
-                    liquid_mass_fraction0 = 1 - gas_mass_fraction0
-                    liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
-                    vL0_source = (
-                        liquid_mass_rate0
-                        / rhoL0_source
-                        / (pipe_internal_A * (1 - sG0_source))
-                    )
+                # If RampUpRate is used:
                 else:
-                    raise Exception("sG0_source is out of correct range (from 0 to 1)!")
+                    # The props of the fluid of the segment on which the constant mass rate source is defined are used.
+                    sG0_source = sG0[segment_idx_source]
+                    sL0_source = sL0[segment_idx_source]
+                    rhoG0_source = rhoG0[segment_idx_source]
+                    rhoL0_source = rhoL0[segment_idx_source]
 
-                delta_at_bc_interface0 = pipe_internal_A * (
-                    rhoG0_source * sG0_source * vG0_source**2
-                    + rhoL0_source * (1 - sG0_source) * vL0_source**2
-                )
+                    has_mobile_liquid0 = rhoL0_source > 0 and sL0_source > 1e-12
+
+                    # This section is written under the assumption that there is no solid phase in the source.
+                    if sG0_source == 0 and has_mobile_liquid0:
+                        vG0_source = 0
+                        liquid_mass_fraction0 = 1
+                        liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
+                        vL0_source = (
+                            liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * 1)
+                        )
+                    elif sG0_source == 1 or not has_mobile_liquid0:
+                        vL0_source = 0
+                        gas_mass_fraction0 = 1
+                        gas_mass_rate0 = mass_rate * gas_mass_fraction0
+                        vG0_source = (
+                            gas_mass_rate0 / rhoG0_source / (pipe_internal_A * 1)
+                        )
+                    elif sG0_source > 0 and has_mobile_liquid0:
+                        gas_mass_fraction0 = (
+                            sG0_source
+                            * rhoG0_source
+                            / (sG0_source * rhoG0_source + sL0_source * rhoL0_source)
+                        )
+                        gas_mass_rate0 = mass_rate * gas_mass_fraction0
+                        vG0_source = (
+                            gas_mass_rate0
+                            / rhoG0_source
+                            / (pipe_internal_A * sG0_source)
+                        )
+
+                        liquid_mass_fraction0 = 1 - gas_mass_fraction0
+                        liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
+                        vL0_source = (
+                            liquid_mass_rate0
+                            / rhoL0_source
+                            / (pipe_internal_A * sL0_source)
+                        )
+                    else:
+                        raise Exception(
+                            "sG0_source is out of correct range (from 0 to 1)!"
+                        )
+
+                    delta_at_bc_interface0 = pipe_internal_A * (
+                        rhoG0_source * sG0_source * vG0_source**2
+                        + rhoL0_source * sL0_source * vL0_source**2
+                    )
 
                 if segment_idx_source == 0:
                     momentum_at_first_last_exterfaces[0] = delta_at_bc_interface0
@@ -1016,11 +1231,11 @@ class Pipe:
         # Liquid velocity at wellbore interfaces
         self.vL = np.zeros(num_interfaces)
         for i in range(num_interfaces):
-            if sG_face[i] != 1:
+            if sL_face[i] > 0:
                 self.vL[i] = (1 - self.C00[i] * sG_face[i]) * self.rhoM_vM[i] / (
-                    (1 - sG_face[i]) * self.rhoM_adjusted_face[i]
+                    sL_face[i] * self.rhoM_adjusted_face[i]
                 ) - sG_face[i] * rhoG_face[i] * self.vD0[i] / (
-                    (1 - sG_face[i]) * self.rhoM_adjusted_face[i]
+                    sL_face[i] * self.rhoM_adjusted_face[i]
                 )
 
                 if self.diff_method == "OBL":
@@ -1029,15 +1244,15 @@ class Pipe:
                             -self.C00[i] * sG_face_der[i, :] * self.rhoM_vM[i]
                             + (1 - self.C00[i] * sG_face[i]) * self.rhoM_vM_der[i, :]
                         )
-                        * (1 - sG_face[i])
+                        * sL_face[i]
                         * self.rhoM_adjusted_face[i]
                         - (
-                            -sG_face_der[i, :] * self.rhoM_adjusted_face[i]
-                            + (1 - sG_face[i]) * self.rhoM_adjusted_face_der[i, :]
+                            sL_face_der[i, :] * self.rhoM_adjusted_face[i]
+                            + sL_face[i] * self.rhoM_adjusted_face_der[i, :]
                         )
                         * (1 - self.C00[i] * sG_face[i])
                         * self.rhoM_vM[i]
-                    ) / (((1 - sG_face[i]) * self.rhoM_adjusted_face[i]) ** 2) - (
+                    ) / ((sL_face[i] * self.rhoM_adjusted_face[i]) ** 2) - (
                         (
                             self.vD0[i]
                             * (
@@ -1045,15 +1260,15 @@ class Pipe:
                                 + sG_face[i] * rhoG_face_der[i, :]
                             )
                         )
-                        * ((1 - sG_face[i]) * self.rhoM_adjusted_face[i])
+                        * (sL_face[i] * self.rhoM_adjusted_face[i])
                         - (
-                            -sG_face_der[i, :] * self.rhoM_adjusted_face[i]
-                            + (1 - sG_face[i]) * self.rhoM_adjusted_face_der[i, :]
+                            sL_face_der[i, :] * self.rhoM_adjusted_face[i]
+                            + sL_face[i] * self.rhoM_adjusted_face_der[i, :]
                         )
                         * sG_face[i]
                         * rhoG_face[i]
                         * self.vD0[i]
-                    ) / (((1 - sG_face[i]) * self.rhoM_adjusted_face[i]) ** 2)
+                    ) / ((sL_face[i] * self.rhoM_adjusted_face[i]) ** 2)
 
         for i in range(num_interfaces):
             if self.vG[i] > 0 and sG[i] == 0:
@@ -1065,11 +1280,11 @@ class Pipe:
                 if self.diff_method == "OBL":
                     self.vG_der[i, :] = 0
 
-            if self.vL[i] > 0 and (sG[i] - 1) == 0:
+            if self.vL[i] > 0 and sL[i] == 0:
                 self.vL[i] = 0
                 if self.diff_method == "OBL":
                     self.vL_der[i, :] = 0
-            elif self.vL[i] < 0 and (sG[i + 1] - 1) == 0:
+            elif self.vL[i] < 0 and sL[i + 1] == 0:
                 self.vL[i] = 0
                 if self.diff_method == "OBL":
                     self.vL_der[i, :] = 0
@@ -1081,35 +1296,44 @@ class Pipe:
             self.vG_der *= 24 * 60 * 60
             self.vL_der *= 24 * 60 * 60
 
-        # is_first_first_iter is true only for the first iteration of the first time step.
-        self.is_first_first_iter = False
-
         return phase_vels
 
     def calc_mixture_densities(self, iter_counter, flag):
         if iter_counter == 0 and self.is_first_first_iter and flag == 1:
-            _, _, sG0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
+            _, _, sG0, sL0, rhoG0, rhoL0, _, _ = self.iter_phases_props0
 
-            _, _, sG0_face, rhoG0_face, rhoL0_face, _, _ = self.iter_phases_props0_face
-            self.rhoM0_face = sG0_face * rhoG0_face + (1 - sG0_face) * rhoL0_face
+            _, _, sG0_face, sL0_face, rhoG0_face, rhoL0_face, _, _ = (
+                self.iter_phases_props0_face
+            )
+            self.rhoM0_face = (sG0_face * rhoG0_face + sL0_face * rhoL0_face) / (
+                sG0_face + sL0_face
+            )
 
         elif iter_counter == 0 and not self.is_first_first_iter and flag == 1:
             self.rhoM0_face = self.rhoM_face
 
         # Calculate mixture density
-        _, _, sG, rhoG, rhoL, _, _ = self.iter_phases_props
+        _, _, sG, sL, rhoG, rhoL, _, _ = self.iter_phases_props
 
-        [sG_face, rhoG_face, rhoL_face] = self.iter_phases_props_face
+        [sG_face, sL_face, rhoG_face, rhoL_face] = self.iter_phases_props_face
 
-        self.rhoM_face = sG_face * rhoG_face + (1 - sG_face) * rhoL_face
+        num = sG_face * rhoG_face + sL_face * rhoL_face
+        den = sG_face + sL_face
+        self.rhoM_face = num / den
         if self.diff_method == "OBL":
-            sG_face_der, rhoG_face_der, rhoL_face_der = self.iter_phases_props_face_ders
-            self.rhoM_face_der = (
-                sG_face_der * rhoG_face[:, None]
-                + sG_face[:, None] * rhoG_face_der
-                - sG_face_der * rhoL_face[:, None]
-                + (1 - sG_face[:, None]) * rhoL_face_der
+            sG_face_der, sL_face_der, rhoG_face_der, rhoL_face_der = (
+                self.iter_phases_props_face_ders
             )
+            self.rhoM_face_der = (
+                (
+                    sG_face_der * rhoG_face[:, None]
+                    + sG_face[:, None] * rhoG_face_der
+                    + sL_face_der * rhoL_face[:, None]
+                    + sL_face[:, None] * rhoL_face_der
+                )
+                * den[:, None]
+                - (sG_face_der + sL_face_der) * num[:, None]
+            ) / den[:, None] ** 2
 
         # Calculate adjusted-mixture density
         if iter_counter == 0 and flag == 1 and self.is_first_first_iter:
@@ -1136,29 +1360,40 @@ class Pipe:
         pg = self.geometry
 
         """ Start calculating the Reynolds number """
-        _, _, sG0, _, _, _, _ = self.iter_phases_props0
+        _, _, sG0, sL0, _, _, _, _ = self.iter_phases_props0
 
-        _, _, sG0_face, _, _, miuG0_face, miuL0_face = self.iter_phases_props0_face
+        _, _, sG0_face, sL0_face, _, _, muG0_face, muL0_face = (
+            self.iter_phases_props0_face
+        )
         [_, vM0, _, _] = self.velocities0
 
         # Saturation-weighted average is used to calculate the mixture viscosity of two phases. The method is used in
         # Beggs and Brill's book: Eq. 1.38
         # My production engineering notebook: Pressure drop calc in wellbore for 2-phase flow with Beggs and Brill's method
-        self.miuM0 = sG0_face * miuG0_face + (1 - sG0_face) * miuL0_face
+        self.muM0 = (sG0_face * muG0_face + sL0_face * muL0_face) / (
+            sG0_face + sL0_face
+        )
 
         # Viscosity averaging method in https://doi.org/10.1016/j.ijmultiphaseflow.2021.103590
-        # _, _, _, rhoG0_face, rhoL0_face, _, _ = self.iter_phases_props0_face
-        # xg = sG0_face * rhoG0_face / (sG0_face * rhoG0_face + (1 - sG0_face) * rhoL0_face)
-        # denominator_1 = xg / miuG0_face
+        # _, _, _, _, rhoG0_face, rhoL0_face, _, _ = self.iter_phases_props0_face
+        # xg = sG0_face * rhoG0_face / (sG0_face * rhoG0_face + sL0_face * rhoL0_face)
+        # denominator_1 = xg / muG0_face
         # denominator_1 = np.nan_to_num(denominator_1, nan=0.0)
-        # denominator_2 = (1 - xg) / miuL0_face
+        # denominator_2 = (1 - xg) / muL0_face
         # denominator_2 = np.nan_to_num(denominator_2, nan=0.0)
-        # self.miuM0 = 1 / (denominator_1 + denominator_2)
+        # self.muM0 = 1 / (denominator_1 + denominator_2)
 
-        Re0 = self.calc_Reynolds_number(vM0, self.rhoM0_face, self.miuM0, pg.pipe_ID)
+        Re0 = self.calc_Reynolds_number(vM0, self.rhoM0_face, self.muM0, pg.pipe_ID)
         """ End calculating the Reynolds number """
 
         self.ff0 = np.zeros(pg.num_interfaces)
+        if self.friction_model == "wang_2014":
+            relative_roughness = pg.wall_roughness / pg.pipe_ID
+            for i, Re in enumerate(Re0):
+                self.ff0[i] = (
+                    self.wang_darcy_friction_factor(Re, relative_roughness) / 4.0
+                )
+            return self.ff0
 
         # Laminar connections (Re==0 stays 0)
         lam = (Re0 > 0.0) & (Re0 < 2400.0)
@@ -1187,17 +1422,17 @@ class Pipe:
         return self.ff0
 
     @staticmethod
-    def calc_Reynolds_number(v, rho, miu, pipe_ID):
+    def calc_Reynolds_number(v, rho, mu, pipe_ID):
         """
         Calculate the Reynolds number
 
         :param v: Fluid velocity
         :param rho: Fluid density
-        :param miu: Fluid viscosity
+        :param mu: Fluid viscosity
         :param pipe_ID: Pipe inside diameter
         """
 
-        Re0 = rho * abs(v) * pipe_ID / miu
+        Re0 = rho * abs(v) * pipe_ID / mu
 
         return Re0
 
@@ -1221,15 +1456,205 @@ class Pipe:
             relative_roughness / 3.7065 + (1.2613 / (Re * sqrt_f))
         )
 
+    @staticmethod
+    def wang_darcy_friction_factor(Re: float, relative_roughness: float) -> float:
+        """
+        Calculate the Darcy friction factor with the Wang et al. (2014)
+        supercritical-CO2 correlation adopted by Bai et al. (2023).
+
+        Bai et al. use this correlation in their two-phase pure-CO2
+        pressure-gradient model because it was developed for CO2 pipe
+        flow. The returned value is a Darcy friction factor; callers that
+        use the historical open-DARTS Fanning-friction convention must
+        divide this value by 4.
+
+        :param Re: Mixture Reynolds number.
+        :param relative_roughness: Pipe relative roughness, wall roughness divided by pipe diameter.
+        :return: Darcy friction factor.
+        """
+        if Re <= 0.0:
+            return 0.0
+        if Re < 2400.0:
+            return 64.0 / Re
+
+        inner = (relative_roughness / 29.36) ** 0.95 + (18.35 / Re) ** 1.108
+        argument = relative_roughness / 1.72 - (9.26 / Re) * math.log10(inner)
+        if argument <= 0.0:
+            # Fall back to the existing Colebrook Fanning form converted to Darcy.
+            return float(
+                4.0 * fsolve(Pipe.colebrook, 0.005, args=(Re, relative_roughness))[0]
+            )
+        return (-2.34 * math.log10(argument)) ** -2.0
+
+    @staticmethod
+    def bai_gas_froude_number(j_g: float, pipe_ID: float) -> float:
+        """
+        Calculate the gas superficial Froude number used by Bai et al. (2023).
+
+        :param j_g: Gas superficial velocity [m/s].
+        :param pipe_ID: Pipe internal diameter [m].
+        :return: Gas superficial Froude number.
+        """
+        return abs(j_g) / math.sqrt(Pipe.g * pipe_ID)
+
+    @staticmethod
+    def bai_gas_volumetric_fraction(j_g: float, j_l: float) -> float:
+        """
+        Calculate gas volumetric flow fraction from superficial velocities.
+
+        :param j_g: Gas superficial velocity [m/s].
+        :param j_l: Liquid superficial velocity [m/s].
+        :return: Gas volumetric flow fraction.
+        """
+        total = abs(j_g) + abs(j_l)
+        return 0.0 if total <= 0.0 else abs(j_g) / total
+
+    @staticmethod
+    def bai_gas_quality(j_g: float, j_l: float, rhoG: float, rhoL: float) -> float:
+        """
+        Calculate gas mass quality from superficial velocities and densities.
+
+        :param j_g: Gas superficial velocity [m/s].
+        :param j_l: Liquid superficial velocity [m/s].
+        :param rhoG: Gas density [kg/m3].
+        :param rhoL: Liquid density [kg/m3].
+        :return: Gas mass quality.
+        """
+        gas_mass_flux = rhoG * abs(j_g)
+        liquid_mass_flux = rhoL * abs(j_l)
+        total = gas_mass_flux + liquid_mass_flux
+        return 0.0 if total <= 0.0 else gas_mass_flux / total
+
+    def bai_profile_parameter(
+        self,
+        sG: float,
+        sL: float,
+        j_g: float,
+        j_l: float,
+        mixture_velocity: float,
+        rhoG: float,
+        rhoL: float,
+        muG: float,
+        muL: float,
+        theta: float,
+    ) -> float:
+        """
+        Calculate the Bai et al. (2023) distribution coefficient.
+
+        :param sG: Gas volume fraction.
+        :param sL: Liquid volume fraction.
+        :param j_g: Gas superficial velocity [m/s].
+        :param j_l: Liquid superficial velocity [m/s].
+        :param mixture_velocity: Mixture velocity magnitude [m/s].
+        :param rhoG: Gas density [kg/m3].
+        :param rhoL: Liquid density [kg/m3].
+        :param muG: Gas viscosity [Pa.s].
+        :param muL: Liquid viscosity [Pa.s].
+        :param theta: Bai pipe inclination angle [rad], measured from horizontal.
+        :return: Distribution coefficient C0.
+        """
+        rho_m = (sG * rhoG + sL * rhoL) / (sG + sL)
+        mu_m = (sG * muG + sL * muL) / (sG + sL)
+        Re = (
+            rho_m
+            * abs(mixture_velocity)
+            * self.geometry.pipe_ID
+            / max(mu_m, np.finfo(float).eps)
+        )
+        darcy_f = self.wang_darcy_friction_factor(
+            Re, self.geometry.wall_roughness / self.geometry.pipe_ID
+        )
+        fanning_f = darcy_f / 4.0
+        beta = self.bai_gas_volumetric_fraction(j_g, j_l)
+        quality = self.bai_gas_quality(j_g, j_l, rhoG, rhoL)
+        Fr_sg = self.bai_gas_froude_number(j_g, self.geometry.pipe_ID)
+        theta_deg = math.degrees(theta)
+
+        if -50.0 <= theta_deg <= 0.0 and Fr_sg <= 0.1:
+            C01 = 0.0
+        else:
+            C01 = (
+                0.2
+                * (1.0 - math.sqrt(rhoG / rhoL))
+                * ((2.6 - beta) ** 0.15 - math.sqrt(max(fanning_f, 0.0)))
+                * (1.0 - quality) ** 1.5
+            )
+
+        density_ratio = rhoG / rhoL
+        cos_theta = math.cos(theta)
+        denominator = max(1.0 + cos_theta, np.finfo(float).eps)
+        base = math.sqrt(
+            max(
+                (1.0 + density_ratio**2 * cos_theta) / denominator,
+                np.finfo(float).eps,
+            )
+        )
+        exponent = sL ** (2.0 / 5.0)
+        low_re_term = (2.0 - density_ratio**2) / (1.0 + (Re / 1000.0) ** 2)
+        high_re_term = (base**exponent + C01) / (
+            1.0 + (1000.0 / max(Re, np.finfo(float).eps)) ** 2
+        )
+        return low_re_term + high_re_term
+
+    def bai_drift_velocity(
+        self,
+        sL: float,
+        j_g: float,
+        rhoG: float,
+        rhoL: float,
+        muL: float,
+        sigma: float,
+        theta: float,
+    ) -> float:
+        """
+        Calculate the Bai et al. (2023) drift velocity.
+
+        :param sL: Liquid volume fraction.
+        :param j_g: Gas superficial velocity [m/s].
+        :param rhoG: Gas density [kg/m3].
+        :param rhoL: Liquid density [kg/m3].
+        :param muL: Liquid dynamic viscosity [Pa.s].
+        :param sigma: Gas-liquid surface tension [N/m].
+        :param theta: Bai pipe inclination angle [rad], measured from horizontal.
+        :return: Drift velocity [m/s] in the pipe coordinate system.
+        """
+        viscosity_ratio = muL / 0.001
+        if viscosity_ratio > 10.0:
+            C2 = (0.434 / math.log(viscosity_ratio)) ** 0.15
+        else:
+            C2 = 1.0
+
+        La = math.sqrt(sigma / (self.g * (rhoL - rhoG))) / self.geometry.pipe_ID
+        C3 = (La / 0.025) ** 0.9 if La > 0.025 else 1.0
+        theta_deg = math.degrees(theta)
+        Fr_sg = self.bai_gas_froude_number(j_g, self.geometry.pipe_ID)
+        C4 = -1.0 if -50.0 <= theta_deg <= 0.0 and Fr_sg <= 0.1 else 1.0
+        return (
+            (0.35 * math.sin(theta) + 0.45 * math.cos(theta))
+            * math.sqrt(self.g * self.geometry.pipe_ID * (rhoL - rhoG) / rhoL)
+            * sL
+            * C2
+            * C3
+            * C4
+        )
+
     def update_profile_parameter(self):
         pg = self.geometry
         num_interfaces = self.geometry.num_interfaces
-        [rhoM0_vM0, _, _, _] = self.velocities0
-        [xG_mass0_face, xL_mass0_face, sG0_face, rhoG0_face, rhoL0_face, _, _] = (
-            self.iter_phases_props0_face
-        )
+        [rhoM0_vM0, vM0_all, vG0, vL0] = self.velocities0
+        [
+            xG_mass0_face,
+            xL_mass0_face,
+            sG0_face,
+            sL0_face,
+            rhoG0_face,
+            rhoL0_face,
+            _,
+            _,
+        ] = self.iter_phases_props0_face
+        self.IFT_face_filtered = np.array([])
 
-        mask = (sG0_face > 0) & (sG0_face < 1)
+        mask = (sG0_face > 0) & (sL0_face > 0)
         at_least_one_true = any(mask)
         if at_least_one_true:
             indices = np.where(mask)[0]
@@ -1251,6 +1676,7 @@ class Pipe:
                     xG_mass0_face_filtered[i],
                     xL_mass0_face_filtered[i],
                 )
+            self.IFT_face_filtered = IFT0_face
 
             # self.Ku0_filtered = np.zeros(len(indices))
             # self.vC0_filtered = np.zeros(len(indices))
@@ -1276,12 +1702,43 @@ class Pipe:
                 * np.sqrt(rhoL0_face_filtered / rhoG0_face_filtered)
                 * self.vC0_filtered
             )
-            beta0 = np.maximum(
-                sG0_face_filtered, self.Fv * sG0_face_filtered * abs(vM0) / v_sgf0
-            )
-            beta0 = np.clip(beta0, 0, 1)  # beta0 is subject to limits 0 <= beta0 <= 1
-            eta0 = (beta0 - self.B) / (1 - self.B)  # B is calculated in the constructor
-            C00_filtered = self.Cmax / (1 + (self.Cmax - 1) * eta0**2)
+
+            if self.drift_flux_model == "shi_t2well":
+                flooding_fraction = self.Fv * sG0_face_filtered * abs(vM0) / v_sgf0
+                beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
+                beta0 = np.clip(beta0, 0, 1)  # T2Well imposes 0 <= beta0 <= 1
+                eta0 = (beta0 - self.B) / (1 - self.B)
+                eta0 = np.clip(eta0, 0, 1)  # Shi et al. impose 0 <= eta <= 1
+                C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
+            elif self.drift_flux_model == "tang_2019":
+                flooding_fraction = sG0_face_filtered * abs(vM0) / v_sgf0
+                beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
+                beta0 = np.clip(beta0, 0, 1)  # T2Well imposes 0 <= beta0 <= 1
+                eta0 = (beta0 - self.B) / (1 - self.B)
+                eta0 = np.clip(eta0, 0, 1)  # Shi et al. impose 0 <= eta <= 1
+                C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
+            elif self.drift_flux_model == "bai_2023":
+                muG0_face = self.iter_phases_props0_face[6]
+                muL0_face = self.iter_phases_props0_face[7]
+                C00_filtered = np.zeros(len(indices))
+                for i, idx in enumerate(indices):
+                    jG0 = sG0_face[idx] * vG0[idx]
+                    jL0 = sL0_face[idx] * vL0[idx]
+                    if jG0 == 0.0 and jL0 == 0.0:
+                        jG0 = sG0_face[idx] * vM0_all[idx]
+                        jL0 = sL0_face[idx] * vM0_all[idx]
+                    C00_filtered[i] = self.bai_profile_parameter(
+                        sG0_face[idx],
+                        sL0_face[idx],
+                        jG0,
+                        jL0,
+                        abs(vM0_all[idx]),
+                        rhoG0_face[idx],
+                        rhoL0_face[idx],
+                        muG0_face[idx],
+                        muL0_face[idx],
+                        self.bai_theta[idx],
+                    )
 
             C00 = np.ones(num_interfaces)  # C00 all ones first
             self.C00 = np.ones(num_interfaces)
@@ -1297,26 +1754,61 @@ class Pipe:
 
         else:
             self.C00_filtered = 1
-            # self.C00 = np.ones(num_interfaces)
+            self.C00 = np.ones(num_interfaces)
 
     def update_drift_velocity(self):
         num_interfaces = self.geometry.num_interfaces
         # if np.all(self.C00 == 1):
         #     vD0 = np.zeros(num_interfaces)
         # else:
-        if any(0 < sG < 1 for sG in self.iter_phases_props0_face[2]):
-            [_, _, sG0_face, rhoG0_face, rhoL0_face, _, _] = (
+        if any(
+            (sG > 0) and (sL > 0)
+            for sG, sL in zip(
+                self.iter_phases_props0_face[2],
+                self.iter_phases_props0_face[3],
+                strict=False,
+            )
+        ):
+            [_, _, sG0_face, sL0_face, rhoG0_face, rhoL0_face, _, muL0_face] = (
                 self.iter_phases_props0_face
             )
-            [_, vM0, _, _] = self.velocities0
+            [_, vM0, vG0, vL0] = self.velocities0
 
-            mask = (sG0_face > 0) & (sG0_face < 1)
+            mask = (sG0_face > 0) & (sL0_face > 0)
             indices = np.where(mask)[0]
             sG0_face_filtered = sG0_face[indices]
+            sL0_face_filtered = sL0_face[indices]
             rhoG0_face_filtered = rhoG0_face[indices]
             rhoL0_face_filtered = rhoL0_face[indices]
             vM0_filtered = vM0[indices]
             rhoM0_face_filtered = self.rhoM0_face[indices]
+
+            if not self.enable_profile_parameter:
+                # Use this function to evaluate Ku0_filtered and vC0_filtered for drift velocity;
+                # reset C00 afterward because the profile parameter itself is disabled.
+                self.update_profile_parameter()
+                self.C00 = np.ones(num_interfaces)
+                self.C00_filtered = np.ones(len(indices))
+
+            if self.drift_flux_model == "bai_2023":
+                vD0 = np.zeros(num_interfaces)
+                for index, value in enumerate(indices):
+                    jG0 = sG0_face[value] * vG0[value]
+                    jL0 = sL0_face[value] * vL0[value]
+                    if jG0 == 0.0 and jL0 == 0.0:
+                        jG0 = sG0_face[value] * vM0[value]
+                        jL0 = sL0_face[value] * vM0[value]
+                    vD0[value] = self.bai_drift_velocity(
+                        sL0_face[value],
+                        jG0,
+                        rhoG0_face[value],
+                        rhoL0_face[value],
+                        muL0_face[value],
+                        self.IFT_face_filtered[index],
+                        self.bai_theta[value],
+                    )
+                self.vD0 = vD0
+                return
 
             # Calculate the K function to make a smooth transition of drift velocity between
             # the bubble-rise and film-flooding stages
@@ -1342,6 +1834,80 @@ class Pipe:
                         self.C00_filtered[index] * self.Ku0_filtered[index]
                     )
 
+            if self.drift_flux_model == "tang_2019":
+                eps = np.finfo(float).eps
+                safe_rhoG_face = np.maximum(rhoG0_face_filtered, eps)
+                safe_rhoL_face = np.maximum(rhoL0_face_filtered, eps)
+                safe_muL_face = np.maximum(muL0_face[indices], eps)
+
+                tang_params = self.tang_df_params
+                theta_filtered = self.tang_theta[indices]
+
+                denominator_vd = (
+                    self.C00_filtered
+                    * sG0_face_filtered
+                    * np.sqrt(safe_rhoG_face / safe_rhoL_face)
+                    + 1
+                    - self.C00_filtered * sG0_face_filtered
+                )
+                vDv = (
+                    (1 - self.C00_filtered * sG0_face_filtered)
+                    * self.vC0_filtered
+                    * K0_filtered
+                    / np.maximum(denominator_vd, eps)
+                )
+
+                N_l = safe_muL_face / np.maximum(
+                    (safe_rhoL_face - safe_rhoG_face)
+                    * np.power(self.geometry.pipe_ID, 1.5)
+                    * math.sqrt(self.g),
+                    eps,
+                )
+                N_Eo = (
+                    self.g
+                    * (safe_rhoL_face - safe_rhoG_face)
+                    * (self.geometry.pipe_ID**2)
+                    / np.maximum(self.IFT_face_filtered, eps)
+                )
+                vDh = (
+                    np.sqrt(self.g * self.geometry.pipe_ID)
+                    * (
+                        tang_params.N1
+                        - tang_params.N2
+                        * (N_l**tang_params.N4)
+                        / np.maximum(
+                            N_Eo**tang_params.N3,
+                            eps,
+                        )
+                    )
+                    * sG0_face_filtered
+                    * sL0_face_filtered
+                )
+
+                transition_argument = 50.0 * (
+                    np.sin(theta_filtered) + tang_params.m2 * vM0_filtered
+                )
+                transition = 1 - 2 / (
+                    1 + np.exp(np.clip(transition_argument, -700.0, 700.0))
+                )
+                Re_L = (
+                    np.abs(vM0_filtered)
+                    * safe_rhoL_face
+                    * self.geometry.pipe_ID
+                    / safe_muL_face
+                )
+                low_re_multiplier = (1 + 1000.0 / (Re_L + 1000.0)) ** tang_params.m3
+
+                vD_filtered = (
+                    tang_params.m1 * vDv * np.sin(theta_filtered)
+                    + transition * vDh * np.cos(theta_filtered)
+                ) * low_re_multiplier
+
+                vD0 = np.zeros(num_interfaces)
+                vD0[indices] = vD_filtered
+                self.vD0 = vD0
+                return
+
             # Calculate the adjustment function for the mist flow regime
             Xm1 = self.adjustment_func_params.Xm1
             Xm2 = self.adjustment_func_params.Xm2
@@ -1357,7 +1923,7 @@ class Pipe:
                 * rhoG0_face_filtered
                 / (
                     sG0_face_filtered * rhoG0_face_filtered
-                    + (1 - sG0_face_filtered) * rhoL0_face_filtered
+                    + sL0_face_filtered * rhoL0_face_filtered
                 )
             )
 

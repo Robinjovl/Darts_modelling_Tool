@@ -26,7 +26,7 @@ from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
 from model import Model
 
 
-redirect_darts_output('run.log')
+redirect_darts_output("run.log")
 coupled_model = Model()
 coupled_model.reservoir.grav_acceleration_for_spe = 9.80665
 coupled_model.init()
@@ -44,7 +44,7 @@ if 1:
         # 20 / 60 / 24,
         # 20 / 60 / 24,
         # 20 / 60 / 24,
-                 ]
+    ]
 
     for i, dt in enumerate(time_steps):
         if i == 1:

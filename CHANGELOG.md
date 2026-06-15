@@ -5,6 +5,7 @@
 - Package:
   - removed `vtk` dependency ([!314](https://gitlab.com/open-darts/open-darts/-/merge_requests/314))
   - added "viz" option to install `vtk` and `pyvista`; added "all" option to install "viz" and "solvers" groups. Usage pip install open-darts[viz].
+- Switched to Python 3.11 by default (CI/CD pipelines, ReadTheDocs build, `ruff` lint target, and the recommended developer environment); Python 3.10–3.13 remain supported and tested.
 - Breaking changes:
   - Renamed the `rate_type` argument to `rate_ctrl_type` in `WellData.add_inj_rate_control()` and `WellData.add_prd_rate_control()` to make clear that it specifies the type of rate control:
   \

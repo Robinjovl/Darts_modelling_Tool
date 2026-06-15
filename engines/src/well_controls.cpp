@@ -313,8 +313,8 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 			// RHS
 			RHS_well_head[0] = well_ctrl_ops[rate_ctrl_op_idx] * p_diff * well_transmissibility - this->target;
 
-			// Rate ctrl operator derivatives
-			// TODO: If well_state_offset is 1 (production well), state is state of the body block, so we also have
+			// Rate operator derivatives
+			// TODO: If well_state_offset is 1 (production well), state is state of the body block, so we instead have
 			// derivatives of well_ctrl_ops with respect to primary vars of the body block which are not included here.
 			for (int jj = 0; jj < n_vars; jj++)
 			{
