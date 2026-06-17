@@ -252,7 +252,7 @@ def _plot_property_profile(
     ax.grid(True, which="both", linestyle=":", linewidth=0.6, alpha=0.6)
 
     ax.legend(
-        fontsize=6,
+        fontsize=7,
         loc=legend_loc,
         title="Report steps",
         title_fontsize=10,
