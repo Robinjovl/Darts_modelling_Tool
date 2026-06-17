@@ -163,6 +163,12 @@ class Model(CICDModel):
         self.ni_dt_increase_cutoff = 5
         self.ni_dt_decrease_cutoff = 8
         self.n_good_ts = 10
+        # Persistent count of consecutive "good" timesteps (at dt_max with few Newton
+        # iterations). Kept on self so streaks accumulate ACROSS m.run() invocations:
+        # the driver in main.py advances the simulation through many short run() calls,
+        # and a per-call counter could never reach n_good_ts within a single short call,
+        # freezing dt_max even when Newton convergence is trivial.
+        self._n_good_steps = 0
         # Max number of Newton iterations within a timestep that may rely on the PHREEQC
         # dilution fallback before the timestep is abandoned and cut. The fallback handles
         # unreachable, over-concentrated OBL supporting points; if more than this many
@@ -765,8 +771,13 @@ class Model(CICDModel):
         nb = self.reservoir.mesh.n_res_blocks
         max_dx = np.zeros(nc)
 
-        n_good_steps = 0
+        # NOTE: self._n_good_steps is deliberately NOT reset here so the good-step streak
+        # carries across consecutive run() calls (see __init__).
         n_bad_steps = 0
+        # Whether the dt of the step about to be taken was shortened only to land exactly
+        # on stop_time (a reporting boundary). Such a step is not at dt_max by physics, so
+        # it must not break the good-step streak.
+        dt_truncated = False
 
         if np.fabs(data_ts.dt_mult - 1) < 1e-10:
             omega = 0.
@@ -795,26 +806,34 @@ class Model(CICDModel):
                           % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt,
                              dt_mult_new, np.round(max_dx, 3)))
 
-                if fabs(dt - data_ts.dt_max) < 1.e-10 and self.physics.engine.n_newton_last_dt < self.ni_dt_increase_cutoff:
-                    n_good_steps += 1
+                if dt_truncated:
+                    # Boundary-truncated step: it carries no information about whether
+                    # dt_max is sustainable, so leave the streak untouched (neither
+                    # increment nor reset).
+                    pass
+                elif fabs(dt - data_ts.dt_max) < 1.e-10 and self.physics.engine.n_newton_last_dt < self.ni_dt_increase_cutoff:
+                    self._n_good_steps += 1
                 else:
-                    n_good_steps = 0
+                    self._n_good_steps = 0
 
                 if self.physics.engine.n_newton_last_dt > self.ni_dt_decrease_cutoff:
                     data_ts.dt_max /= 2 * data_ts.dt_mult
-                    n_good_steps = 0
+                    self._n_good_steps = 0
 
-                if n_good_steps > self.n_good_ts:
+                if self._n_good_steps > self.n_good_ts:
                     data_ts.dt_max *= 2 * data_ts.dt_mult
-                    n_good_steps = 0
+                    self._n_good_steps = 0
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
 
+                dt_truncated = False
                 if np.fabs(t + dt - stop_time) < data_ts.dt_min:
                     dt = stop_time - t
+                    dt_truncated = True
 
                 if t + dt > stop_time:
                     dt = stop_time - t
+                    dt_truncated = True
                 else:
                     self.prev_dt = dt
 
@@ -840,7 +859,8 @@ class Model(CICDModel):
                 else:
                     dt /= data_ts.dt_mult
                     n_bad_steps += 1
-                n_good_steps = 0
+                self._n_good_steps = 0
+                dt_truncated = False
 
                 if n_bad_steps > 1:
                     data_ts.dt_max /= 2.
