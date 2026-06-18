@@ -1193,8 +1193,25 @@ class PhysicsBase:
 
             if hasattr(self, 'cache_dir'):
                 itor_cache_filename = os.path.join(self.cache_dir, itor_cache_filename)
+            # Fast path: a numpy-array snapshot (.keys.npy / .vals.npy) next to the
+            # pickle restores the whole cache with one bulk read + a single C++ copy,
+            # skipping pickle's per-point object graph and the dict round-trip. Used
+            # when it exists and is at least as new as the pickle; otherwise fall back
+            # to the pickle below and (re)generate the snapshot for next time.
+            fast_loaded_size = self._try_load_fast_cache(itor, itor_cache_filename)
+            if fast_loaded_size is not None:
+                print(
+                    fast_loaded_size,
+                    "points loaded from fast array cache for",
+                    type(itor).__name__,
+                )
+                loaded_size = fast_loaded_size
+                cache_loaded = 1
+                self._last_flushed_sizes[id(itor)] = loaded_size
+                if hasattr(itor, 'clear_point_data_delta'):
+                    itor.clear_point_data_delta()
             # if cache file exists, read it safely
-            if os.path.exists(itor_cache_filename):
+            elif os.path.exists(itor_cache_filename):
                 print(
                     "Reading cached point data for ",
                     type(itor).__name__,
@@ -1251,6 +1268,10 @@ class PhysicsBase:
                             self._flushed_point_keys[id(itor)] = set(
                                 loaded_point_data.keys()
                             )
+                    # Migrate to the fast array snapshot so subsequent runs skip the
+                    # pickle path entirely (the slow part for multi-GB caches).
+                    if cache_loaded and hasattr(itor, 'get_point_data_arrays'):
+                        self._write_fast_cache(itor, itor_cache_filename)
                 else:
                     print("Cached point data is invalid, ignoring.")
             if mode == 'adaptive':
@@ -1445,6 +1466,9 @@ class PhysicsBase:
             return
         self._cache_finalized = True
         self.write_cache()
+        # Refresh the fast numpy-array snapshots from the just-flushed pickle so the
+        # next run loads via the bulk array path instead of unpickling.
+        self._refresh_fast_caches()
 
     def _install_signal_handlers(self):
         # Flush OBL cache on SIGTERM/SIGINT before re-raising, so adaptive point data
@@ -1518,6 +1542,144 @@ class PhysicsBase:
             try:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # Fast binary cache (numpy arrays) alongside the legacy pickle.
+    #
+    # The pickle (base + append-only delta frames) stays the source of truth and the
+    # incremental write target. The ``.keys.npy`` / ``.vals.npy`` snapshot is a derived,
+    # whole-cache image that loads via one bulk read + a single C++ copy
+    # (``set_point_data_arrays``), bypassing pickle's per-point object graph and the
+    # dict round-trip. It is regenerated from the pickle whenever it is missing or older
+    # than the pickle, so an interrupted snapshot write can never corrupt the
+    # authoritative cache — a stale/partial snapshot is simply ignored on the next load.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _fast_cache_paths(pkl_path: str) -> tuple[str, str]:
+        base = pkl_path[:-4] if pkl_path.endswith('.pkl') else pkl_path
+        return base + '.keys.npy', base + '.vals.npy'
+
+    def _fast_cache_fresh(self, pkl_path: str) -> bool:
+        """True iff both snapshot arrays exist and are at least as new as the pickle."""
+        keys_path, vals_path = self._fast_cache_paths(pkl_path)
+        if not (os.path.exists(keys_path) and os.path.exists(vals_path)):
+            return False
+        if not os.path.exists(pkl_path):
+            # No pickle to compare against: trust the snapshot.
+            return True
+        snapshot_mtime = min(os.path.getmtime(keys_path), os.path.getmtime(vals_path))
+        return snapshot_mtime >= os.path.getmtime(pkl_path)
+
+    def _try_load_fast_cache(self, itor, pkl_path: str) -> int | None:
+        """
+        Load the cache from the numpy-array snapshot when it exists and is at least as
+        new as the pickle.
+
+        :returns: number of points loaded, or ``None`` to tell the caller to fall back
+                  to the pickle path (snapshot missing/stale, interpolator lacks bulk
+                  array support, or the load raised).
+        """
+        if not hasattr(itor, 'set_point_data_arrays'):
+            return None
+        if not self._fast_cache_fresh(pkl_path):
+            return None
+        keys_path, vals_path = self._fast_cache_paths(pkl_path)
+        try:
+            # keys are small (int32); vals can be many GB, so mmap them to keep peak
+            # RAM low — the C++ setter reads sequentially and faults pages in on demand.
+            keys = np.load(keys_path)
+            vals = np.load(vals_path, mmap_mode='r')
+            itor.set_point_data_arrays(keys, vals)
+        except Exception as err:
+            print(
+                "Fast array cache load failed for",
+                pkl_path,
+                "- falling back to pickle -",
+                type(err).__name__,
+                str(err),
+            )
+            return None
+        if hasattr(itor, 'point_data_size'):
+            return itor.point_data_size()
+        return int(keys.shape[0])
+
+    def _write_fast_cache(self, itor, pkl_path: str) -> None:
+        """
+        Refresh the numpy-array snapshot next to ``pkl_path`` from the interpolator's
+        current cache. Best-effort: any failure here is logged and never disturbs the
+        authoritative pickle.
+        """
+        if not hasattr(itor, 'get_point_data_arrays'):
+            return
+        try:
+            keys, vals = itor.get_point_data_arrays()
+        except Exception as err:
+            print(
+                "Could not export OBL arrays for fast cache -",
+                type(err).__name__,
+                str(err),
+            )
+            return
+        keys_path, vals_path = self._fast_cache_paths(pkl_path)
+        try:
+            self._atomic_npy_save(keys_path, keys)
+            self._atomic_npy_save(vals_path, vals)
+        except Exception as err:
+            print(
+                "Could not write fast array cache for",
+                pkl_path,
+                "-",
+                type(err).__name__,
+                str(err),
+            )
+
+    def _atomic_npy_save(self, final_path: str, arr: np.ndarray) -> None:
+        """Atomically write a ``.npy`` via a temp file + ``os.replace`` (mirrors _atomic_pickle_dump)."""
+        directory = os.path.dirname(final_path) or "."
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except Exception:
+            pass
+        fd, tmp_path = tempfile.mkstemp(
+            prefix=os.path.basename(final_path) + ".tmp.", suffix=".npy", dir=directory
+        )
+        os.close(fd)
+        try:
+            with open(tmp_path, "wb") as fp:
+                # tmp_path already ends in .npy, so np.save does not append a suffix.
+                np.save(fp, arr)
+                fp.flush()
+                try:
+                    os.fsync(fp.fileno())
+                except Exception:
+                    pass
+            os.replace(tmp_path, final_path)
+        finally:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+
+    def _refresh_fast_caches(self) -> None:
+        """
+        Regenerate any numpy-array snapshots that are stale relative to their pickle.
+
+        Called on cache finalization (after :meth:`write_cache` has flushed the pickle),
+        so the snapshot reflects the points appended during this run. Snapshots already
+        in sync with the pickle are skipped to avoid rewriting unchanged multi-GB images.
+        """
+        for itor, fname in getattr(self, 'created_itors', None) or []:
+            filename = self._cache_filename(fname)
+            try:
+                if self._fast_cache_fresh(filename):
+                    continue
+                if not os.path.exists(filename):
+                    # Nothing was persisted to the pickle (e.g. empty cache); skip.
+                    continue
+                self._write_fast_cache(itor, filename)
             except Exception:
                 pass
 

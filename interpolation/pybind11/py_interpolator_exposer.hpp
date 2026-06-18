@@ -3,6 +3,8 @@
 #include "py_globals_interpolation.h"
 #include "recursive_exposers.h"
 #include <pybind11/stl.h>
+#include <pybind11/numpy.h>
+#include <type_traits>
 
 #include "multilinear_static_cpu_interpolator.hpp"
 #include "multilinear_adaptive_cpu_interpolator.hpp"
@@ -15,6 +17,84 @@
 #endif //WITH_GPU
 
 namespace py = pybind11;
+
+// ---------------------------------------------------------------------------
+// Bulk array cache I/O for the adaptive interpolators.
+//
+// The tuple-keyed `point_data_full` property is correct but spends O(N) Python
+// objects on both read and write (one boxed tuple per key and per value, plus a
+// dict entry). For multi-GB OBL caches that boxing dominates the load time. These
+// helpers move the entire cache as two contiguous numpy arrays instead:
+//   keys : int32   [N, N_DIMS]   (signed multi-index of each supporting point)
+//   vals : float64 [N, N_OPS]    (operator values at that point)
+// so Python can persist/restore the cache via np.save / np.load(mmap_mode='r')
+// with a single bulk memcpy and no per-point boxing. The value scalar type is
+// taken from the map's mapped_type so this works for both the value-templated
+// multilinear interpolators (float/double) and the always-double linear one.
+// ---------------------------------------------------------------------------
+template <typename interpolator_class, uint8_t N_DIMS, uint16_t N_OPS>
+py::tuple bulk_get_point_data_arrays(const interpolator_class &self)
+{
+  const size_t n = self.point_data.size();
+  py::array_t<int32_t> keys({static_cast<py::ssize_t>(n), static_cast<py::ssize_t>(N_DIMS)});
+  py::array_t<double> vals({static_cast<py::ssize_t>(n), static_cast<py::ssize_t>(N_OPS)});
+  int32_t *kp = keys.mutable_data();
+  double *vp = vals.mutable_data();
+  size_t i = 0;
+  for (const auto &kv : self.point_data)
+  {
+    int32_t *krow = kp + i * static_cast<size_t>(N_DIMS);
+    for (uint8_t d = 0; d < N_DIMS; ++d)
+      krow[d] = kv.first.idx[d];
+    double *vrow = vp + i * static_cast<size_t>(N_OPS);
+    for (uint16_t op = 0; op < N_OPS; ++op)
+      vrow[op] = static_cast<double>(kv.second[op]);
+    ++i;
+  }
+  return py::make_tuple(std::move(keys), std::move(vals));
+}
+
+template <typename interpolator_class, uint8_t N_DIMS, uint16_t N_OPS>
+void bulk_set_point_data_arrays(interpolator_class &self,
+                                py::array_t<int32_t, py::array::c_style | py::array::forcecast> keys,
+                                py::array_t<double, py::array::c_style | py::array::forcecast> vals)
+{
+  py::buffer_info kb = keys.request();
+  py::buffer_info vb = vals.request();
+  if (kb.ndim != 2 || kb.shape[1] != static_cast<py::ssize_t>(N_DIMS))
+    throw std::invalid_argument("set_point_data_arrays: keys must have shape (N, N_DIMS)");
+  if (vb.ndim != 2 || vb.shape[1] != static_cast<py::ssize_t>(N_OPS))
+    throw std::invalid_argument("set_point_data_arrays: vals must have shape (N, N_OPS)");
+  if (kb.shape[0] != vb.shape[0])
+    throw std::invalid_argument("set_point_data_arrays: keys and vals must have equal row counts");
+
+  using key_t = typename interpolator_class::key_t;
+  using mapped_t = typename std::decay_t<decltype(self.point_data)>::mapped_type;
+  using scalar_t = typename mapped_t::value_type;
+
+  const size_t n = static_cast<size_t>(kb.shape[0]);
+  const int32_t *kp = static_cast<const int32_t *>(kb.ptr);
+  const double *vp = static_cast<const double *>(vb.ptr);
+
+  // Reload semantics mirror the point_data_full setter: replace the cache wholesale
+  // and reset the dirty trackers (a fresh reload has no unpersisted points yet).
+  self.point_data.clear();
+  self.dirty_point_data.clear();
+  self.dirty_point_epochs.clear();
+  self.point_data.reserve(n);
+  for (size_t i = 0; i < n; ++i)
+  {
+    key_t k;
+    const int32_t *krow = kp + i * static_cast<size_t>(N_DIMS);
+    for (uint8_t d = 0; d < N_DIMS; ++d)
+      k.idx[d] = krow[d];
+    mapped_t v;
+    const double *vrow = vp + i * static_cast<size_t>(N_OPS);
+    for (uint16_t op = 0; op < N_OPS; ++op)
+      v[op] = static_cast<scalar_t>(vrow[op]);
+    self.point_data.emplace(k, std::move(v));
+  }
+}
 
 template <uint8_t N_DIMS, uint16_t N_OPS>
 struct interpolator_exposer
@@ -115,6 +195,22 @@ struct interpolator_exposer
                 self.point_data.emplace(k, v);
               }
             })
+          // Fast bulk array cache I/O (see bulk_*_point_data_arrays above): same cache
+          // contents as point_data_full, but moved as contiguous numpy arrays so large
+          // OBL caches load/save without per-point Python boxing.
+          .def("get_point_data_arrays",
+            [](const interpolator_class &self) {
+              return bulk_get_point_data_arrays<interpolator_class, N_DIMS, N_OPS>(self);
+            },
+            "Export the whole cache as (keys:int32[N,N_DIMS], vals:float64[N,N_OPS]) arrays")
+          .def("set_point_data_arrays",
+            [](interpolator_class &self,
+               py::array_t<int32_t, py::array::c_style | py::array::forcecast> keys,
+               py::array_t<double, py::array::c_style | py::array::forcecast> vals) {
+              bulk_set_point_data_arrays<interpolator_class, N_DIMS, N_OPS>(self, keys, vals);
+            },
+            "Bulk-load the cache from (keys, vals) numpy arrays (replaces existing cache)",
+            "keys"_a, "vals"_a)
           .def("get_n_cached_points", &interpolator_class::get_n_cached_points,
             "Number of supporting points currently in the adaptive cache")
           .def("get_n_cached_hypercubes", &interpolator_class::get_n_cached_hypercubes,
@@ -225,6 +321,20 @@ struct interpolator_exposer
                 self.point_data.emplace(k, v);
               }
             })
+          // Fast bulk array cache I/O (see bulk_*_point_data_arrays above).
+          .def("get_point_data_arrays",
+            [](const interpolator_class &self) {
+              return bulk_get_point_data_arrays<interpolator_class, N_DIMS, N_OPS>(self);
+            },
+            "Export the whole cache as (keys:int32[N,N_DIMS], vals:float64[N,N_OPS]) arrays")
+          .def("set_point_data_arrays",
+            [](interpolator_class &self,
+               py::array_t<int32_t, py::array::c_style | py::array::forcecast> keys,
+               py::array_t<double, py::array::c_style | py::array::forcecast> vals) {
+              bulk_set_point_data_arrays<interpolator_class, N_DIMS, N_OPS>(self, keys, vals);
+            },
+            "Bulk-load the cache from (keys, vals) numpy arrays (replaces existing cache)",
+            "keys"_a, "vals"_a)
           .def("get_n_cached_points", &interpolator_class::get_n_cached_points,
             "Number of supporting points currently in the adaptive cache (in-bounds + out-of-bounds)")
           // Append-only cache hooks (from development): persist only newly evaluated
@@ -337,6 +447,20 @@ struct interpolator_exposer
                 self.point_data.emplace(k, v);
               }
             })
+          // Fast bulk array cache I/O (see bulk_*_point_data_arrays above).
+          .def("get_point_data_arrays",
+            [](const interpolator_class &self) {
+              return bulk_get_point_data_arrays<interpolator_class, N_DIMS, N_OPS>(self);
+            },
+            "Export the whole cache as (keys:int32[N,N_DIMS], vals:float64[N,N_OPS]) arrays")
+          .def("set_point_data_arrays",
+            [](interpolator_class &self,
+               py::array_t<int32_t, py::array::c_style | py::array::forcecast> keys,
+               py::array_t<double, py::array::c_style | py::array::forcecast> vals) {
+              bulk_set_point_data_arrays<interpolator_class, N_DIMS, N_OPS>(self, keys, vals);
+            },
+            "Bulk-load the cache from (keys, vals) numpy arrays (replaces existing cache)",
+            "keys"_a, "vals"_a)
           .def("get_n_cached_points", &interpolator_class::get_n_cached_points)
           .def("get_n_cached_hypercubes", &interpolator_class::get_n_cached_hypercubes)
           // Append-only cache hooks (from development): mirror the CPU adaptive
