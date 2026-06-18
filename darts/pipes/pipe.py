@@ -1,12 +1,12 @@
 """
-Differences between this script and the DFM velocity evaluator in the standalone well model:
+Differences between this script and the DFM velocity evaluator in DWell:
 - https://gitlab.com/open-darts/open-darts/-/commit/b0aa26cb9beb90a10bb1b4e3db5291399607f46d
 Revert the density averaging method here (now it is similar to DWell):
 - https://gitlab.com/open-darts/open-darts/-/commit/0c584d57e8cd20c270057763f3b6bc916cbc695e
 
 Notes:
-    - The kinetic energy is not added to the energy conservation equation of the coupled model yet, while it was in the
-    standalone wellbore model.
+    - The kinetic energy is not added to the energy conservation equation of the coupled well-reservoir model yet,
+    while it is in DWell.
 
     - When having a DFM pipe:
         - Use 'G' as the name of the gaseous phase
@@ -532,8 +532,9 @@ class Pipe:
         """
         dt = dt * 24 * 60 * 60  # convert day to second
 
-        num_segments = self.geometry.num_segments
-        num_interfaces = self.geometry.num_interfaces
+        geom = self.geometry
+        num_segments = geom.num_segments
+        num_interfaces = geom.num_interfaces
         pc = self.physics.property_containers[0]
         Mw_fl = np.asarray(pc.Mw[: pc.nc_fl])
         n_vars = self.physics.n_vars
@@ -1061,12 +1062,10 @@ class Pipe:
 
         self.calc_mixture_densities(iter_counter, flag)
 
-        pg = self.geometry
-
         if iter_counter == 0 and flag == 1:
             # To increase the numerical stability, you may need to use an upwind scheme for the momentum flux like
             # in the paper "A transient geothermal wellbore simulator (2023)"
-            delta_interface0 = pg.pipe_internal_A * (
+            delta_interface0 = geom.pipe_internal_A * (
                 rhoG0_face * sG0_face * vG0**2 + rhoL0_face * sL0_face * vL0**2
             )
 
@@ -1092,7 +1091,7 @@ class Pipe:
                     # Need to see how we can get the overall composition of the source block in kmol/kmol.
                     mass_rate = 0
 
-                pipe_internal_A = self.geometry.pipe_internal_A
+                pipe_internal_A = geom.pipe_internal_A
 
                 # If UpstreamRampUpRate is used, which calculates boundary momentum using the properties of the boundary itself:
                 if hasattr(sink_source, "get_boundary_momentum_flux"):
@@ -1171,24 +1170,26 @@ class Pipe:
             )
 
             delta_segment0 = (
-                pg.pipe_internal_A * delta_interface0[0:-1] / pg.D[0:-1]
-                + pg.pipe_internal_A * delta_interface0[1:] / pg.D[1:]
-            ) / (pg.pipe_internal_A / pg.D[0:-1] + pg.pipe_internal_A / pg.D[1:])
+                geom.pipe_internal_A * delta_interface0[0:-1] / geom.D[0:-1]
+                + geom.pipe_internal_A * delta_interface0[1:] / geom.D[1:]
+            ) / (
+                geom.pipe_internal_A / geom.D[0:-1] + geom.pipe_internal_A / geom.D[1:]
+            )
             self.delta_m0 = delta_segment0[0:-1]
             self.delta_p0 = delta_segment0[1:]
 
             ff0 = self.calc_Fanning_friction_factor()
             self.w0 = 1 / (
-                1 / dt + pg.perimeter * ff0 * abs(vM0) / (2 * pg.pipe_internal_A)
+                1 / dt + geom.perimeter * ff0 * abs(vM0) / (2 * geom.pipe_internal_A)
             )
 
         self.rhoM_vM = (
-            -self.w0 * (p_p - p_m) / (pg.z_p - pg.z_m)
+            -self.w0 * (p_p - p_m) / (geom.z_p - geom.z_m)
             + self.w0 * self.g_cos_theta * self.rhoM_face
             - self.w0
             * (
                 (self.delta_p0 - self.delta_m0)
-                / (pg.pipe_internal_A * (pg.z_p - pg.z_m))
+                / (geom.pipe_internal_A * (geom.z_p - geom.z_m))
                 - self.rhoM0_face * vM0 / dt
             )
         )
@@ -1197,7 +1198,7 @@ class Pipe:
             self.rhoM_vM_der = (
                 -self.w0[:, None]
                 * (p_p_der - p_m_der)
-                / (pg.z_p[:, None] - pg.z_m[:, None])
+                / (geom.z_p[:, None] - geom.z_m[:, None])
                 + self.w0[:, None] * self.g_cos_theta[:, None] * self.rhoM_face_der
             )
 
@@ -1364,7 +1365,7 @@ class Pipe:
             )
 
     def calc_Fanning_friction_factor(self):
-        pg = self.geometry
+        geom = self.geometry
 
         """ Start calculating the Reynolds number """
         _, _, sG0, sL0, _, _, _, _ = self.iter_phases_props0
@@ -1390,12 +1391,12 @@ class Pipe:
         # denominator_2 = np.nan_to_num(denominator_2, nan=0.0)
         # self.muM0 = 1 / (denominator_1 + denominator_2)
 
-        Re0 = self.calc_Reynolds_number(vM0, self.rhoM0_face, self.muM0, pg.pipe_ID)
+        Re0 = self.calc_Reynolds_number(vM0, self.rhoM0_face, self.muM0, geom.pipe_ID)
         """ End calculating the Reynolds number """
 
-        self.ff0 = np.zeros(pg.num_interfaces)
+        self.ff0 = np.zeros(geom.num_interfaces)
         if self.friction_model == "wang_2014":
-            relative_roughness = pg.wall_roughness / pg.pipe_ID
+            relative_roughness = geom.wall_roughness / geom.pipe_ID
             for i, Re in enumerate(Re0):
                 self.ff0[i] = (
                     self.wang_darcy_friction_factor(Re, relative_roughness) / 4.0
@@ -1410,7 +1411,7 @@ class Pipe:
         turb_idx = np.nonzero(Re0 > 2400.0)[0]
 
         initial_guess = 0.005
-        relative_roughness = pg.wall_roughness / pg.pipe_ID
+        relative_roughness = geom.wall_roughness / geom.pipe_ID
         for i in turb_idx:
             # Colebrook-White correlation (implicit method)
             self.ff0[i] = fsolve(
@@ -1460,7 +1461,7 @@ class Pipe:
 
         sqrt_f = math.sqrt(f)
         return 1.0 / sqrt_f + 4.0 * math.log10(
-            relative_roughness / 3.7065 + (1.2613 / (Re * sqrt_f))
+            relative_roughness / 3.7065 + 1.2613 / (Re * sqrt_f)
         )
 
     @staticmethod
@@ -1715,8 +1716,8 @@ class Pipe:
         )
 
     def update_profile_parameter(self):
-        pg = self.geometry
-        num_interfaces = self.geometry.num_interfaces
+        geom = self.geometry
+        num_interfaces = geom.num_interfaces
         [rhoM0_vM0, vM0_all, vG0, vL0] = self.velocities0
         [
             xG_mass0_face,
@@ -1759,7 +1760,7 @@ class Pipe:
 
             # Calculate C00 from the solution of the previous time step
             vM0 = rhoM0_vM0_filtered / rhoM0_face_filtered
-            NB0 = (pg.pipe_ID**2) * (
+            NB0 = (geom.pipe_ID**2) * (
                 self.g * (rhoL0_face_filtered - rhoG0_face_filtered) / IFT0_face
             )
             if self.drift_flux_model == "tang_2019":
@@ -1839,7 +1840,8 @@ class Pipe:
             self.C00 = np.ones(num_interfaces)
 
     def update_drift_velocity(self):
-        num_interfaces = self.geometry.num_interfaces
+        geom = self.geometry
+        num_interfaces = geom.num_interfaces
         # if np.all(self.C00 == 1):
         #     vD0 = np.zeros(num_interfaces)
         # else:
@@ -1941,18 +1943,18 @@ class Pipe:
 
                 N_l = safe_muL_face / np.maximum(
                     (safe_rhoL_face - safe_rhoG_face)
-                    * np.power(self.geometry.pipe_ID, 1.5)
+                    * np.power(geom.pipe_ID, 1.5)
                     * math.sqrt(self.g),
                     eps,
                 )
                 N_Eo = (
                     self.g
                     * (safe_rhoL_face - safe_rhoG_face)
-                    * (self.geometry.pipe_ID**2)
+                    * (geom.pipe_ID**2)
                     / np.maximum(self.IFT_face_filtered, eps)
                 )
                 vDh = (
-                    np.sqrt(self.g * self.geometry.pipe_ID)
+                    np.sqrt(self.g * geom.pipe_ID)
                     * (
                         tang_params.N1
                         - tang_params.N2
@@ -1974,10 +1976,7 @@ class Pipe:
                     1 + np.exp(np.clip(transition_argument, -700.0, 700.0))
                 )
                 Re_L = (
-                    np.abs(vM0_filtered)
-                    * safe_rhoL_face
-                    * self.geometry.pipe_ID
-                    / safe_muL_face
+                    np.abs(vM0_filtered) * safe_rhoL_face * geom.pipe_ID / safe_muL_face
                 )
                 low_re_multiplier = (1 + 1000.0 / (Re_L + 1000.0)) ** tang_params.m3
 
