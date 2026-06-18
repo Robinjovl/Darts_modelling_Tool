@@ -111,6 +111,12 @@ class DartsModel:
         # Create member variable wells (it is needed only for DFM wells)
         self.wells = None
 
+        # Single source of truth for verbosity. Methods with a ``verbose`` parameter
+        # default to ``None`` and fall back to this attribute, so the level is set once
+        # (here or by the caller) instead of being re-supplied at every call. See the
+        # VERBOSE_* constants for the meaning of each level.
+        self.verbose = self.VERBOSE_DEFAULT
+
         # Create time_node object for time record
         self.timer = timer_node()
 
@@ -183,7 +189,7 @@ class DartsModel:
         discr_type: str = "tpfa",
         platform: str = "cpu",
         restart: bool = False,
-        verbose: bool = False,
+        verbose: int | None = None,
         itor_mode: str = "adaptive",
         itor_type: str = "multilinear",
         is_barycentric: bool = False,
@@ -206,8 +212,9 @@ class DartsModel:
         :type platform: str
         :param restart: Boolean to check if existing file should be overwritten or appended
         :type restart: bool
-        :param verbose: Switch for verbose
-        :type verbose: bool
+        :param verbose: Verbosity level (``int``; ``bool`` accepted for backward
+            compatibility). Defaults to ``None``, meaning inherit :attr:`self.verbose`.
+        :type verbose: int
         :param itor_mode: specifies either 'static' or 'adaptive' interpolator
         :type itor_mode: str
         :param itor_type: specifies either 'linear' or 'multilinear' interpolator
@@ -224,9 +231,11 @@ class DartsModel:
         :param n_workers: Number of worker processes for parallel evaluation (default: os.cpu_count())
         :type n_workers: int
         """
+        verbose = self.verbose if verbose is None else verbose
+
         # Initialize reservoir and Mesh object
         assert self.reservoir is not None, "Reservoir object has not been defined"
-        self.reservoir.init_reservoir(verbose)
+        self.reservoir.init_reservoir(bool(verbose))
         self.set_wells()
         self.has_dfm_well = any(
             well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
@@ -250,7 +259,7 @@ class DartsModel:
         self.physics.init_physics(
             discr_type=discr_type,
             platform=platform,
-            verbose=verbose,
+            verbose=bool(verbose),
             itor_mode=itor_mode,
             itor_type=itor_type,
             is_barycentric=is_barycentric,
@@ -419,7 +428,7 @@ class DartsModel:
         precision: str = "d",
         compression: str = "gzip",
         compression_level: int = 0,
-        verbose: bool = False,
+        verbose: int | None = None,
     ):
         """
         Function to initialize output class
@@ -432,8 +441,10 @@ class DartsModel:
         :param precision: data precision of saved data ('s' single precision, 'd' double precision).
         :param compression: default 'gzip'.
         :param compression_level: 0 (no compression, fast) and 9 (maximum compression, slow), default is 1.
-        :param verbose: boolean flag to enable verbose mode.
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`.
         """
+        verbose = self.verbose if verbose is None else verbose
 
         self.output_folder = output_folder
         self.sol_filename = sol_filename
@@ -458,21 +469,23 @@ class DartsModel:
             precision=precision,
             compression=compression,
             compression_level=compression_level,
-            verbose=verbose,
+            verbose=bool(verbose),
             wells=self.wells,
             has_dfm_well=self.has_dfm_well,
         )
 
         return
 
-    def set_wells(self, verbose: bool = False):
+    def set_wells(self, verbose: int | None = None):
         """
         Function to define wells. The default method of DartsModel.set_wells() calls Reservoir.set_wells().
 
-        :param verbose: Switch for verbose
-        :type verbose: bool
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`.
+        :type verbose: int
         """
-        self.reservoir.set_wells(verbose)
+        verbose = self.verbose if verbose is None else verbose
+        self.reservoir.set_wells(bool(verbose))
         return
 
     def set_initial_conditions(self):
@@ -703,7 +716,7 @@ class DartsModel:
         save_well_data: bool = True,
         save_well_data_after_run: bool = True,
         save_reservoir_data: bool = True,
-        verbose: int = True,
+        verbose: int | None = None,
     ):
         """
         Run simulation for specified time. Optional argument to specify dt to restart simulation with.
@@ -712,7 +725,8 @@ class DartsModel:
         :type days: float
         :param restart_dt: Restart value for timestep size [days, optional]
         :type restart_dt: float
-        :param verbose: Verbosity level. Accepts a bool for backward compatibility
+        :param verbose: Verbosity level. Defaults to ``None``, meaning inherit
+            :attr:`self.verbose`. Accepts a bool for backward compatibility
             (``False``/``True`` map to ``0``/``1``). Levels:
             ``0`` (:attr:`VERBOSE_SILENT`) no output;
             ``1`` (:attr:`VERBOSE_DEFAULT`) per-timestep lines + end-of-run statistics;
@@ -726,6 +740,8 @@ class DartsModel:
         :param save_reservoir_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
         :type save_reservoir_data: bool
         """
+        verbose = self.verbose if verbose is None else verbose
+
         assert hasattr(self, 'output'), (
             "self.output does not exist, please call m.set_output() after m.init()"
         )
@@ -882,7 +898,7 @@ class DartsModel:
 
         return 0
 
-    def run_timestep(self, dt: float, t: float, verbose: bool = True):
+    def run_timestep(self, dt: float, t: float, verbose: int | None = None):
         """
         Solve Newton loop for specified timestep
 
@@ -890,9 +906,11 @@ class DartsModel:
         :type dt: float
         :param t: Current time [days]
         :type t: float
-        :param verbose: Switch for verbose, default is True
-        :type verbose: bool
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`.
+        :type verbose: int
         """
+        verbose = self.verbose if verbose is None else verbose
         assert dt > 0, "Time step size must be a positive value!"
 
         max_newt = self.data_ts.newton_max_iter
@@ -1114,7 +1132,7 @@ class DartsModel:
         t: float,
         coef: np.ndarray,
         history: list | np.ndarray,
-        verbose: bool = False,
+        verbose: int | None = None,
         iter_counter: int = None,
     ):
         """
@@ -1124,13 +1142,16 @@ class DartsModel:
         :param t: Current time.
         :param coef: Array of current coefficients used in the line search.
         :param history: Historical residuals, where each entry contains residuals for 'r_mat' and 'r_well'.
-        :param verbose: If True, prints detailed debug information during execution.
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`. Nonzero prints detailed
+            line-search debug information during execution.
         :param iter_counter: Newton-Raphson iteration counter for the current time step. Used by DFM well velocity updates.
 
         :return: Tuple containing the minimum residual achieved, a placeholder value (0.0), and the coefficient
                  corresponding to the minimum residual.
         :rtype: tuple(float, float, float)
         """
+        verbose = self.verbose if verbose is None else verbose
         newton_iter_counter = (
             self.physics.engine.n_newton_last_dt
             if iter_counter is None
@@ -1375,11 +1396,14 @@ class DartsModel:
         for name in list(vars(self).keys()):
             delattr(self, name)
 
-    def set_well_controls_idata(self, time: float = 0.0, verbose=True):
+    def set_well_controls_idata(self, time: float = 0.0, verbose: int | None = None):
         """
         :param time: simulation time, [days]
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`.
         :return:
         """
+        verbose = self.verbose if verbose is None else verbose
         from darts.engines import well_control_iface
 
         # store next control index for each well in idata.well_data.wells_next_control_idx
