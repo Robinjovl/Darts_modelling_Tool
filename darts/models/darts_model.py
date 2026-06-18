@@ -76,6 +76,13 @@ class DartsModel:
     :type params: :class:`darts.engines.sim_params`
     """
 
+    # Verbosity levels accepted by :meth:`run` (and other ``verbose`` switches).
+    # ``verbose`` is an integer; legacy ``bool`` values map to 0/1 transparently
+    # (Python ``False``/``True`` are ``0``/``1``), so existing callers are unaffected.
+    VERBOSE_SILENT = 0  # no per-timestep or end-of-run output
+    VERBOSE_DEFAULT = 1  # per-timestep lines + end-of-run statistics (legacy True)
+    VERBOSE_TIMERS = 2  # additionally print timers at the end of every run() call
+
     def __new__(cls, *args, **kwargs):
         """
         Capture the constructor arguments so the model can be reconstructed in a
@@ -696,7 +703,7 @@ class DartsModel:
         save_well_data: bool = True,
         save_well_data_after_run: bool = True,
         save_reservoir_data: bool = True,
-        verbose: bool = True,
+        verbose: int = True,
     ):
         """
         Run simulation for specified time. Optional argument to specify dt to restart simulation with.
@@ -705,8 +712,14 @@ class DartsModel:
         :type days: float
         :param restart_dt: Restart value for timestep size [days, optional]
         :type restart_dt: float
-        :param verbose: Switch for verbose, default is True
-        :type verbose: bool
+        :param verbose: Verbosity level. Accepts a bool for backward compatibility
+            (``False``/``True`` map to ``0``/``1``). Levels:
+            ``0`` (:attr:`VERBOSE_SILENT`) no output;
+            ``1`` (:attr:`VERBOSE_DEFAULT`) per-timestep lines + end-of-run statistics;
+            ``>=2`` (:attr:`VERBOSE_TIMERS`) additionally print timers at the end of
+            every ``run()`` invocation (otherwise timers are only printed when
+            :meth:`print_timers` is called manually, usually from ``main.py``).
+        :type verbose: int
         :param save_well_data: if True save states of well blocks at every time step to 'well_data.h5', default is True
         :type save_well_data: bool
         :param save_well_data_after_run: Switch to save well data only after runtime of `days`
@@ -860,6 +873,12 @@ class DartsModel:
                 f"NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), "
                 f"LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d}) -----"
             )
+
+        # At higher verbosity, print the timer breakdown at the end of every run()
+        # invocation (the default behaviour only prints timers when print_timers() is
+        # called explicitly, typically from main.py after the full simulation).
+        if verbose >= self.VERBOSE_TIMERS:
+            self.print_timers()
 
         return 0
 
