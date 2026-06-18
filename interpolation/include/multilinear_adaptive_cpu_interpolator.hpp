@@ -103,6 +103,23 @@ public:
    std::unordered_set<key_t, key_hash_t> dirty_point_data;
 
    /**
+    * @brief Evaluation epoch of each dirty (unflushed) supporting point: maps the
+    * point multi-index key to the batch-interpolation index (≈ time step /
+    * nonlinear iteration) at which it was first materialized. Persisted next to the
+    * append-only delta so the OBL cache file records when each point entered the
+    * sampling, allowing offline reconstruction of how the active hypercubes evolve.
+    * Cleared together with dirty_point_data on every external cache flush.
+    */
+   std::unordered_map<key_t, uint64_t, key_hash_t> dirty_point_epochs;
+
+   /**
+    * @brief Number of batch interpolation calls processed so far. Incremented once
+    * at the start of every interpolate_with_derivatives() (one nonlinear-iteration
+    * assembly of this operator set) and used to stamp newly materialized points.
+    */
+   uint64_t eval_index = 0;
+
+   /**
     * @brief Single-point interpolation; overrides base to use multi-index path.
     */
    int interpolate(const std::vector<double> &point, std::vector<double> &values) override;

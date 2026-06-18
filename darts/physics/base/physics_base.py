@@ -81,6 +81,12 @@ class PhysicsBase:
 
     # Append-only cache frames keep the legacy base pickle while avoiding full rewrites.
     _OBL_DELTA_MAGIC = b'DARTS_OBL_DELTA_V1\n'
+    # Sidecar frames recording, for the points written in the preceding base/delta write,
+    # the evaluation epoch (batch-interpolation / nonlinear-iteration index) at which each
+    # point was first materialized. Same length as _OBL_DELTA_MAGIC so a single framed
+    # reader handles both. Epoch frames are metadata: they are validated and skipped by the
+    # point-data loader and read separately via load_point_epochs() for offline analysis.
+    _OBL_EPOCH_MAGIC = b'DARTS_OBL_EPOCH_V1\n'
     _OBL_DELTA_HEADER = struct.Struct('<QI')
 
     @total_ordering
@@ -1334,6 +1340,10 @@ class PhysicsBase:
                     if hasattr(itor, "point_data_full")
                     else itor.point_data
                 )
+                # Per-point evaluation epochs for the points about to be written. Captured
+                # before _mark_point_data_*_flushed() clears the dirty trackers. Empty for
+                # interpolators without native epoch tracking (no epoch frame is written).
+                epochs = self._point_data_epoch_delta(itor)
                 if not os.path.exists(filename):
                     # First flush writes the full pickle (backward-compatible cache layout).
                     print(
@@ -1343,6 +1353,8 @@ class PhysicsBase:
                         filename,
                     )
                     self._atomic_pickle_dump(point_data_view, filename)
+                    if epochs:
+                        self._append_pickle_epoch(epochs, filename)
                     self._mark_point_data_flushed(itor, point_data_view, cur_size)
                     continue
 
@@ -1359,6 +1371,8 @@ class PhysicsBase:
                     filename,
                 )
                 self._append_pickle_delta(delta, filename)
+                if epochs:
+                    self._append_pickle_epoch(epochs, filename)
                 self._mark_point_data_delta_flushed(itor, delta, cur_size)
             finally:
                 if prev_int is not None:
@@ -1394,6 +1408,18 @@ class PhysicsBase:
         known = self._flushed_point_keys.setdefault(itor_id, set())
         point_data = itor.point_data
         return {key: value for key, value in point_data.items() if key not in known}
+
+    @staticmethod
+    def _point_data_epoch_delta(itor) -> dict:
+        # Evaluation epoch (batch-interpolation / nonlinear-iteration index) for each
+        # point materialized since the last flush, keyed identically to the point delta.
+        # Only the native adaptive interpolators track this; everything else returns {}.
+        if hasattr(itor, 'point_data_epoch_delta'):
+            try:
+                return dict(itor.point_data_epoch_delta())
+            except Exception:
+                return {}
+        return {}
 
     def _mark_point_data_flushed(self, itor, point_data: dict, size: int) -> None:
         itor_id = id(itor)
@@ -1495,9 +1521,12 @@ class PhysicsBase:
             except Exception:
                 pass
 
-    def _append_pickle_delta(self, delta: dict, final_path: str) -> None:
+    def _append_pickle_frame(
+        self, payload_obj: dict, final_path: str, magic: bytes
+    ) -> None:
         """
-        Append one checksummed pickle-delta frame to an existing OBL cache file.
+        Append one checksummed pickle frame (magic + length + CRC + payload) to an
+        existing OBL cache file. Length + CRC let the loader ignore a torn final append.
         """
         directory = os.path.dirname(final_path) or "."
         try:
@@ -1505,12 +1534,9 @@ class PhysicsBase:
         except Exception:
             pass
 
-        payload = pickle.dumps(delta, protocol=4)
+        payload = pickle.dumps(payload_obj, protocol=4)
         checksum = zlib.crc32(payload) & 0xFFFFFFFF
-        # Length + CRC lets the loader ignore a torn final append safely.
-        header = self._OBL_DELTA_MAGIC + self._OBL_DELTA_HEADER.pack(
-            len(payload), checksum
-        )
+        header = magic + self._OBL_DELTA_HEADER.pack(len(payload), checksum)
 
         with open(final_path, "ab") as fp:
             fp.write(header)
@@ -1520,6 +1546,24 @@ class PhysicsBase:
                 os.fsync(fp.fileno())
             except Exception:
                 pass
+
+    def _append_pickle_delta(self, delta: dict, final_path: str) -> None:
+        """
+        Append one checksummed pickle-delta frame (new supporting points) to an
+        existing OBL cache file.
+        """
+        self._append_pickle_frame(delta, final_path, self._OBL_DELTA_MAGIC)
+
+    def _append_pickle_epoch(self, epochs: dict, final_path: str) -> None:
+        """
+        Append one checksummed epoch sidecar frame to an existing OBL cache file.
+
+        The frame maps each point key (same shape as the preceding delta) to the
+        evaluation epoch — the batch-interpolation / nonlinear-iteration index at which
+        the point was first materialized. Skipped by the point-data loader; read back
+        via load_point_epochs() for offline OBL-sampling analysis.
+        """
+        self._append_pickle_frame(epochs, final_path, self._OBL_EPOCH_MAGIC)
 
     def _safe_pickle_load(self, path: str) -> Any | None:
         """
@@ -1591,12 +1635,13 @@ class PhysicsBase:
             magic = fp.read(len(self._OBL_DELTA_MAGIC))
             if not magic:
                 return
-            if magic != self._OBL_DELTA_MAGIC:
+            if magic not in (self._OBL_DELTA_MAGIC, self._OBL_EPOCH_MAGIC):
                 print(
                     "Ignoring unrecognized trailing OBL cache data in",
                     path,
                 )
                 return
+            is_epoch_frame = magic == self._OBL_EPOCH_MAGIC
 
             header = fp.read(self._OBL_DELTA_HEADER.size)
             if len(header) != self._OBL_DELTA_HEADER.size:
@@ -1613,6 +1658,11 @@ class PhysicsBase:
             if actual_crc != expected_crc:
                 print("Ignoring corrupt OBL cache delta payload in", path)
                 return
+
+            if is_epoch_frame:
+                # Epoch sidecar: metadata only — never merged into the point data, but the
+                # framed payload is consumed here so subsequent point deltas keep loading.
+                continue
 
             try:
                 delta = pickle.loads(payload)
@@ -1639,6 +1689,64 @@ class PhysicsBase:
                         str(err),
                     )
                     continue
+
+    @classmethod
+    def load_point_epochs(cls, path: str) -> dict:
+        """
+        Read the per-point evaluation epochs stored in an OBL cache file.
+
+        Returns a dict mapping each supporting-point key (same shape as
+        ``point_data_full`` / the point deltas) to the evaluation epoch — the
+        batch-interpolation / nonlinear-iteration index at which the point was first
+        materialized. Intended for offline analysis of OBL-space sampling and the
+        evolution of active hypercubes; it never touches the live interpolator state.
+
+        Points written before this tracking was added (or by interpolators without
+        native epoch support) simply do not appear in the returned map.
+        """
+        epochs: dict = {}
+        try:
+            fp = open(path, "rb")
+        except Exception:
+            return epochs
+        try:
+            try:
+                pickle.load(fp)  # skip the base point-data object
+            except Exception:
+                return epochs
+            magic_len = len(cls._OBL_DELTA_MAGIC)
+            while True:
+                magic = fp.read(magic_len)
+                if len(magic) != magic_len:
+                    break
+                if magic not in (cls._OBL_DELTA_MAGIC, cls._OBL_EPOCH_MAGIC):
+                    break
+                header = fp.read(cls._OBL_DELTA_HEADER.size)
+                if len(header) != cls._OBL_DELTA_HEADER.size:
+                    break
+                payload_len, expected_crc = cls._OBL_DELTA_HEADER.unpack(header)
+                payload = fp.read(payload_len)
+                if len(payload) != payload_len:
+                    break
+                if (zlib.crc32(payload) & 0xFFFFFFFF) != expected_crc:
+                    break
+                if magic != cls._OBL_EPOCH_MAGIC:
+                    continue
+                try:
+                    frame = pickle.loads(payload)
+                except Exception:
+                    break
+                if hasattr(frame, 'items'):
+                    try:
+                        epochs.update(frame)
+                    except Exception:
+                        continue
+        finally:
+            try:
+                fp.close()
+            except Exception:
+                pass
+        return epochs
 
     def body_path_start(self, output_folder: str) -> None:
         """

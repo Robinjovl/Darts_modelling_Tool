@@ -97,6 +97,7 @@ struct interpolator_exposer
               // Keep dirty tracker in sync with the cache it shadows: a fresh reload
               // through point_data_full means there are no unpersisted points yet.
               self.dirty_point_data.clear();
+              self.dirty_point_epochs.clear();
               self.point_data.reserve(d.size());
               for (auto item : d) {
                 py::tuple tk = item.first.cast<py::tuple>();
@@ -150,8 +151,22 @@ struct interpolator_exposer
             }
             return delta;
           })
+          // Per-point evaluation epoch (batch-interpolation / nonlinear-iteration index)
+          // for the points materialized since the last clear_point_data_delta(); keys
+          // match point_data_delta()/point_data_full so Python can persist the sampling
+          // epoch alongside the append-only OBL cache delta.
+          .def("point_data_epoch_delta", [](const interpolator_class &self) {
+            py::dict epochs;
+            for (const auto &kv : self.dirty_point_epochs) {
+              py::tuple tk(N_DIMS);
+              for (uint8_t d = 0; d < N_DIMS; ++d) tk[d] = kv.first.idx[d];
+              epochs[tk] = kv.second;
+            }
+            return epochs;
+          })
           .def("clear_point_data_delta", [](interpolator_class &self) {
             self.dirty_point_data.clear();
+            self.dirty_point_epochs.clear();
           });
       }
       else if constexpr (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>>)
@@ -192,6 +207,7 @@ struct interpolator_exposer
               // Keep dirty tracker in sync with the cache it shadows: a fresh reload
               // through point_data_full means there are no unpersisted points yet.
               self.dirty_point_data.clear();
+              self.dirty_point_epochs.clear();
               self.point_data.reserve(d.size());
               for (auto item : d) {
                 py::tuple tk = item.first.cast<py::tuple>();
@@ -229,8 +245,22 @@ struct interpolator_exposer
             }
             return delta;
           })
+          // Per-point evaluation epoch (batch-interpolation / nonlinear-iteration index)
+          // for the points materialized since the last clear_point_data_delta(); keys
+          // match point_data_delta()/point_data_full so Python can persist the sampling
+          // epoch alongside the append-only OBL cache delta.
+          .def("point_data_epoch_delta", [](const interpolator_class &self) {
+            py::dict epochs;
+            for (const auto &kv : self.dirty_point_epochs) {
+              py::tuple tk(N_DIMS);
+              for (uint8_t d = 0; d < N_DIMS; ++d) tk[d] = kv.first.idx[d];
+              epochs[tk] = kv.second;
+            }
+            return epochs;
+          })
           .def("clear_point_data_delta", [](interpolator_class &self) {
             self.dirty_point_data.clear();
+            self.dirty_point_epochs.clear();
           })
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
@@ -289,6 +319,7 @@ struct interpolator_exposer
               // Keep dirty tracker in sync with the cache it shadows: a fresh reload
               // through point_data_full means there are no unpersisted points yet.
               self.dirty_point_data.clear();
+              self.dirty_point_epochs.clear();
               self.point_data.reserve(d.size());
               for (auto item : d) {
                 py::tuple tk = item.first.cast<py::tuple>();
@@ -326,8 +357,22 @@ struct interpolator_exposer
             }
             return delta;
           })
+          // Per-point evaluation epoch (batch-interpolation / nonlinear-iteration index)
+          // for the points materialized since the last clear_point_data_delta(); keys
+          // match point_data_delta()/point_data_full so Python can persist the sampling
+          // epoch alongside the append-only OBL cache delta.
+          .def("point_data_epoch_delta", [](const interpolator_class &self) {
+            py::dict epochs;
+            for (const auto &kv : self.dirty_point_epochs) {
+              py::tuple tk(N_DIMS);
+              for (uint8_t d = 0; d < N_DIMS; ++d) tk[d] = kv.first.idx[d];
+              epochs[tk] = kv.second;
+            }
+            return epochs;
+          })
           .def("clear_point_data_delta", [](interpolator_class &self) {
             self.dirty_point_data.clear();
+            self.dirty_point_epochs.clear();
           });
       }
 #endif

@@ -126,6 +126,8 @@ multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_poin
   auto insert_result = point_data.emplace(point_key, new_point);
   // Mark for append-only cache flush after this new point is materialized.
   dirty_point_data.insert(point_key);
+  // Stamp the point with the current batch-interpolation (nonlinear-iteration) index.
+  dirty_point_epochs[point_key] = eval_index;
   this->n_points_used++;
   return insert_result.first->second;
 }
@@ -161,6 +163,10 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::eval
   this->timer->start();
   this->timer->node["gpu interpolation"].start();
   static int detailed_timing = 0;
+
+  // One batch interpolation call == one nonlinear-iteration assembly of this operator
+  // set: advance the epoch stamp applied to points materialized during this call.
+  eval_index++;
 
   state_hc_keys_d.resize(n_states_idxs);
   hypercubes_to_compute.resize(n_states_idxs);

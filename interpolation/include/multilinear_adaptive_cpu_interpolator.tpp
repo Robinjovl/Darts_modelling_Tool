@@ -80,6 +80,8 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_poin
   auto insert_result = point_data.emplace(point_key, new_point);
   // Mark for append-only cache flush after this new point is materialized.
   dirty_point_data.insert(point_key);
+  // Stamp the point with the current batch-interpolation (nonlinear-iteration) index.
+  dirty_point_epochs[point_key] = eval_index;
   this->n_points_used++;
   if (this->timer) this->timer->node["body generation"].node["point generation"].stop();
   return insert_result.first->second;
@@ -232,6 +234,8 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::mat
       point_data.emplace(pt_key, new_point);
       // Mark for append-only cache flush after this new point is materialized.
       dirty_point_data.insert(pt_key);
+      // Stamp the point with the current batch-interpolation (nonlinear-iteration) index.
+      dirty_point_epochs[pt_key] = eval_index;
       this->n_points_used++;
     }
 
@@ -283,6 +287,10 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
   const size_t n_cells = points_idxs.size();
   if (n_cells == 0)
     return 0;
+
+  // One batch interpolation call == one nonlinear-iteration assembly of this operator
+  // set: advance the epoch stamp applied to points materialized during this call.
+  eval_index++;
 
   // Phase 1: parallel computation of multi-index hypercube key for every requested cell.
   if (this->timer) this->timer->node["body generation"].node["cache lookup"].start();

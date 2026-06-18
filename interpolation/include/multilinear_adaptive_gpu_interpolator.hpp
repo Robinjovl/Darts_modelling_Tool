@@ -91,6 +91,23 @@ public:
    */
   std::unordered_set<key_t, key_hash_t> dirty_point_data;
 
+  /**
+   * @brief Evaluation epoch of each dirty (unflushed) supporting point: maps the
+   * point multi-index key to the batch-interpolation index (≈ time step /
+   * nonlinear iteration) at which it was first materialized. Mirrors the CPU
+   * adaptive interpolators so Python can persist, next to the append-only delta,
+   * when each point entered the OBL sampling. Cleared together with
+   * dirty_point_data on every external cache flush.
+   */
+  std::unordered_map<key_t, uint64_t, key_hash_t> dirty_point_epochs;
+
+  /**
+   * @brief Number of batch interpolation calls processed so far. Incremented once
+   * at the start of every evaluate_with_derivatives_d() (one nonlinear-iteration
+   * assembly of this operator set) and used to stamp newly materialized points.
+   */
+  uint64_t eval_index = 0;
+
 protected:
   /**
    * @brief Get values of operators at a given supporting point. Cell-key-driven.

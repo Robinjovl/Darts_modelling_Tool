@@ -66,6 +66,8 @@ void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::get_supporting_po
     this->n_points_used++;
     // Mark for append-only cache flush after this new point is materialized.
     dirty_point_data.insert(k);
+    // Stamp the point with the current batch-interpolation (nonlinear-iteration) index.
+    dirty_point_epochs[k] = eval_index;
 }
 
 // ─── batch materialization ─────────────────────────────────────────────────────
@@ -157,6 +159,8 @@ void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::materialize_missi
         this->n_points_used++;
         // Mark for append-only cache flush after this new point is materialized.
         dirty_point_data.insert(missing_keys[i]);
+        // Stamp the point with the current batch-interpolation (nonlinear-iteration) index.
+        dirty_point_epochs[missing_keys[i]] = eval_index;
     }
 
     if (this->timer) this->timer->node["point generation"].stop();
@@ -167,6 +171,10 @@ int linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::interpolate_with_d
     const std::vector<double> &points, const std::vector<int> &points_idxs,
     std::vector<double> &values, std::vector<double> &derivatives)
 {
+    // One batch interpolation call == one nonlinear-iteration assembly of this operator
+    // set: advance the epoch stamp applied to points materialized during this call.
+    eval_index++;
+
     // Pre-fetch all missing supporting points via batch evaluation.
     // After this, all get_supporting_point() calls in the base class will be cache hits.
     materialize_missing_points(points, points_idxs);
