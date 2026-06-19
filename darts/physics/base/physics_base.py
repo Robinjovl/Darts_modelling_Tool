@@ -1440,6 +1440,15 @@ class PhysicsBase:
                     except Exception:
                         pass
 
+        # Keep the fast-array snapshot current *during* the run, not only at finalization.
+        # _refresh_fast_caches is throttled (a no-op unless a snapshot is missing or the
+        # un-snapshotted pickle tail exceeds the size threshold), so this stays cheap while
+        # guaranteeing a usable .fastcache exists even if the process is killed (SIGKILL) or
+        # its shutdown-time finalize never runs. Without it, a freshly created multi-GB
+        # adaptive cache gets no snapshot until a clean exit, so the next run is forced
+        # through a slow full-pickle read.
+        self._refresh_fast_caches()
+
     def _cache_filename(self, fname: str) -> str:
         filename = fname
         if hasattr(self, 'cache_dir'):
@@ -1934,8 +1943,15 @@ class PhysicsBase:
                     self._write_fast_cache(itor, filename)
                     continue
                 meta = self._read_fast_meta(filename)
-                trailing = os.path.getsize(filename) - int(meta.get('pkl_size', 0))
-                if trailing > self._FAST_REFRESH_TRAILING_BYTES:
+                pkl_size = int(meta.get('pkl_size', 0))
+                trailing = os.path.getsize(filename) - pkl_size
+                # Fold-forward threshold scales with snapshot size: small/medium caches
+                # refresh every ~1 GiB of growth (keeping loads fast), while multi-GB caches
+                # refresh less often (trailing up to ~1/4 of the base) so a long run is not
+                # repeatedly stalled rewriting a huge image. The load path merges the bounded
+                # trailing delta, so worst-case load stays far cheaper than a full unpickle.
+                threshold = max(self._FAST_REFRESH_TRAILING_BYTES, pkl_size // 4)
+                if trailing > threshold:
                     self._write_fast_cache(itor, filename)
             except Exception:
                 pass

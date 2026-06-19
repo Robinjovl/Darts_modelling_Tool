@@ -85,6 +85,12 @@ class DartsModel:
     VERBOSE_EVALUATORS = 3  # additionally let every parallel-evaluation worker print
     #                         (default: only one evaluator's output is shown)
 
+    # The build-info banner (engines/discretizer/package) is process-global. Print it only
+    # on the first DartsModel construction so the silently-built evaluator-factory sub-models
+    # (one per parallel-evaluation wrap target) and forked/spawned workers don't duplicate it
+    # N times in the run log.
+    _build_info_printed = False
+
     def __new__(cls, *args, **kwargs):
         """
         Capture the constructor arguments so the model can be reconstructed in a
@@ -101,10 +107,12 @@ class DartsModel:
         """
         Initialize DartsModel class.
         """
-        # print out build information
-        engines_pbi()
-        discretizer_pbi()
-        package_pbi()
+        # print out build information once per process (see DartsModel._build_info_printed)
+        if not DartsModel._build_info_printed:
+            engines_pbi()
+            discretizer_pbi()
+            package_pbi()
+            DartsModel._build_info_printed = True
 
         # Create member variables reservoir and physics
         self.reservoir = None
@@ -130,6 +138,13 @@ class DartsModel:
 
         self.timer.node["newton update"] = timer_node()
         self.timer.node["output"] = timer_node()
+
+        # Previously-untimed wall-clock now gets its own root-level nodes so print_timers
+        # attributes it instead of leaving it in the "Total elapsed" gap:
+        #   run loop overhead -- per-timestep Python orchestration in run() outside run_timestep
+        #   cache I/O         -- periodic OBL adaptive-cache flushes (write_cache) during run()
+        self.timer.node["run loop overhead"] = timer_node()
+        self.timer.node["cache I/O"] = timer_node()
 
         # Create timer.node called "initialization" to record initialization time
         self.timer.node["initialization"] = timer_node()
@@ -235,9 +250,20 @@ class DartsModel:
         """
         verbose = self.verbose if verbose is None else verbose
 
+        # Time the (previously untimed) initialization phases. init() runs the big up-front
+        # costs -- mesh build, physics/Engine construction and OBL interpolator setup / cache
+        # loading, and initial-condition interpolation -- that otherwise vanish into the root
+        # "Total elapsed" gap. Accumulates into the same "initialization" node the subclass
+        # __init__ uses, so the node covers construction + init() together.
+        init_timer = self.timer.node["initialization"]
+        init_timer.start()
+
         # Initialize reservoir and Mesh object
         assert self.reservoir is not None, "Reservoir object has not been defined"
+        init_timer.node["reservoir init"] = timer_node()
+        init_timer.node["reservoir init"].start()
         self.reservoir.init_reservoir(bool(verbose))
+        init_timer.node["reservoir init"].stop()
         self.set_wells()
         self.has_dfm_well = any(
             well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
@@ -258,6 +284,8 @@ class DartsModel:
         if parallel_evaluation:
             evaluator_factory_hook = self.get_evaluator_factory
 
+        init_timer.node["physics init & OBL cache load"] = timer_node()
+        init_timer.node["physics init & OBL cache load"].start()
         self.physics.init_physics(
             discr_type=discr_type,
             platform=platform,
@@ -271,6 +299,7 @@ class DartsModel:
             evaluator_factory_hook=evaluator_factory_hook,
             verbose_evaluators=int(verbose) >= self.VERBOSE_EVALUATORS,
         )
+        init_timer.node["physics init & OBL cache load"].stop()
         if platform == "gpu":
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
         self.params.sim_eps = self.physics.sim_eps
@@ -286,8 +315,14 @@ class DartsModel:
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         self.restart = restart
         if restart is False:
+            init_timer.node["initial conditions"] = timer_node()
+            init_timer.node["initial conditions"].start()
             self.set_initial_conditions()
+            init_timer.node["initial conditions"].stop()
+            init_timer.node["engine init"] = timer_node()
+            init_timer.node["engine init"].start()
             self.reset()
+            init_timer.node["engine init"].stop()
             self.initialize_history_fields()
         self.data_ts.print()
         if (
@@ -300,6 +335,8 @@ class DartsModel:
                 + ' > 30000',
                 stacklevel=2,
             )
+
+        init_timer.stop()
 
     def reset(self):
         """
@@ -793,11 +830,18 @@ class DartsModel:
 
         ts_counter = 0
 
+        # Per-timestep Python orchestration outside run_timestep (state copies, dt/CFL
+        # control, well-data accumulation) is otherwise untimed; bracket it into the
+        # "run loop overhead" node instead of leaving it in the root "Total elapsed" gap.
+        overhead = self.timer.node["run loop overhead"]
         while t < stop_time:
             # need to copy since Xn will be updated Xn = X
+            overhead.start()
             xn = np.array(self.physics.engine.Xn, copy=True)[: nb * nc]
+            overhead.stop()
             converged = self.run_timestep(dt, t, verbose)
 
+            overhead.start()
             if converged:
                 t += dt
                 self.physics.engine.t = t
@@ -831,8 +875,12 @@ class DartsModel:
                     self.prev_dt = dt
 
                 if save_well_data:
-                    # save well data at every converged time step
+                    # save well data at every converged time step. save_data_to_h5 brackets
+                    # its own output/saving_well_data timer; pause the overhead bracket so
+                    # the h5 write is not double-counted.
+                    overhead.stop()
                     self.output.save_data_to_h5(kind="well")
+                    overhead.start()
 
                 if save_well_data_after_run:
                     # store well data to save later
@@ -850,12 +898,16 @@ class DartsModel:
                 dt /= data_ts.dt_mult
                 if verbose:
                     print(f"Cut timestep to {dt:2.10f}")
+                if dt <= data_ts.dt_min:
+                    overhead.stop()  # keep the bracket balanced before the assert aborts
                 assert dt > data_ts.dt_min, (
                     "Stop simulation. Reason: reached min. timestep "
                     + str(data_ts.dt_min)
                     + " dt="
                     + str(dt)
                 )
+
+            overhead.stop()
 
         # update current engine time
         self.physics.engine.t = stop_time
@@ -884,7 +936,9 @@ class DartsModel:
         # If adaptive OBL-point caching is enabled, flush OBL cache at the end of each run/report interval
         # to preserve newly evaluated points, so the cache progress survives SIGTERM/job cancel.
         if getattr(self.physics, 'cache', False):
+            self.timer.node["cache I/O"].start()
             self.physics.write_cache()
+            self.timer.node["cache I/O"].stop()
 
         if verbose:
             print(

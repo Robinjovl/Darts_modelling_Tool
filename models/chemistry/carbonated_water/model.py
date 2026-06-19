@@ -805,10 +805,17 @@ class Model(CICDModel):
         else:
             omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
 
+        # Per-timestep Python orchestration outside run_timestep (state copies, dt/CFL
+        # control, well-data accumulation) is otherwise untimed; bracket it into the
+        # "run loop overhead" node instead of leaving it in the root "Total elapsed" gap.
+        overhead = self.timer.node["run loop overhead"]
         while t < stop_time:
+            overhead.start()
             xn = np.array(self.physics.engine.Xn, copy=True)[:nb * nc]  # need to copy since Xn will be updated Xn = X
+            overhead.stop()
             converged = self.run_timestep(dt, t, verbose)
 
+            overhead.start()
             if converged:
                 t += dt
                 self.physics.engine.t = t
@@ -863,7 +870,11 @@ class Model(CICDModel):
 
                 # save well data at every converged time step
                 if save_well_data and save_well_data_after_run is False:
+                    # save_data_to_h5 brackets its own output/saving_well_data timer; pause
+                    # the overhead bracket so the h5 write is not double-counted.
+                    overhead.stop()
                     self.output.save_data_to_h5(kind="well")
+                    overhead.start()
                 else:
                     self.output.well_time_labels.append(self.physics.engine.t)
                     X = np.array(self.physics.engine.X, copy=False)
@@ -892,8 +903,11 @@ class Model(CICDModel):
                     print("Cut timestep to %2.10f (solver rc=%d)"
                           % (dt, getattr(self, '_linear_solver_rc_last', 0)))
                 if dt <= data_ts.dt_min:
+                    overhead.stop()  # keep the bracket balanced before aborting the run
                     raise RuntimeError('Stop simulation. Reason: reached min. timestep '
                                        + str(data_ts.dt_min) + ' dt=' + str(dt))
+
+            overhead.stop()
 
         # update current engine time
         self.physics.engine.t = stop_time
@@ -916,7 +930,9 @@ class Model(CICDModel):
 
         # Flush OBL adaptive cache between snapshots so progress survives SIGTERM / job cancel.
         if getattr(self.physics, 'cache', False):
+            self.timer.node["cache I/O"].start()
             self.physics.write_cache()
+            self.timer.node["cache I/O"].stop()
 
         if verbose:
             print(
