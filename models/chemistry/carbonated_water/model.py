@@ -15,7 +15,7 @@ from darts.physics.chemistry.property_container import (
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
-from darts.engines import sim_params, well_control_iface, value_vector, timer_node, ms_well
+from darts.engines import sim_params, well_control_iface, value_vector, index_vector, timer_node, ms_well
 from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
@@ -544,26 +544,44 @@ class Model(CICDModel):
         self.solid_frac = np.zeros((self.n_res_blocks, self.n_solid))
         self.initial_comp = np.zeros((self.n_res_blocks + 2, self.nc - 1))
 
-        # Interpolated values of non-solid volume (second value always 0 due to no (5,1) interpolator)
-        values = value_vector([0] * self.physics.n_comp_itor_ops)
-        values_np = np.asarray(values)
+        # The fluid composition is identical for every reservoir block; only the per-block
+        # solid saturation varies. Compute the composition once, assemble all per-block OBL
+        # states in one contiguous array, and evaluate the initialization interpolator for
+        # every block in a SINGLE batched call. The batch path materializes all missing
+        # supporting points through evaluate_batch() (the parallel worker pool) in one shot,
+        # instead of one point at a time through the single-point evaluate() (which runs
+        # every reaktoro flash serially in the main process and used to dominate init time).
+        # The numerical result is identical to the former per-block loop.
+        composition_full = convert_composition(self.initial_comp_components, self.E)
+        composition = correct_composition(composition_full, self.min_z)
+        comp_tail = np.ascontiguousarray(composition[self.n_solid:], dtype=np.float64)
 
-        # Iterate over solid saturation and call interpolator
-        for i in range(len(self.solid_sat)):
-            # There are 5 values in the state
-            composition_full = convert_composition(self.initial_comp_components, self.E)
-            composition = correct_composition(composition_full, self.min_z)
-            init_state = value_vector(np.hstack((self.pressure_init, self.solid_sat[i],
-                                                 composition[self.n_solid:])))
+        n_blocks = self.n_res_blocks
+        n_ops = self.physics.n_comp_itor_ops
+        n_dims = 1 + self.n_solid + comp_tail.size  # [pressure | solid_sat | comp_tail]
 
-            # Call interpolator
-            self.physics.comp_itor[0].evaluate(init_state, values)
+        # One contiguous [n_blocks, n_dims] state array (row-major == point-major layout the
+        # interpolator expects after ravel()).
+        states = np.empty((n_blocks, n_dims), dtype=np.float64)
+        states[:, 0] = self.pressure_init
+        states[:, 1:1 + self.n_solid] = self.solid_sat
+        states[:, 1 + self.n_solid:] = comp_tail  # broadcast the shared fluid tail
 
-            # Assemble initial composition
-            self.solid_frac[i] = values_np[:self.n_solid]
-            initial_comp_with_solid = composition_full # np.multiply(composition_full, 1 - self.solid_frac[i])
-            initial_comp_with_solid[:self.n_solid] = self.solid_frac[i]
-            self.initial_comp[i, :] = initial_comp_with_solid[:-1] # correct_composition(initial_comp_with_solid, self.min_z)
+        # Single batched interpolation over all blocks; missing supporting points are
+        # materialized in parallel via evaluate_batch(). Derivatives are required by the
+        # C++ signature but unused here.
+        values = value_vector(np.zeros(n_blocks * n_ops))
+        dvalues = value_vector(np.zeros(n_blocks * n_ops * n_dims))
+        block_idxs = index_vector(np.arange(n_blocks, dtype=np.int32))
+        self.physics.comp_itor[0].evaluate_with_derivatives(
+            value_vector(states.ravel()), block_idxs, values, dvalues)
+        values_np = np.asarray(values).reshape(n_blocks, n_ops)
+
+        # Assemble the initial composition: per-block solid fractions + the shared fluid
+        # tail (vectorized over all blocks).
+        self.solid_frac[:] = values_np[:, :self.n_solid]
+        self.initial_comp[:n_blocks, :self.n_solid] = self.solid_frac
+        self.initial_comp[:n_blocks, self.n_solid:] = composition_full[self.n_solid:-1]
 
         # Define initial composition for wells
         # for i in range(n_matrix, n_matrix + 2):
