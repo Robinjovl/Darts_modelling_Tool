@@ -13,6 +13,8 @@ import copy
 from scipy.interpolate import griddata as gd
 from functools import reduce
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 class UnstructReservoirCustom(UnstructReservoirMech):
     def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False, generate_mesh=False):
         self.idata = idata
@@ -34,10 +36,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.wells = []
 
 
-    #def init_reservoir(self, verbose=False): # dummy, just to make run
-    #    pass
-    #    #super.init_reservoir()
-
     def get_reservoir_initial_pressure(self, depths):
         return self.idata.initial.pressure_at_ref_depth + self.idata.initial.pressure_gradient * depths
 
@@ -46,8 +44,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     def field_reservoir(self, idata: InputData, model_folder, uniform_props=False, generate_mesh=False):
 
-        self.mesh_filename = os.path.join(model_folder, 'mesh.msh')
-        nx, ny, nz = idata.other.nx, idata.other.ny, idata.other.nz
+        self.mesh_filename = os.path.join(BASE_DIR, model_folder, 'mesh.msh')
+        if generate_mesh:
+            nx, ny, nz = idata.other.nx, idata.other.ny, idata.other.nz
+            self.Xc = idata.other.Xc
+            self.Yc = idata.other.Yc
+            self.Zc = idata.other.Zc
 
         # define permeable reservoir geometric boundaries
         self.rsv_top = idata.other.rsv_top
@@ -57,10 +59,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.rsv_x2 = idata.other.rsv_x2
         self.rsv_y1 = idata.other.rsv_y1
         self.rsv_y2 = idata.other.rsv_y2
-        self.Xc = idata.other.Xc
-        self.Yc = idata.other.Yc
-        self.Zc = idata.other.Zc
-
+        
         if generate_mesh:
             print('Mesh generation started')
             self.timer.node["initialization"].node["mesh_generation"] = timer_node()
@@ -89,7 +88,8 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
             from gen_msh import generate_box_3d
             generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=idata.mesh.tags,  # XYZ are ignored since Xc, Yc, Zc are passed
-                                       is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc)# msh_ver=4.1)
+                            is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc,
+                            filename=self.mesh_filename)# msh_ver=4.1)
             self.timer.node["initialization"].node["mesh_generation"].stop()
             print('Mesh generation finished')
 
@@ -126,7 +126,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         if uniform_props:
             self.init_uniform_properties(idata=idata)
         else:
-            self.set_heterogeneous_props_by_interpolation(idata=idata)
+            self.set_heterogeneous_props_by_interpolation(idata=idata, generate_mesh=generate_mesh)
             self.init_heterogeneous_properties(idata=idata)
         self.init_arrays_boundary_condition()
         self.update_boundary_conditions()
@@ -346,74 +346,81 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         return 0
 
-    def set_heterogeneous_props_by_interpolation(self, idata):
+    def set_heterogeneous_props_by_interpolation(self, idata, generate_mesh):
         # set different values in the reservoir and lateral surrounding+over/under-burden
         # first, create a struct grid to easily set heterogeneous rock properties
         # second, interpolate them to unstructured mesh used for computation
-        self.nx, self.ny, self.nz  = idata.other.nx, idata.other.ny, idata.other.nz
+        if generate_mesh:
+            self.nx, self.ny, self.nz  = idata.other.nx, idata.other.ny, idata.other.nz
 
-        # fill the whole array with non-rsv values, the rsv part will be replaced later on
-        porosity_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.poro_non_rsv
-        permeability_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.perm_non_rsv # mD
-        E_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.E_non_rsv # [bars]
+            # fill the whole array with non-rsv values, the rsv part will be replaced later on
+            porosity_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.poro_non_rsv
+            permeability_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.perm_non_rsv # mD
+            E_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.E_non_rsv # [bars]
 
-        centers = np.array([np.array(c.values) for c in self.centroids[:self.n_matrix]])
-        x = centers[:, 0]
-        y = centers[:, 1]
-        z = centers[:, 2]
+            centers = np.array([np.array(c.values) for c in self.centroids[:self.n_matrix]])
+            x = centers[:, 0]
+            y = centers[:, 1]
+            z = centers[:, 2]
 
-        # rsv cell centers
-        xs = (self.Xc[1:] + self.Xc[:-1]) * 0.5
-        ys = (self.Yc[1:] + self.Yc[:-1]) * 0.5
-        zs = (self.Zc[1:] + self.Zc[:-1]) * 0.5
+            # rsv cell centers
+            xs = (self.Xc[1:] + self.Xc[:-1]) * 0.5
+            ys = (self.Yc[1:] + self.Yc[:-1]) * 0.5
+            zs = (self.Zc[1:] + self.Zc[:-1]) * 0.5
 
-        centers_struct_x, centers_struct_y, centers_struct_z = np.meshgrid(xs, ys, zs)
-        centers_struct_x, centers_struct_y, centers_struct_z = centers_struct_x.flatten(), centers_struct_y.flatten(), centers_struct_z.flatten()
+            centers_struct_x, centers_struct_y, centers_struct_z = np.meshgrid(xs, ys, zs)
+            centers_struct_x, centers_struct_y, centers_struct_z = centers_struct_x.flatten(), centers_struct_y.flatten(), centers_struct_z.flatten()
 
-        rsv = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
-                                      self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
-                                      self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
+            rsv = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
+                                        self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
+                                        self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
 
-        # set juxtaposed rsv
-        if False:
-            rsv_thickness = np.fabs(self.rsv_bottom - self.rsv_top)
-            self.rsv_z_middle_1 = self.rsv_top + rsv_thickness * 0.25
-            self.rsv_z_middle_2 = self.rsv_top + rsv_thickness * 0.75
-            self.rsv_x_middle = (self.rsv_x1 + self.rsv_x2) * 0.5
-            rsv_left = reduce(np.logical_and, [self.rsv_z_middle_1 <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
-                                          self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
-                                          self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x_middle])
-            rsv_right = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_z_middle_2,
-                                          self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
-                                          self.rsv_x_middle <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
-            rsv = reduce(np.logical_or, [rsv_left, rsv_right])
+            # set juxtaposed rsv
+            if False:
+                rsv_thickness = np.fabs(self.rsv_bottom - self.rsv_top)
+                self.rsv_z_middle_1 = self.rsv_top + rsv_thickness * 0.25
+                self.rsv_z_middle_2 = self.rsv_top + rsv_thickness * 0.75
+                self.rsv_x_middle = (self.rsv_x1 + self.rsv_x2) * 0.5
+                rsv_left = reduce(np.logical_and, [self.rsv_z_middle_1 <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
+                                            self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
+                                            self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x_middle])
+                rsv_right = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_z_middle_2,
+                                            self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
+                                            self.rsv_x_middle <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
+                rsv = reduce(np.logical_or, [rsv_left, rsv_right])
 
-        porosity_struct[rsv] = idata.rock.porosity
-        permeability_struct[rsv] = idata.rock.permx # [mD]
-        E_struct[rsv] = idata.rock.E #[bars]
+            porosity_struct[rsv] = idata.rock.porosity
+            permeability_struct[rsv] = idata.rock.permx # [mD]
+            E_struct[rsv] = idata.rock.E #[bars]
 
-        porosity = np.zeros(self.nz * self.ny * self.nx)
-        permeability = np.zeros(self.nz * self.ny * self.nx)
-        E = np.zeros(self.nz * self.ny * self.nx)
+            porosity = np.zeros(self.nz * self.ny * self.nx)
+            permeability = np.zeros(self.nz * self.ny * self.nx)
+            E = np.zeros(self.nz * self.ny * self.nx)
 
-        arrays = [porosity, permeability, E]
-        arrays_struct = [porosity_struct, permeability_struct, E_struct]
+            arrays = [porosity, permeability, E]
+            arrays_struct = [porosity_struct, permeability_struct, E_struct]
 
-        for arr, arr_struct in zip(arrays, arrays_struct):
-            arr[:] = gd((centers_struct_x, centers_struct_y, centers_struct_z), arr_struct, (x, y, z), method='nearest')
+            for arr, arr_struct in zip(arrays, arrays_struct):
+                arr[:] = gd((centers_struct_x, centers_struct_y, centers_struct_z), arr_struct, (x, y, z), method='nearest')
 
-        # porosity = np.flip(np.swapaxes(porosity.reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
-        # permeability = np.flip(np.swapaxes(permeability.reshape((self.nz, self.ny, self.nx, 3)), 0, 2), axis=2).flatten()
-        # E = np.flip(np.swapaxes(E.reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
-        #p_init = np.flip(np.swapaxes(p_init.reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
+            
+        else:
+            centers = np.array([np.array(c.values) for c in self.centroids[:self.n_matrix]])
+            z1, z2 = min(self.rsv_top, self.rsv_bottom), max(self.rsv_top, self.rsv_bottom)
+            rsv = reduce(np.logical_and, [z1 <= centers[:, 2], centers[:, 2] <= z2,
+                                        self.rsv_y1 <= centers[:, 1], centers[:, 1] <= self.rsv_y2,
+                                        self.rsv_x1 <= centers[:, 0], centers[:, 0] <= self.rsv_x2])
+
+            porosity = np.full(self.n_matrix, idata.rock.poro_non_rsv)
+            permeability = np.full(self.n_matrix, idata.rock.perm_non_rsv) # mD
+            E = np.full(self.n_matrix, idata.rock.E_non_rsv) # [bars]
+
+            porosity[rsv] = idata.rock.porosity
+            permeability[rsv] = idata.rock.permx # [mD]
+            E[rsv] = idata.rock.E #[bars]
 
         idata.rock.porosity = porosity
-
         idata.rock.permx = idata.rock.permy = idata.rock.permz = permeability
-        #permeability_xyz = np.zeros((self.nz * self.ny * self.nx, 3))
-        #permeability_xyz[:, 0] = permeability_xyz[:, 1] =  permeability_xyz[:, 2] = permeability
-        #idata.rock.permx = idata.rock.permy = idata.rock.permz = permeability_xyz
-
         idata.rock.E = E  # bars
 
     def decouple_geomech(self):
