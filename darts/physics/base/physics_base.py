@@ -1,6 +1,7 @@
 import abc
 import atexit
 import hashlib
+import json
 import os
 import pickle
 import signal
@@ -1268,10 +1269,10 @@ class PhysicsBase:
                             self._flushed_point_keys[id(itor)] = set(
                                 loaded_point_data.keys()
                             )
-                    # Migrate to the fast array snapshot so subsequent runs skip the
-                    # pickle path entirely (the slow part for multi-GB caches).
-                    if cache_loaded and hasattr(itor, 'get_point_data_arrays'):
-                        self._write_fast_cache(itor, itor_cache_filename)
+                    # Note: the fast-array snapshot is intentionally NOT written here.
+                    # Snapshots are created/refreshed only on finalize
+                    # (_refresh_fast_caches), so this pickle read is never slowed by
+                    # snapshot I/O. The first finalize after this run creates it.
                 else:
                     print("Cached point data is invalid, ignoring.")
             if mode == 'adaptive':
@@ -1367,6 +1368,9 @@ class PhysicsBase:
                 epochs = self._point_data_epoch_delta(itor)
                 if not os.path.exists(filename):
                     # First flush writes the full pickle (backward-compatible cache layout).
+                    # Drop any snapshot left over from a previous (now-deleted) pickle so a
+                    # stale image can never shadow this freshly written base.
+                    self._remove_fast_cache(filename)
                     print(
                         "Writing point data for ",
                         type(itor).__name__,
@@ -1461,14 +1465,21 @@ class PhysicsBase:
             self._flushed_point_keys.setdefault(itor_id, set()).update(delta.keys())
 
     def _finalize_cache(self):
-        # Single-shot wrapper around write_cache used by atexit and __del__.
+        # Re-entrancy guard against atexit + __del__ + signal all firing within one
+        # shutdown. The latch is released at the end so that work done *after* a caught
+        # SIGINT (handler flushes, then user code continues and evaluates more points) is
+        # still flushed by a later finalize; the per-itor size checks in write_cache /
+        # _refresh_fast_caches make a repeated call a cheap no-op.
         if getattr(self, '_cache_finalized', False):
             return
         self._cache_finalized = True
-        self.write_cache()
-        # Refresh the fast numpy-array snapshots from the just-flushed pickle so the
-        # next run loads via the bulk array path instead of unpickling.
-        self._refresh_fast_caches()
+        try:
+            self.write_cache()
+            # Refresh the fast numpy-array snapshots from the just-flushed pickle so the
+            # next run loads via the bulk array path instead of unpickling.
+            self._refresh_fast_caches()
+        finally:
+            self._cache_finalized = False
 
     def _install_signal_handlers(self):
         # Flush OBL cache on SIGTERM/SIGINT before re-raising, so adaptive point data
@@ -1546,51 +1557,162 @@ class PhysicsBase:
                 pass
 
     # ------------------------------------------------------------------
-    # Fast binary cache (numpy arrays) alongside the legacy pickle.
+    # Fast binary cache (single ``.fastcache`` file) alongside the legacy pickle.
     #
-    # The pickle (base + append-only delta frames) stays the source of truth and the
-    # incremental write target. The ``.keys.npy`` / ``.vals.npy`` snapshot is a derived,
-    # whole-cache image that loads via one bulk read + a single C++ copy
-    # (``set_point_data_arrays``), bypassing pickle's per-point object graph and the
-    # dict round-trip. It is regenerated from the pickle whenever it is missing or older
-    # than the pickle, so an interrupted snapshot write can never corrupt the
-    # authoritative cache — a stale/partial snapshot is simply ignored on the next load.
+    # The pickle (base full dump + append-only delta/epoch frames) stays the source of
+    # truth, the incremental write target, and the home of the per-point evaluation epochs
+    # (time indices, read via load_point_epochs). One derived ``.fastcache`` file per
+    # interpolator holds the whole cache as raw arrays so it loads via one bulk read + a
+    # single C++ copy (``set_point_data_arrays``), bypassing pickle's per-point object
+    # graph. Its self-describing layout is::
+    #
+    #     b'DRTSFC01' | uint64 header_len | JSON header | keys[int32] | vals[float64]
+    #
+    # where the JSON header carries {pkl_size, base_fp, n_points, n_dims, n_ops}. ``vals``
+    # is memory-mapped on load to keep peak RAM low; ``keys`` is small and read fully.
+    #
+    # Because the pickle is append-only, a ``.fastcache`` taken at one point stays *valid*
+    # after more delta frames are appended: it covers the pickle up to ``pkl_size`` and the
+    # few frames past that offset are merged on load (``add_point_data_arrays``). A base
+    # fingerprint (``base_fp``) guards against the pickle being regenerated/replaced. This
+    # append-tolerant validity is what lets one file survive across runs — an mtime check
+    # would go stale the moment any run appended a single delta frame.
+    #
+    # The ``.fastcache`` is written only on cache finalization (see
+    # :meth:`_refresh_fast_caches`), never on the read path, so a model's initial cache
+    # read is never slowed by snapshot I/O. A torn/partial write is harmless: the next load
+    # rejects it (bad magic / short file / size mismatch) and falls back to the pickle.
     # ------------------------------------------------------------------
-    @staticmethod
-    def _fast_cache_paths(pkl_path: str) -> tuple[str, str]:
-        base = pkl_path[:-4] if pkl_path.endswith('.pkl') else pkl_path
-        return base + '.keys.npy', base + '.vals.npy'
 
-    def _fast_cache_fresh(self, pkl_path: str) -> bool:
-        """True iff both snapshot arrays exist and are at least as new as the pickle."""
-        keys_path, vals_path = self._fast_cache_paths(pkl_path)
-        if not (os.path.exists(keys_path) and os.path.exists(vals_path)):
+    # Rewrite the whole .fastcache only once the trailing (un-snapshotted) delta region of
+    # the pickle exceeds this many bytes; below it, loads just merge the small tail.
+    _FAST_REFRESH_TRAILING_BYTES = 1 << 30  # 1 GiB
+    _FAST_MAGIC = b'DRTSFC01'  # 8 bytes
+
+    @staticmethod
+    def _fast_cache_path(pkl_path: str) -> str:
+        """Path of the single ``.fastcache`` snapshot file for ``pkl_path``."""
+        base = pkl_path[:-4] if pkl_path.endswith('.pkl') else pkl_path
+        return base + '.fastcache'
+
+    def _read_fast_meta(self, pkl_path: str) -> dict | None:
+        """Return the ``.fastcache`` JSON header (``pkl_size``, ``base_fp``, ...) or None."""
+        path = self._fast_cache_path(pkl_path)
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, 'rb') as fp:
+                if fp.read(len(self._FAST_MAGIC)) != self._FAST_MAGIC:
+                    return None
+                raw = fp.read(8)
+                if len(raw) != 8:
+                    return None
+                (hlen,) = struct.unpack('<Q', raw)
+                header = json.loads(fp.read(hlen).decode('utf-8'))
+            if not isinstance(header, dict) or 'pkl_size' not in header:
+                return None
+            return header
+        except Exception:
+            return None
+
+    def _read_fastcache_arrays(self, pkl_path: str):
+        """Return ``(keys int32 [N, n_dims], vals float64 [N, n_ops])`` from the
+        ``.fastcache`` file: ``keys`` read fully (small), ``vals`` memory-mapped."""
+        path = self._fast_cache_path(pkl_path)
+        with open(path, 'rb') as fp:
+            if fp.read(len(self._FAST_MAGIC)) != self._FAST_MAGIC:
+                raise ValueError('not a fastcache file')
+            (hlen,) = struct.unpack('<Q', fp.read(8))
+            header = json.loads(fp.read(hlen).decode('utf-8'))
+        n = int(header['n_points'])
+        nd = int(header['n_dims'])
+        no = int(header['n_ops'])
+        keys_off = len(self._FAST_MAGIC) + 8 + hlen
+        vals_off = keys_off + n * nd * 4
+        if n == 0:
+            return np.zeros((0, nd), np.int32), np.zeros((0, no), np.float64)
+        keys = np.fromfile(path, dtype=np.int32, count=n * nd, offset=keys_off).reshape(
+            n, nd
+        )
+        vals = np.memmap(
+            path, dtype=np.float64, mode='r', offset=vals_off, shape=(n, no)
+        )
+        return keys, vals
+
+    @staticmethod
+    def _pkl_fingerprint(pkl_path: str, nbytes: int = 65536) -> str | None:
+        """
+        Hash the first ``nbytes`` of the pickle to fingerprint its *base*.
+
+        The base full-dump is written once and never rewritten (only delta frames are
+        appended), so its leading bytes are stable for the life of the cache. The
+        fingerprint therefore stays constant as the pickle grows but changes if the base
+        is regenerated or externally mutated — letting a snapshot detect that the pickle
+        it was derived from is no longer the same file.
+        """
+        try:
+            with open(pkl_path, 'rb') as fp:
+                head = fp.read(nbytes)
+        except Exception:
+            return None
+        return hashlib.sha1(head).hexdigest()
+
+    def _fast_cache_valid(self, pkl_path: str) -> bool:
+        """
+        True iff a usable snapshot exists for ``pkl_path``.
+
+        Valid means: keys/vals/meta all present; the pickle exists (a missing pickle is
+        never trusted — a stale snapshot must not resurrect a deleted cache); the pickle's
+        base fingerprint still matches the one recorded when the snapshot was written (it
+        was not regenerated/replaced); and the pickle has only grown (delta frames
+        appended), never shrunk below the snapshot's recorded coverage (``pkl_size``).
+        """
+        meta = self._read_fast_meta(pkl_path)
+        if meta is None:
             return False
         if not os.path.exists(pkl_path):
-            # No pickle to compare against: trust the snapshot.
-            return True
-        snapshot_mtime = min(os.path.getmtime(keys_path), os.path.getmtime(vals_path))
-        return snapshot_mtime >= os.path.getmtime(pkl_path)
+            return False
+        if os.path.getsize(pkl_path) < int(meta.get('pkl_size', 0)):
+            return False
+        base_fp = meta.get('base_fp')
+        if base_fp is not None:
+            # Fingerprint exactly the first min(64 KiB, recorded coverage) bytes: that
+            # prefix is append-stable (the pickle only grows past it), so the hash is
+            # constant for a legitimate append-extension but changes if the base was
+            # regenerated or externally rewritten.
+            nbytes = min(65536, int(meta.get('pkl_size', 0)))
+            if self._pkl_fingerprint(pkl_path, nbytes) != base_fp:
+                return False
+        return True
 
     def _try_load_fast_cache(self, itor, pkl_path: str) -> int | None:
         """
-        Load the cache from the numpy-array snapshot when it exists and is at least as
-        new as the pickle.
+        Load the cache from the numpy-array snapshot, merging any delta frames appended to
+        the pickle after the snapshot was taken.
 
-        :returns: number of points loaded, or ``None`` to tell the caller to fall back
-                  to the pickle path (snapshot missing/stale, interpolator lacks bulk
-                  array support, or the load raised).
+        :returns: number of points loaded, or ``None`` to tell the caller to fall back to
+                  the pickle path (no/invalid snapshot, interpolator lacks bulk array
+                  support, or the load/merge raised).
         """
         if not hasattr(itor, 'set_point_data_arrays'):
             return None
-        if not self._fast_cache_fresh(pkl_path):
+        if not self._fast_cache_valid(pkl_path):
             return None
-        keys_path, vals_path = self._fast_cache_paths(pkl_path)
+        meta = self._read_fast_meta(pkl_path)
+        rec_size = int(meta.get('pkl_size', 0))
+        cur_size = os.path.getsize(pkl_path)
+        trailing = cur_size > rec_size
+        if trailing and not hasattr(itor, 'add_point_data_arrays'):
+            # Cannot merge the appended tail -> snapshot alone would be incomplete.
+            return None
         try:
-            # keys are small (int32); vals can be many GB, so mmap them to keep peak
-            # RAM low — the C++ setter reads sequentially and faults pages in on demand.
-            keys = np.load(keys_path)
-            vals = np.load(vals_path, mmap_mode='r')
+            # keys are small (int32); vals can be many GB and are memory-mapped to keep
+            # peak RAM low — the C++ setter reads sequentially and faults pages in on demand.
+            keys, vals = self._read_fastcache_arrays(pkl_path)
+            n_pts = int(meta.get('n_points', keys.shape[0]))
+            if keys.shape[0] != n_pts or vals.shape[0] != n_pts:
+                # Header disagrees with the arrays (corrupt/partial file): don't trust it.
+                return None
             itor.set_point_data_arrays(keys, vals)
         except Exception as err:
             print(
@@ -1601,15 +1723,77 @@ class PhysicsBase:
                 str(err),
             )
             return None
+        if trailing:
+            try:
+                d_keys, d_vals = self._read_trailing_delta_arrays(pkl_path, rec_size)
+                if d_keys is not None and len(d_keys):
+                    itor.add_point_data_arrays(d_keys, d_vals)
+            except Exception as err:
+                # The snapshot is now loaded but missing the appended tail; falling back to
+                # the pickle (which rebuilds the whole cache) is the only safe option.
+                print(
+                    "Fast array cache tail-merge failed for",
+                    pkl_path,
+                    "- falling back to pickle -",
+                    type(err).__name__,
+                    str(err),
+                )
+                return None
         if hasattr(itor, 'point_data_size'):
             return itor.point_data_size()
         return int(keys.shape[0])
 
+    def _read_trailing_delta_arrays(self, pkl_path: str, start_offset: int):
+        """
+        Read the delta frames appended to ``pkl_path`` past ``start_offset`` and return
+        them as ``(keys int32 [M, n_dims], vals float64 [M, n_ops])``, or ``(None, None)``
+        if the tail holds no point-data frames. Mirrors :meth:`_load_pickle_delta_frames`
+        but starts mid-file (the base pickle object is never read). A torn/corrupt final
+        frame is ignored (the loop stops), exactly as on the normal append-merge path.
+        """
+        merged: dict = {}
+        magic_len = len(self._OBL_DELTA_MAGIC)
+        with open(pkl_path, 'rb') as fp:
+            fp.seek(start_offset)
+            while True:
+                magic = fp.read(magic_len)
+                if len(magic) != magic_len:
+                    break
+                if magic not in (self._OBL_DELTA_MAGIC, self._OBL_EPOCH_MAGIC):
+                    break
+                header = fp.read(self._OBL_DELTA_HEADER.size)
+                if len(header) != self._OBL_DELTA_HEADER.size:
+                    break
+                payload_len, expected_crc = self._OBL_DELTA_HEADER.unpack(header)
+                payload = fp.read(payload_len)
+                if len(payload) != payload_len:
+                    break
+                if (zlib.crc32(payload) & 0xFFFFFFFF) != expected_crc:
+                    break
+                if magic == self._OBL_EPOCH_MAGIC:
+                    continue  # epoch sidecar metadata, not point data
+                try:
+                    frame = pickle.loads(payload)
+                except Exception:
+                    break
+                if hasattr(frame, 'items'):
+                    merged.update(frame)
+        if not merged:
+            return None, None
+        keys = np.array(list(merged.keys()), dtype=np.int32)
+        vals = np.array([list(v) for v in merged.values()], dtype=np.float64)
+        return keys, vals
+
     def _write_fast_cache(self, itor, pkl_path: str) -> None:
         """
-        Refresh the numpy-array snapshot next to ``pkl_path`` from the interpolator's
-        current cache. Best-effort: any failure here is logged and never disturbs the
-        authoritative pickle.
+        Write the single ``.fastcache`` snapshot for ``pkl_path`` from the interpolator's
+        current cache.
+
+        The header records the *current* pickle size as the coverage offset (callers
+        invoke this right after the pickle has been flushed) plus the base fingerprint.
+        Best-effort: any failure is logged and never disturbs the authoritative pickle.
+        The file is written to a temp path and atomically renamed, so a snapshot is only
+        ever visible once fully on disk.
         """
         if not hasattr(itor, 'get_point_data_arrays'):
             return
@@ -1622,10 +1806,26 @@ class PhysicsBase:
                 str(err),
             )
             return
-        keys_path, vals_path = self._fast_cache_paths(pkl_path)
+        pkl_size = os.path.getsize(pkl_path) if os.path.exists(pkl_path) else 0
+        base_fp = (
+            self._pkl_fingerprint(pkl_path, min(65536, int(pkl_size)))
+            if os.path.exists(pkl_path)
+            else None
+        )
+        header = {
+            'format': 1,
+            'pkl_size': int(pkl_size),
+            'n_points': int(keys.shape[0]),
+            'n_dims': int(keys.shape[1]) if keys.ndim == 2 else 0,
+            'n_ops': int(vals.shape[1]) if vals.ndim == 2 else 0,
+            'base_fp': base_fp,
+        }
         try:
-            self._atomic_npy_save(keys_path, keys)
-            self._atomic_npy_save(vals_path, vals)
+            self._write_fastcache_file(
+                self._fast_cache_path(pkl_path), header, keys, vals
+            )
+            # Clean up snapshots written by the previous (3-sidecar) format, if any.
+            self._remove_legacy_sidecars(pkl_path)
         except Exception as err:
             print(
                 "Could not write fast array cache for",
@@ -1635,21 +1835,33 @@ class PhysicsBase:
                 str(err),
             )
 
-    def _atomic_npy_save(self, final_path: str, arr: np.ndarray) -> None:
-        """Atomically write a ``.npy`` via a temp file + ``os.replace`` (mirrors _atomic_pickle_dump)."""
+    def _write_fastcache_file(
+        self, final_path: str, header: dict, keys: np.ndarray, vals: np.ndarray
+    ) -> None:
+        """Atomically write the single-file snapshot (magic + header + keys + vals)."""
+        keys = np.ascontiguousarray(keys, dtype=np.int32)
+        vals = np.ascontiguousarray(vals, dtype=np.float64)
+        header_json = json.dumps(header).encode('utf-8')
         directory = os.path.dirname(final_path) or "."
         try:
             os.makedirs(directory, exist_ok=True)
         except Exception:
             pass
         fd, tmp_path = tempfile.mkstemp(
-            prefix=os.path.basename(final_path) + ".tmp.", suffix=".npy", dir=directory
+            prefix=os.path.basename(final_path) + ".tmp.",
+            suffix=".fastcache",
+            dir=directory,
         )
-        os.close(fd)
         try:
-            with open(tmp_path, "wb") as fp:
-                # tmp_path already ends in .npy, so np.save does not append a suffix.
-                np.save(fp, arr)
+            with os.fdopen(fd, "wb") as fp:
+                fp.write(self._FAST_MAGIC)
+                fp.write(struct.pack('<Q', len(header_json)))
+                fp.write(header_json)
+                fp.flush()  # sync the buffered header before numpy writes via the raw fd
+                # tofile streams through the C FILE* (no full in-RAM bytes copy), so a
+                # multi-GB vals array is written without doubling peak memory.
+                keys.tofile(fp)
+                vals.tofile(fp)
                 fp.flush()
                 try:
                     os.fsync(fp.fileno())
@@ -1665,21 +1877,59 @@ class PhysicsBase:
 
     def _refresh_fast_caches(self) -> None:
         """
-        Regenerate any numpy-array snapshots that are stale relative to their pickle.
+        Create or fold-forward the numpy-array snapshots on cache finalization (after
+        :meth:`write_cache` has flushed the pickle).
 
-        Called on cache finalization (after :meth:`write_cache` has flushed the pickle),
-        so the snapshot reflects the points appended during this run. Snapshots already
-        in sync with the pickle are skipped to avoid rewriting unchanged multi-GB images.
+        A snapshot is (re)written only when it is missing, or when the pickle's trailing
+        un-snapshotted delta region has grown past :attr:`_FAST_REFRESH_TRAILING_BYTES`.
+        Below that threshold the snapshot is left as is — loads merge the small tail
+        cheaply — which avoids rewriting a multi-GB image every run for a few MB of new
+        points. This is the *only* place snapshots are written, so the read path is never
+        slowed by snapshot I/O.
         """
         for itor, fname in getattr(self, 'created_itors', None) or []:
             filename = self._cache_filename(fname)
             try:
-                if self._fast_cache_fresh(filename):
-                    continue
                 if not os.path.exists(filename):
                     # Nothing was persisted to the pickle (e.g. empty cache); skip.
                     continue
-                self._write_fast_cache(itor, filename)
+                if not self._fast_cache_valid(filename):
+                    # Missing/invalid snapshot (none yet, base changed, or the pickle
+                    # shrank): rebuild one covering the whole current pickle. This also
+                    # re-enables the fast path after a shrink rather than leaving it
+                    # permanently disabled.
+                    self._write_fast_cache(itor, filename)
+                    continue
+                meta = self._read_fast_meta(filename)
+                trailing = os.path.getsize(filename) - int(meta.get('pkl_size', 0))
+                if trailing > self._FAST_REFRESH_TRAILING_BYTES:
+                    self._write_fast_cache(itor, filename)
+            except Exception:
+                pass
+
+    def _remove_fast_cache(self, pkl_path: str) -> None:
+        """Delete the ``.fastcache`` (and any legacy 3-sidecar files) for ``pkl_path``.
+
+        Used when a fresh base pickle is written (the old snapshot, if any, belonged to a
+        now-replaced pickle), so a stale snapshot can never shadow a regenerated cache.
+        """
+        try:
+            p = self._fast_cache_path(pkl_path)
+            if os.path.exists(p):
+                os.remove(p)
+        except Exception:
+            pass
+        self._remove_legacy_sidecars(pkl_path)
+
+    @staticmethod
+    def _remove_legacy_sidecars(pkl_path: str) -> None:
+        """Best-effort removal of the previous format's ``.keys.npy`` / ``.vals.npy`` /
+        ``.fast.json`` sidecars, superseded by the single ``.fastcache`` file."""
+        base = pkl_path[:-4] if pkl_path.endswith('.pkl') else pkl_path
+        for p in (base + '.keys.npy', base + '.vals.npy', base + '.fast.json'):
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
             except Exception:
                 pass
 

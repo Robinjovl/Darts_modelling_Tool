@@ -723,7 +723,7 @@ class Model(CICDModel):
             save_well_data: bool = True,
             save_reservoir_data: bool = True,
             save_well_data_after_run: bool = True,
-            verbose: bool = True):
+            verbose: int | None = None):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
@@ -731,9 +731,12 @@ class Model(CICDModel):
         :type days: float
         :param restart_dt: Restart value for timestep size [days, optional]
         :type restart_dt: float
-        :param verbose: Switch for verbose, default is True
-        :type verbose: bool
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`. ``>=VERBOSE_TIMERS`` (2)
+            additionally prints timers at the end of every run() invocation.
+        :type verbose: int
         """
+        verbose = self.verbose if verbose is None else verbose
         assert hasattr(self, 'output'), "self.output does not exist, please call m.set_output() after m.init()"
         days = days if days is not None else self.runtime
         data_ts = self.data_ts
@@ -802,9 +805,10 @@ class Model(CICDModel):
                         dt_mult_new = mult
 
                 if verbose:
-                    print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tdX=%4s"
+                    max_dx_str = '[' + ', '.join(f'{v:.1e}' for v in max_dx) + ']'
+                    print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tdX=%s"
                           % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt,
-                             dt_mult_new, np.round(max_dx, 3)))
+                             dt_mult_new, max_dx_str))
 
                 if dt_truncated:
                     # Boundary-truncated step: it carries no information about whether
@@ -902,6 +906,12 @@ class Model(CICDModel):
                 f"NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), "
                 f"LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d}) -----"
             )
+
+        # At higher verbosity, print the timer breakdown at the end of every run()
+        # invocation (mirrors DartsModel.run(), which this override otherwise bypasses).
+        # Automatic prints go to the redirected darts log rather than stdout.
+        if verbose >= self.VERBOSE_TIMERS:
+            self.print_timers(to_log=True)
 
         return 0
 

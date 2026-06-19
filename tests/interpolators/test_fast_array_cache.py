@@ -133,10 +133,10 @@ def test_set_empty_arrays(kind):
     assert itor.get_n_cached_points() == 0
 
 
-def test_physics_base_fast_cache_plumbing(tmp_path):
-    """Exercise the PhysicsBase fast-cache helpers end to end: write a snapshot,
-    confirm freshness, load it into a fresh interpolator, and confirm a pickle that
-    is newer than the snapshot invalidates it (so the loader falls back)."""
+def test_physics_base_fast_cache_append_tolerant(tmp_path):
+    """The snapshot must stay valid when the pickle GROWS (append-only delta frames):
+    loading folds the trailing deltas back in. It is rejected only when the pickle
+    shrinks / is rewritten below the snapshot's recorded coverage offset."""
     from darts.physics.base.physics_base import PhysicsBase
 
     # Bare instance — the fast-cache helpers do not touch engine/__init__ state.
@@ -147,26 +147,83 @@ def test_physics_base_fast_cache_plumbing(tmp_path):
     d0 = dict(itor.point_data_full)
 
     pkl_path = str(tmp_path / "obl_point_data_test.pkl")
-    # A stand-in pickle so freshness comparison has something to compare against.
-    with open(pkl_path, "wb") as fp:
-        fp.write(b"x")
-
+    # Real base pickle (tuple-keyed dict) + a snapshot covering exactly it.
+    pb._atomic_pickle_dump(d0, pkl_path)
+    base_size = os.path.getsize(pkl_path)
     pb._write_fast_cache(itor, pkl_path)
-    keys_path, vals_path = pb._fast_cache_paths(pkl_path)
-    assert os.path.exists(keys_path) and os.path.exists(vals_path)
-    assert pb._fast_cache_fresh(pkl_path) is True
+    # A single snapshot file — not the old 3-sidecar layout.
+    fast_path = pb._fast_cache_path(pkl_path)
+    assert os.path.exists(fast_path)
+    assert not os.path.exists(pkl_path[:-4] + ".keys.npy")
+    assert not os.path.exists(pkl_path[:-4] + ".vals.npy")
+    assert not os.path.exists(pkl_path[:-4] + ".fast.json")
+    assert pb._fast_cache_valid(pkl_path) is True
+    meta = pb._read_fast_meta(pkl_path)
+    assert meta is not None and meta["pkl_size"] == base_size
 
+    # (1) Load with no trailing deltas -> exactly the base cache.
     itor2, _ = _build("multilinear")
     n = pb._try_load_fast_cache(itor2, pkl_path)
     assert n == len(d0)
     assert dict(itor2.point_data_full) == d0
 
-    # Make the pickle newer than the snapshot -> snapshot is stale -> loader declines.
-    future = os.path.getmtime(keys_path) + 100
-    os.utime(pkl_path, (future, future))
-    assert pb._fast_cache_fresh(pkl_path) is False
+    # (2) Append a real delta frame of NEW points (keys disjoint from d0), as a running
+    # model would via write_cache. The snapshot stays valid and the load merges the tail.
+    new_pts = {
+        (1000 + i, 2000 + i, -3000 - i): (float(i), float(i) + 0.5, -float(i), 1.25 * i)
+        for i in range(16)
+    }
+    assert not (set(new_pts) & set(d0))
+    pb._append_pickle_delta(new_pts, pkl_path)
+    assert os.path.getsize(pkl_path) > base_size
+    assert pb._fast_cache_valid(pkl_path) is True
+
     itor3, _ = _build("multilinear")
-    assert pb._try_load_fast_cache(itor3, pkl_path) is None
+    n3 = pb._try_load_fast_cache(itor3, pkl_path)
+    expected = {**d0, **new_pts}
+    assert n3 == len(expected)
+    assert dict(itor3.point_data_full) == expected
+
+    # (3) Truncate the pickle below the snapshot's coverage -> snapshot rejected.
+    with open(pkl_path, "r+b") as fp:
+        fp.truncate(base_size - 1)
+    assert pb._fast_cache_valid(pkl_path) is False
+    itor4, _ = _build("multilinear")
+    assert pb._try_load_fast_cache(itor4, pkl_path) is None
+
+
+def test_fast_cache_rejects_base_change_and_missing_pickle(tmp_path):
+    """The snapshot must be rejected when the pickle's base is regenerated (different
+    bytes, even at the same size) or the pickle is deleted — so a stale snapshot can
+    never silently shadow a different/absent cache."""
+    from darts.physics.base.physics_base import PhysicsBase
+
+    pb = PhysicsBase.__new__(PhysicsBase)
+    itor, ev = _build("multilinear")
+    _populate(itor, ev)
+    d0 = dict(itor.point_data_full)
+
+    pkl_path = str(tmp_path / "obl_point_data_x.pkl")
+    pb._atomic_pickle_dump(d0, pkl_path)
+    pb._write_fast_cache(itor, pkl_path)
+    assert pb._fast_cache_valid(pkl_path) is True
+    rec = pb._read_fast_meta(pkl_path)["pkl_size"]
+    assert pb._read_fast_meta(pkl_path).get("base_fp") is not None
+
+    # Regenerate the base with different content (same keys, shifted values -> identical
+    # pickled size, different bytes). The size guard cannot catch it; the fingerprint must.
+    d_other = {k: tuple(x + 1.0 for x in v) for k, v in d0.items()}
+    pb._atomic_pickle_dump(d_other, pkl_path)
+    assert os.path.getsize(pkl_path) >= rec  # not rejected by the size check
+    assert pb._fast_cache_valid(pkl_path) is False
+    itor_b, _ = _build("multilinear")
+    assert pb._try_load_fast_cache(itor_b, pkl_path) is None
+
+    # A missing pickle must never resurrect the snapshot.
+    os.remove(pkl_path)
+    assert pb._fast_cache_valid(pkl_path) is False
+    itor_c, _ = _build("multilinear")
+    assert pb._try_load_fast_cache(itor_c, pkl_path) is None
 
 
 @pytest.mark.parametrize("kind", ["multilinear", "linear"])

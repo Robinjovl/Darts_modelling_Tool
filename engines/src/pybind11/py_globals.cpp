@@ -78,6 +78,15 @@ void print_build_info()
   std::cout << "darts-engines built on " << ENGINES_BUILD_DATE << " by " << ENGINES_BUILD_MACHINE << " from " << ENGINES_BUILD_GIT_HASH << std::endl;
 }
 
+// Write a string to the darts standard output stream — i.e. the same destination
+// redirect_darts_output() points std::cout at (the log file, the terminal if not
+// redirected, or suppressed if redirected to ""). Lets Python helpers send text to the
+// redirected log instead of the Python-level stdout.
+void write_to_darts_output(std::string s)
+{
+  std::cout << s << std::flush;
+}
+
 void pybind_globals(py::module &m)
 {
   using namespace pybind11::literals;
@@ -177,6 +186,11 @@ void pybind_globals(py::module &m)
         "file_name"_a);
 
   m.def("print_build_info", &print_build_info, "Print build information: date, user, machine, git hash");
+
+  m.def("write_to_darts_output", &write_to_darts_output,
+        "Write a string to the darts output stream (the file set by redirect_darts_output, "
+        "the terminal if not redirected, or nothing if redirected to an empty filename).",
+        "text"_a);
 
 
 #ifdef _OPENMP

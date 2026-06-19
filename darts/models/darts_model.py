@@ -892,9 +892,11 @@ class DartsModel:
 
         # At higher verbosity, print the timer breakdown at the end of every run()
         # invocation (the default behaviour only prints timers when print_timers() is
-        # called explicitly, typically from main.py after the full simulation).
+        # called explicitly, typically from main.py after the full simulation). These
+        # automatic prints go to the redirected darts log rather than stdout, so they
+        # land in the run log instead of cluttering the console.
         if verbose >= self.VERBOSE_TIMERS:
-            self.print_timers()
+            self.print_timers(to_log=True)
 
         return 0
 
@@ -1322,12 +1324,26 @@ class DartsModel:
         rhs += self.set_rhs_flux(t) * dt
         return
 
-    def print_timers(self):
+    def print_timers(self, to_log: bool = False):
         """
         Function to print the time information, including total time elapsed,
         time consumption at different stages of the simulation, etc..
+
+        :param to_log: When ``False`` (default) the timer tree is written to Python's
+            stdout via ``print``. When ``True`` it is written to the darts output stream
+            instead — i.e. the file passed to :func:`redirect_darts_output` (the same
+            destination the C++ engine output, e.g. ``print_stat``, goes to), or the
+            terminal if no redirect is active. Use this so the timers land in the run log
+            alongside the engine output rather than on the console.
+        :type to_log: bool
         """
-        print(self.timer.print("", ""))
+        timers_str = self.timer.print("", "")
+        if to_log:
+            from darts.engines import write_to_darts_output
+
+            write_to_darts_output(timers_str + "\n")
+        else:
+            print(timers_str)
 
     def print_stat(self):
         """

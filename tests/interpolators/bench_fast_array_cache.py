@@ -5,10 +5,10 @@ against the legacy pickle read, on a real on-disk obl_point_data_*.pkl.
 What it does, given a pickle:
   1. (convert) Load the pickle exactly like PhysicsBase (base object + appended
      DELTA frames), timing it — this is the legacy read cost we are replacing.
-     Infer (n_dims, n_ops), build the keys/vals arrays, and np.save the
-     .keys.npy / .vals.npy snapshot next to the pickle.
+     Infer (n_dims, n_ops), build the keys/vals arrays, and write the single
+     ``.fastcache`` snapshot file next to the pickle (PhysicsBase format).
   2. (fast read) In a fresh interpolator of the matching (n_dims, n_ops) template,
-     time np.load(keys) + np.load(vals, mmap) + itor.set_point_data_arrays(...).
+     time reading the ``.fastcache`` (keys read, vals mmap) + set_point_data_arrays.
   3. Report sizes, per-phase timings, correctness (point count), and speedup.
 
 Use --read-only to time just phase 2 against an already-written snapshot (run it
@@ -112,9 +112,8 @@ def build_itor(n_dims, n_ops, precision, kind):
     return cls(ev, origin, step, False)
 
 
-def fast_paths(pkl_path):
-    base = pkl_path[:-4] if pkl_path.endswith(".pkl") else pkl_path
-    return base + ".keys.npy", base + ".vals.npy"
+# Bare PhysicsBase instance just to reuse the single-file (.fastcache) reader/writer.
+_PB = PhysicsBase.__new__(PhysicsBase)
 
 
 def convert(pkl_path):
@@ -142,24 +141,31 @@ def convert(pkl_path):
     ).reshape(n, n_ops)
     t_build = time.perf_counter() - t0
 
-    keys_path, vals_path = fast_paths(pkl_path)
+    fast_path = _PB._fast_cache_path(pkl_path)
+    header = {
+        "format": 1,
+        "pkl_size": os.path.getsize(pkl_path),
+        "n_points": n,
+        "n_dims": n_dims,
+        "n_ops": n_ops,
+        "base_fp": _PB._pkl_fingerprint(
+            pkl_path, min(65536, os.path.getsize(pkl_path))
+        ),
+    }
     t0 = time.perf_counter()
-    np.save(keys_path, keys)
-    np.save(vals_path, vals)
+    _PB._write_fastcache_file(fast_path, header, keys, vals)
     t_save = time.perf_counter() - t0
     print(
-        f"[convert] build arrays: {t_build:7.2f} s   save .npy: {t_save:7.2f} s   "
-        f"keys={human(os.path.getsize(keys_path))} vals={human(os.path.getsize(vals_path))}"
+        f"[convert] build arrays: {t_build:7.2f} s   save .fastcache: {t_save:7.2f} s   "
+        f"file={human(os.path.getsize(fast_path))}"
     )
     return t_pickle, n, n_dims, n_ops, d
 
 
 def fast_read(pkl_path, n_dims, n_ops, precision, kind, expected_n=None):
-    keys_path, vals_path = fast_paths(pkl_path)
     itor = build_itor(n_dims, n_ops, precision, kind)
     t0 = time.perf_counter()
-    keys = np.load(keys_path)
-    vals = np.load(vals_path, mmap_mode="r")
+    keys, vals = _PB._read_fastcache_arrays(pkl_path)
     t_load = time.perf_counter() - t0
     t0 = time.perf_counter()
     itor.set_point_data_arrays(keys, vals)
@@ -196,10 +202,10 @@ def main():
     d = None
 
     if args.read_only:
-        keys_path, vals_path = fast_paths(args.pkl)
-        # mmap headers only — shapes without reading the data.
-        expected_n, n_dims = np.load(keys_path, mmap_mode="r").shape
-        n_ops = np.load(vals_path, mmap_mode="r").shape[1]
+        meta = _PB._read_fast_meta(args.pkl)
+        if meta is None:
+            raise SystemExit(f"No .fastcache snapshot for {args.pkl}")
+        expected_n, n_dims, n_ops = meta["n_points"], meta["n_dims"], meta["n_ops"]
         print(f"[read-only] snapshot: N={expected_n:,}  n_dims={n_dims}  n_ops={n_ops}")
     else:
         t_pickle, expected_n, n_dims, n_ops, d = convert(args.pkl)
