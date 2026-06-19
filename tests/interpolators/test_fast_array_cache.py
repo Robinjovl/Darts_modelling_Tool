@@ -226,6 +226,69 @@ def test_fast_cache_rejects_base_change_and_missing_pickle(tmp_path):
     assert pb._try_load_fast_cache(itor_c, pkl_path) is None
 
 
+def _make_cache_pb(itor, pkl_path):
+    """Bare PhysicsBase wired with just enough state for write_cache/_finalize_cache."""
+    from darts.physics.base.physics_base import PhysicsBase
+
+    pb = PhysicsBase.__new__(PhysicsBase)
+    pb.cache = True
+    pb.created_itors = [(itor, pkl_path)]
+    pb._last_flushed_sizes = {}
+    pb._flushed_point_keys = {}
+    pb._cache_finalized = False
+    return pb
+
+
+def test_cache_write_guarded_to_owner_pid(tmp_path):
+    """write_cache / _finalize_cache must be no-ops in any process other than the one
+    that created the cache — so a forked parallel-evaluator worker (which inherits the
+    PhysicsBase, its atexit handler and SIGTERM flush handler) cannot race/corrupt the
+    owner's cache files."""
+    itor, ev = _build("multilinear")
+    _populate(itor, ev)
+    pkl = str(tmp_path / "obl_point_data_guard.pkl")
+    pb = _make_cache_pb(itor, pkl)
+
+    # A foreign owner pid (simulating a forked child) -> writes are refused.
+    pb._cache_owner_pid = os.getpid() + 1
+    pb.write_cache()
+    pb._finalize_cache()
+    assert not os.path.exists(pkl)
+    assert not os.path.exists(pb._fast_cache_path(pkl))
+
+    # Owned by this process -> the cache (pickle + .fastcache) is written normally.
+    pb._cache_owner_pid = os.getpid()
+    pb._cache_finalized = False
+    pb._finalize_cache()
+    assert os.path.exists(pkl)
+    assert os.path.exists(pb._fast_cache_path(pkl))
+
+
+def test_cache_no_write_from_forked_child(tmp_path):
+    """End-to-end: a real fork inherits the owner pid, so the child's _finalize_cache
+    writes nothing while the parent (owner) still can."""
+    itor, ev = _build("multilinear")
+    _populate(itor, ev)
+    pkl = str(tmp_path / "obl_point_data_fork.pkl")
+    pb = _make_cache_pb(itor, pkl)
+    pb._cache_owner_pid = os.getpid()  # parent owns the cache
+
+    pid = os.fork()
+    if pid == 0:  # child: owner_pid != child pid -> finalize must be a no-op
+        try:
+            pb._finalize_cache()
+        finally:
+            os._exit(0)
+    os.waitpid(pid, 0)
+    assert not os.path.exists(pkl)
+    assert not os.path.exists(pb._fast_cache_path(pkl))
+
+    # The owning parent still writes.
+    pb._finalize_cache()
+    assert os.path.exists(pkl)
+    assert os.path.exists(pb._fast_cache_path(pkl))
+
+
 @pytest.mark.parametrize("kind", ["multilinear", "linear"])
 def test_set_rejects_bad_shapes(kind):
     itor, _ = _build(kind)

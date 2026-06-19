@@ -26,9 +26,11 @@ All top-level classes and worker functions pickle correctly under both ``fork`` 
 ``spawn`` start methods.
 """
 
+import contextlib
 import multiprocessing
 import os
 import pickle
+import sys
 import warnings
 
 import numpy as np
@@ -41,9 +43,137 @@ from darts.engines import operator_set_evaluator_iface, value_vector
 _worker_evaluators: dict = {}
 
 
-def _worker_init_multi(factories: dict):
-    """Build one evaluator per wrap key in this worker process."""
+@contextlib.contextmanager
+def _suppress_stdout():
+    """
+    Suppress Python and native (fd 1) stdout for the duration, then restore.
+
+    ``stderr`` is left untouched so genuine errors still surface. Used to silence the
+    duplicate model/evaluator construction a factory performs (the real model has already
+    printed the same setup), so only one evaluator's worth of output reaches the console.
+    """
+    sys.stdout.flush()
+    saved_fd = os.dup(1)
+    devnull = open(os.devnull, 'w')
+    try:
+        null_fd = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(null_fd, 1)
+        os.close(null_fd)
+        with contextlib.redirect_stdout(devnull):
+            yield
+    finally:
+        sys.stdout.flush()
+        os.dup2(saved_fd, 1)
+        os.close(saved_fd)
+        devnull.close()
+
+
+def _silence_worker_process():
+    """
+    Permanently silence a worker process so only the main process prints.
+
+    A forked worker inherits the parent's stdout and C++ darts output stream (possibly the
+    main run's log file). Without this, every worker re-emits the whole model/evaluator
+    construction and would also interleave its C++ output into the owner's log. We redirect
+    the darts output to nowhere and send stdout (Python + native fd 1) to /dev/null;
+    ``stderr`` is kept so real worker errors are still visible.
+    """
+    try:
+        from darts.engines import redirect_darts_output
+
+        redirect_darts_output('')
+    except Exception:
+        pass
+    try:
+        null_fd = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(null_fd, 1)
+        os.close(null_fd)
+    except Exception:
+        pass
+    try:
+        sys.stdout = open(os.devnull, 'w')
+    except Exception:
+        pass
+
+
+class _DartsLogStream:
+    """A minimal file-like object whose writes go to the darts output stream (the file set
+    by ``redirect_darts_output``), so Python prints land in the run log rather than on the
+    console. Used when evaluator output is explicitly enabled: it must reach the log only,
+    never stdout."""
+
+    def __init__(self):
+        from darts.engines import write_to_darts_output
+
+        self._write = write_to_darts_output
+
+    def write(self, s):
+        if s:
+            try:
+                self._write(s)
+            except Exception:
+                pass
+        return len(s)
+
+    def flush(self):
+        pass
+
+    def isatty(self):
+        return False
+
+
+def _route_worker_to_log():
+    """Send an enabled worker's output to the darts log *only* — never to the console.
+
+    The forked worker keeps the inherited darts output redirect (the main run's log), so its
+    C++ output already lands there; its Python stdout is forwarded to the same log via
+    ``write_to_darts_output``; and the native fd 1 is sent to /dev/null so reaktoro/native
+    writes never reach the console. (Several workers sharing the log can interleave — this
+    is debug-only output at the highest verbosity.)
+    """
+    try:
+        null_fd = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(null_fd, 1)
+        os.close(null_fd)
+    except Exception:
+        pass
+    try:
+        sys.stdout = _DartsLogStream()
+    except Exception:
+        pass
+
+
+@contextlib.contextmanager
+def _stdout_to_log():
+    """Temporarily route Python stdout to the darts log and native fd 1 to /dev/null, then
+    restore. The block's output reaches the log only, never the console."""
+    sys.stdout.flush()
+    saved_fd = os.dup(1)
+    saved_stdout = sys.stdout
+    try:
+        null_fd = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(null_fd, 1)
+        os.close(null_fd)
+        sys.stdout = _DartsLogStream()
+        yield
+    finally:
+        sys.stdout = saved_stdout
+        os.dup2(saved_fd, 1)
+        os.close(saved_fd)
+
+
+def _worker_init_multi(factories: dict, silence_workers: bool = True):
+    """Build one evaluator per wrap key in this worker process.
+
+    When ``silence_workers`` (the default) the worker is muted so the model's console /
+    log shows only one evaluator's output; pass ``False`` (e.g. at the highest DartsModel
+    verbosity) to let every worker print — routed to the run log only, never to stdout.
+    """
     global _worker_evaluators
+    if silence_workers:
+        _silence_worker_process()
+    else:
+        _route_worker_to_log()
     _worker_evaluators = {key: factory() for key, factory in factories.items()}
 
 
@@ -232,7 +362,9 @@ class SharedEvaluatorPool:
         ``'spawn'``, ``'forkserver'``). ``None`` uses the platform default.
     """
 
-    def __init__(self, factories: dict, n_workers=None, start_method=None):
+    def __init__(
+        self, factories: dict, n_workers=None, start_method=None, silence_workers=True
+    ):
         if not factories:
             raise ValueError("SharedEvaluatorPool requires at least one factory.")
         for f in factories.values():
@@ -245,7 +377,7 @@ class SharedEvaluatorPool:
         self._pool = ctx.Pool(
             processes=self.n_workers,
             initializer=_worker_init_multi,
-            initargs=(self._factories,),
+            initargs=(self._factories, silence_workers),
         )
 
     def has_key(self, key) -> bool:
@@ -347,6 +479,7 @@ class ParallelEvaluator(operator_set_evaluator_iface):
         *,
         shared_pool: SharedEvaluatorPool = None,
         key=None,
+        silence=True,
     ):
         super().__init__()
 
@@ -354,8 +487,13 @@ class ParallelEvaluator(operator_set_evaluator_iface):
         _check_picklable(evaluator_factory)
 
         self._factory = evaluator_factory
-        # Local serial evaluator for single-point evaluate() calls.
-        self._serial_evaluator = evaluator_factory()
+        # Local serial evaluator for single-point evaluate() calls. By default its
+        # construction is suppressed (the real model already printed the same thing, so it
+        # would be duplicate noise). When ``silence=False`` (highest DartsModel verbosity)
+        # the construction is shown, but routed to the run log only — never to stdout.
+        ctx = _suppress_stdout() if silence else _stdout_to_log()
+        with ctx:
+            self._serial_evaluator = evaluator_factory()
 
         if shared_pool is not None:
             if key is None:
@@ -381,6 +519,7 @@ class ParallelEvaluator(operator_set_evaluator_iface):
                 {self._key: evaluator_factory},
                 n_workers=self._n_workers,
                 start_method=start_method,
+                silence_workers=silence,
             )
 
     def __getattr__(self, name):

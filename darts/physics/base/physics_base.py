@@ -210,6 +210,12 @@ class PhysicsBase:
             self._last_flushed_sizes = {}
             # Fallback key set for interpolators without native dirty-point tracking.
             self._flushed_point_keys = {}
+            # PID of the process that owns this cache. Cache file writes must only happen
+            # here: a forked child (e.g. a ParallelEvaluator worker, which inherits this
+            # object, its atexit handler and SIGTERM/SIGINT flush handler) must never
+            # write the cache from its stale copy — that would race/corrupt the owner's
+            # files. The guard in write_cache / _finalize_cache enforces this.
+            self._cache_owner_pid = os.getpid()
             atexit.register(self._finalize_cache)
             self._install_signal_handlers()
 
@@ -435,6 +441,7 @@ class PhysicsBase:
         parallel_evaluation: bool = False,
         n_workers: int | None = None,
         evaluator_factory_hook=None,
+        verbose_evaluators: bool = False,
     ) -> None:
         """
         Initialise engines, operators, and interpolators for this physics object.
@@ -467,6 +474,11 @@ class PhysicsBase:
         # OBL grid is fully defined by (axes_origin, axes_step) — see __init__.
         # No more determine_obl_bounds() call: the adaptive interpolator caches cells
         # on demand wherever the solver lands.
+
+        # Whether parallel-evaluation workers (and the main process's duplicate serial
+        # evaluator builds) are allowed to print. Default False = silenced; the model sets
+        # it True at its highest verbosity. Read by _wrap_evaluators_parallel below.
+        self._verbose_evaluators = verbose_evaluators
 
         # set engine, operators and create interpolators
         self.engine = self.set_engine(discr_type, platform)
@@ -740,9 +752,15 @@ class PhysicsBase:
             (attr, region): evaluator_factory_hook(attr, region)
             for attr, region in targets
         }
+        # Silence workers + duplicate serial-evaluator builds unless the model asked for
+        # evaluator output (highest verbosity), so only one evaluator's output is shown.
+        silence = not getattr(self, '_verbose_evaluators', False)
         # One pool shared by every wrap; the pool worker pre-builds one evaluator per key.
         self._shared_evaluator_pool = SharedEvaluatorPool(
-            factories, n_workers=n_workers, start_method=start_method
+            factories,
+            n_workers=n_workers,
+            start_method=start_method,
+            silence_workers=silence,
         )
 
         for attr, region in targets:
@@ -751,6 +769,7 @@ class PhysicsBase:
                 evaluator_factory=factories[key],
                 shared_pool=self._shared_evaluator_pool,
                 key=key,
+                silence=silence,
             )
             if region is None:
                 setattr(self, attr, wrapped)
@@ -796,10 +815,14 @@ class PhysicsBase:
         }
         merged = {**old_factories, **new_factories}
 
+        silence = not getattr(self, '_verbose_evaluators', False)
         n_workers = old_pool.n_workers
         old_pool.shutdown()
         self._shared_evaluator_pool = SharedEvaluatorPool(
-            merged, n_workers=n_workers, start_method=start_method
+            merged,
+            n_workers=n_workers,
+            start_method=start_method,
+            silence_workers=silence,
         )
 
         # Repoint all existing ParallelEvaluator wrappers at the new pool so
@@ -820,6 +843,7 @@ class PhysicsBase:
                 evaluator_factory=new_factories[key],
                 shared_pool=self._shared_evaluator_pool,
                 key=key,
+                silence=silence,
             )
             if region is None:
                 setattr(self, attr, wrapped)
@@ -1329,6 +1353,11 @@ class PhysicsBase:
         framed delta records containing only supporting points materialized since
         the last successful flush.
         """
+        # Only the process that created this cache may write it. A forked child (e.g. a
+        # parallel-evaluator worker) inherits this object but holds a stale interpolator
+        # copy; letting it write would race/corrupt the owner's cache files.
+        if os.getpid() != getattr(self, '_cache_owner_pid', os.getpid()):
+            return
         if not getattr(self, 'created_itors', None):
             return
         if not hasattr(self, '_last_flushed_sizes'):
@@ -1470,6 +1499,10 @@ class PhysicsBase:
         # SIGINT (handler flushes, then user code continues and evaluates more points) is
         # still flushed by a later finalize; the per-itor size checks in write_cache /
         # _refresh_fast_caches make a repeated call a cheap no-op.
+        # Only the owning process finalizes the cache (forked children inherit this
+        # object + its atexit/signal handlers but must never write the cache).
+        if os.getpid() != getattr(self, '_cache_owner_pid', os.getpid()):
+            return
         if getattr(self, '_cache_finalized', False):
             return
         self._cache_finalized = True

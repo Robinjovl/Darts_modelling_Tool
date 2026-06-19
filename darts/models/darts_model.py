@@ -82,6 +82,8 @@ class DartsModel:
     VERBOSE_SILENT = 0  # no per-timestep or end-of-run output
     VERBOSE_DEFAULT = 1  # per-timestep lines + end-of-run statistics (legacy True)
     VERBOSE_TIMERS = 2  # additionally print timers at the end of every run() call
+    VERBOSE_EVALUATORS = 3  # additionally let every parallel-evaluation worker print
+    #                         (default: only one evaluator's output is shown)
 
     def __new__(cls, *args, **kwargs):
         """
@@ -267,6 +269,7 @@ class DartsModel:
             parallel_evaluation=parallel_evaluation,
             n_workers=n_workers,
             evaluator_factory_hook=evaluator_factory_hook,
+            verbose_evaluators=int(verbose) >= self.VERBOSE_EVALUATORS,
         )
         if platform == "gpu":
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
