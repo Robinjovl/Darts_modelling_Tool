@@ -345,6 +345,79 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.write_pvd_file(ith_step, time, output_directory)
 
         return 0
+    
+    def set_layer_properties_by_tags(self, idata: InputData):
+        porosity = 0.2
+        permeability = 1000.0
+        hcap_sand = 2450.0
+        rcond_sand = 3.0 * 86.4
+        hcap_shale = 2300.0
+        rcond_shale = 2.2 * 86.4
+        shale_threshold = 1e-3
+ 
+        n = self.discr_mesh.n_cells
+ 
+        # default (sand everywhere)
+        poro  = np.full(n, porosity, dtype=float)
+        hcap  = np.full(n, hcap_sand, dtype=float)
+        rcond = np.full(n, rcond_sand, dtype=float)
+        permx = np.full(n, permeability, dtype=float)
+        permy = np.full(n, permeability, dtype=float)
+        permz = np.full(n, permeability*0.1, dtype=float)
+ 
+        self.layer_properties = {
+            1: {'poro': shale_threshold, 'perm': shale_threshold, 'rcond': rcond_shale, 'hcap': hcap_shale, 'anisotropy': [1, 1, 0.1]},
+            2: {'poro': porosity,'perm': permeability, 'rcond': rcond_sand,  'hcap': hcap_sand,  'anisotropy': [1, 1, 0.1]},
+            3: {'poro': shale_threshold, 'perm': shale_threshold, 'rcond': rcond_shale, 'hcap': hcap_shale, 'anisotropy': [1, 1, 0.1]},
+        }
+ 
+        matrix_tags = set(self.domain_tags[elem_loc.MATRIX])
+ 
+        md = self.mesh_data
+ 
+        # Get gmsh:physical per cell-block aligned with md.cells
+        if hasattr(md, "cell_data") and "gmsh:physical" in md.cell_data:
+            phys_per_block = md.cell_data["gmsh:physical"]  # list of arrays aligned with md.cells
+        else:
+            raise RuntimeError("mesh_data.cell_data['gmsh:physical'] not found. Ensure mesh is read with cell_data.")
+ 
+        # Build mapping: physical_tag -> list of reservoir-block indices [0..n_res_blocks-1]
+        self.layers = {tag: [] for tag in matrix_tags}
+ 
+        res_idx = 0  # reservoir block index space
+        for blk_i, cell_block in enumerate(md.cells):
+            tags = np.asarray(phys_per_block[blk_i])
+            for local_id, tag in enumerate(tags):
+                tag = int(tag)
+                if tag in matrix_tags:
+                    # this cell exists as a "reservoir block"
+                    self.layers[tag].append(res_idx)
+                    res_idx += 1
+ 
+ 
+        # Assign properties by tag (no dict-order bugs)
+        for tag, ids in self.layers.items():
+            if not ids:
+                continue
+            props = self.layer_properties[tag]
+            idx = np.asarray(ids, dtype=int)
+ 
+            ax = np.asarray(props["anisotropy"], dtype=float)
+            k = np.array([props["perm"] * ax[0], props["perm"] * ax[1], props["perm"] * ax[2]], dtype=float)
+ 
+            poro[idx]  = props["poro"]
+            hcap[idx]  = props["hcap"]
+            rcond[idx] = props["rcond"]
+            permx[idx] = k[0]
+            permy[idx] = k[1]
+            permz[idx] = k[2]
+ 
+        idata.rock.porosity = poro
+        idata.rock.permx = permx
+        idata.rock.permy = permy
+        idata.rock.permz = permz
+        idata.rock.heat_capacity = hcap
+        idata.rock.thermal_conductivity = rcond
 
     def set_heterogeneous_props_by_interpolation(self, idata, generate_mesh):
         # set different values in the reservoir and lateral surrounding+over/under-burden

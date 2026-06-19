@@ -1,5 +1,5 @@
 from examples.case_1 import input_data_case_1
-from THM_vs_geomech_proxy.examples.generate_model_case import input_data_other_model
+from examples.generate_model_case import input_data_other_model
 import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
