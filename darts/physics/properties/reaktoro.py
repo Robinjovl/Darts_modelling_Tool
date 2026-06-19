@@ -166,8 +166,11 @@ class Flash:
         fluid_composition = self.get_fluid_composition(state)
         fluid_moles = self.total_moles * fluid_composition
 
-        # Build Reaktoro equilibrium conditions with element amounts
-        conds = EquilibriumConditions(self.system)
+        # Reuse the persistent EquilibriumConditions (built once in _build_reaktoro_system);
+        # only the per-point values change. The conserved element totals (c0) are reset every
+        # call, while the previously converged ChemicalState (self._state) is reused in place
+        # as the warm-start initial guess for the species distribution.
+        conds = self._conds
         conds.pressure(pressure_bar, "bar")
         conds.temperature(temperature_c, "celsius")
         # conds.pH(7.0)
@@ -179,8 +182,8 @@ class Flash:
         )
         conds.setInitialComponentAmounts(e_moles)
 
-        state = ChemicalState(self.system)
-
+        # Water-only cold initial guess, used on the first call and to recover after a failed
+        # warm solve (a stale neighbour guess can occasionally land in a bad basin).
         init_h_moles, init_o_moles = (
             fluid_moles[self.fc_idx['H']],
             fluid_moles[self.fc_idx['O']],
@@ -193,21 +196,32 @@ class Flash:
             water_moles = init_o_moles
             fluid_moles[self.fc_idx['H']] = init_h_moles - 2 * init_o_moles
             fluid_moles[self.fc_idx['O']] = 0
-        state.set("H2O" + self.aq_ending, water_moles, "mol")
 
-        solver = EquilibriumSolver(self.system)
-        op = EquilibriumOptions()
-        op.optima.convergence.tolerance = 1e-12
-        solver.setOptions(op)
+        def _cold_state():
+            s = ChemicalState(self.system)
+            s.set("H2O" + self.aq_ending, water_moles, "mol")
+            return s
+
+        if self._state is None:
+            self._state = _cold_state()
+
         try:
-            result = solver.solve(state, conds)
+            # solver.solve overwrites self._state in place with the converged result, so the
+            # next (neighbouring) OBL point automatically warm-starts from it.
+            result = self._solver.solve(self._state, conds)
             if hasattr(result, "succeeded") and not result.succeeded():
-                raise RuntimeError("Reaktoro equilibrium solver failed to converge")
-            props = state.props()
+                # Warm guess failed -> retry once from a clean water-only cold state.
+                self._state = _cold_state()
+                result = self._solver.solve(self._state, conds)
+                if hasattr(result, "succeeded") and not result.succeeded():
+                    raise RuntimeError("Reaktoro equilibrium solver failed to converge")
+            props = self._state.props()
         except Exception as exc:
+            # Drop the (possibly poisoned) warm state so the next point starts clean.
             # Do NOT return zeros: rho_aq=0 would feed divide-by-zero / NaN operators into
             # the OBL table silently. Raise a FlashError so the model's Newton loop treats
             # it as a non-convergence and cuts the timestep (keeping the simulation alive).
+            self._state = None
             raise ReaktoroFlashError(
                 f"Reaktoro equilibrium failed at p={pressure_bar:.6g} bar, "
                 f"T={temperature_c:.4g} C: {exc}"
@@ -263,7 +277,7 @@ class Flash:
             )
 
         # Kinetic state: saturation ratios and activities
-        aq_props = AqueousProps(state)
+        aq_props = AqueousProps(self._state)
         kin_state = {
             'Act(H+)': props.speciesActivity("H+").val(),
             'Act(CO2)': props.speciesActivity("CO2" + self.aq_ending).val(),
@@ -341,3 +355,17 @@ class Flash:
         self.gas_species = [
             sp.name() for sp in self.system.phases()[phase_idx].species()
         ]
+
+        # Persistent solver/options/conditions built ONCE and reused for every OBL point.
+        # Reusing the solver avoids per-call allocation of its internal workspace, and the
+        # paired persistent ChemicalState (self._state, created lazily in evaluate) carries
+        # the previous converged speciation forward as a warm-start guess across neighbouring
+        # supporting points. The C++ adaptive interpolator delivers points grid-sorted, so
+        # consecutive points within a batch are state-space neighbours -- an excellent guess.
+        # See evaluate().
+        self._solver = EquilibriumSolver(self.system)
+        op = EquilibriumOptions()
+        op.optima.convergence.tolerance = 1e-12
+        self._solver.setOptions(op)
+        self._conds = EquilibriumConditions(self.system)
+        self._state = None
