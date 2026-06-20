@@ -36,7 +36,7 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
+        self.set_sim_params(first_ts=1/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
                             it_newton=10, it_linear=10,
                             newton_type=sim_params.newton_local_chop,
                             coupled_well_res_norm_method=2,
@@ -199,6 +199,23 @@ class Model(CICDModel):
         )
 
     def set_well_controls(self):
+        """
+        For the DFM well, the mass-rate control is imposed through the top DFM connection velocity:
+        R = rate_ctrl_operator * phase_velocity * pipe_area - target_rate
+        When dt is extremely small, the momentum accumulation term makes the phase velocity almost fixed by the
+        previous state. Its sensitivity to pressure is very small, so Newton needs a huge wellhead pressure update
+        to force the requested rate.
+
+        In this example:
+        target_inj_rate = 2 * 24 * 3600  # 172800 kg/day
+        If first_ts = 0.0001 / (24 * 60 * 60)  # 0.0001 s
+        At the initial state, the DFM velocity gives only about 0.0566 kg/day, but the control asks for 172800 kg/day.
+        With dt = 0.0001 s, the linearized pressure jump needed is around 1267 bar, so the Newton update shoots outside
+        max_p=500. Then timestep cutting makes the problem worse, because smaller dt reduces velocity sensitivity even more.
+
+        The fix in this example is to avoid starting the rate-control case with such a tiny timestep. For example,
+        use a first timestep on the order of 1 second instead.
+        """
         inj_composition = []
         w = self.reservoir.wells[0]
 
