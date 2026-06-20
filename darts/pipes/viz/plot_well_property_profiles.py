@@ -37,7 +37,7 @@ class WellProfilePlotSpec:
     offset: float = 0.0
 
 
-def plot_well_prop_profiles(
+def plot_well_property_profiles(
     well_name: str,
     coupled_model: DartsModel,
     reported_times: Sequence[float] | None = None,
@@ -138,6 +138,9 @@ def plot_well_prop_profiles(
             plt.close(fig)
 
     return saved_files
+
+
+plot_well_prop_profiles = plot_well_property_profiles
 
 
 def _get_report_steps(

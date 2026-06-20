@@ -25,7 +25,7 @@ class ScenarioProfile:
     label: str
 
 
-def plot_well_property_profiles_from_pickles(
+def plot_well_property_profile_comparison(
     scenarios: Sequence[ScenarioProfile | tuple[str, str]],
     property_key: str,
     output_path: str,
@@ -130,6 +130,9 @@ def plot_well_property_profiles_from_pickles(
         plt.close(fig)
 
     return output_path
+
+
+plot_well_property_profiles_from_pickles = plot_well_property_profile_comparison
 
 
 _LINESTYLES = ("-", "--", "-.", ":", "-", "--")
