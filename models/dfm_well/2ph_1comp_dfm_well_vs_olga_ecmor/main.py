@@ -13,15 +13,16 @@ Corresponding OLGA file is in my_old_laptop/Desktop/march/non-isothermal single-
 
 """
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 import os
 
 from darts.engines import redirect_darts_output
 from darts.pipes.save_results import save_dfm_well_props
-from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
 from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
+from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
+from darts.pipes.viz.plot_well_segment_property_vs_time import (
+    ScenarioProfile,
+    plot_well_segment_property_vs_time,
+)
 
 from model import Model
 
@@ -32,7 +33,7 @@ coupled_model.reservoir.grav_acceleration_for_spe = 9.80665
 coupled_model.init()
 coupled_model.set_output()
 
-if 1:
+if 0:
     output_props = coupled_model.physics.vars + coupled_model.output.properties
     coupled_model.output.well_output_to_vtp(ith_step=0, output_properties=output_props)  # saves initial well conditions
 
@@ -48,5 +49,29 @@ if 1:
 else:
     save_dfm_well_props('I1', coupled_model)
 
-    plot_heat_map_pcolormesh('I1', coupled_model, show_plot=False)
-    plot_heat_map_contourf('I1', coupled_model, show_plot=False)
+    # plot_heat_map_pcolormesh('I1', coupled_model, show_plot=False)
+    # plot_heat_map_contourf('I1', coupled_model, show_plot=False)
+
+    figures_dir = os.path.join(coupled_model.output_folder, "figures")
+    scenarios = [ScenarioProfile(coupled_model.output_folder, "DARTS-well")]
+    plot_well_segment_property_vs_time(
+        scenarios=scenarios,
+        well_name="I1",
+        property_key="pressure",
+        segment_index=-1,
+        output_path=os.path.join(figures_dir, "BHP_time_series.pdf"),
+        y_label="BHP [bar]",
+        log_x=False,
+        show_plot=False,
+    )
+    plot_well_segment_property_vs_time(
+        scenarios=scenarios,
+        well_name="I1",
+        property_key="temperature",
+        segment_index=-1,
+        output_path=os.path.join(figures_dir, "BHT_time_series.pdf"),
+        property_offset=-273.15,
+        y_label="BHT [deg C]",
+        log_x=False,
+        show_plot=False,
+    )
