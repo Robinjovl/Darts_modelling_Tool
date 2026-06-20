@@ -45,8 +45,11 @@ def plot_well_segment_property_vs_time(
     y_tick_increment: float | None = None,
     log_x: bool = True,
     legend_loc: str = "best",
+    show_legend: bool = True,
     show_plot: bool = True,
     figure_size: tuple[float, float] = (8, 5),
+    marker_style: str | None = None,
+    line_style: str | None = None,
     marker_size: float = 5.0,
     line_width: float = 2.0,
 ) -> str:
@@ -76,8 +79,13 @@ def plot_well_segment_property_vs_time(
     :param y_tick_increment: Optional y tick spacing.
     :param log_x: If True, use a logarithmic x-axis.
     :param legend_loc: Matplotlib legend location.
+    :param show_legend: If True, display the scenario legend.
     :param show_plot: If True, display the figure.
     :param figure_size: Matplotlib figure size.
+    :param marker_style: Optional Matplotlib marker style for a single scenario.
+                         Multi-scenario plots keep the default marker cycle.
+    :param line_style: Optional Matplotlib line style for a single scenario.
+                       Multi-scenario plots keep the default line style.
     :param marker_size: Marker size.
     :param line_width: Line width.
     :return: Saved output path.
@@ -153,8 +161,8 @@ def plot_well_segment_property_vs_time(
         plotter(
             x_values,
             y_values,
-            linestyle="",
-            marker=_MARKERS[idx % len(_MARKERS)],
+            linestyle=_get_line_style(len(scenarios), line_style),
+            marker=_get_marker_style(idx, len(scenarios), marker_style),
             linewidth=line_width,
             markersize=marker_size,
             label=scenario.label,
@@ -174,7 +182,8 @@ def plot_well_segment_property_vs_time(
     ax.grid(True, which="major", axis="y", linestyle="--", alpha=0.3)
     ax.set_xlabel(_get_time_axis_label(time_unit), labelpad=6)
     ax.set_ylabel(y_label or property_key, labelpad=6)
-    _add_legend(ax, legend_loc)
+    if show_legend:
+        _add_legend(ax, legend_loc)
 
     if log_x and x_max is not None:
         lower, _upper = ax.get_xlim()
@@ -191,6 +200,7 @@ def plot_well_segment_property_vs_time(
 
 
 _MARKERS = ("o", "s", "D", "^", "v", "None")
+_DEFAULT_LINE_STYLE = ""
 
 
 def _normalise_scenarios(
@@ -209,6 +219,25 @@ def _normalise_scenarios(
 def _validate_scenarios(scenarios: Sequence[ScenarioProfile]) -> None:
     if len(scenarios) == 0:
         raise ValueError("At least one scenario must be provided.")
+
+
+def _get_marker_style(
+    scenario_index: int,
+    num_scenarios: int,
+    marker_style: str | None,
+) -> str:
+    if num_scenarios == 1 and marker_style is not None:
+        return marker_style
+    return _MARKERS[scenario_index % len(_MARKERS)]
+
+
+def _get_line_style(
+    num_scenarios: int,
+    line_style: str | None,
+) -> str:
+    if num_scenarios == 1 and line_style is not None:
+        return line_style
+    return _DEFAULT_LINE_STYLE
 
 
 def _apply_plot_style() -> None:
