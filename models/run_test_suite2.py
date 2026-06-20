@@ -92,6 +92,8 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
             os.path.join('dfm_well', '2ph_1comp_coupled_dfm_well_reservoir'),
             # Single-phase thermal well flow in a DFM well to validate against DWell well simulator
             os.path.join('dfm_well', '1ph_1comp_thermal_dfm_well_vs_dwell'),
+            # Single-phase thermal well flow in a DFM well to validate against OLGA well simulator
+            os.path.join('dfm_well', '1ph_1comp_thermal_dfm_well_vs_olga'),
             # Two-phase isothermal well flow in a DFM well to validate against DWell well simulator
             os.path.join('dfm_well', '2ph_2comp_isothermal_dfm_vertical_well_vs_dwell'),
             # Two-phase isothermal vertical well flow in a DFM well to validate against OLGA well simulator
@@ -99,12 +101,6 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
             # Two-phase isothermal inclined well flow in a DFM well to validate against OLGA well simulator
             os.path.join('dfm_well', '2ph_2comp_isothermal_dfm_inclined_well_vs_olga'),
         ]
-        # This test fails with the iterative linear solver
-        if not iter_solvers:
-            accepted_dirs += [
-                # Single-phase thermal well flow in a DFM well to validate against OLGA well simulator
-                os.path.join('dfm_well', '1ph_1comp_thermal_dfm_well_vs_olga'),
-                ]
 
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
     test_args_mech = []
