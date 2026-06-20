@@ -31,30 +31,31 @@ coupled_model.reservoir.grav_acceleration_for_spe = 9.80665
 coupled_model.init()
 coupled_model.set_output()
 
+report_steps = [
+    30 / 24 / 60,
+]
+
 if 1:
     output_props = coupled_model.physics.vars + coupled_model.output.properties
     coupled_model.output.well_output_to_vtp(ith_step=0, output_properties=output_props)  # saves initial well conditions
 
-    time_steps = [
-        30 / 24 / 60,
-                 ]
-
-    for i, dt in enumerate(time_steps):
+    for i, dt in enumerate(report_steps):
         coupled_model.run(dt)
         coupled_model.output.well_output_to_vtp(ith_step=i + 1, output_properties=output_props)
 
     coupled_model.print_timers()
 else:
-    save_dfm_well_props('I1', coupled_model)
+    well_name = "I1"
+    save_dfm_well_props(well_name, coupled_model)
 
-    # plot_heat_map_pcolormesh('I1', coupled_model, show_plot=False)
-    # plot_heat_map_contourf('I1', coupled_model, show_plot=False)
+    # plot_heat_map_pcolormesh(well_name, coupled_model, show_plot=False)
+    # plot_heat_map_contourf(well_name, coupled_model, show_plot=False)
 
     figures_dir = os.path.join(coupled_model.output_folder, "figures")
     scenarios = [ScenarioProfile(coupled_model.output_folder, "DARTS-well")]
     plot_well_segment_property_vs_time(
         scenarios=scenarios,
-        well_name="I1",
+        well_name=well_name,
         property_key="pressure",
         segment_index=-1,
         output_path=os.path.join(figures_dir, "BHP_time_series.pdf"),
@@ -68,7 +69,7 @@ else:
     )
     plot_well_segment_property_vs_time(
         scenarios=scenarios,
-        well_name="I1",
+        well_name=well_name,
         property_key="temperature",
         segment_index=-1,
         output_path=os.path.join(figures_dir, "BHT_time_series.pdf"),

@@ -132,9 +132,6 @@ def plot_well_property_profile_comparison(
     return output_path
 
 
-plot_well_property_profiles_from_pickles = plot_well_property_profile_comparison
-
-
 _LINESTYLES = ("-", "--", "-.", ":", "-", "--")
 _MARKERS = ("o", "s", "D", "^", "v", "None")
 

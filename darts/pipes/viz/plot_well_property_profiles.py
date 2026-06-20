@@ -140,9 +140,6 @@ def plot_well_property_profiles(
     return saved_files
 
 
-plot_well_prop_profiles = plot_well_property_profiles
-
-
 def _get_report_steps(
     simulated_time: np.ndarray,
     reported_times: Sequence[float] | None,
