@@ -50,6 +50,8 @@ def plot_well_segment_property_vs_time(
     figure_size: tuple[float, float] = (8, 5),
     marker_style: str | None = None,
     line_style: str | None = None,
+    marker_color: str | None = None,
+    line_color: str | None = None,
     marker_size: float = 5.0,
     line_width: float = 2.0,
 ) -> str:
@@ -86,6 +88,10 @@ def plot_well_segment_property_vs_time(
                          Multi-scenario plots keep the default marker cycle.
     :param line_style: Optional Matplotlib line style for a single scenario.
                        Multi-scenario plots keep the default line style.
+    :param marker_color: Optional Matplotlib marker color for a single scenario.
+                         Multi-scenario plots keep the default color cycle.
+    :param line_color: Optional Matplotlib line color for a single scenario.
+                       Multi-scenario plots keep the default color cycle.
     :param marker_size: Marker size.
     :param line_width: Line width.
     :return: Saved output path.
@@ -166,6 +172,7 @@ def plot_well_segment_property_vs_time(
             linewidth=line_width,
             markersize=marker_size,
             label=scenario.label,
+            **_get_color_kwargs(len(scenarios), marker_color, line_color),
         )
 
     if y_min is not None or y_max is not None:
@@ -238,6 +245,23 @@ def _get_line_style(
     if num_scenarios == 1 and line_style is not None:
         return line_style
     return _DEFAULT_LINE_STYLE
+
+
+def _get_color_kwargs(
+    num_scenarios: int,
+    marker_color: str | None,
+    line_color: str | None,
+) -> dict[str, str]:
+    if num_scenarios != 1:
+        return {}
+
+    color_kwargs = {}
+    if line_color is not None:
+        color_kwargs["color"] = line_color
+    if marker_color is not None:
+        color_kwargs["markerfacecolor"] = marker_color
+        color_kwargs["markeredgecolor"] = marker_color
+    return color_kwargs
 
 
 def _apply_plot_style() -> None:
