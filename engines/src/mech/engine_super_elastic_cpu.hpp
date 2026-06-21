@@ -77,14 +77,14 @@ public:
 
 
   // order of operators:
-  const static uint8_t ACC_OP = 0;
-  const static uint8_t FLUX_OP = NE;
+  const static uint16_t ACC_OP = 0;
+  const static uint16_t FLUX_OP = NE;
   // diffusion
-  const static uint8_t DENS_OP = NE + NE * NP;
-  const static uint8_t UPSAT_OP = NE + NE * NP + NP;
-  const static uint8_t GRAD_OP = NE + NE * NP + NP + NP;
+  const static uint16_t DENS_OP = NE + NE * NP;
+  const static uint16_t UPSAT_OP = NE + NE * NP + NP;
+  const static uint16_t GRAD_OP = NE + NE * NP + NP + NP;
   // kinetic reaction
-  const static uint8_t KIN_OP = NE + NE * NP + NP + NP + NE * NP;
+  const static uint16_t KIN_OP = NE + NE * NP + NP + NP + NE * NP;
   // extra operators (widened — late-layout indices reach 257..272 at NC=30 / NP=3 thermal)
   const static uint16_t GRAV_OP = NE + NE * NP + NP + NP + NE * NP + NE;
   const static uint16_t PC_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP;
