@@ -1192,6 +1192,16 @@ class PhysicsBase:
                         f"(MINIMAL omits the 'linear' templates). Tried: {itor_name}."
                     ) from err
 
+        # In-RAM cap on the derived hypercube cache (LRU on CPU; clear-on-overflow on
+        # GPU). Purely an in-memory bound: it does NOT change the on-disk OBL cache
+        # format or the persisted supporting-point cache (only point_data is saved).
+        # 0/absent = unbounded (legacy behaviour). Read from the physics attribute so it
+        # applies uniformly to every physics that goes through create_interpolator, and
+        # hasattr-guarded so interpolators without the method (linear/static) are unaffected.
+        hypercube_cap = getattr(self, 'hypercube_cap', 0)
+        if hypercube_cap and hasattr(itor, 'set_hypercube_cap'):
+            itor.set_hypercube_cap(int(hypercube_cap))
+
         if self.cache:
             # create unique signature for interpolator
             itor_cache_signature = f"{type(evaluator).__name__}_{mode}_{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
@@ -1383,20 +1393,25 @@ class PhysicsBase:
                     prev_term = signal.signal(signal.SIGTERM, signal.SIG_IGN)
                 except Exception:
                     prev_term = None
-                # Prefer the tuple-keyed multi-index export (preserves out-of-window cells
-                # on unbounded adaptive grids); fall back to the legacy integer-keyed
-                # point_data for static interpolators that lack point_data_full.
-                point_data_view = (
-                    itor.point_data_full
-                    if hasattr(itor, "point_data_full")
-                    else itor.point_data
-                )
                 # Per-point evaluation epochs for the points about to be written. Captured
                 # before _mark_point_data_*_flushed() clears the dirty trackers. Empty for
                 # interpolators without native epoch tracking (no epoch frame is written).
                 epochs = self._point_data_epoch_delta(itor)
                 if not os.path.exists(filename):
                     # First flush writes the full pickle (backward-compatible cache layout).
+                    # Build the FULL point-data view ONLY here: for a large adaptive cache
+                    # (tens of millions of points) `point_data_full` materializes a Python
+                    # dict of N tuples — hundreds of GB at ~84M points — so it must NEVER be
+                    # built on the append-only delta path below (it was previously evaluated
+                    # unconditionally and discarded there, which OOM-killed checkpoint flushes
+                    # of large caches). Prefer the tuple-keyed multi-index export (preserves
+                    # out-of-window cells on unbounded adaptive grids); fall back to the
+                    # legacy integer-keyed point_data for static interpolators that lack it.
+                    point_data_view = (
+                        itor.point_data_full
+                        if hasattr(itor, "point_data_full")
+                        else itor.point_data
+                    )
                     # Drop any snapshot left over from a previous (now-deleted) pickle so a
                     # stale image can never shadow this freshly written base.
                     self._remove_fast_cache(filename)

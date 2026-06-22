@@ -92,6 +92,19 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init
 }
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+void multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::clear_hypercube_data()
+{
+  // Drop the device hypercube map and the host key tracker; both are rebuilt on
+  // demand from point_data (no flash). Mirrors the destructor + constructor so the
+  // fresh map starts at the same ~50 MB capacity. point_data and the on-disk cache
+  // are untouched.
+  gpu_hashmap_async::delete_hashmap(hypercube_data_d);
+  int max_hypercube_capacity = 50 * 1024 * 1024 / (N_VERTS * N_OPS * sizeof(value_t));
+  hypercube_data_d = gpu_hashmap_async::create_hashmap<value_t, N_VERTS * N_OPS>(max_hypercube_capacity);
+  generated_hypercubes.clear();
+}
+
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::write_to_file(const std::string filename)
 {
   return 0;
@@ -167,6 +180,14 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::eval
   // One batch interpolation call == one nonlinear-iteration assembly of this operator
   // set: advance the epoch stamp applied to points materialized during this call.
   eval_index++;
+
+  // Bound the device hypercube cache: when it exceeds hypercube_cap, drop all cached
+  // hypercubes (host tracker + device map) and let this batch rebuild only its working
+  // set from point_data (no flash). Coarse vs the CPU LRU because the device
+  // open-addressed map has no selective-erase API; the per-batch working set is
+  // bounded by n_states_idxs, so size hypercube_cap >> cells.
+  if (hypercube_cap != 0 && generated_hypercubes.size() > hypercube_cap)
+    clear_hypercube_data();
 
   state_hc_keys_d.resize(n_states_idxs);
   hypercubes_to_compute.resize(n_states_idxs);

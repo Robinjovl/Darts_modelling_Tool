@@ -108,6 +108,32 @@ public:
    */
   uint64_t eval_index = 0;
 
+  /**
+   * @brief Optional cap on the number of cached hypercubes (0 = unbounded; default).
+   *
+   * The 130 KiB hypercube payloads live in the device hashmap (hypercube_data_d),
+   * tracked host-side by generated_hypercubes. The device open-addressed map has no
+   * selective-erase API, so the cap is enforced coarsely: when the tracked count
+   * exceeds hypercube_cap, the whole device map and host tracker are dropped (see
+   * clear_hypercube_data) and rebuilt on demand from point_data — no flash, and the
+   * persisted supporting-point cache is untouched. This is the device analog of the
+   * CPU adaptive interpolator's LRU bound.
+   */
+  size_t hypercube_cap = 0;
+
+  /**
+   * @brief Bound the device hypercube cache to ~cap entries (0 = unbounded).
+   */
+  void set_hypercube_cap(size_t cap) { hypercube_cap = cap; }
+  size_t get_hypercube_cap() const { return hypercube_cap; }
+
+  /**
+   * @brief Drop all device hypercube payloads + the host key tracker, releasing
+   *        device memory. Rebuilt on demand from point_data (no flash). point_data
+   *        and the on-disk cache are untouched. Call only between evaluate() calls.
+   */
+  void clear_hypercube_data();
+
 protected:
   /**
    * @brief Get values of operators at a given supporting point. Cell-key-driven.

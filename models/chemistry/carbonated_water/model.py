@@ -371,6 +371,15 @@ class Model(CICDModel):
                                                 cache=True)
         self.physics.add_property_region(property_container, output_property_container, 0)
 
+        # Bound the in-memory derived hypercube cache so the adaptive 8-D OBL
+        # interpolator cannot exhaust RAM. The hypercube payloads are a pure derived,
+        # never-persisted cache (rebuilt from supporting points with no flash), so
+        # capping them does NOT touch the supporting-point cache or its *.pkl/*.fastcache
+        # files. Read by PhysicsBase.create_interpolator. Sized to ~20x the reservoir
+        # cell count (>> the per-Newton-iteration working set) so the hot-path hit rate
+        # stays ~100%.
+        self.physics.hypercube_cap = max(200_000, 20 * int(self.n_res_blocks))
+
         # Flashes whose per-iteration dilution fallback we police in run_timestep /
         # apply_rhs_flux. Only those exposing pop_dilution_report() (PHREEQC) qualify; the
         # reaktoro flash is silently ignored. NOTE: with parallel_evaluation=True the model is

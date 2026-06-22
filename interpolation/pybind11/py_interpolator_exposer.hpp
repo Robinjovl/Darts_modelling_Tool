@@ -265,6 +265,15 @@ struct interpolator_exposer
             "Number of supporting points currently in the adaptive cache")
           .def("get_n_cached_hypercubes", &interpolator_class::get_n_cached_hypercubes,
             "Number of hypercubes currently in the adaptive cache")
+          .def("set_hypercube_cap", &interpolator_class::set_hypercube_cap,
+            "Bound the in-memory derived hypercube cache to ~N most-recently-used "
+            "entries (0 = unbounded). Caps peak RAM; the persisted supporting-point "
+            "cache and its file format are untouched.", "cap"_a)
+          .def("get_hypercube_cap", &interpolator_class::get_hypercube_cap,
+            "Current hypercube cache cap (0 = unbounded)")
+          .def("clear_hypercube_data", &interpolator_class::clear_hypercube_data,
+            "Drop all cached hypercube payloads (rebuilt on demand from supporting "
+            "points; no flash). Releases memory; supporting-point cache untouched.")
           // get_hypercube_keys: signed multi-index of every generated hypercube, as a
           // list of int tuples. Replaces the legacy integer get_hypercube_indexes()
           // (unbounded grid -> no integer packing). Used for body-path occupancy output.
@@ -529,6 +538,16 @@ struct interpolator_exposer
             "keys"_a, "vals"_a)
           .def("get_n_cached_points", &interpolator_class::get_n_cached_points)
           .def("get_n_cached_hypercubes", &interpolator_class::get_n_cached_hypercubes)
+          .def("set_hypercube_cap", &interpolator_class::set_hypercube_cap,
+            "Bound the device hypercube cache to ~N hypercubes (0 = unbounded); on "
+            "overflow the device map + host key tracker are dropped and rebuilt on "
+            "demand from supporting points (no flash). On-disk cache untouched.",
+            "cap"_a)
+          .def("get_hypercube_cap", &interpolator_class::get_hypercube_cap,
+            "Current hypercube cache cap (0 = unbounded)")
+          .def("clear_hypercube_data", &interpolator_class::clear_hypercube_data,
+            "Drop all device hypercube payloads + host key tracker (rebuilt on demand "
+            "from supporting points; no flash). Supporting-point cache untouched.")
           // Append-only cache hooks (from development): mirror the CPU adaptive
           // interpolators so Python persists only newly evaluated supporting points.
           .def("point_data_size", [](const interpolator_class &self) {

@@ -81,6 +81,22 @@ public:
    std::unordered_map<key_t, hypercube_data_t, key_hash_t> hypercube_data;
 
    /**
+    * @brief Optional cap on the number of cached hypercube payloads (0 = unbounded; default).
+    *
+    * hypercube_data is a PURE DERIVED cache — every entry is rebuilt from point_data
+    * with NO supporting-point (flash) evaluation, and it is NEVER persisted (the on-disk
+    * OBL cache stores only point_data). When > 0, the map is held to ~hypercube_cap
+    * most-recently-used entries (LRU by batch epoch), capping peak RAM. The per-batch
+    * live working set is bounded by the number of requested cells (one hypercube key
+    * per cell), not by the cumulative number of explored cells, so eviction is lossless
+    * on the hot path and never re-triggers flash.
+    */
+   size_t hypercube_cap = 0;
+
+   /// Last batch epoch (eval_index) at which each cached hypercube was used; LRU side table.
+   std::unordered_map<key_t, uint64_t, key_hash_t> hc_last_used;
+
+   /**
     * @brief Get multi-index keys of all evaluated hypercubes.
     *
     * Each key is the signed lower-corner multi-index of a generated hypercube. This
@@ -94,6 +110,21 @@ public:
     */
    size_t get_n_cached_points() const { return point_data.size(); }
    size_t get_n_cached_hypercubes() const { return hypercube_data.size(); }
+
+   /**
+    * @brief Bound the in-memory derived hypercube cache to ~cap most-recently-used
+    *        entries (0 = unbounded). Does NOT affect point_data or the cache file format.
+    */
+   void set_hypercube_cap(size_t cap) { hypercube_cap = cap; }
+   size_t get_hypercube_cap() const { return hypercube_cap; }
+
+   /**
+    * @brief Drop all cached hypercube payloads and release their memory. They are
+    *        rebuilt on demand from point_data (no flash). point_data and the on-disk
+    *        cache are untouched. Call only between evaluate() calls (not thread-safe
+    *        against an in-flight interpolate_with_derivatives).
+    */
+   void clear_hypercube_data();
 
    /**
     * @brief Multi-index keys of supporting points materialized since the last external
@@ -157,6 +188,13 @@ protected:
     *        (multiprocessing-aware); hypercube payloads are assembled in parallel.
     */
    void materialize_missing_cache(const std::vector<key_t> &missing_hc);
+
+   /**
+    * @brief Evict least-recently-used hypercubes down to ~0.9*hypercube_cap when the
+    *        cache exceeds hypercube_cap. No-op when hypercube_cap == 0. Never evicts
+    *        entries used in the current batch (eval_index). Erases only derived data.
+    */
+   void evict_hypercubes();
 
    /**
     * @brief Batch interpolation; overrides base to use multi-index path throughout.

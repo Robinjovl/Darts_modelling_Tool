@@ -93,7 +93,10 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hype
 {
   auto item = hypercube_data.find(hypercube_key);
   if (item != hypercube_data.end())
+  {
+    if (hypercube_cap != 0) hc_last_used[hypercube_key] = eval_index;
     return item->second;
+  }
 
   if (this->timer) this->timer->node["body generation"].start();
   hypercube_vertex_keys_t vertex_keys;
@@ -110,6 +113,7 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hype
     }
   }
   auto insert_result = hypercube_data.emplace(hypercube_key, new_hypercube);
+  if (hypercube_cap != 0) hc_last_used[hypercube_key] = eval_index;
   if (this->timer) this->timer->node["body generation"].stop();
   return insert_result.first->second;
 }
@@ -277,6 +281,57 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::mat
   if (this->timer) this->timer->node["body generation"].node["hypercube generation"].stop();
 }
 
+// ─── derived-cache bounding (LRU eviction of hypercube payloads) ────────────────
+
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::clear_hypercube_data()
+{
+  // Swap-with-empty so the 130 KiB payloads are actually returned to the allocator.
+  // point_data and the on-disk cache are untouched.
+  std::unordered_map<key_t, hypercube_data_t, key_hash_t>().swap(hypercube_data);
+  std::unordered_map<key_t, uint64_t, key_hash_t>().swap(hc_last_used);
+}
+
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::evict_hypercubes()
+{
+  if (hypercube_cap == 0 || hypercube_data.size() <= hypercube_cap)
+    return;
+
+  if (this->timer) this->timer->node["body generation"].node["hypercube eviction"].start();
+
+  // Keep ~90% of the cap (hysteresis) so eviction amortizes over many batches.
+  const size_t target = static_cast<size_t>(0.9 * static_cast<double>(hypercube_cap));
+
+  // Snapshot (last_used_epoch, key) for every cached hypercube (function-local).
+  std::vector<std::pair<uint64_t, key_t>> scratch;
+  scratch.reserve(hypercube_data.size());
+  for (const auto &kv : hypercube_data)
+  {
+    uint64_t stamp = 0;
+    auto it = hc_last_used.find(kv.first);
+    if (it != hc_last_used.end())
+      stamp = it->second;
+    scratch.emplace_back(stamp, kv.first);
+  }
+
+  // Move the (size - target) least-recently-used entries to the front (O(n)).
+  const size_t n_evict = scratch.size() - target;
+  std::nth_element(
+      scratch.begin(), scratch.begin() + n_evict, scratch.end(),
+      [](const std::pair<uint64_t, key_t> &a, const std::pair<uint64_t, key_t> &b)
+      { return a.first < b.first; });
+
+  for (size_t i = 0; i < n_evict; ++i)
+  {
+    if (scratch[i].first == eval_index) continue; // never drop the live batch
+    hypercube_data.erase(scratch[i].second);
+    hc_last_used.erase(scratch[i].second);
+  }
+
+  if (this->timer) this->timer->node["body generation"].node["hypercube eviction"].stop();
+}
+
 // ─── batch interpolation (multi-index path) ────────────────────────────────────
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
@@ -338,6 +393,12 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
     if (this->timer) this->timer->node["body generation"].stop();
   }
 
+  // Refresh LRU recency for every hypercube touched this batch (cached + just
+  // materialized) so eviction below keeps the live working set. eval_index advanced above.
+  if (hypercube_cap != 0)
+    for (const auto &k : unique_hc)
+      hc_last_used[k] = eval_index;
+
   // Phase 3: parallel read-only interpolation with thread-local workspace.
   static const uint32_t N_VERTS = (1u << N_DIMS);
   static const size_t workspace_size = (2 * N_VERTS - 1) * N_OPS;
@@ -379,6 +440,12 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
           vals, ders);
     }
   }
+
+  // Bound the derived hypercube cache (LRU by batch epoch). Single-threaded here:
+  // the parallel read region above has joined, and the kernel copied each hypercube
+  // into its thread-local workspace, so no reader holds a reference into hypercube_data.
+  if (hypercube_cap != 0)
+    evict_hypercubes();
 
   return 0;
 }
