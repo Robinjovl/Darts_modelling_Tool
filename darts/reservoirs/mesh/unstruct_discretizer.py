@@ -112,7 +112,7 @@ class UnstructDiscretizer:
 
         self.volume_all_cells = []  # Volume of matrix and fracture cells (later as numpy.array)
         self.depth_all_cells = []  # Depth of matrix and fracture cells (later as numpy.array)
-        self.centroid_all_cells = []  # Centroid of matrix and fracture cells (later as numpy.array)
+        self.centroids_all_cells = []  # Centroid of matrix and fracture cells (later as numpy.array)
 
         self.boundary_connections = {}
         self.tol = 1.0e-10  # Tolerance in MPxA
@@ -668,48 +668,48 @@ class UnstructDiscretizer:
 
         return 0
 
-    def store_centroid_all_cells(self):
+    def store_centroids_all_cells(self):
         """
         Class method which loops over all the cells and stores the volume in single array (first frac, then mat)
         :return:
         """
-        self.centroid_all_cells = np.zeros(
+        self.centroids_all_cells = np.zeros(
             (self.mat_cells_tot + self.frac_cells_tot, 3)
         )
         tot_cell_count = 0
         for ith_cell in self.frac_cell_info_dict:
-            self.centroid_all_cells[tot_cell_count, :] = self.frac_cell_info_dict[
+            self.centroids_all_cells[tot_cell_count, :] = self.frac_cell_info_dict[
                 ith_cell
             ].centroid
             tot_cell_count += 1
 
         for ith_cell in self.mat_cell_info_dict:
-            self.centroid_all_cells[tot_cell_count, :] = self.mat_cell_info_dict[
+            self.centroids_all_cells[tot_cell_count, :] = self.mat_cell_info_dict[
                 ith_cell
             ].centroid
             tot_cell_count += 1
 
         return 0
 
-    def store_centroid_all_cells_1(self):
+    def store_centroids_all_cells_1(self):
         """
         Class method which loops over all the cells and stores the volume in single array (first frac, then mat)
         :return:
         """
         tot_cell_count = 0
         for ith_cell in self.frac_cell_info_dict:
-            self.centroid_all_cells[tot_cell_count] = self.frac_cell_info_dict[
+            self.centroids_all_cells[tot_cell_count] = self.frac_cell_info_dict[
                 ith_cell
             ].centroid
             tot_cell_count += 1
 
         for ith_cell in self.mat_cell_info_dict:
-            self.centroid_all_cells[tot_cell_count] = self.mat_cell_info_dict[
+            self.centroids_all_cells[tot_cell_count] = self.mat_cell_info_dict[
                 ith_cell
             ].centroid
             tot_cell_count += 1
 
-        self.centroid_all_cells = np.array(list(self.centroid_all_cells.values()))
+        self.centroids_all_cells = np.array(list(self.centroids_all_cells.values()))
         return 0
 
     def store_depth_all_cells(self):

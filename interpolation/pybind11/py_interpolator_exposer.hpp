@@ -79,6 +79,25 @@ struct interpolator_exposer
           .def("evaluate", &interpolator_class::evaluate,
             "Evaluate operators", "state"_a, "values"_a)
           .def_readwrite("point_data", &interpolator_class::point_data)
+          // Cheap cache hooks let Python persist only dirty points.
+          .def("point_data_size", [](const interpolator_class &self) {
+            return self.point_data.size();
+          })
+          .def("point_data_delta", [](const interpolator_class &self) {
+            py::dict delta;
+            for (const auto &key : self.dirty_point_data)
+            {
+              auto item = self.point_data.find(key);
+              if (item != self.point_data.end())
+              {
+                delta[py::cast(key)] = py::cast(item->second);
+              }
+            }
+            return delta;
+          })
+          .def("clear_point_data_delta", [](interpolator_class &self) {
+            self.dirty_point_data.clear();
+          })
           .def("get_hypercube_indexes", &interpolator_class::get_hypercube_indexes);
       }
       else if constexpr ( (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>> ||
@@ -96,8 +115,63 @@ struct interpolator_exposer
           .def("evaluate", &interpolator_class::evaluate,
             "Evaluate operators", "state"_a, "values"_a)
           .def_readwrite("point_data", &interpolator_class::point_data)
+          // Cheap cache hooks let Python persist only dirty points.
+          .def("point_data_size", [](const interpolator_class &self) {
+            return self.point_data.size();
+          })
+          .def("point_data_delta", [](const interpolator_class &self) {
+            py::dict delta;
+            for (const auto &key : self.dirty_point_data)
+            {
+              auto item = self.point_data.find(key);
+              if (item != self.point_data.end())
+              {
+                delta[py::cast(key)] = py::cast(item->second);
+              }
+            }
+            return delta;
+          })
+          .def("clear_point_data_delta", [](interpolator_class &self) {
+            self.dirty_point_data.clear();
+          })
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
+#ifdef WITH_GPU
+      else if constexpr (std::is_same_v<interpolator_class, multilinear_adaptive_gpu_interpolator<i_t, f_t, N_DIMS, N_OPS>>)
+      {
+        py::class_<interpolator_class,
+          operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
+          .def(py::init<operator_set_evaluator_iface*, std::vector<index_t> &, std::vector<value_t> &, std::vector<value_t> &>(), py::keep_alive<1, 2>())
+          .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
+            "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
+          .def("init_timer_node", &interpolator_class::init_timer_node,
+            "Initialize timer", "timer_node"_a)
+          .def("init", &interpolator_class::init, "Initialize interpolator")
+          .def("write_to_file", &interpolator_class::write_to_file, "Write interpolator data to file")
+          .def("evaluate", &interpolator_class::evaluate,
+            "Evaluate operators", "state"_a, "values"_a)
+          .def_readwrite("point_data", &interpolator_class::point_data)
+          // Cheap cache hooks let Python persist only dirty points (same as the CPU adaptive interpolators).
+          .def("point_data_size", [](const interpolator_class &self) {
+            return self.point_data.size();
+          })
+          .def("point_data_delta", [](const interpolator_class &self) {
+            py::dict delta;
+            for (const auto &key : self.dirty_point_data)
+            {
+              auto item = self.point_data.find(key);
+              if (item != self.point_data.end())
+              {
+                delta[py::cast(key)] = py::cast(item->second);
+              }
+            }
+            return delta;
+          })
+          .def("clear_point_data_delta", [](interpolator_class &self) {
+            self.dirty_point_data.clear();
+          });
+      }
+#endif // WITH_GPU
       else {
         py::class_<interpolator_class,
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
@@ -128,13 +202,16 @@ struct interpolator_exposer
     if constexpr (N_DIMS <= 12)
     {
       // we expose uint32 and uint64 adaptive interpolators by default
-      expose_class<uint32_t, double, multilinear_adaptive_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
+      // expose_class<uint32_t, double, multilinear_adaptive_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
       expose_class<uint64_t, double, multilinear_adaptive_cpu_interpolator<uint64_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
+      expose_class<__uint128_t, double, multilinear_adaptive_cpu_interpolator<__uint128_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
+
     }
     // expose_class<uint64_t, float, multilinear_adaptive_cpu_interpolator<uint64_t, float, N_DIMS, N_OPS>>(m, "multilinear_adaptive2_cpu_interpolator");
 
     // linear adaptive with 64/128 bit index and 64 bit data
     expose_class<uint64_t, double, linear_adaptive_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
+
     // expose_class<__uint128_t, double, linear_adaptive_cpu_interpolator<__uint128_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
     //expose_class<uint64_t, double, linear_static_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_static_cpu_interpolator");
     // we expose static versions only when needed

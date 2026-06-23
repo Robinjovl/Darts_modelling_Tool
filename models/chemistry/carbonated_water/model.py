@@ -20,8 +20,9 @@ from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
 )
-from darts.physics.properties.phreeqc import Flash as PhreeqcFlash
+from darts.physics.properties.phreeqc import Flash as PhreeqcFlash, PhreeqcFlashError
 from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
+from darts.physics.properties.flash_exceptions import FlashError
 
 from iapws._iapws import _Viscosity
 from conversions import convert_composition, correct_composition, calculate_injection_stream, \
@@ -108,13 +109,13 @@ class MyOutput(Output):
         # locate tip of wormhole
         ids = np.where(property_array['porosity'][0] > 0.95)[0]
         if ids.size:
-            if hasattr(self.reservoir.discretizer, 'centroids_all_cells'):
-                id = np.argmax(self.reservoir.discretizer.centroids_all_cells[ids, 0])
-                max_propagation = self.reservoir.discretizer.centroids_all_cells[:, 0].max()
-                self.reservoir.wh_propagation_ratio = self.reservoir.discretizer.centroids_all_cells[ids, 0][id] / max_propagation
-            else:
-                warnings.warn("Centroids not available, setting wh_propagation_ratio to 0.0")
-                self.reservoir.wh_propagation_ratio = 0.0
+            axis = self.reservoir.wh_propagation_axis
+            direction = self.reservoir.wh_propagation_direction
+            coords = self.reservoir.discretizer.centroids_all_cells[:, axis]
+            extent = coords.max() - coords.min()
+            tip = coords[ids].max() if direction > 0 else coords[ids].min()
+            reference = tip - coords.min() if direction > 0 else coords.max() - tip
+            self.reservoir.wh_propagation_ratio = reference / extent if extent > 0 else 0.0
         else:
             self.reservoir.wh_propagation_ratio = 0.0
         print('WH propagation ratio:', self.reservoir.wh_propagation_ratio)
@@ -162,6 +163,12 @@ class Model(CICDModel):
         self.ni_dt_increase_cutoff = 5
         self.ni_dt_decrease_cutoff = 8
         self.n_good_ts = 10
+        # Max number of Newton iterations within a timestep that may rely on the PHREEQC
+        # dilution fallback before the timestep is abandoned and cut. The fallback handles
+        # unreachable, over-concentrated OBL supporting points; if more than this many
+        # nonlinear iterations need it, the step is not converging healthily -> cut dt.
+        self.dilution_max_newton_iters = 3
+        self._n_diluted_newton_iters = 0
 
         self.timer.node["initialization"].stop()
 
@@ -200,15 +207,22 @@ class Model(CICDModel):
         self.phases = {gas: 0, liq: 1}
         phase_name = [list(self.phases.keys())[list(self.phases.values()).index(id)] for id in range(len(self.phases))]
 
+        if self.domain == '3D':
+            p_obl_max = self.pressure_init + 70
+            n_obl_pressure = 2001
+        else:
+            p_obl_max = self.pressure_init + 5
+            n_obl_pressure = 201
         if set(self.minerals) == {'calcite'}:
             # purely for initialization
             self.components = ['H2O', 'H+', 'OH-', 'CO2', 'HCO3-', 'CO3-2', 'CaCO3', 'Ca+2', 'CaOH+', 'CaHCO3+', 'Solid_CaCO3']
             self.elements = ['Solid_CaCO3', 'Ca', 'C', 'O', 'H']
             self.fc_mask = np.array([False, True, True, True, True], dtype=bool)
             Mw = {'Solid_CaCO3': 100.0869, 'Ca': 40.078, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
-            self.n_points = list(self.n_obl_mult * np.array([101, 201, 101, 101, 101], dtype=np.intp))
-            self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, 0.3]
-            self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.03, 0.03, 0.37]
+
+            self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 251, 251, 401], dtype=np.intp))
+            self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, 0.2]
+            self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.1, 0.1, 0.6]
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
                                [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0],
@@ -228,13 +242,13 @@ class Model(CICDModel):
             self.fc_mask = np.array([False, False, True, True, True, True, True], dtype=bool)
             Mw = {'Solid_CaCO3': 100.0869, 'Solid_CaMg(CO3)2': 184.401,
                     'Ca': 40.078, 'Mg': 24.305, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
-            self.n_points = list(self.n_obl_mult * np.array([101, 201, 201, 101, 101, 101, 101], dtype=np.intp))
+            self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 201, 101, 101, 101, 101], dtype=np.intp))
             if self.co2_injection < self.co2_injection_cutoff:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.4, 0.01, 0.01, 0.02, 0.37]
+                self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.4, 0.01, 0.01, 0.02, 0.37]
             else:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.25]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 0.4, 0.01, 0.01, 0.1, 0.37]
+                self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.4, 0.01, 0.01, 0.1, 0.37]
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],    # Solid_CaCO3
                                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],    # Solid_CaMg(CO3)2
@@ -258,13 +272,13 @@ class Model(CICDModel):
             self.fc_mask = np.array([False, False, False, True, True, True, True, True], dtype=bool)
             Mw = {'Solid_CaCO3': 100.0869, 'Solid_CaMg(CO3)2': 184.401, 'Solid_MgCO3': 84.31,
                     'Ca': 40.078, 'Mg': 24.305, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
-            self.n_points = list(self.n_obl_mult * np.array([101, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp))
+            self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp))
             if self.co2_injection < self.co2_injection_cutoff:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 1 - self.obl_min, 1 - self.obl_min, 0.01, 0.01, 0.02, 0.37]
+                self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.02, 0.37]
             else:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.25]
-                self.axes_max = [self.pressure_init + 2] + [1 - self.obl_min, 1 - self.obl_min, 1 - self.obl_min, 0.01, 0.01, 0.1, 0.37]
+                self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.1, 0.37]
 
             # Rate annihilation matrix
             self.E = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],    # Solid_CaCO3
@@ -342,8 +356,19 @@ class Model(CICDModel):
         self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=phase_name,
                                                 n_points=self.n_points, axes_min=self.axes_min, axes_max=self.axes_max,
                                                 epsilon_z=property_container.eps_z, extrapolation_flag=False,
-                                                cache=False)
+                                                cache=True)
         self.physics.add_property_region(property_container, output_property_container, 0)
+
+        # Flashes whose per-iteration dilution fallback we police in run_timestep /
+        # apply_rhs_flux. Only those exposing pop_dilution_report() (PHREEQC) qualify; the
+        # reaktoro flash is silently ignored. NOTE: with parallel_evaluation=True the model is
+        # reconstructed per worker (base DartsModel.get_evaluator_factory / ModelEvaluatorFactory),
+        # so each worker uses its own flash copy; the budget/warning are only enforced in the
+        # default in-process (parallel_evaluation=False) path; the flash still degrades
+        # gracefully per worker regardless.
+        self._tracked_flashes = [
+            property_container.flash_ev
+        ] if hasattr(property_container.flash_ev, 'pop_dilution_report') else []
 
         # Compute injection stream
         mole_water, mole_co2 = calculate_injection_stream(self.h2o_injection, self.co2_injection, self.temperature, self.pressure_init) # input - m3 of water, co2
@@ -356,12 +381,6 @@ class Model(CICDModel):
         self.inj_stream_components[self.components.index('CO2')] = mole_fraction_co2       # CO2
         self.inj_stream = convert_composition(self.inj_stream_components, self.E)
         self.inj_stream = correct_composition(self.inj_stream, self.min_z)
-
-    # NOTE: get_evaluator_factory() is intentionally NOT overridden here.
-    # The DartsModel default (ModelEvaluatorFactory) reconstructs this model from
-    # its constructor arguments and reuses set_physics()/PropertyContainer, so the
-    # parallel evaluator needs no model-specific factory. See
-    # docs/for_developers/parallel_operators.md.
 
     def set_reservoir(self, domain, nx, mesh_filename, poro_filename):
         self.domain = domain
@@ -407,6 +426,8 @@ class Model(CICDModel):
                                              nx=self.domain_cells[0], ny=self.domain_cells[1], nz=self.domain_cells[2],
                                              dx=self.cell_sizes[0], dy=self.cell_sizes[1], dz=self.cell_sizes[2],
                                              permx=perm, permy=perm, permz=perm, poro=self.poro, depth=depth)
+            self.reservoir.wh_propagation_axis = 0
+            self.reservoir.wh_propagation_direction = 1
         elif self.domain == '2D':
             # grid
             if mesh_filename is None:
@@ -436,13 +457,15 @@ class Model(CICDModel):
                 a = 2 / 3 * np.sqrt(self.volume / self.reservoir.mesh.n_blocks / 0.006 / np.sin(angle))
                 max_x = self.reservoir.discretizer.mesh_data.points[:, 0].max()
                 # initial guesses
-                self.inj_cells = np.where(self.reservoir.discretizer.centroid_all_cells[:, 0] < 1.5 * a)[0]
-                self.prd_cells = np.where(self.reservoir.discretizer.centroid_all_cells[:, 0] > max_x - 1.5 * a)[0]
+                self.inj_cells = np.where(self.reservoir.discretizer.centroids_all_cells[:, 0] < 1.5 * a)[0]
+                self.prd_cells = np.where(self.reservoir.discretizer.centroids_all_cells[:, 0] > max_x - 1.5 * a)[0]
                 # exact filtering
                 self.inj_cells = [id for id in self.inj_cells if np.count_nonzero(self.reservoir.discretizer.mat_cell_info_dict[id].coord_nodes_to_cell[:, 0] < 1e-4 * a) > 2]
                 self.prd_cells = [id for id in self.prd_cells if np.count_nonzero(self.reservoir.discretizer.mat_cell_info_dict[id].coord_nodes_to_cell[:, 0] > max_x - 1e-4 * a) > 2]
                 self.inj_cells = np.array(self.inj_cells, dtype=np.intp)
                 self.prd_cells = np.array(self.prd_cells, dtype=np.intp)
+            self.reservoir.wh_propagation_axis = 0
+            self.reservoir.wh_propagation_direction = 1
 
             # porosity
             if poro_filename == None:
@@ -486,13 +509,15 @@ class Model(CICDModel):
             a = 2 / 3 * np.cbrt(self.volume / self.reservoir.mesh.n_blocks / 0.1)
             h = self.reservoir.discretizer.mesh_data.points[:,2].max()
             # initial guesses
-            self.prd_cells = np.where(self.reservoir.discretizer.centroid_all_cells[:, 2] < a)[0]
-            self.inj_cells = np.where(self.reservoir.discretizer.centroid_all_cells[:, 2] > h - a)[0]
+            self.prd_cells = np.where(self.reservoir.discretizer.centroids_all_cells[:, 2] < a)[0]
+            self.inj_cells = np.where(self.reservoir.discretizer.centroids_all_cells[:, 2] > h - a)[0]
             # exact filtering
             self.prd_cells = [id for id in self.prd_cells if np.count_nonzero(self.reservoir.discretizer.mat_cell_info_dict[id].coord_nodes_to_cell[:, 2] < 1e-4 * a) > 2]
             self.inj_cells = [id for id in self.inj_cells if np.count_nonzero(self.reservoir.discretizer.mat_cell_info_dict[id].coord_nodes_to_cell[:, 2] > h - 1e-4 * a) > 2]
             self.prd_cells = np.array(self.prd_cells, dtype=np.intp)
             self.inj_cells = np.array(self.inj_cells, dtype=np.intp)
+            self.reservoir.wh_propagation_axis = 2
+            self.reservoir.wh_propagation_direction = -1
         else:
             print(f'domain={self.domain} is not supported')
             exit(-1)
@@ -592,6 +617,93 @@ class Model(CICDModel):
         w = self.reservoir.wells[0]
         self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP, is_inj=False,
                                        target=self.pressure_init)
+
+    def run_timestep(self, dt: float, t: float, verbose: bool = True):
+        """
+        Newton loop with PHREEQC dilution-fallback policing.
+
+        Delegates to the base Newton loop but (1) resets the per-timestep dilution budget
+        and the flashes' per-iteration trackers, and (2) converts any :class:`FlashError`
+        into a non-convergence so the existing dt-cut machinery in :meth:`run` reduces dt
+        and retries from the last converged state. This covers a PHREEQC failure (when even
+        maximal dilution fails, or when the dilution fallback was needed in more than
+        ``self.dilution_max_newton_iters`` nonlinear iterations — see :meth:`apply_rhs_flux`)
+        as well as a Reaktoro solver failure (``ReaktoroFlashError``), keeping the
+        simulation alive in either case.
+        """
+        self._n_diluted_newton_iters = 0
+        for fl in getattr(self, '_tracked_flashes', []):
+            fl.reset_dilution_tracker()
+        try:
+            return super().run_timestep(dt, t, verbose)
+        except FlashError as e:
+            if verbose:
+                print(f"Flash non-convergence -> cutting timestep (dt={dt:.6g}): {e}")
+            # The simulation timer was started inside the base run_timestep and is not
+            # stopped on the exception path; stop it so timing/print_timers stay consistent.
+            try:
+                self.timer.node["simulation"].stop()
+            except Exception:
+                pass
+            # post_newtonloop (which does X = Xn on non-convergence) is skipped on the
+            # exception path, so restore the last converged iterate explicitly; the
+            # smaller-dt retry then starts clean and stays clear of the unreachable corner.
+            try:
+                X = np.array(self.physics.engine.X, copy=False)
+                Xn = np.array(self.physics.engine.Xn, copy=False)
+                X[:] = Xn
+            except Exception:
+                pass
+            # Mirror the base method's per-step history bookkeeping for the failed step.
+            try:
+                self.time.append(t)
+                self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
+                self.time_step_size.append(dt)
+            except Exception:
+                pass
+            return 0  # converged = False -> run() else-branch cuts dt
+
+    def apply_rhs_flux(self, dt: float, t: float):
+        """
+        Apply the injection RHS flux, then police the PHREEQC dilution fallback.
+
+        Called once per Newton iteration immediately after ``assemble_linear_system`` (so any
+        supporting-point dilution that happened during this assembly is now recorded in the
+        tracked flashes). Emits a single accumulated warning per nonlinear iteration with
+        min/max state statistics, and enforces the per-timestep dilution-iteration budget by
+        raising :class:`PhreeqcFlashError` (caught in :meth:`run_timestep`) once exceeded.
+        """
+        super().apply_rhs_flux(dt, t)
+
+        tracked = getattr(self, '_tracked_flashes', [])
+        reports = [r for r in (fl.pop_dilution_report() for fl in tracked) if r]
+        if not reports:
+            return
+
+        count = sum(r['count'] for r in reports)
+        state_min = np.min([r['state_min'] for r in reports], axis=0)
+        state_max = np.max([r['state_max'] for r in reports], axis=0)
+        factor_min = min(r['factor_min'] for r in reports)
+        factor_max = max(r['factor_max'] for r in reports)
+        molality_min = min(r['molality_min'] for r in reports)
+        molality_max = max(r['molality_max'] for r in reports)
+
+        self._n_diluted_newton_iters += 1
+        print(
+            f"[flash dilution] t={t:.6g} dt={dt:.3g} NL-iter "
+            f"#{self._n_diluted_newton_iters}/{self.dilution_max_newton_iters}: "
+            f"diluted {count} supporting point(s); nominal molality "
+            f"{molality_min:.1f}-{molality_max:.1f}, dilution factor "
+            f"{factor_min:.2f}-{factor_max:.2f}; state min="
+            f"{np.array2string(state_min, precision=4, suppress_small=True)} max="
+            f"{np.array2string(state_max, precision=4, suppress_small=True)}"
+        )
+
+        if self._n_diluted_newton_iters > self.dilution_max_newton_iters:
+            raise PhreeqcFlashError(
+                f"dilution fallback needed in more than {self.dilution_max_newton_iters} "
+                f"nonlinear iterations this timestep (dt={dt:.6g})"
+            )
 
     def run(self,
             days: float = None,
@@ -716,18 +828,24 @@ class Model(CICDModel):
                     )
                     self.output.well_cfl.append(self.physics.engine.CFL_max)
             else:
-                dt /= data_ts.dt_mult
+                if getattr(self, '_linear_solver_rc_last', 0) != 0:
+                    dt /= 10.0
+                    n_bad_steps += 2
+                else:
+                    dt /= data_ts.dt_mult
+                    n_bad_steps += 1
                 n_good_steps = 0
-                n_bad_steps += 1
 
                 if n_bad_steps > 1:
                     data_ts.dt_max /= 2.
                     n_bad_steps = 0
 
                 if verbose:
-                    print("Cut timestep to %2.10f" % dt)
-                assert dt > data_ts.dt_min, ('Stop simulation. Reason: reached min. timestep '
-                                                 + str(data_ts.dt_min) + ' dt=' + str(dt))
+                    print("Cut timestep to %2.10f (solver rc=%d)"
+                          % (dt, getattr(self, '_linear_solver_rc_last', 0)))
+                if dt <= data_ts.dt_min:
+                    raise RuntimeError('Stop simulation. Reason: reached min. timestep '
+                                       + str(data_ts.dt_min) + ' dt=' + str(dt))
 
         # update current engine time
         self.physics.engine.t = stop_time
@@ -747,6 +865,10 @@ class Model(CICDModel):
         # save solution vector
         if save_reservoir_data:
             self.output.save_data_to_h5(kind="reservoir")
+
+        # Flush OBL adaptive cache between snapshots so progress survives SIGTERM / job cancel.
+        if getattr(self.physics, 'cache', False):
+            self.physics.write_cache()
 
         if verbose:
             print(

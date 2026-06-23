@@ -96,7 +96,7 @@ class UnstructReservoir(ReservoirBase):
         # Store volumes and depth to single numpy arrays:
         self.discretizer.store_volume_all_cells()
         self.discretizer.store_depth_all_cells()
-        self.discretizer.store_centroid_all_cells()
+        self.discretizer.store_centroids_all_cells()
 
         # Assign layer properties
         self.set_layer_properties()
@@ -244,7 +244,7 @@ class UnstructReservoir(ReservoirBase):
         """
         min_dis = None
         idx = None
-        for j, centroid in enumerate(self.discretizer.centroid_all_cells):
+        for j, centroid in enumerate(self.discretizer.centroids_all_cells):
             dis = np.linalg.norm(np.array(coord) - centroid)
             if (min_dis is not None and dis < min_dis) or min_dis is None:
                 min_dis = dis
@@ -284,9 +284,9 @@ class UnstructReservoir(ReservoirBase):
             matrix_props["volume"] = np.array(self.mesh.volume, copy=False)
             # order of values in depth_all_cells: FRACTURE MATRIX BOUNDARY
             matrix_props['depth'] = np.array(self.mesh.depth, copy=False)
-            matrix_props['center_x'] = self.discretizer.centroid_all_cells[:, 0]
-            matrix_props['center_y'] = self.discretizer.centroid_all_cells[:, 1]
-            matrix_props['center_z'] = self.discretizer.centroid_all_cells[:, 2]
+            matrix_props['center_x'] = self.discretizer.centroids_all_cells[:, 0]
+            matrix_props['center_y'] = self.discretizer.centroids_all_cells[:, 1]
+            matrix_props['center_z'] = self.discretizer.centroids_all_cells[:, 2]
 
             # --- Matrix mesh file ---
             mat_nodes = self.discretizer.vtk_output_nodes_to_cells["matrix"]
