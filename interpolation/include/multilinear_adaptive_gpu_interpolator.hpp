@@ -87,6 +87,14 @@ public:
    */
   std::unordered_map<index_t, point_data_t> point_data;
 
+  /**
+   * @brief Supporting points materialized since the last external cache flush.
+   *
+   * Mirrors the CPU adaptive interpolators so Python can persist only newly
+   * computed points (append-only OBL cache) instead of rewriting the full map.
+   */
+  std::unordered_set<index_t> dirty_point_data;
+
 protected:
   /**
      * @brief Get values of operators at a given point

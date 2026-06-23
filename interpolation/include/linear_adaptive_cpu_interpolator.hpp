@@ -22,6 +22,7 @@ public:
                                      bool _use_barycentric_interpolation);
 
     std::unordered_map<index_t, std::array<double, N_OPS>> point_data; ///< adaptive storage: the values of operators at supporting points actually required
+    std::unordered_set<index_t> dirty_point_data; ///< supporting points materialized since the last external cache flush
 
     /**
      * @brief Interpolate with batch pre-fetching of missing supporting points.

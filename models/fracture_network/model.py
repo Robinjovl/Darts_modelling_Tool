@@ -254,7 +254,7 @@ class Model(CICDModel):
         step_z_perf = 1.  # [m] should be smaller that cell dz
         self.well_perf_loc = dict()
         well_coords = self.idata.geom['well_coords']
-        centroids_3d = self.reservoir.discretizer.centroid_all_cells[left_int:right_int]
+        centroids_3d = self.reservoir.discretizer.centroids_all_cells[left_int:right_int]
         for wname in well_coords.keys():  # process each well
             coord = well_coords[wname]
             # find mesh cells which
@@ -297,7 +297,7 @@ class Model(CICDModel):
         if perm_file != None:
             [xx, yy, perm_rect_2d] = np.load(perm_file, allow_pickle=True)
             perm_rect_1d = perm_rect_2d.flatten()  # TODO: check XY-order
-            cntr = self.discretizer.centroid_all_cells[self.discretizer.fracture_cell_count:]
+            cntr = self.discretizer.centroids_all_cells[self.discretizer.fracture_cell_count:]
             z_middle = input_data['z_top'] + input_data['height_res'] * 0.5  # middle depth of the reservoir
             rect_grid = np.vstack((xx.flatten(), yy.flatten(), np.zeros(xx.flatten().shape) + z_middle)).transpose()
             perm_unstr = np.zeros(cntr.size)

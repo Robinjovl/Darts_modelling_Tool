@@ -55,6 +55,11 @@ public:
    std::unordered_map<index_t, point_data_t> point_data;
 
    /**
+   * @brief Supporting points materialized since the last external cache flush.
+   */
+   std::unordered_set<index_t> dirty_point_data;
+
+   /**
    * @brief Get indexes of all evaluated hypercubes
    *
    * @return array of indexes of hypercubes
