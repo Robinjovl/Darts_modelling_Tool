@@ -5,10 +5,14 @@ import numpy as np
 
 pv.global_theme.jupyter_backend = 'static' # do not print Widget(...) output messages - they appear in case of pyvista[jupyter] is installed
 
-def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
+def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1):
     '''
     Plot VTK results using PyVista.
     saves 2D plots - xz slice - of specified arrays (vertic displ and stress) from the last timestep.
+
+    idata : InputData
+        reservoir/well geometry (top/bottom depths, well X positions, plot window,
+        reference points) is taken from idata.other so the plots adapt to the actual case.
     '''
 
     if 'sawcut' in output_dir or '2rocks' in output_dir: # contours help to see that u_z is the same along X-axes in the inclined hex mesh
@@ -97,7 +101,30 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
     arr_name = 'delta_tot_stress'; tensor = True; component_index = 1; arr_name_plot = 'delta_tot_stress_YY,MPa'; scale = 0.1
     plot_config_list.append((arr_name, tensor, arr_name_plot, contour, component_index, scale))
 
-    rsv_xy_plot_bnd = 5000. # m.
+    # --- geometry (from idata) ---
+    rsv_top = idata.other.rsv_top
+    rsv_bottom = idata.other.rsv_bottom
+    rsv_xy = idata.other.rsv_xy
+    prod_well = list(getattr(idata.other, 'prod_well_coords', []))  # [x, y, z1, z2]
+    inj_well = list(getattr(idata.other, 'inj_well_coords', []))
+
+    # X positions / colors of well marker lines (only the wells that exist)
+    well_markers = []  # (x_well, color)
+    if prod_well:
+        well_markers.append((prod_well[0], 'red'))
+    if inj_well:
+        well_markers.append((inj_well[0], 'cyan'))
+    # domain center = midpoint between wells (used for the central reference line and 1D 'center' profile)
+    well_xs = [w[0] for w in (prod_well, inj_well) if w]
+    center_x = float(np.mean(well_xs)) if well_xs else 0.0
+    well_y = (prod_well[1] if prod_well else inj_well[1]) if (prod_well or inj_well) else 0.0
+    # "right" 1D profile location = injection well (fallback to producer / center)
+    right_well = inj_well or prod_well or [center_x, well_y]
+
+    # reference points [x, y, label] for the black reference line / 1D profiles (from idata, optional)
+    plot_points_xy = list(getattr(idata.other, 'points_xy', []))
+
+    rsv_xy_plot_bnd = 5.0 * rsv_xy  # m. half-width of the plotted X-window (5000 for the default rsv_xy=1000)
 
     for plot_config in plot_config_list:
         arr_name, tensor, arr_name_plot, contour, component_index, scale = plot_config
@@ -162,15 +189,16 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
         zmin_blk = block.bounds[4]
         zmax_blk = block.bounds[5]
         y_slice = block.center[1]
-        # horizontal reference lines at z=2000 and z=2400
-        for z_ref in [2000., 2400.]:
+        # horizontal reference lines at reservoir top and bottom
+        for z_ref in [rsv_top, rsv_bottom]:
             plotter.add_mesh(pv.Line(pointa=(xmin_blk, y_slice, z_ref),
                                      pointb=(xmax_blk, y_slice, z_ref)),
                              color='white', line_width=0.5)
-        # vertical lines for injection (x=550) and production (x=-550) wells
-        for x_well, z2, z1, clr, lw in [(550., 2400., -0., 'cyan', 2), \
-                                    (-550., 2400., -0., 'red', 2), \
-                                    (250., 5000., 0., 'black', 1)]:
+        # vertical lines at the wells (prod=red, inj=cyan) + black reference lines at idata.other.points_xy (if set)
+        well_lines = [(x_well, rsv_bottom, 0.0, clr, 2) for x_well, clr in well_markers]
+        for p in plot_points_xy:  # [x, y, label]
+            well_lines.append((p[0], zmax_blk, zmin_blk, 'black', 1))
+        for x_well, z2, z1, clr, lw in well_lines:
             plotter.add_mesh(pv.Line(pointa=(x_well, y_slice, z1),
                                      pointb=(x_well, y_slice, z2)),
                              color=clr, line_width=lw)
@@ -222,10 +250,12 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
             plt.figure(figsize=(8, 4))
             plt.contourf(x_coords, z_coords, values_2d, levels=30, cmap='viridis')
             plt.colorbar()
-            for z_ref in [2000., 2400.]:
+            for z_ref in [rsv_top, rsv_bottom]:
                 plt.axhline(y=z_ref, color='white', linestyle='--', linewidth=1)
-            for x_well, clr, lw in [(550., 'cyan', 1), (-550., 'red', 1), (250., 'black', 1)]:
-                plt.axvline(x=x_well, color=clr, linestyle='--', linewidth=lw)
+            for x_well, clr in well_markers:
+                plt.axvline(x=x_well, color=clr, linestyle='--', linewidth=1)
+            for p in plot_points_xy:  # black reference lines at idata.other.points_xy
+                plt.axvline(x=p[0], color='black', linestyle='--', linewidth=1)
             plt.xlabel("X Axis")
             plt.ylabel("Depth, m.")
             plt.ylim(zmin_blk, zmax_blk)
@@ -246,9 +276,13 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
             if 'stress' in arr_name:
                 t_indices_1d = [tstep_to_plot]
 
-            # Define line endpoints (x, y fixed; z varies)
-            points_xy = [[50, 50, 'center'], [500, 500, 'right']] # XY
-            z1, z2 = 0.0, 5000.   # vertical extent
+            # Define line endpoints (x, y fixed; z varies) - from idata.other.points_xy when set
+            if plot_points_xy:
+                points_xy = plot_points_xy
+            else:
+                points_xy = [[center_x, well_y, 'center'],
+                             [right_well[0], right_well[1], 'right']] # XY
+            z1, z2 = zmin_blk, zmax_blk   # vertical extent (full mesh depth)
             for x0, y0, name in points_xy:
                 p0 = (x0, y0, z1)
                 p1 = (x0, y0, z2)
@@ -287,20 +321,20 @@ def plot_vtk_pyvista(output_dir, contour=False, tstep_to_plot=-1):
 if __name__ == "__main__":
     contour = False
 
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_16_16_15')
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_doublet_16_16_15')
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_16_16_15')
+    #model_folder = '17_17_15'
+    model_folder = '41_41_66'
+    #model_folder = '83_83_90'
 
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_inj_34_34_57')
+    physics_type = 'single_phase_thermal'
+    wells_type = 'doublet'
+    output_dir = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder)
 
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
-    #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_66')
+    from set_case import set_input_data
+    idata = set_input_data(case=model_folder, model_folder=model_folder,
+                           physics_type=physics_type, wells_type=wells_type)
 
-    output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_83_83_90')
-
-    #timestep_list = [0, -1]
-    timestep_list = [4,40,80,120]
+    timestep_list = [0, -1]
+    #timestep_list = [4,40,80,120]
 
     for timestep in timestep_list:
-        plot_vtk_pyvista(output_dir, contour=contour, tstep_to_plot=timestep)
+        plot_vtk_pyvista(output_dir, idata, contour=contour, tstep_to_plot=timestep)

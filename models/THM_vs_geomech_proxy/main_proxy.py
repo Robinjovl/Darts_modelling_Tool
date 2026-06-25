@@ -19,6 +19,10 @@ def fmt(x):
 
 def read_vtk_darts_solution(folder, timestep : int):
     filename = os.path.join(folder, 'solution'+str(timestep)+'.vtu')
+    if not os.path.isfile(filename):
+        print('THM vtk file not found:', filename)
+        print('Run THM first to generate vtk files with p,T changes (by setting run_thm = True)')
+        raise FileNotFoundError(filename)
     msh = meshio.read(filename)
     print('Reading', filename)
     #print("\tCells:", msh.cells_dict.keys())
@@ -236,8 +240,8 @@ def run_geomech_proxy(case, physics_type='single_phase',
         from plot_vtk_pyvista import plot_vtk_pyvista
         model_folder=case
         m.output_directory = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder)
-        plot_vtk_pyvista(m.output_directory, tstep_to_plot=0)  # initial
-        plot_vtk_pyvista(m.output_directory, tstep_to_plot=-1) # last
+        plot_vtk_pyvista(m.output_directory, tstep_to_plot=0, idata=m.idata)  # initial
+        plot_vtk_pyvista(m.output_directory, tstep_to_plot=-1, idata=m.idata) # last
 
 
     def find_cell_by_point(point):
@@ -798,12 +802,17 @@ def run_geomech_proxy(case, physics_type='single_phase',
     # mesh skeleton with wells (independent of modes / proxy computation)
     plot_mesh_skeleton(output_folder)
 
+    # reference points for the 1D vertical profiles and the black reference line in plot_vtk_pyvista.
+    # stored in idata as a list of [x, y, label]; if not set, plot_vtk_pyvista draws no black line.
+    m.idata.other.points_xy = [[250., 250., '(250,250)']]
+
     points_xy = dict()
     #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
     #points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift a bit to make it at the cell centers by XY
     #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
     #points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
-    points_xy['(250,250)'] = [250., 250.]  # the order is actually Y,X
+    for x_pt, y_pt, label in m.idata.other.points_xy:  # the order downstream is actually Y,X
+        points_xy[label] = [y_pt, x_pt]
     #points_xy['(6000,6000)'] = [6000., 6000.]  # the order is actually Y,X
 
     if True: # evaluate along the wells
@@ -1120,20 +1129,19 @@ if __name__ == '__main__':
     #cases += ['7_7_5']  # for debugging
     #cases += ['17_17_15'] # for testing
 
-    #cases += ['41_41_66'] # without refinement
+    cases += ['41_41_66'] # without refinement
     #cases += ['71_71_66'] #refined middle and tips
-    #cases += ['71_71_90']  # z 0 - 5 km more refined around rsv
-    cases += ['83_83_90'] # mesh is horizontally refined at inj well location
+    #cases += ['71_71_90']  #
+    #cases += ['83_83_90'] # mesh is horizontally refined at inj well location
     #cases += ['97_97_90']   # mesh is horizontally refined at doublet locations
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
+    #thermal = False
+    thermal = True
+
     physics_types_list = []
-
-    thermal = False
-    #thermal = True
-
     if not thermal:
         physics_types_list += ['single_phase']
     else:
@@ -1173,8 +1181,8 @@ if __name__ == '__main__':
 
     print('timestep_list for proxy :', timestep_list)
 
-    #run_thm = True  # runs THM first, then Proxy
-    run_thm = False # don't recompute THM (use vtk files from its previous run)
+    run_thm = True  # runs THM first, then Proxy
+    #run_thm = False # don't recompute THM (use vtk files from its previous run)
 
     generate_mesh=False # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
     #generate_mesh=True
@@ -1195,39 +1203,37 @@ if __name__ == '__main__':
     #read_from_cache = False
 
     for case in cases:
-        for physics_type in physics_types_list:
-            for wells_type in wells_types_list:
+        for physics_type, wells_type in zip(physics_types_list, wells_types_list):
+            print('\n\n' + '='*30)
+            print(physics_type, wells_type)
 
-                print('\n\n' + '='*30)
-                print(physics_type, wells_type)
+            # run THM with no mechanics->flow impact
+            t1 = datetime.now()
+            if run_thm:
+                run(model_folder=case, physics_type=physics_type,
+                    uniform_props=uniform_props, wells_type=wells_type,
+                    decouple_geomech=True, generate_mesh=generate_mesh,
+                    report_step=report_step, sim_time=sim_time,
+                    plot_vtk_timesteps=[0, -1]) # plot initial and last timesteps
+            t2 = datetime.now()
+            thm_time = t2 - t1
 
-                # run THM with no mechanics->flow impact
+            # run geomech proxy
+            if 'plot_horiz_line' in modes:
+                # combined delta_pressure along X (Y=0, Z=2200) over all timesteps
+                plot_delta_pressure_along_x(case=case, physics_type=physics_type,
+                                            wells_type=wells_type, timesteps=[1,2,3,4],
+                                            y=0.0, z=2200.0, report_step=report_step)
+            for timestep in timestep_list:
+                print('The timestep for plots and proxy-apply:', timestep)
                 t1 = datetime.now()
-                if run_thm:
-                    run(model_folder=case, physics_type=physics_type,
-                        uniform_props=uniform_props, wells_type=wells_type,
-                        decouple_geomech=True, generate_mesh=generate_mesh,
-                        report_step=report_step, sim_time=sim_time,
-                        plot_vtk_timesteps=[0, -1]) # plot initial and last timesteps
+                run_geomech_proxy(case=case, physics_type=physics_type,
+                                  wells_type=wells_type, modes=modes,
+                                  timestep=timestep, n_threads=n_threads, use_gpu=use_gpu,
+                                  read_from_cache=read_from_cache)
                 t2 = datetime.now()
-                thm_time = t2 - t1
+                proxy_time = t2 - t1
 
-                # run geomech proxy
-                if 'plot_horiz_line' in modes:
-                    # combined delta_pressure along X (Y=0, Z=2200) over all timesteps
-                    plot_delta_pressure_along_x(case=case, physics_type=physics_type,
-                                                wells_type=wells_type, timesteps=[1,2,3,4],
-                                                y=0.0, z=2200.0, report_step=report_step)
-                for timestep in timestep_list:
-                    print('The timestep for plots and proxy-apply:', timestep)
-                    t1 = datetime.now()
-                    run_geomech_proxy(case=case, physics_type=physics_type,
-                                      wells_type=wells_type, modes=modes,
-                                      timestep=timestep, n_threads=n_threads, use_gpu=use_gpu,
-                                      read_from_cache=read_from_cache)
-                    t2 = datetime.now()
-                    proxy_time = t2 - t1
-
-                print('case', case, physics_type, wells_type, 'done')
-                print('THM   time', thm_time)
-                print('proxy time', proxy_time) # counts only the last timestep
+            print('case', case, physics_type, wells_type, 'done')
+            print('THM   time', thm_time)
+            print('proxy time', proxy_time) # counts only the last timestep

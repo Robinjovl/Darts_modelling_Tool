@@ -1,7 +1,8 @@
 from examples.base import InputDataConfig, build_input_data, parse_structured_dims
 
 
-def input_data_other_model(model_folder, physics_type, wells_type):
+def input_data_struct_like(model_folder, physics_type, wells_type):
+    # an unstructured mesh is generated on the fly, with cell shapes being rectangular hexahedrons
     thermal = "thermal" in physics_type
     if thermal:
         type_hydr = "thermal"
