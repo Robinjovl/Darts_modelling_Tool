@@ -802,18 +802,11 @@ def run_geomech_proxy(case, physics_type='single_phase',
     # mesh skeleton with wells (independent of modes / proxy computation)
     plot_mesh_skeleton(output_folder)
 
-    # reference points for the 1D vertical profiles and the black reference line in plot_vtk_pyvista.
-    # stored in idata as a list of [x, y, label]; if not set, plot_vtk_pyvista draws no black line.
-    m.idata.other.points_xy = [[250., 250., '(250,250)']]
-
+    # reference points for the 1D vertical profiles; taken from idata.other.points_xy
+    # (set in examples/base.py) as a list of [x, y, label]
     points_xy = dict()
-    #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
-    #points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift a bit to make it at the cell centers by XY
-    #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
-    #points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
-    for x_pt, y_pt, label in m.idata.other.points_xy:  # the order downstream is actually Y,X
+    for x_pt, y_pt, label in m.idata.other.points_xy:  # the order is actually Y,X
         points_xy[label] = [y_pt, x_pt]
-    #points_xy['(6000,6000)'] = [6000., 6000.]  # the order is actually Y,X
 
     if True: # evaluate along the wells
         if wells_type in ['prod', 'doublet']:

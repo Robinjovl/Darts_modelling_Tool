@@ -67,6 +67,10 @@ def build_input_data(config: InputDataConfig):
     _set_wells(idata, config)
     _set_mesh_tags(idata, config.matrix_tags)
 
+    # reference points [x, y, label] for the 1D vertical profiles and the black
+    # reference line in plot_vtk_pyvista (if empty, no black line is drawn)
+    idata.other.points_xy = [[250., 250., '(250,250)']]
+
     if config.add_structured_mesh:
         _set_structured_mesh_coordinates(idata)
 

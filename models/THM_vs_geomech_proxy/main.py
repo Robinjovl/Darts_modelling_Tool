@@ -266,7 +266,7 @@ if __name__ == '__main__':
     cases = []
 
     # nx ny nz
-    cases += ['17_17_15']  # for debugging
+    #cases += ['17_17_15']  # for debugging
     #cases += ['41_41_66']
     #cases += ['71_71_66']
     #cases += ['83_83_90']  # for isothermal (single well)
