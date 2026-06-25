@@ -12,6 +12,10 @@ class SemiAnalyticalWellLateralHeatTransfer:
         Ramey Jr., H. J. (1962), "Wellbore Heat Transmission",
         Journal of Petroleum Technology, 14(04), 427-435.
 
+        Chiu, K.-W. and Thakur, S. C. (1991), "Modeling of Wellbore
+        Heat Losses in Directional Wells Under Changing Injection Conditions",
+        SPE 22870.
+
     In Ramey's Appendix, the transient radial conduction from the wellbore outer
     boundary to the undisturbed earth is written as
 
@@ -21,18 +25,30 @@ class SemiAnalyticalWellLateralHeatTransfer:
 
         f(t) = -ln(r_h / (2*sqrt(alpha*t))) - 0.29
 
-    with r_h the hole or outer-boundary radius used for the formation solution.
-    Ramey's main result also includes the wellbore thermal resistance through an
-    overall heat-transfer coefficient U between the fluid and the outer boundary.
+    Chiu and Thakur proposed an empirical time function that matches the exact
+    finite-radius formation solution well at early and late times:
+
+        f(t) = 0.982*ln(1 + 1.81*sqrt(alpha*t)/r_h)
+
+    This implementation uses either Ramey's long-time expression or Chiu and
+    Thakur's empirical expression for f(t). It does not implement Chiu and
+    Thakur's full WHAP model, superposition treatment for changing injection
+    conditions, pressure-drop model, or Willhite U calculation.
+
+    In both time-function options, r_h is the hole or outer-boundary radius used
+    for the formation solution and is set from outermost_layer_OD/2. Ramey's main
+    result also includes the wellbore thermal resistance through an overall
+    heat-transfer coefficient U between the fluid and the outer boundary.
     Eliminating the unknown outer-boundary temperature gives the fluid-to-earth
     form used here:
 
         q = 2*pi*K_earth*L*(T_earth - T_fluid)
             / (f(t) + K_earth/(r_U*U))
 
-    where r_U is the radius on which U is based. If U tends to infinity, the
-    formula reduces to the pure formation-conduction expression with only f(t)
-    in the denominator.
+    where r_U is the radius on which U is based. For the constant-Ui branch,
+    r_U is pipe_geometry.pipe_IR, so Ui must be based on the inside pipe area.
+    If U tends to infinity, the formula reduces to the pure formation-conduction
+    expression with only f(t) in the denominator.
     """
 
     def __init__(
