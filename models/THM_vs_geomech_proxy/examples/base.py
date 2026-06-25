@@ -58,10 +58,9 @@ def build_input_data(config: InputDataConfig):
         porosity = 1.0
         permeability = 1e6
 
-    _set_rock_data(idata, porosity, permeability, config.young_modulus_gpa)
+    _set_rock_data(idata, porosity, permeability)
     _set_reservoir_bounds(idata, config)
-    _set_non_reservoir_rock(idata)
-    _set_rock_mechanics(idata)
+    _set_rock_mechanics(idata, config.young_modulus_gpa)
     _set_fluid_data(idata)
     _set_initial_conditions(idata, config)
     _set_wells(idata, config)
@@ -78,41 +77,44 @@ def build_input_data(config: InputDataConfig):
     return idata
 
 
-def _set_rock_data(idata, porosity, permeability, young_modulus_gpa):
-    idata.rock.density = 2650.0
+def _set_rock_data(idata, porosity, permeability):
+    idata.rock.density = 2650.0  # [kg/m3]
     idata.rock.porosity = porosity
-    idata.rock.permx = idata.rock.permy = idata.rock.permz = permeability
-    idata.rock.biot = 0.7
-    idata.rock.E = 1e4 * young_modulus_gpa
-    idata.rock.nu = 0.25
+    idata.rock.permx = idata.rock.permy = idata.rock.permz = permeability  # [mD]
 
+    idata.rock.thermal_conductivity = 260  # [kJ/m/day/K]
+    idata.rock.heat_capacity = 2300  # [kJ/m3/K]
+
+    # rock properties for the part of the mesh outside the reservoir boundaries
+    idata.rock.poro_non_rsv = 0.001
+    idata.rock.perm_non_rsv = 0.01  # this matches proxy and thm (1e-9 matched thm and analytical solution)
+
+    if idata.other.perm_frac:
+        idata.rock.poro_non_rsv = 0.1
+        idata.rock.perm_non_rsv = 1.0  # [mD]
 
 def _set_reservoir_bounds(idata, config):
-    idata.other.rsv_top = config.rsv_top
-    idata.other.rsv_bottom = config.rsv_bottom
-    idata.other.rsv_xy = config.rsv_xy
+    # permeable reservoir vertical boundaries
+    idata.other.rsv_top = config.rsv_top  # [m]
+    idata.other.rsv_bottom = config.rsv_bottom  # [m]
+    # lateral reservoir boundaries
+    idata.other.rsv_xy = config.rsv_xy  # [m], laterally limited (rsv width = rsv_xy*2)
     idata.other.rsv_x1 = -idata.other.rsv_xy
     idata.other.rsv_x2 = idata.other.rsv_xy
     idata.other.rsv_y1 = -idata.other.rsv_xy
     idata.other.rsv_y2 = idata.other.rsv_xy
 
     if idata.other.perm_frac:
-        idata.other.frac_width = 10.0
+        idata.other.frac_width = 10.0  # [m]
         idata.other.rsv_y1 = -idata.other.frac_width / 2.0
         idata.other.rsv_y2 = idata.other.frac_width / 2.0
 
+def _set_rock_mechanics(idata, young_modulus_gpa):
+    idata.rock.biot = 0.7  # 0.8 to match dp with geos
+    idata.rock.E = 1e4 * young_modulus_gpa  # convert GPa to bars
+    idata.rock.nu = 0.25  # poisson ratio
+    idata.rock.E_non_rsv = idata.rock.E  # homogeneous geomech prop
 
-def _set_non_reservoir_rock(idata):
-    idata.rock.poro_non_rsv = 0.001
-    idata.rock.perm_non_rsv = 0.01
-    idata.rock.E_non_rsv = idata.rock.E
-
-    if idata.other.perm_frac:
-        idata.rock.poro_non_rsv = 0.1
-        idata.rock.perm_non_rsv = 1.0
-
-
-def _set_rock_mechanics(idata):
     bulk_modulus = get_bulk_modulus(E=idata.rock.E, nu=idata.rock.nu)
     idata.rock.compressibility = get_rock_compressibility(
         kd=bulk_modulus,
@@ -123,69 +125,76 @@ def _set_rock_mechanics(idata):
     print("rock compressibility = ", idata.rock.compressibility)
     idata.rock.stiffness = get_isotropic_stiffness(idata.rock.E, idata.rock.nu)
 
-    idata.rock.th_expn = 1e-5
-    idata.rock.th_expn_orig = idata.rock.th_expn
-    idata.rock.th_expn *= bulk_modulus
-    idata.rock.th_expn *= 3.0
+    idata.rock.th_expn = 1e-5  # [1/K]
+    idata.rock.th_expn_orig = idata.rock.th_expn  # save this for proxy
+    idata.rock.th_expn *= bulk_modulus  # Cauchy book formula 4.19a, 4.21a
+    idata.rock.th_expn *= 3.0  # Cauchy book formula 4.22; from linear to volumetric
 
-    idata.rock.thermal_conductivity = 260
-    idata.rock.heat_capacity = 2300
-    idata.rock.th_expn_poro = 0.0
+    idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
 
 
 def _set_fluid_data(idata):
-    idata.fluid.Mw = 18.015
-    idata.fluid.compressibility = 4.4e-5
-    idata.fluid.viscosity = 1.0
-    idata.fluid.density = 1000.0
-    idata.fluid.thermal_conductivity = 0.0
-    idata.fluid.heat_capacity = 75.0
+    # only for a single-phase physics
+    idata.fluid.Mw = 18.015  # water molar weight, [g/mol]
+    idata.fluid.compressibility = 4.4e-5  # [1/bar]
+    idata.fluid.viscosity = 1.0  # [cP]
+    idata.fluid.density = 1000.0  # [kg/m^3]
+    idata.fluid.thermal_conductivity = 0.0  # not used in the engine, [kJ/m/day/K]
+    idata.fluid.heat_capacity = 75.0  # [kJ/kmol/K] (water: 4170 [kJ/m3/K] = 75.37 [kJ/kmol/K])
 
 
 def _set_initial_conditions(idata, config):
-    idata.initial.reference_depth_for_temperature = 0.0
-    idata.initial.temperature_gradient = 0.0
-    idata.initial.temperature_at_ref_depth = 0.0
-    idata.initial.pressure_gradient = 0.1
+    # initial conditions (p, T gradients)
+    # non-zero initial temperature doesn't work properly (doesn't converge, check t_ref implementation)
+    idata.initial.reference_depth_for_temperature = 0.0  # [m]
+    idata.initial.temperature_gradient = 0.0  # [K/m]
+    idata.initial.temperature_at_ref_depth = 0.0  # [K]
+    # pressure_gradient is used only in reservoir.get_reservoir_initial_pressure() => reservoir.p_init;
+    # the actual initial pressure is computed by equilibrium using the fluid density
+    idata.initial.pressure_gradient = 0.1  # [bar/m]
     if config.pressure_reference_depth is not None:
-        idata.initial.reference_depth_for_pressure = config.pressure_reference_depth
-    idata.initial.pressure_at_ref_depth = 1.0
+        idata.initial.reference_depth_for_pressure = config.pressure_reference_depth  # [m]
+    idata.initial.pressure_at_ref_depth = 1.0  # [bars]
     if config.initial_composition is not None:
         idata.initial.initial_composition = config.initial_composition
 
 
 def _set_wells(idata, config):
-    shift = 0.0
+    # vertical well locations
+    shift = 0.0  # if a single well - place it to the center
     if config.wells_type == "doublet":
-        shift = config.doublet_shift
+        shift = config.doublet_shift  # half well distance [m]
 
-    eps_perf = 1.0
+    eps_perf = 1.0  # [m]
     perf_depth_start = idata.other.rsv_top + eps_perf
     perf_depth_end = idata.other.rsv_bottom - eps_perf
+    # as the perf is single, put it to the middle depth of the rsv
     perf_depth_start = (idata.other.rsv_top + idata.other.rsv_bottom) * 0.5
 
+    # cell_shift puts the well into a cell center (when the mesh is centered at (0,0))
     if config.wells_type in ("doublet", "prod"):
         idata.other.prod_well_coords = [
             config.cell_shift - shift,
             config.cell_shift,
             perf_depth_start,
             perf_depth_end,
-        ]
+        ]  # X, Y, Z1, Z2
     if config.wells_type in ("doublet", "inj"):
         idata.other.inj_well_coords = [
             config.cell_shift + shift,
             config.cell_shift,
             perf_depth_start,
             perf_depth_end,
-        ]
+        ]  # X, Y, Z1, Z2
 
-    idata.other.delta_temp_inj = config.delta_temp_inj
-    if config.thermal:
+    # well controls
+    idata.other.delta_temp_inj = config.delta_temp_inj  # [K], delta for temperature control
+    if config.thermal:  # RATE control
         idata.other.delta_p = None
-        idata.other.wctrl_type = well_control_iface.MASS_RATE
-        idata.other.well_rate = config.well_rate_m3_day * idata.fluid.density
-    else:
-        idata.other.delta_p = config.bhp_delta_p
+        idata.other.wctrl_type = well_control_iface.MASS_RATE  # mass or molar rate can be chosen here
+        idata.other.well_rate = config.well_rate_m3_day * idata.fluid.density  # [m^3/day] -> [kg/day]
+    else:  # BHP control
+        idata.other.delta_p = config.bhp_delta_p  # [bars]
         idata.other.wctrl_type = well_control_iface.BHP
         idata.other.well_rate = None
 

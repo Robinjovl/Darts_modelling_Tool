@@ -5,7 +5,7 @@ import numpy as np
 
 pv.global_theme.jupyter_backend = 'static' # do not print Widget(...) output messages - they appear in case of pyvista[jupyter] is installed
 
-def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1):
+def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mesh_bounds=False):
     '''
     Plot VTK results using PyVista.
     saves 2D plots - xz slice - of specified arrays (vertic displ and stress) from the last timestep.
@@ -13,6 +13,9 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1):
     idata : InputData
         reservoir/well geometry (top/bottom depths, well X positions, plot window,
         reference points) is taken from idata.other so the plots adapt to the actual case.
+    use_mesh_bounds : bool
+        if True, the X plot window spans the actual mesh extent instead of the
+        rsv_xy-based window (5 * rsv_xy). Z always spans the full mesh depth.
     '''
 
     if 'sawcut' in output_dir or '2rocks' in output_dir: # contours help to see that u_z is the same along X-axes in the inclined hex mesh
@@ -125,6 +128,10 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1):
     plot_points_xy = list(getattr(idata.other, 'points_xy', []))
 
     rsv_xy_plot_bnd = 5.0 * rsv_xy  # m. half-width of the plotted X-window (5000 for the default rsv_xy=1000)
+    if use_mesh_bounds:  # use the actual mesh X-extent instead of the rsv_xy-based window
+        x_plot_min, x_plot_max = block.bounds[0], block.bounds[1]
+    else:
+        x_plot_min, x_plot_max = -rsv_xy_plot_bnd, rsv_xy_plot_bnd
 
     for plot_config in plot_config_list:
         arr_name, tensor, arr_name_plot, contour, component_index, scale = plot_config
@@ -145,7 +152,7 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1):
         #slice_plane = block  # no slice (plot in 3D)
         y_bnd = max(abs(block.bounds[2]), abs(block.bounds[3]))
         slice_plane = slice_plane.clip_box(
-            bounds=[-rsv_xy_plot_bnd, rsv_xy_plot_bnd, -y_bnd, y_bnd,
+            bounds=[x_plot_min, x_plot_max, -y_bnd, y_bnd,
                     block.bounds[4], block.bounds[5]], invert=False)
 
         if tensor:
@@ -182,8 +189,8 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1):
 
         #arrows = slice_plane.glyph(orient="stress_vec", factor=0.05)
         #plotter.add_mesh(arrows, color="black")
-        xmin_blk = -rsv_xy_plot_bnd
-        xmax_blk = rsv_xy_plot_bnd
+        xmin_blk = x_plot_min
+        xmax_blk = x_plot_max
         #ymin_blk = -rsv_xy_plot_bnd
         #ymax_blk = rsv_xy_plot_bnd
         zmin_blk = block.bounds[4]
@@ -322,8 +329,9 @@ if __name__ == "__main__":
     contour = False
 
     #model_folder = '17_17_15'
-    model_folder = '41_41_66'
+    #model_folder = '41_41_66'
     #model_folder = '83_83_90'
+    model_folder = 'case_1'
 
     physics_type = 'single_phase_thermal'
     wells_type = 'doublet'
@@ -336,5 +344,8 @@ if __name__ == "__main__":
     timestep_list = [0, -1]
     #timestep_list = [4,40,80,120]
 
+    use_mesh_bounds = False  # True: plot the full mesh X-extent instead of the rsv_xy-based window
+
     for timestep in timestep_list:
-        plot_vtk_pyvista(output_dir, idata, contour=contour, tstep_to_plot=timestep)
+        plot_vtk_pyvista(output_dir, idata, contour=contour, tstep_to_plot=timestep,
+                         use_mesh_bounds=use_mesh_bounds)
