@@ -1,5 +1,5 @@
 """
-Injection of gaseous CO₂ at a constant mass injection rate with a constant specific enthalpy into a well containing
+Injection of gaseous CO₂ at a constant mass rate with a constant specific enthalpy into a well containing
 gaseous CO₂ using a standalone well model to compare its results with those in DWell for a thermal single-phase scenario.
 
 Lessons learned:

@@ -1,16 +1,6 @@
 """
-Injection of pure gaseous CO₂ at a constant mass injection rate into an inclined well containing water using a standalone
+Injection of pure gaseous CO₂ at a constant mass rate into an inclined well containing water using a standalone
 well model to compare its results with those in OLGA for an isothermal two-phase scenario.
-
-Lessons learned:
-    1- TODO
-
-    2- TODO
-
-OLGA example with which this DARTS-well example is compared is available here:
-    https://gitlab.com/open-darts/TODO
-Comparison of the results are available in the following Excel file:
-    https://gitlab.com/open-darts/TODO
 """
 
 import numpy as np

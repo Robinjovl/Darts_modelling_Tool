@@ -1,19 +1,6 @@
 """
-Injection of pure gaseous CO₂ at a constant mass injection rate with a constant temperature into a well containing
+Injection of pure gaseous CO₂ at a constant mass rate with a constant temperature into a well containing
 gaseous CO₂ using a standalone well model to compare its results with those in OLGA for a thermal single-phase scenario.
-
-Lessons learned:
-    1- TODO
-
-    2- TODO
-
-OLGA example with which this DARTS-well example is compared is available here:
-    https://gitlab.com/open-darts/TODO
-Comparison of the results are available in the following Excel file:
-    https://gitlab.com/open-darts/TODO
-
-Corresponding OLGA file is in my_old_laptop/Desktop/march/non-isothermal single-phase model validation with CO2
-
 """
 
 import numpy as np
