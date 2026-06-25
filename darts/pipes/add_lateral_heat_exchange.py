@@ -4,6 +4,37 @@ from darts.pipes.define_pipe_geometry import PipeGeometry
 
 
 class SemiAnalyticalWellLateralHeatTransfer:
+    """
+    Semi-analytical wellbore-to-earth heat exchange.
+
+    The implementation follows Ramey's notation for the formation time function:
+
+        Ramey Jr., H. J. (1962), "Wellbore Heat Transmission",
+        Journal of Petroleum Technology, 14(04), 427-435.
+
+    In Ramey's Appendix, the transient radial conduction from the wellbore outer
+    boundary to the undisturbed earth is written as
+
+        dq = 2*pi*K_earth*(T_boundary - T_earth)*dL / f(t)
+
+    where f(t) is a dimensionless formation resistance. For long times Ramey gives
+
+        f(t) = -ln(r_h / (2*sqrt(alpha*t))) - 0.29
+
+    with r_h the hole or outer-boundary radius used for the formation solution.
+    Ramey's main result also includes the wellbore thermal resistance through an
+    overall heat-transfer coefficient U between the fluid and the outer boundary.
+    Eliminating the unknown outer-boundary temperature gives the fluid-to-earth
+    form used here:
+
+        q = 2*pi*K_earth*L*(T_earth - T_fluid)
+            / (f(t) + K_earth/(r_U*U))
+
+    where r_U is the radius on which U is based. If U tends to infinity, the
+    formula reduces to the pure formation-conduction expression with only f(t)
+    in the denominator.
+    """
+
     def __init__(
         self,
         pipe_name: str,
@@ -83,9 +114,8 @@ class SemiAnalyticalWellLateralHeatTransfer:
             self.well_layers_props = well_layers_props
             # Calculate U
 
-        if Ui is not None:
-            self.tubing_IR = pipe_geometry.pipe_IR
-            self.Ui = Ui
+        self.tubing_IR = pipe_geometry.pipe_IR
+        self.Ui = Ui
 
         self.time_function_name = time_function_name
         self.outermost_layer_OD = outermost_layer_OD
@@ -121,13 +151,11 @@ class SemiAnalyticalWellLateralHeatTransfer:
         # Time function evaluation
         if self.time_function_name == "Ramey":
             # Ramey's time function: Gives reasonably good results for long times but fails for times less than seven days.
-            f_t = 1 / (
-                -np.log(
-                    (self.outermost_layer_OD / 2)
-                    / (2 * np.sqrt(self.alpha * simulation_timer))
-                )
-                - 0.29
+            f_t = -np.log(
+                (self.outermost_layer_OD / 2)
+                / (2 * np.sqrt(self.alpha * simulation_timer))
             )
+            f_t -= 0.29
         elif self.time_function_name == "Chiu&Thakur":
             # Chiu and Thakur time function: Provides a reasonable approximation of transient wellbore-formation heat
             # exchange while avoiding the early time discontinuity that results from using Ramey’s time function.
@@ -145,12 +173,13 @@ class SemiAnalyticalWellLateralHeatTransfer:
         # Lateral heat rate evaluation
         if self.Ui is not None:
             # For constant overall heat transfer coefficient
-            # I should see if U is based on ID or OD of the pipe. I think it's based on ID.
             self.q_lateral_heat = (
-                (2 * np.pi * self.segment_lengths)
-                * self.Ui
+                2
+                * np.pi
+                * self.K_earth
+                * self.segment_lengths
                 * (self.T_earth - T_segments)
-                / f_t
+                / (f_t + self.K_earth / (self.tubing_IR * self.Ui))
             )
         elif self.well_layers_props is not None:
             # Calculate the overall heat transfer coefficient using Willhite's formula
