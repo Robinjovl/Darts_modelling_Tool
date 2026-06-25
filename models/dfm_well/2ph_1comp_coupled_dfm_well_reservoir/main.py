@@ -91,11 +91,17 @@ for i, dt in enumerate(report_steps):
 
 coupled_model.print_timers()
 
-save_dfm_well_props('I1', coupled_model)
+save_dfm_well_props(
+    'I1',
+    coupled_model,
+    include_overall_composition=True,
+    include_phase_velocities=True,
+    include_phase_rates=True,
+)
 
-plot_heat_map_pcolormesh('I1', coupled_model, show_plot=False)
+# plot_heat_map_pcolormesh('I1', coupled_model, show_plot=False)
 plot_heat_map_contourf('I1', coupled_model, y_axis_tick_interval=250, show_plot=False)
 
 # Use line graphs if injection rate is controlled because the wellhead state might change a lot (for numerical reasons)
 # at the beginning of simulation and this may create confusion if plot_heat_map_pcolormesh or plot_heat_map_contourf is used.
-plot_line_graphs('I1', coupled_model, show_plot=False)
+# plot_line_graphs('I1', coupled_model, show_plot=False)

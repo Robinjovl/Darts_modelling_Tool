@@ -50,7 +50,13 @@ for i, dt in enumerate(time_steps):
 
 coupled_model.print_timers()
 
-save_dfm_well_props('I1', coupled_model)
+save_dfm_well_props(
+    'I1',
+    coupled_model,
+    include_overall_composition=True,
+    include_phase_velocities=True,
+    include_phase_rates=True,
+)
 
-plot_heat_map_pcolormesh('I1', coupled_model, show_plot=False)
+# plot_heat_map_pcolormesh('I1', coupled_model, show_plot=False)
 plot_heat_map_contourf('I1', coupled_model, show_plot=False)
