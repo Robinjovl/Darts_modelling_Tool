@@ -10,9 +10,8 @@ def set_input_data(
     wells_type="doublet",
     return_well_init_depth=False,
 ):
-    case_name = case.lower()
 
-    if case_name == "case_1":
+    if  "case_1" in case.lower():
         input_data = input_data_case_1()
         well_init_depth = (input_data.other.rsv_top + input_data.other.rsv_bottom) * 0.5
     else:

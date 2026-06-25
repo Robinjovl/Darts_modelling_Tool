@@ -105,9 +105,8 @@ class Model(THMCModel):
     def set_input_data(self):
         from set_case import set_input_data
 
-        case_name = self.model_folder if self.generate_mesh else "case_1"
         self.idata, self.well_init_depth = set_input_data(
-            case=case_name,
+            case=self.model_folder,
             model_folder=self.model_folder,
             physics_type=self.physics_type,
             wells_type=self.wells_type,

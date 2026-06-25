@@ -264,15 +264,17 @@ if __name__ == '__main__':
     #decouple_geomech = False
 
     # nx ny nz
-    #mesh='17_17_15'  # for debugging
-    mesh='41_41_66'
-    #mesh='71_71_66'
-    #mesh='83_83_90'  # for isothermal (single well)
-    #mesh='97_97_90'# for thermal (doublet)
-    #mesh='71_1_66'  # 1 layer by Y; it is not correct to use this as it corresponds to plane-strain solution
+    #case='17_17_15'  # for debugging
+    case='41_41_66'
+    #case='71_71_66'
+    #case='83_83_90'  # for isothermal (single well)
+    #case='97_97_90'# for thermal (doublet)
+    #case='71_1_66'  # 1 layer by Y; it is not correct to use this as it corresponds to plane-strain solution
 
     #generate_mesh=True
     generate_mesh=False  # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
+
+    case = 'case_1'
 
     #thermal = False
     thermal = True
@@ -299,7 +301,7 @@ if __name__ == '__main__':
     #sim_time = 30 # days
     #report_step = sim_time  # days
 
-    run(model_folder=mesh, physics_type=physics_type, generate_mesh=generate_mesh,
+    run(model_folder=case, physics_type=physics_type, generate_mesh=generate_mesh,
         wells_type=wells_type, decouple_geomech=decouple_geomech,
         report_step=report_step, sim_time=sim_time,
         plot_vtk_timesteps=[0, -1]) # plot initial and last timesteps
