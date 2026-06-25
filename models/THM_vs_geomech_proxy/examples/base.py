@@ -64,14 +64,14 @@ def build_input_data(config: InputDataConfig):
     _set_rock_mechanics(idata)
     _set_fluid_data(idata)
     _set_initial_conditions(idata, config)
-    well_init_depth = _set_wells(idata, config)
+    _set_wells(idata, config)
     _set_mesh_tags(idata, config.matrix_tags)
 
     if config.add_structured_mesh:
         _set_structured_mesh_coordinates(idata)
 
     _set_obl(idata)
-    return idata, well_init_depth
+    return idata
 
 
 def _set_rock_data(idata, porosity, permeability, young_modulus_gpa):
@@ -185,7 +185,7 @@ def _set_wells(idata, config):
         idata.other.wctrl_type = well_control_iface.BHP
         idata.other.well_rate = None
 
-    return perf_depth_start
+    idata.other.well_init_depth = perf_depth_start
 
 
 def _set_mesh_tags(idata, matrix_tags):

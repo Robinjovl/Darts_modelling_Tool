@@ -12,5 +12,5 @@ def input_data_case_1():
         matrix_tags=(1, 2, 3),
         pressure_reference_depth=0.0,
     )
-    idata, _ = build_input_data(config)
+    idata = build_input_data(config)
     return idata

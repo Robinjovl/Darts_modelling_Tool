@@ -105,12 +105,11 @@ class Model(THMCModel):
     def set_input_data(self):
         from set_case import set_input_data
 
-        self.idata, self.well_init_depth = set_input_data(
+        self.idata = set_input_data(
             case=self.model_folder,
             model_folder=self.model_folder,
             physics_type=self.physics_type,
             wells_type=self.wells_type,
-            return_well_init_depth=True,
         )
 
         super().set_input_data()
@@ -229,7 +228,7 @@ class Model(THMCModel):
             well_names = ['PRD1', 'INJ1']
             well_coords = np.array([self.idata.other.prod_well_coords, self.idata.other.inj_well_coords])
 
-        print('well_coords:', well_coords, 'well depth=', self.well_init_depth)
+        print('well_coords:', well_coords, 'well depth=', self.idata.other.well_init_depth)
         print('centroids_mean depth:', centroids_3d[:, 2].mean())
 
         self.well_cell_ids = []
@@ -257,7 +256,7 @@ class Model(THMCModel):
             self.well_cell_ids.append(ids_1)
             # adding a well
             #self.reservoir.add_well(well_names[i])
-            self.reservoir.add_well(well_names[i], depth=self.well_init_depth)
+            self.reservoir.add_well(well_names[i], depth=self.idata.other.well_init_depth)
             # adding perforations
             for cell_id in ids_1:
                 cell = elems[cell_id]
