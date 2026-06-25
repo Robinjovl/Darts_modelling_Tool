@@ -11,6 +11,24 @@ from darts.models.darts_model import DartsModel
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
+def _get_contour_levels(min_value, max_value, num_bins):
+    """
+    Return strictly increasing contour levels, expanding equal bounds for
+    constant profiles because contourf cannot plot non-increasing levels.
+    """
+    min_value = float(np.ma.filled(min_value, np.nan))
+    max_value = float(np.ma.filled(max_value, np.nan))
+
+    if not np.isfinite(min_value) or not np.isfinite(max_value):
+        min_value, max_value = 0.0, 1.0
+    elif min_value == max_value:
+        delta = 1.0 if min_value == 0 else abs(min_value) * 0.05
+        min_value -= delta
+        max_value += delta
+
+    return np.linspace(min_value, max_value, num_bins + 1)
+
+
 def plot_heat_map_contourf(
     well_name: str,
     coupled_model: DartsModel,
@@ -177,7 +195,7 @@ def plot_heat_map_contourf(
 
     # Create a discrete colorbar and colormap
     pmin, pmax = np.min(p_matrix), np.max(p_matrix)
-    levels = np.linspace(pmin, pmax, n_cmap_bins_p + 1)
+    levels = _get_contour_levels(pmin, pmax, n_cmap_bins_p)
     cmap = plt.get_cmap(cmap_color, n_cmap_bins_p)
     norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -270,7 +288,7 @@ def plot_heat_map_contourf(
             if z_c_min == z_c_max:
                 z_c_min = 0.0
                 z_c_max = 1.0
-            levels = np.linspace(z_c_min, z_c_max, n_cmap_bins_comp + 1)
+            levels = _get_contour_levels(z_c_min, z_c_max, n_cmap_bins_comp)
             cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
             norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -370,7 +388,7 @@ def plot_heat_map_contourf(
 
         # Create a discrete colorbar and colormap
         t_min, t_max = np.min(T_matrix), np.max(T_matrix)
-        levels = np.linspace(t_min, t_max, n_cmap_bins_t + 1)
+        levels = _get_contour_levels(t_min, t_max, n_cmap_bins_t)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_t)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -459,7 +477,7 @@ def plot_heat_map_contourf(
     # Create a discrete colorbar and colormap
     # sg_min, sg_max = 0, 1
     sg_min, sg_max = np.min(sG_matrix), np.max(sG_matrix)
-    levels = np.linspace(sg_min, sg_max, n_cmap_bins_s + 1)
+    levels = _get_contour_levels(sg_min, sg_max, n_cmap_bins_s)
     cmap = plt.get_cmap(cmap_color, n_cmap_bins_s)
     norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -547,7 +565,7 @@ def plot_heat_map_contourf(
         # Create a discrete colorbar and colormap
         # sla_min, sla_max = 0, 1
         sla_min, sla_max = np.min(sL_a_matrix), np.max(sL_a_matrix)
-        levels = np.linspace(sla_min, sla_max, n_cmap_bins_s + 1)
+        levels = _get_contour_levels(sla_min, sla_max, n_cmap_bins_s)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_s)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -637,7 +655,7 @@ def plot_heat_map_contourf(
         # Create a discrete colorbar and colormap
         # slb_min, slb_max = 0, 1
         slb_min, slb_max = np.min(sL_b_matrix), np.max(sL_b_matrix)
-        levels = np.linspace(slb_min, slb_max, n_cmap_bins_s + 1)
+        levels = _get_contour_levels(slb_min, slb_max, n_cmap_bins_s)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_s)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -733,7 +751,7 @@ def plot_heat_map_contourf(
             if x_min == x_max:
                 x_min = 0.0
                 x_max = 1.0
-            levels = np.linspace(x_min, x_max, n_cmap_bins_comp + 1)
+            levels = _get_contour_levels(x_min, x_max, n_cmap_bins_comp)
             cmap = plt.get_cmap(cmap_color, n_cmap_bins_comp)
             norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -840,7 +858,7 @@ def plot_heat_map_contourf(
 
     # Create a discrete colorbar and colormap
     rhog_min, rhog_max = np.min(rhoG_matrix_masked), np.max(rhoG_matrix_masked)
-    levels = np.linspace(rhog_min, rhog_max, n_cmap_bins_rho + 1)
+    levels = _get_contour_levels(rhog_min, rhog_max, n_cmap_bins_rho)
     cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
     norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -928,7 +946,7 @@ def plot_heat_map_contourf(
 
         # Create a discrete colorbar and colormap
         rhol_min, rhol_max = np.min(rhoL_matrix_masked), np.max(rhoL_matrix_masked)
-        levels = np.linspace(rhol_min, rhol_max, n_cmap_bins_rho + 1)
+        levels = _get_contour_levels(rhol_min, rhol_max, n_cmap_bins_rho)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1026,7 +1044,7 @@ def plot_heat_map_contourf(
             np.min(rhoL_a_matrix_masked),
             np.max(rhoL_a_matrix_masked),
         )
-        levels = np.linspace(rhola_min, rhola_max, n_cmap_bins_rho + 1)
+        levels = _get_contour_levels(rhola_min, rhola_max, n_cmap_bins_rho)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1129,7 +1147,7 @@ def plot_heat_map_contourf(
             np.min(rhoL_b_matrix_masked),
             np.max(rhoL_b_matrix_masked),
         )
-        levels = np.linspace(rholb_min, rholb_max, n_cmap_bins_rho + 1)
+        levels = _get_contour_levels(rholb_min, rholb_max, n_cmap_bins_rho)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1226,7 +1244,7 @@ def plot_heat_map_contourf(
 
     # Create a discrete colorbar and colormap
     muG_min, muG_max = np.min(muG_matrix_masked), np.max(muG_matrix_masked)
-    levels = np.linspace(muG_min, muG_max, n_cmap_bins_mu + 1)
+    levels = _get_contour_levels(muG_min, muG_max, n_cmap_bins_mu)
     cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
     norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1314,7 +1332,7 @@ def plot_heat_map_contourf(
 
         # Create a discrete colorbar and colormap
         muL_min, muL_max = np.min(muL_matrix_masked), np.max(muL_matrix_masked)
-        levels = np.linspace(muL_min, muL_max, n_cmap_bins_mu + 1)
+        levels = _get_contour_levels(muL_min, muL_max, n_cmap_bins_mu)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1412,7 +1430,7 @@ def plot_heat_map_contourf(
             np.min(muL_a_matrix_masked),
             np.max(muL_a_matrix_masked),
         )
-        levels = np.linspace(muLa_min, muLa_max, n_cmap_bins_mu + 1)
+        levels = _get_contour_levels(muLa_min, muLa_max, n_cmap_bins_mu)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1515,7 +1533,7 @@ def plot_heat_map_contourf(
             np.min(muL_b_matrix_masked),
             np.max(muL_b_matrix_masked),
         )
-        levels = np.linspace(muLb_min, muLb_max, n_cmap_bins_mu + 1)
+        levels = _get_contour_levels(muLb_min, muLb_max, n_cmap_bins_mu)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1613,7 +1631,7 @@ def plot_heat_map_contourf(
 
         # Create a discrete colorbar and colormap
         vg_min, vg_max = np.min(vG_matrix_masked), np.max(vG_matrix_masked)
-        levels = np.linspace(vg_min, vg_max, n_cmap_bins_v + 1)
+        levels = _get_contour_levels(vg_min, vg_max, n_cmap_bins_v)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1701,7 +1719,7 @@ def plot_heat_map_contourf(
 
         # Create a discrete colorbar and colormap
         vl_min, vl_max = np.min(vL_matrix_masked), np.max(vL_matrix_masked)
-        levels = np.linspace(vl_min, vl_max, n_cmap_bins_v + 1)
+        levels = _get_contour_levels(vl_min, vl_max, n_cmap_bins_v)
         cmap = plt.get_cmap(cmap_color, n_cmap_bins_rho)
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -1765,3 +1783,108 @@ def plot_heat_map_contourf(
             plt.show()
 
         plt.close(fig)
+
+    # %% Phase rate profiles
+
+    def plot_phase_rate_heatmaps(rate_type, rate_label, unit):
+        nonlocal figure_counter
+
+        for phase_name in pc.phases_name:
+            prop_name = f"phase_{rate_type}_rate_{phase_name}"
+            if prop_name not in data_frame.columns:
+                continue
+            if phase_name == "G":
+                phase_display = "Gas"
+            elif phase_name == "L":
+                phase_display = "Liquid"
+            else:
+                phase_display = phase_name
+
+            figure_counter += 1
+            rate_matrix = np.zeros((num_interfaces, num_selected_ts))
+
+            for ts_idx, ts_counter in enumerate(time_step_idx_range):
+                rate = data_frame[prop_name][
+                    ts_counter * num_segments : (ts_counter + 1) * num_segments
+                ].to_numpy(dtype=float)
+                rate_matrix[:, ts_idx] = rate[:-1] / (24 * 60 * 60)
+
+            finite_values = rate_matrix[np.isfinite(rate_matrix)]
+            if finite_values.size == 0:
+                continue
+
+            rate_min = np.min(finite_values)
+            rate_max = np.max(finite_values)
+
+            rate_matrix_masked = np.ma.masked_invalid(rate_matrix)
+
+            fig, ax = plt.subplots(figsize=(12, 6))
+
+            levels = _get_contour_levels(rate_min, rate_max, n_cmap_bins_v)
+            cmap = plt.get_cmap(cmap_color, n_cmap_bins_v)
+            norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+
+            cf = ax.contourf(
+                x,
+                y_interfaces,
+                rate_matrix_masked,
+                levels=levels,
+                cmap=cmap,
+                norm=norm,
+            )
+
+            _cs = ax.contour(
+                x,
+                y_interfaces,
+                rate_matrix_masked,
+                levels=levels,
+                colors='k',
+                linewidths=0.7,
+            )
+
+            cbar = fig.colorbar(
+                cf,
+                ax=ax,
+                boundaries=levels,
+                ticks=levels,
+                spacing='proportional',
+            )
+            cbar.set_label(
+                f"{phase_display} {rate_label} rate [{unit}]",
+                fontsize=font_size,
+            )
+            cbar.ax.tick_params(labelsize=font_size)
+
+            ax.yaxis.set_major_locator(MultipleLocator(y_axis_tick_interval))
+            ax.invert_yaxis()
+            ax.set_xlabel(x_label, fontsize=font_size)
+            ax.set_ylabel(y_interfaces_label, fontsize=font_size)
+            if with_logarithmic_x_axis:
+                ax.set_xscale('log')
+            ax.tick_params(axis='both', labelsize=font_size)
+
+            if with_title:
+                ax.set_title(
+                    f"{phase_display} {rate_label} rate profile along the wellbore over time",
+                    fontsize=font_size,
+                    fontweight='bold',
+                )
+
+            plt.tight_layout()
+            file_address = os.path.join(
+                main_dir,
+                f"{figure_counter}- {phase_display} {rate_label} rate.{save_as}",
+            )
+            plt.savefig(file_address)
+            if show_plot:
+                plt.show()
+
+            plt.close(fig)
+
+    PHASE_RATE_PLOT_SPECS = (
+        ("molar", "molar", "kmol/s"),
+        ("mass", "mass", "kg/s"),
+        ("volumetric", "volumetric", "m$^3$/s"),
+    )
+    for rate_type, rate_label, unit in PHASE_RATE_PLOT_SPECS:
+        plot_phase_rate_heatmaps(rate_type, rate_label, unit)
