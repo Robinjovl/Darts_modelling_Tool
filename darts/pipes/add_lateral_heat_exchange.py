@@ -25,6 +25,14 @@ class SemiAnalyticalWellLateralHeatTransfer:
 
         f(t) = -ln(r_h / (2*sqrt(alpha*t))) - 0.29
 
+    Ramey's line-source expression is a long-time asymptotic result. Ramey
+    states that the convergence time is on the order of one week for many
+    reservoir problems and that the line-source result is useful for times
+    greater than one week. Chiu and Thakur also note that this Ramey expression
+    fails for times less than about seven days. For shorter simulated times,
+    use Chiu and Thakur's empirical time function or a numerical surrounding
+    grid instead of the Ramey option.
+
     Chiu and Thakur proposed an empirical time function that matches the exact
     finite-radius formation solution well at early and late times:
 
@@ -91,8 +99,10 @@ class SemiAnalyticalWellLateralHeatTransfer:
         :param well_layers_props: The properties of the layers surrounding the fluid in the wellbore to thermal
         calculations. If well_layers_props is not specified, Ui must be specified.
         :type well_layers_props: dict
-        :param time_function_name: The name of the time function used for transient calculation of heat transfer
-        Available options are "Ramey" and "Chiu&Thakur". Default is "Chiu&Thakur"
+        :param time_function_name: The name of the time function used for transient calculation of heat transfer.
+        Available options are "Ramey" and "Chiu&Thakur". Default is "Chiu&Thakur".
+        "Ramey" is a long-time asymptotic expression and should not be used for
+        simulated times shorter than about seven days.
         :type time_function_name: str
         :param verbose: Whether to display extra info about SemiAnalyticalWellLateralHeatTransfer
         :type verbose: boolean
@@ -143,10 +153,11 @@ class SemiAnalyticalWellLateralHeatTransfer:
             "perforated_segments must be a list!"
         )
         assert all(
-            [perf_idx < pipe_geometry.num_segments for perf_idx in perforated_segments]
-        ), (
-            "Indices of perforated segments must be smaller than the number of well segments!"
-        )
+            [
+                0 <= perf_idx < pipe_geometry.num_segments
+                for perf_idx in self.perforated_segments
+            ]
+        ), "Indices of perforated segments must be valid well segment indices!"
 
         self.segment_lengths = pipe_geometry.segment_lengths
 
@@ -166,7 +177,7 @@ class SemiAnalyticalWellLateralHeatTransfer:
         simulation_timer = simulation_timer * 24 * 60 * 60
         # Time function evaluation
         if self.time_function_name == "Ramey":
-            # Ramey's time function: Gives reasonably good results for long times but fails for times less than seven days.
+            # Ramey's long-time asymptotic expression is not suitable before about seven days.
             f_t = -np.log(
                 (self.outermost_layer_OD / 2)
                 / (2 * np.sqrt(self.alpha * simulation_timer))
@@ -174,7 +185,7 @@ class SemiAnalyticalWellLateralHeatTransfer:
             f_t -= 0.29
         elif self.time_function_name == "Chiu&Thakur":
             # Chiu and Thakur time function: Provides a reasonable approximation of transient wellbore-formation heat
-            # exchange while avoiding the early time discontinuity that results from using Ramey’s time function.
+            # exchange while avoiding the early time discontinuity that results from using Ramey's time function.
             f_t = 0.982 * np.log(
                 1
                 + 1.81

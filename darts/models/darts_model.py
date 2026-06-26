@@ -1048,10 +1048,8 @@ class DartsModel:
 
     def apply_dfm_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:
-            if (
-                well.ms_type == ms_well.MS_Type.DFM
-                and self.wells[well.name].lateral_heat_rate_eval is not None
-            ):
+            lateral_heat_ev = self.wells[well.name].lateral_heat_rate_eval
+            if well.ms_type == ms_well.MS_Type.DFM and lateral_heat_ev is not None:
                 # Get temperatures of segments
                 if self.physics.state_spec == self.physics.StateSpecification.PT:
                     T_segments = self.physics.engine.X[
@@ -1075,13 +1073,8 @@ class DartsModel:
                         T_segments[i] = self.physics.property_containers[0].temperature
 
                 # Evaluate lateral heat rates and add them to the rhs
-                if isinstance(
-                    self.wells[well.name].lateral_heat_rate_eval,
-                    SemiAnalyticalWellLateralHeatTransfer,
-                ):
-                    well_lateral_heat_rate = self.wells[
-                        well.name
-                    ].lateral_heat_rate_eval.evaluate(T_segments, t + dt)
+                if isinstance(lateral_heat_ev, SemiAnalyticalWellLateralHeatTransfer):
+                    lateral_heat_rate = lateral_heat_ev.evaluate(T_segments, t + dt)
                     rhs = np.array(self.physics.engine.RHS, copy=False)
                     rhs[
                         well.well_head_idx * self.physics.n_vars
@@ -1090,7 +1083,7 @@ class DartsModel:
                         )
                         * self.physics.n_vars
                         + (self.physics.n_vars - 1) : self.physics.n_vars
-                    ] -= well_lateral_heat_rate * dt
+                    ] -= lateral_heat_rate * dt
                 else:
                     raise TypeError(
                         f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!"
