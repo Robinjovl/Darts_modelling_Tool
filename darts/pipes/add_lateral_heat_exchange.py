@@ -236,6 +236,7 @@ def add_numerical_well_lateral_heat_transfer(
     well_wall_cells_idx: np.ndarray,
     well_wall_thickness: float,
     verbose: bool = False,
+    geometry_approximation: str = "linear",
 ):
     """
     This function adds lateral heat transfer between the wellbore the geometry of which is entered as the second
@@ -253,6 +254,11 @@ def add_numerical_well_lateral_heat_transfer(
     :type well_wall_thickness: float
     :param verbose: Whether to display extra info about the function
     :type verbose: boolean
+    :param geometry_approximation: Approximation used for the well-to-wall-cell geometric coefficient.
+                                   "linear" uses A / (wall_thickness / 2).
+                                   "radial" uses the cylindrical logarithmic shape factor
+                                   2*pi*segment_length / ln((r_w + wall_thickness / 2) / r_w).
+    :type geometry_approximation: str
     """
     assert well_geometry.pipe_name == well_name, (
         "The names of the wells in PipeGeometry and add_numerical_lateral_heat_transfer are not identical!"
@@ -265,18 +271,30 @@ def add_numerical_well_lateral_heat_transfer(
         "The number of well_wall_cells_idx must be equal to the number of the well segments!"
     )
 
-    # Thermal transmissibility simply equals geom_coef = A / L
     assert isinstance(well_geometry.pipe_IR, float), (
         "Well radius must be a float; otherwise, it's not supported!"
     )
-    well_perimeter = 2 * np.pi * well_geometry.pipe_IR
-    A = well_perimeter * well_geometry.segment_lengths
     assert isinstance(well_wall_thickness, float), (
         "Well wall thickness must be a float; otherwise, it's not supported!"
     )
-    # Using the linear form of the heat conduction equation
-    L = well_wall_thickness / 2
-    geom_coef = A / L
+    assert well_wall_thickness > 0, "Well wall thickness must be positive!"
+
+    assert geometry_approximation in ("linear", "radial"), (
+        "geometry_approximation must be either 'linear' or 'radial'!"
+    )
+
+    if geometry_approximation == "linear":
+        # Thermal transmissibility simply equals geom_coef = A / L
+        well_perimeter = 2 * np.pi * well_geometry.pipe_IR
+        A = well_perimeter * well_geometry.segment_lengths
+        L = well_wall_thickness / 2
+        geom_coef = A / L
+    else:
+        r_w = well_geometry.pipe_IR
+        r_wall_cell_center = r_w + well_wall_thickness / 2
+        geom_coef = (
+            2 * np.pi * well_geometry.segment_lengths / np.log(r_wall_cell_center / r_w)
+        )
     well_indexD = geom_coef
 
     well_indexD *= 2  # Because in cpp code, (gamma_t_i + gamma_t_j) is divided by 2, but we don't want this division
