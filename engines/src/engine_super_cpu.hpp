@@ -46,8 +46,6 @@ public:
   // number of operators: NE accumulation operators, NE*NP flux operators, NP density, NP up_constant, NE*NP gradient,
   //                      NE kinetic rate operators, 2*NP gravity and capillarity, 1 multiplier, NP phase mobility,
   //                      NP saturation, NP enthalpy, 2 temperature and pressure
-  // Widened from uint8_t to uint16_t: at NC=30 / NP=3 thermal, N_OPS = 272 and the
-  // late-layout operator indices PC_OP..PRES_OP reach 257..271 — all overflow uint8_t.
   const static uint16_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
                                 NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
                                 NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/;
@@ -62,7 +60,7 @@ public:
   const static uint16_t GRAD_OP = NE + NE * NP + NP + NP;
   // kinetic reaction
   const static uint16_t KIN_OP = NE + NE * NP + NP + NP + NE * NP;
-  // extra operators (widened — see N_OPS note above)
+  // extra operators
   const static uint16_t GRAV_OP = NE + NE * NP + NP + NP + NE * NP + NE;
   const static uint16_t PC_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP;
   const static uint16_t MULT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP;

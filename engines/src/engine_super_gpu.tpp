@@ -46,8 +46,6 @@
  * @param[in] molar_weights Array of molar weights for fluid components.
  * @param[in] dt Time step size.
  */
-// N_OPS and the late-layout op indices (FLUX_OP, GRAV_OP, PC_OP, MULT_OP, LAMBDA_OP)
-// widened to uint16_t — at NC=30 / NP=3 thermal they reach up to 272.
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint16_t N_OPS, uint16_t FLUX_OP,
           uint16_t GRAV_OP, uint16_t PC_OP, uint16_t MULT_OP, uint16_t LAMBDA_OP>
 __global__ void
@@ -168,7 +166,6 @@ reconstruct_velocities(const unsigned int n_res_blocks, const bool enable_permpo
  * @param[in] op_num Array of region per block.
  * @param[in] dt Time step size.
  */
-// N_OPS / FLUX_OP / GRAD_OP / ENTH_OP widened to uint16_t at NC=30 thermal.
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint16_t N_OPS, uint16_t FLUX_OP, uint16_t GRAD_OP,
           uint16_t ENTH_OP, bool THERMAL>
 __global__ void
@@ -354,8 +351,6 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
  * @param[in] grav_coef Array of gravity coefficients.
  * @param[in] kin_fac Kinetic factor array.
  */
-// N_OPS and all op-index parameters widened to uint16_t at NC=30 / NP=3 thermal
-// (indices 257..271 and N_OPS up to 272).
 template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t T_VAR, uint16_t N_OPS,
           uint16_t ACC_OP, uint16_t FLUX_OP, uint16_t DENS_OP, uint16_t UPSAT_OP, uint16_t GRAD_OP, uint16_t KIN_OP, uint16_t GRAV_OP,
           uint16_t PC_OP, uint16_t MULT_OP, uint16_t LAMBDA_OP, uint16_t SAT_OP, uint16_t ENTH_OP, uint16_t TEMP_OP, uint16_t PRES_OP,

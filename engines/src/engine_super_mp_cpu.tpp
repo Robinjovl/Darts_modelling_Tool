@@ -269,7 +269,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	n_ops = get_n_ops();
 	nc = get_n_comps();
 	z_var_idx = get_z_var_idx();
-	// Physical-simplex clipping; OBL window no longer constrains Newton — see engine_base.h
+	// Clip composition to the physical simplex [0,1] (each z_c in [0,1], components sum to 1), independent of the OBL interpolation window; see engine_base.h
 	min_axis_z = 0.0;
 	max_axis_z = 1.0;
 	min_sim_z = min_axis_z + params->sim_eps;
