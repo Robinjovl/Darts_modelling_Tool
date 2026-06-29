@@ -1,11 +1,79 @@
 import pyvista as pv
 import matplotlib.pyplot as plt
+import matplotlib.tri as mtri
+from matplotlib.ticker import MaxNLocator
 import os
 import numpy as np
 
 pv.global_theme.jupyter_backend = 'static' # do not print Widget(...) output messages - they appear in case of pyvista[jupyter] is installed
 
-def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mesh_bounds=False):
+def plot_slice_matplotlib(slice_plane, arr_name, tensor, component_index, scale,
+                          arr_name_plot, contour, rsv_top, rsv_bottom,
+                          well_markers, plot_points_xy,
+                          xmin_blk, xmax_blk, zmin_blk, zmax_blk, out_png):
+    '''
+    Optional matplotlib backend for the XZ slice plot (selected via use_mtri=True).
+    Gives a centered, evenly-labeled X/Z view with visible 'X, m.'/'Z, m.' titles, which the
+    pyvista view_xz camera + show_bounds do not.
+
+    Drawbacks vs the default pyvista rendering:
+    - Convex-hull fill: mtri.Triangulation(xs, zs) with no explicit triangles triangulates the
+      CONVEX HULL of the points, so non-convex / holey domains (faults, fractures, cut-outs,
+      partial domains like case_1) get bridged with spurious triangles and colored where there
+      is actually no mesh. pyvista draws only real cells and never invents geometry.
+    - Smoothing of discontinuities: the data is cell data; cell_data_to_point_data() averages
+      onto points and gouraud shading interpolates across triangles, so sharp jumps (perm,
+      material / reservoir boundaries, stress steps) get blurred instead of staying piecewise
+      constant per cell.
+    - Cell geometry is lost: the re-triangulation does not follow the real cell edges/shapes.
+    - 2D-slice only and runs a Delaunay triangulation per array / timestep (extra cost;
+      degenerate / coincident points after slicing can make it fail).
+    '''
+    # interpolate the (cell) scalar to the slice points so tripcolor can render it
+    slice_points = slice_plane.cell_data_to_point_data()
+    xs = slice_points.points[:, 0]
+    zs = slice_points.points[:, 2]
+    if tensor:
+        vals = np.asarray(slice_points[arr_name])[:, component_index] * scale
+    else:
+        vals = np.asarray(slice_points[arr_name]) * scale
+
+    # use a single color if values are almost the same everywhere
+    plot_rel_diff_threshold = 0.001
+    if np.fabs(vals.max() - vals.min()) < plot_rel_diff_threshold:
+        vals = np.full_like(vals, vals.min())
+
+    triang = mtri.Triangulation(xs, zs)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    tpc = ax.tripcolor(triang, vals, shading='gouraud', cmap='viridis')
+    fig.colorbar(tpc, ax=ax, fraction=0.046, pad=0.02)
+    if contour:
+        ax.tricontour(triang, vals, levels=20, colors='black', linewidths=0.5)
+
+    # horizontal reference lines at reservoir top and bottom
+    for z_ref in [rsv_top, rsv_bottom]:
+        ax.axhline(z_ref, color='white', linewidth=1.0)
+    # vertical lines at the wells (prod=red, inj=cyan); top a bit above the visualized block
+    z_well_top = zmin_blk - 0.1 * (zmax_blk - zmin_blk)
+    for x_well, clr in well_markers:
+        ax.vlines(x_well, z_well_top, rsv_bottom, color=clr, linewidth=2)
+    # black reference lines at idata.other.points_xy (if set), spanning the full depth
+    for p in plot_points_xy:  # [x, y, label]
+        ax.vlines(p[0], zmin_blk, zmax_blk, color='black', linewidth=1)
+
+    ax.set_xlim(xmin_blk, xmax_blk)
+    ax.set_ylim(zmax_blk, zmin_blk)  # depth increases downward
+    ax.set_xlabel('X, m.', fontsize=14)
+    ax.set_ylabel('Z, m.', fontsize=14)
+    ax.tick_params(labelsize=12)
+    ax.set_title(arr_name_plot, fontsize=13)
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=100)
+    plt.close(fig)
+
+
+def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mesh_bounds=False,
+                     plot_contours=False, use_mtri=False):
     '''
     Plot VTK results using PyVista.
     saves 2D plots - xz slice - of specified arrays (vertic displ and stress) from the last timestep.
@@ -16,6 +84,13 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
     use_mesh_bounds : bool
         if True, the X plot window spans the actual mesh extent instead of the
         rsv_xy-based window (5 * rsv_xy). Z always spans the full mesh depth.
+    plot_contours : bool
+        if True, also produce the matplotlib contour plot (resamples the slice onto a
+        uniform grid - skipped entirely when False to avoid the cost).
+    use_mtri : bool
+        if True, render the slice with matplotlib/tripcolor (plot_slice_matplotlib) instead of
+        the default pyvista rendering. Gives centered axes with proper titles, but see the
+        drawbacks documented on plot_slice_matplotlib.
     '''
 
     if 'sawcut' in output_dir or '2rocks' in output_dir: # contours help to see that u_z is the same along X-axes in the inclined hex mesh
@@ -128,10 +203,15 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
     plot_points_xy = list(getattr(idata.other, 'points_xy', []))
 
     rsv_xy_plot_bnd = 5.0 * rsv_xy  # m. half-width of the plotted X-window (5000 for the default rsv_xy=1000)
-    if use_mesh_bounds:  # use the actual mesh X-extent instead of the rsv_xy-based window
-        x_plot_min, x_plot_max = block.bounds[0], block.bounds[1]
+    if use_mesh_bounds:  # use the actual mesh X-extent (+10% margin on each side) instead of the rsv_xy-based window
+        x_margin = 0.2 * (block.bounds[1] - block.bounds[0])
+        x_plot_min, x_plot_max = block.bounds[0] - x_margin, block.bounds[1] + x_margin
     else:
         x_plot_min, x_plot_max = -rsv_xy_plot_bnd, rsv_xy_plot_bnd
+
+    print('mesh bounds:', [round(b, 1) for b in block.bounds])  # [xmin,xmax,ymin,ymax,zmin,zmax]
+    print('plot bounds: X', round(x_plot_min, 1), round(x_plot_max, 1),
+          'Z', round(block.bounds[4], 1), round(block.bounds[5], 1))
 
     for plot_config in plot_config_list:
         arr_name, tensor, arr_name_plot, contour, component_index, scale = plot_config
@@ -155,105 +235,151 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
             bounds=[x_plot_min, x_plot_max, -y_bnd, y_bnd,
                     block.bounds[4], block.bounds[5]], invert=False)
 
+        xmin_blk = x_plot_min
+        xmax_blk = x_plot_max
+        zmin_blk = block.bounds[4]
+        zmax_blk = block.bounds[5]
+        y_slice = block.center[1]
+        out_png = os.path.join(output_dir_plots, arr_name_plot + "_slice.png")
+
+        if use_mtri:  # optional matplotlib backend (centered axes + titles; see its drawbacks)
+            plot_slice_matplotlib(slice_plane, arr_name, tensor, component_index, scale,
+                                  arr_name_plot, contour, rsv_top, rsv_bottom,
+                                  well_markers, plot_points_xy,
+                                  xmin_blk, xmax_blk, zmin_blk, zmax_blk, out_png)
+            continue
+
+        # --- default pyvista rendering ---
         if tensor:
-            slice_plane[arr_name_plot] = slice_plane[arr_name][:,component_index] * scale
+            slice_plane[arr_name_plot] = slice_plane[arr_name][:, component_index] * scale
         else:
             slice_plane[arr_name_plot] = slice_plane[arr_name] * scale
 
-        plotter = pv.Plotter(off_screen=True) # save without showing the GUI window
+        plot_w, plot_h = 1024, 768  # fixed window so the camera aspect (hence centering) is known
+        plotter = pv.Plotter(off_screen=True, window_size=(plot_w, plot_h)) # save without showing the GUI window
 
         # to plot with the same color if values are almost the same everywhere
         plot_rel_diff_threshold = 0.001
         values = np.array(slice_plane[arr_name_plot])
-        min_val = values.min()
-        max_val = values.max()
-        rel_diff = np.fabs(max_val - min_val) #/ max(np.fabs(min_val), np.fabs(max_val))
-        if rel_diff < plot_rel_diff_threshold:
-            slice_plane[arr_name_plot][:] = min_val
-
-        #n_levels = 100
-        #cmap = plt.get_cmap("viridis", n_levels)
+        if np.fabs(values.max() - values.min()) < plot_rel_diff_threshold:
+            slice_plane[arr_name_plot][:] = values.min()
 
         plotter.add_mesh(slice_plane, scalars=arr_name_plot, show_edges=False,
-                         scalar_bar_args={'vertical': True, 'position_y': 0.25, 'height': 0.5,
-                                          'title': ''})
+                         scalar_bar_args={'vertical': True, 'position_x': 0.86, 'position_y': 0.25,
+                                          'width': 0.05, 'height': 0.5, 'title': ''})
 
         if contour:
             slice_plane_points = slice_plane.cell_data_to_point_data()
-            # Generate contour surfaces
             contours = slice_plane_points.contour(isosurfaces=20, scalars=arr_name_plot)
-            # Plot result
             if contours.n_cells > 0:  # skip empty plots
                 plotter.add_mesh(contours, cmap="viridis", opacity=1, color="black")
                 plotter.add_mesh(slice_plane_points.outline(), color="black")
 
-        #arrows = slice_plane.glyph(orient="stress_vec", factor=0.05)
-        #plotter.add_mesh(arrows, color="black")
-        xmin_blk = x_plot_min
-        xmax_blk = x_plot_max
-        #ymin_blk = -rsv_xy_plot_bnd
-        #ymax_blk = rsv_xy_plot_bnd
-        zmin_blk = block.bounds[4]
-        zmax_blk = block.bounds[5]
-        y_slice = block.center[1]
         # horizontal reference lines at reservoir top and bottom
         for z_ref in [rsv_top, rsv_bottom]:
             plotter.add_mesh(pv.Line(pointa=(xmin_blk, y_slice, z_ref),
                                      pointb=(xmax_blk, y_slice, z_ref)),
                              color='white', line_width=0.5)
         # vertical lines at the wells (prod=red, inj=cyan) + black reference lines at idata.other.points_xy (if set)
-        well_lines = [(x_well, rsv_bottom, 0.0, clr, 2) for x_well, clr in well_markers]
+        # well-line top: a bit above the visualized block top (10% of the visualized depth)
+        z_well_top = zmin_blk - 0.1 * (zmax_blk - zmin_blk)
+        well_lines = [(x_well, rsv_bottom, z_well_top, clr, 2) for x_well, clr in well_markers]
         for p in plot_points_xy:  # [x, y, label]
             well_lines.append((p[0], zmax_blk, zmin_blk, 'black', 1))
         for x_well, z2, z1, clr, lw in well_lines:
             plotter.add_mesh(pv.Line(pointa=(x_well, y_slice, z1),
                                      pointb=(x_well, y_slice, z2)),
                              color=clr, line_width=lw)
-        plotter.view_xz()
-        plotter.camera.up = (0, 0, -1)   # invert Z axis
-        plotter.camera.position = (plotter.camera.position[0],
-                                   plotter.camera.position[1] * -1,
-                                   plotter.camera.position[2])  # invert X axis
-        #plotter.reset_camera(bounds=[xmin_blk, xmax_blk, ymin_blk, ymax_blk, zmin_blk, zmax_blk])
-        plotter.camera.zoom(1.1)
-        #n_xlabels = int(round((xmax_blk - xmin_blk) / 1000.)) + 1
-        plotter.show_bounds(grid=False, location='outer', ticks='outside',
-                            xtitle='X, m.', ytitle='', ztitle='Z, m.',
-                            show_yaxis=False, n_xlabels=9, n_zlabels=6,
-                            font_size=12, fmt='%d')
-        plotter.add_text(arr_name_plot, position=(0.5, 0.93), font_size=8, viewport=True)  # title
-        plotter.show(screenshot=os.path.join(output_dir_plots, arr_name_plot + "_slice.png"))
+        # Centered orthographic XZ view. Margins around the [xmin_blk,xmax_blk] x [zmin_blk,zmax_blk]
+        # window leave clear space for the axis labels (left/bottom) and the colorbar (right), so
+        # they do not overlap the figure. (view_xz auto-camera renders this planar slice off-center.)
+        cx, cz = 0.5 * (xmin_blk + xmax_blk), 0.5 * (zmin_blk + zmax_blk)
+        aspect = plot_w / plot_h
+        parallel_scale = max(0.5 * (zmax_blk - zmin_blk) * 1.35,   # vertical margin (X labels + titles)
+                             0.5 * (xmax_blk - xmin_blk) / aspect * 1.6)  # horizontal margin (Z labels + colorbar)
+        plotter.enable_parallel_projection()
+        plotter.camera.focal_point = (cx, y_slice, cz)
+        plotter.camera.position = (cx, y_slice + 1000.0, cz)  # look from +Y: world +X to the right
+        plotter.camera.up = (0, 0, -1)                        # Z increases downward (depth)
+        plotter.camera.parallel_scale = parallel_scale
+
+        # world (x, z) -> viewport fraction (0..1). up=-Z, so larger depth is lower on screen.
+        half_w = parallel_scale * aspect
+        vp_x = lambda xw: 0.5 + (xw - cx) / (2.0 * half_w)
+        vp_y = lambda zw: 0.5 + (cz - zw) / (2.0 * parallel_scale)
+        # anchor ticks/labels to the visible data box edge = plot window clipped to the mesh
+        # extent. (Using slice_plane.bounds is cell-extended beyond the clip; using the raw window
+        # is outside the mesh when use_mesh_bounds adds margin - either leaves a gap to the figure.)
+        data_x0 = max(xmin_blk, block.bounds[0])   # left edge
+        data_z1 = min(zmax_blk, block.bounds[5])   # bottom (max-depth) edge
+        data_left = vp_x(data_x0)
+        data_bot = vp_y(data_z1)
+
+        # round, nicely-spaced ticks (e.g. 0, 2000, 4000 instead of 1860, 3720)
+        x_ticks = [t for t in MaxNLocator(nbins=7, steps=[1, 2, 2.5, 5, 10]).tick_values(xmin_blk, xmax_blk)
+                   if xmin_blk - 1 <= t <= xmax_blk + 1]
+        z_ticks = [t for t in MaxNLocator(nbins=6, steps=[1, 2, 2.5, 5, 10]).tick_values(zmin_blk, zmax_blk)
+                   if zmin_blk - 1 <= t <= zmax_blk + 1]
+
+        # tick marks: short black lines on the data edges (X ticks below, Z ticks to the left)
+        tick_vp = 0.02                           # tick length as a viewport fraction
+        tick_world_z = tick_vp * 2.0 * parallel_scale
+        tick_world_x = tick_vp * 2.0 * half_w
+        for xt in x_ticks:
+            plotter.add_mesh(pv.Line((xt, y_slice, data_z1), (xt, y_slice, data_z1 + tick_world_z)),
+                             color='black', line_width=2.5)
+        for zt in z_ticks:
+            plotter.add_mesh(pv.Line((data_x0 - tick_world_x, y_slice, zt), (data_x0, y_slice, zt)),
+                             color='black', line_width=2.5)
+
+        # Axis labels as fixed viewport text (camera-aligned -> they match the data/ticks, and avoid
+        # vtk show_bounds quirks). Z labels sit in the left margin, X labels in the bottom margin.
+        z_num_x = max(data_left - 0.075, 0.04)
+        for zt in z_ticks:
+            plotter.add_text(f'{int(round(zt))}', position=(z_num_x, vp_y(zt) - 0.012),
+                             font_size=12, viewport=True, color='black')
+        # 'Z, m.' just left of the Z numbers (not stranded at the far window edge)
+        plotter.add_text('Z, m.', position=(max(z_num_x - 0.07, 0.0), 0.5),
+                         font_size=14, viewport=True, color='black')
+        for xt in x_ticks:
+            s = f'{int(round(xt))}'
+            plotter.add_text(s, position=(vp_x(xt) - 0.009 * len(s), data_bot - 0.055),
+                             font_size=12, viewport=True, color='black')
+        plotter.add_text('X, m.', position=(0.46, data_bot - 0.115), font_size=14, viewport=True, color='black')
+        plotter.add_text(arr_name_plot, position=(0.5 - 0.007 * len(arr_name_plot), 0.92),
+                         font_size=14, viewport=True)  # caption / title
+        plotter.show(screenshot=out_png)
         plotter.close()
 
-        # Contour plot using matplotlib #################################################
-        # Define desired resolution and bounds
-        res_x, res_z = 1000, 1000
-        xmin, xmax = slice_plane.points[:, 0].min(), slice_plane.points[:, 0].max()
-        zmin, zmax = slice_plane.points[:, 2].min(), slice_plane.points[:, 2].max()
-        y_mean = slice_plane.points[:, 1].mean()
-        # Create a "Template" Grid (UniformGrid / ImageData) structured XY plane (at Y=0)
-        grid = pv.ImageData(
-            dimensions=(res_x, 1, res_z),
-            spacing=((xmax - xmin)/(res_x-1), y_mean, (zmax - zmin)/(res_z-1)),
-            origin=(xmin, y_mean, zmin)
-        )
+        # Contour plot using matplotlib (resampling is done only when requested) ##########
+        if plot_contours:
+            # res_x, res_z are the resampling-grid resolution (number of interpolation
+            # points along X and Z) - a rendering knob, not geometry, so it is not from idata.
+            res_x, res_z = 1000, 1000
+            xmin, xmax = slice_plane.points[:, 0].min(), slice_plane.points[:, 0].max()
+            zmin, zmax = slice_plane.points[:, 2].min(), slice_plane.points[:, 2].max()
+            y_mean = slice_plane.points[:, 1].mean()
+            # Create a "Template" Grid (UniformGrid / ImageData) structured XY plane (at Y=0)
+            grid = pv.ImageData(
+                dimensions=(res_x, 1, res_z),
+                spacing=((xmax - xmin)/(res_x-1), y_mean, (zmax - zmin)/(res_z-1)),
+                origin=(xmin, y_mean, zmin)
+            )
 
-        # Sample the data from your original 'block' or 'slice'
-        # interpolate values from the slice onto struct grid
-        structured_resample = grid.sample(slice_plane)
+            # Sample the data from your original 'block' or 'slice'
+            # interpolate values from the slice onto struct grid
+            structured_resample = grid.sample(slice_plane)
 
-        # reshape to 2D
-        if tensor:
-            values_2d = structured_resample[arr_name][:,component_index].reshape(res_x, res_z) * scale
-        else:
-            values_2d = structured_resample[arr_name].reshape(res_x, res_z) * scale
+            # reshape to 2D
+            if tensor:
+                values_2d = structured_resample[arr_name][:,component_index].reshape(res_x, res_z) * scale
+            else:
+                values_2d = structured_resample[arr_name].reshape(res_x, res_z) * scale
 
-        # Get the X and Z coordinates as 2D arrays (matching the values)
-        x_coords = structured_resample.points[:, 0].reshape(res_x, res_z)
-        z_coords = structured_resample.points[:, 2].reshape(res_x, res_z)
+            # Get the X and Z coordinates as 2D arrays (matching the values)
+            x_coords = structured_resample.points[:, 0].reshape(res_x, res_z)
+            z_coords = structured_resample.points[:, 2].reshape(res_x, res_z)
 
-        # plot contours (don't look nice, so commented)
-        if False:
             plt.figure(figsize=(8, 4))
             plt.contourf(x_coords, z_coords, values_2d, levels=30, cmap='viridis')
             plt.colorbar()
@@ -328,10 +454,14 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
 if __name__ == "__main__":
     contour = False
 
+
     #model_folder = '17_17_15'
-    #model_folder = '41_41_66'
+    model_folder = '41_41_66'
     #model_folder = '83_83_90'
-    model_folder = 'case_1'
+    use_mesh_bounds = False  # True: plot the full mesh X-extent instead of the rsv_xy-based window
+
+    #model_folder = 'case_1'
+    #use_mesh_bounds = True #plot the full mesh X-extent instead of the rsv_xy-based window
 
     physics_type = 'single_phase_thermal'
     wells_type = 'doublet'
@@ -343,8 +473,6 @@ if __name__ == "__main__":
 
     timestep_list = [0, -1]
     #timestep_list = [4,40,80,120]
-
-    use_mesh_bounds = False  # True: plot the full mesh X-extent instead of the rsv_xy-based window
 
     for timestep in timestep_list:
         plot_vtk_pyvista(output_dir, idata, contour=contour, tstep_to_plot=timestep,

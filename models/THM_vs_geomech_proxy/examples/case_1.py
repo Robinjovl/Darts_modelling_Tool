@@ -13,4 +13,5 @@ def input_data_case_1():
         pressure_reference_depth=0.0,
     )
     idata = build_input_data(config)
+    idata.other.points_xy = []  # no black reference line for case_1
     return idata
