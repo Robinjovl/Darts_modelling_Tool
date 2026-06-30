@@ -117,6 +117,7 @@ class Model(THMCModel):
 
 
     def set_physics_dummy(self):
+        super.set_physics()
         if self.physics_type == 'single_phase':
             pass
         elif self.physics_type == 'single_phase_thermal':
@@ -126,7 +127,9 @@ class Model(THMCModel):
             # model baseline T=0 to 373.15 K (assume 100 degrees C in the reservoir)
             # so the correlation always sees a physical absolute temperature
             # and returns a positive viscosity. See set_input_data() t_ref note.
-            #property_container.viscosity_ev = dict([('wat', MaoDuan2009Shifted(components, t_abs0=373.15))])
+            components = self.physics.components
+            property_container = self.regions[0]
+            property_container.viscosity_ev = dict([('wat', MaoDuan2009Shifted(components, t_abs0=373.15))])
         return
 
     def set_wells(self):
