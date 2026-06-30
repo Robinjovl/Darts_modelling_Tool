@@ -297,7 +297,7 @@ if __name__ == '__main__':
     if not thermal:
         n_years = 1
     else:
-        n_years = 1 #30
+        n_years = 30
 
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4

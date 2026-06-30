@@ -116,98 +116,17 @@ class Model(THMCModel):
         return
 
 
-    def set_physics(self):
-        p_ref = 350.0
-        t_ref = 300.0
-
+    def set_physics_dummy(self):
         if self.physics_type == 'single_phase':
-            Mw = [self.idata.fluid.Mw]
-            components = ['H2O']
-            phases = ['wat']
-            property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                                   Mw=Mw, eps_z=self.idata.obl.epsilon_z, temperature=t_ref)
-
-            """ properties correlations """
-            property_container.flash_ev = SinglePhase(nc=1)
-            property_container.density_ev = dict([('wat', DensityBasic(compr=self.idata.fluid.compressibility,
-                                                                       dens0=self.idata.fluid.density,
-                                                                       p0=p_ref))])
-            property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
-            #property_container.viscosity_ev = dict([('wat', MaoDuan2009(components))])
-            property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
-            # rock compressibility is treated inside engine
-            property_container.rock_compr_ev = ConstFunc(1.0)
+            pass
         elif self.physics_type == 'single_phase_thermal':
-            components = ['H2O']
-            phases = ['wat']
-            Mw = [self.idata.fluid.Mw]
-
-            property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                                   Mw=Mw, eps_z=self.idata.obl.epsilon_z)
-
-            """ properties correlations """
-            property_container.flash_ev = SinglePhase(nc=1)
-
-            property_container.density_ev = dict([('wat', DensityBasic(compr=self.idata.fluid.compressibility,
-                                                                       dens0=self.idata.fluid.density,
-                                                                       p0=p_ref))])
-            # temperature-dependent density (linear thermal expansion around baseline t0=0)
-            #property_container.density_ev = dict([('wat', DensityBasicTdep(compr=self.idata.fluid.compressibility,
-            #                                                               dens0=self.idata.fluid.density,
-            #                                                               p0=p_ref,
-            #                                                               thermal_expn=self.idata.fluid.thermal_expansion,
-            #                                                               t0=0.0))])
-
-            property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
-            #property_container.viscosity_ev = dict([('wat', MaoDuan2009(components))])
-
+            pass
             # MaoDuan2009 requires ABSOLUTE temperature in Kelvin; this model runs on a relative
             # temperature scale with baseline 0 (OBL range -50..50). MaoDuan2009Shifted maps the
             # model baseline T=0 to 373.15 K (assume 100 degrees C in the reservoir)
             # so the correlation always sees a physical absolute temperature
             # and returns a positive viscosity. See set_input_data() t_ref note.
             #property_container.viscosity_ev = dict([('wat', MaoDuan2009Shifted(components, t_abs0=373.15))])
-
-            property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
-            # rock compressibility is treated inside engine
-            property_container.rock_compr_ev = ConstFunc(1.0)
-
-            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=t_ref))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=t_ref)  #TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
-            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
-        elif self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
-            components = ['w', 'o']
-            phases = ['wat', 'oil']
-            self.cell_property = ['pressure'] + ['water']
-
-            property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=self.idata.obl.epsilon_z)
-
-            # Define property evaluators based on custom properties
-            property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
-                                                  ('oil', DensityBasic(compr=5e-3, dens0=50))])
-            property_container.viscosity_ev = dict([('wat', ConstFunc(0.3)),
-                                                    ('oil', ConstFunc(0.03))])
-            property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("gas", 0.1, 0.1)),
-                                                   ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
-            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18)),
-                                                   ('oil', EnthalpyBasic(hcap=0.035))])
-            property_container.conductivity_ev = dict([('wat', ConstFunc(1.)),
-                                                       ('oil', ConstFunc(1.))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
-
-        property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
-        # create physics
-        state_spec = Poroelasticity.StateSpecification.PT if self.thermal else Poroelasticity.StateSpecification.P
-        self.physics = Poroelasticity(components, phases, self.timer, state_spec=state_spec, n_points=self.idata.obl.n_points,
-                                      min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
-                                      min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
-                                      epsilon_z=self.idata.obl.epsilon_z,
-                                      min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
-                                      discretizer=self.discretizer_name)
-        self.physics.add_property_region(property_container)
-
-        self.physics.init_physics(discr_type=self.discretizer_name, platform='cpu')
-
         return
 
     def set_wells(self):

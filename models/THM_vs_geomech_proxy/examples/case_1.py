@@ -24,8 +24,8 @@ def input_data_case_1():
 
 
 def input_data_case_2():
-    # heterogeneous poro and perm by mesh tags:
-    # same three-layer geometry / mesh as case_1 (matrix tags 1, 2, 3),
+    # same as case_1 but heterogeneous poro and perm are set by mesh tags
+    # and different non_rsv_perm, non_rsv_poro values
     # but rock properties are assigned per tag instead of by interpolation.
     # matrix tags: tag 2 = reservoir, tags 1 & 3 = over/underburden
     idata = input_data_case_1()
@@ -48,7 +48,7 @@ def input_data_case_2():
     return idata
 
 def input_data_case_3():
-    # same as case_2 but hcap and rcond are heterogeneous, and different non_rsv_perm, non_rsv_poro values
+    # same as case_2 but hcap and rcond are heterogeneous
     idata = idata = input_data_case_2()
 
     hcap_sand = 2450.0 # [kJ/m3/K]
