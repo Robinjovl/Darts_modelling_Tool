@@ -278,8 +278,8 @@ if __name__ == '__main__':
     generate_mesh=False  # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
 
     #cases += ['case_1']
-    cases += ['case_2']
-    #cases += ['case_3']
+    #cases += ['case_2']
+    cases += ['case_3']
 
     #thermal = False
     thermal = True

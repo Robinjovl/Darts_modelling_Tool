@@ -31,30 +31,25 @@ def input_data_case_2():
     idata = input_data_case_1()
     idata.other.set_props_by_tags = True
 
-    rsv_poro, rsv_perm = idata.rock.porosity, idata.rock.permx     # reservoir (from case_1)
-    non_rsv_poro, non_rsv_perm = idata.rock.poro_non_rsv, idata.rock.perm_non_rsv  # over/underburden
+    # reservoir
+    rsv_poro = 0.2
+    rsv_perm = 1000.0 # mD     # reservoir (from case_1)
+
+    # over/underburden
+    non_rsv_poro = 0.001
+    non_rsv_perm = 0.001 # mD
+
     idata.rock.porosity = np.array([non_rsv_poro, rsv_poro, non_rsv_poro])
+
     perm = np.array([non_rsv_perm, rsv_perm, non_rsv_perm])  # isotropic perm tensor per tag
     idata.rock.permx = idata.rock.permy = perm
     idata.rock.permz = perm * 0.1
-    #idata.rock.perm = 0. # dummy value to pass checks in the inpu_data, since anisotropic permx/y/z/ is set above
-    #TODO enable this
 
-    #idata.rock.perm = perm
     return idata
 
 def input_data_case_3():
-    # same as case_2 but hcap and rcond are heterogeneous
-    idata = idata = input_data_case_1()
-
-    rsv_poro = 0.2
-    non_rsv_poro = 0.001
-    idata.rock.porosity = np.array([non_rsv_poro, rsv_poro, non_rsv_poro])
-
-    rsv_perm = 1000.0 # mD
-    non_rsv_perm = 0.001 # mD
-    idata.rock.perm = np.array([non_rsv_perm, rsv_perm, non_rsv_perm])  # isotropic perm tensor per tag
-    idata.rock.permx = idata.rock.permy = idata.rock.permz = None  # parent uses 'perm' (not permx/y/z)
+    # same as case_2 but hcap and rcond are heterogeneous, and different non_rsv_perm, non_rsv_poro values
+    idata = idata = input_data_case_2()
 
     hcap_sand = 2450.0 # [kJ/m3/K]
     hcap_shale = 2300.0 # [kJ/m3/K]
