@@ -58,7 +58,10 @@
 
 #include "multi_index_key.hpp"
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include <windows.h>
+#include <io.h>      // _fileno, _get_osfhandle
+#else
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -93,6 +96,202 @@ static inline uint64_t mulhi64(uint64_t a, uint64_t b)
 static inline size_t home_slot(uint64_t h, size_t C)
 {
   return static_cast<size_t>(mulhi64(h, static_cast<uint64_t>(C)));
+}
+
+// ----------------------------------------------------------------------------
+// Cross-platform memory-mapping + file primitives. The arena file format is the
+// SAME bytes on every OS; only these few primitives differ (POSIX mmap vs Win32
+// CreateFileMapping/MapViewOfFile). Everything else (build/load/iterate) is shared.
+// ----------------------------------------------------------------------------
+
+// Available physical RAM in bytes (0 = unknown -> caller uses the memory-bounded builder).
+static inline size_t available_ram_bytes()
+{
+#if defined(_WIN32)
+  MEMORYSTATUSEX ms;
+  ms.dwLength = sizeof(ms);
+  if (::GlobalMemoryStatusEx(&ms))
+    return static_cast<size_t>(ms.ullAvailPhys);
+  return 0;
+#elif defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
+  const long pages = ::sysconf(_SC_AVPHYS_PAGES);
+  const long psz = ::sysconf(_SC_PAGESIZE);
+  if (pages > 0 && psz > 0)
+    return static_cast<size_t>(pages) * static_cast<size_t>(psz);
+  return 0;
+#else
+  return 0;
+#endif
+}
+
+// Flush a stdio stream's data to stable storage (durability before the atomic rename).
+static inline void fsync_file(std::FILE *f)
+{
+  std::fflush(f);
+#if defined(_WIN32)
+  const intptr_t h = ::_get_osfhandle(::_fileno(f));
+  if (h != -1)
+    ::FlushFileBuffers(reinterpret_cast<HANDLE>(h));
+#else
+  ::fsync(::fileno(f));
+#endif
+}
+
+// Read-only whole-file mapping (the immutable arena base). Returns base (nullptr on
+// failure) and sets *out_len to the file length. The OS keeps the file open until the
+// view is released (POSIX: fd closed but mapping holds it; Win32: documented behaviour).
+static inline void *map_readonly(const char *path, size_t *out_len)
+{
+#if defined(_WIN32)
+  HANDLE hf = ::CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
+                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (hf == INVALID_HANDLE_VALUE)
+    return nullptr;
+  LARGE_INTEGER sz;
+  if (!::GetFileSizeEx(hf, &sz))
+  {
+    ::CloseHandle(hf);
+    return nullptr;
+  }
+  HANDLE hm = ::CreateFileMappingA(hf, nullptr, PAGE_READONLY, 0, 0, nullptr);
+  if (!hm)
+  {
+    ::CloseHandle(hf);
+    return nullptr;
+  }
+  void *base = ::MapViewOfFile(hm, FILE_MAP_READ, 0, 0, 0);
+  ::CloseHandle(hm); // the view keeps the section object alive
+  ::CloseHandle(hf); // the system keeps the file open until the view is unmapped
+  if (base)
+    *out_len = static_cast<size_t>(sz.QuadPart);
+  return base;
+#else
+  const int fd = ::open(path, O_RDONLY);
+  if (fd < 0)
+    return nullptr;
+  struct stat st;
+  if (::fstat(fd, &st) != 0)
+  {
+    ::close(fd);
+    return nullptr;
+  }
+  const size_t len = static_cast<size_t>(st.st_size);
+  void *base = ::mmap(nullptr, len, PROT_READ, MAP_PRIVATE, fd, 0);
+  ::close(fd); // the mapping holds the file open
+  if (base == MAP_FAILED)
+    return nullptr;
+#if defined(MADV_RANDOM)
+  ::madvise(base, len, MADV_RANDOM);
+#endif
+  *out_len = len;
+  return base;
+#endif
+}
+
+static inline void unmap(void *base, size_t len)
+{
+  if (!base)
+    return;
+#if defined(_WIN32)
+  (void)len;
+  ::UnmapViewOfFile(base);
+#else
+  ::munmap(base, len);
+#endif
+}
+
+// A writable file mapping used only while BUILDING the arena (memory-bounded path).
+struct rw_map
+{
+  void *base = nullptr;
+  size_t len = 0;
+#if defined(_WIN32)
+  HANDLE hmap = nullptr;
+  HANDLE hfile = nullptr;
+#else
+  int fd = -1;
+#endif
+};
+
+// Create `path` (truncating any existing file), size it to `len`, and map it read/write.
+// The region is zero-filled. Returns a map whose .base is nullptr on failure.
+static inline rw_map map_rw_new(const char *path, size_t len)
+{
+  rw_map m;
+  m.len = len;
+#if defined(_WIN32)
+  m.hfile = ::CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                          CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (m.hfile == INVALID_HANDLE_VALUE)
+  {
+    m.hfile = nullptr;
+    return m;
+  }
+  const DWORD len_hi = static_cast<DWORD>(static_cast<uint64_t>(len) >> 32);
+  const DWORD len_lo = static_cast<DWORD>(static_cast<uint64_t>(len) & 0xFFFFFFFFull);
+  m.hmap = ::CreateFileMappingA(m.hfile, nullptr, PAGE_READWRITE, len_hi, len_lo, nullptr);
+  if (!m.hmap)
+  {
+    ::CloseHandle(m.hfile);
+    m.hfile = nullptr;
+    return m;
+  }
+  m.base = ::MapViewOfFile(m.hmap, FILE_MAP_WRITE, 0, 0, 0);
+  if (!m.base)
+  {
+    ::CloseHandle(m.hmap);
+    ::CloseHandle(m.hfile);
+    m.hmap = m.hfile = nullptr;
+  }
+  return m;
+#else
+  m.fd = ::open(path, O_RDWR | O_CREAT | O_TRUNC, 0644);
+  if (m.fd < 0)
+    return m;
+  if (::ftruncate(m.fd, static_cast<off_t>(len)) != 0)
+  {
+    ::close(m.fd);
+    m.fd = -1;
+    return m;
+  }
+  m.base = ::mmap(nullptr, len, PROT_READ | PROT_WRITE, MAP_SHARED, m.fd, 0);
+  if (m.base == MAP_FAILED)
+  {
+    m.base = nullptr;
+    ::close(m.fd);
+    m.fd = -1;
+  }
+  return m;
+#endif
+}
+
+// Flush the writable mapping to disk and release it.
+static inline void flush_unmap_rw(rw_map &m)
+{
+  if (!m.base)
+    return;
+#if defined(_WIN32)
+  ::FlushViewOfFile(m.base, 0);
+  ::UnmapViewOfFile(m.base);
+  if (m.hfile)
+    ::FlushFileBuffers(m.hfile);
+  if (m.hmap)
+    ::CloseHandle(m.hmap);
+  if (m.hfile)
+    ::CloseHandle(m.hfile);
+  m.base = nullptr;
+  m.hmap = m.hfile = nullptr;
+#else
+  ::msync(m.base, m.len, MS_SYNC);
+  ::munmap(m.base, m.len);
+  if (m.fd >= 0)
+  {
+    ::fsync(m.fd);
+    ::close(m.fd);
+  }
+  m.base = nullptr;
+  m.fd = -1;
+#endif
 }
 } // namespace pds_detail
 
@@ -177,14 +376,12 @@ private:
 
   void release_mapping()
   {
-#if !defined(_WIN32)
     if (map_base_)
     {
-      munmap(map_base_, map_len_);
+      pds_detail::unmap(map_base_, map_len_);
       map_base_ = nullptr;
       map_len_ = 0;
     }
-#endif
   }
   void move_from(point_data_store &o)
   {
@@ -408,11 +605,10 @@ public:
     return f;
   }
 
-#if !defined(_WIN32)
-  // ---- build the FC03 file (arena) from the live union (compaction/migration) ----
-  // Writes a COMPLETE FC03 file to `path` (caller renames atomically). vals crc is
+  // ---- build the cache file (arena) from the live union (compaction/migration) ----
+  // Writes a COMPLETE arena file to `path` (caller renames atomically). vals crc is
   // omitted (0): the file is written to a temp path + os.replace, so the base is
-  // never torn in place (same crash-safety model as FC02 BASE).
+  // never torn in place. Cross-platform (POSIX mmap / Win32 file mapping).
   struct arena_layout_t
   {
     size_t C, count, header_len;
@@ -491,43 +687,32 @@ public:
 
   static bool _arena_fits_in_ram(size_t bytes)
   {
-#if defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
-    const long pages = ::sysconf(_SC_AVPHYS_PAGES);
-    const long psz = ::sysconf(_SC_PAGESIZE);
-    if (pages > 0 && psz > 0)
-    {
-      const long double avail = static_cast<long double>(pages) * static_cast<long double>(psz);
-      return static_cast<long double>(bytes) * 1.2L < avail; // 20% headroom
-    }
-#endif
-    return false; // unknown available RAM -> use the memory-bounded mmap builder
+    const size_t avail = pds_detail::available_ram_bytes();
+    if (avail == 0)
+      return false; // unknown available RAM -> use the memory-bounded mmap builder
+    return static_cast<long double>(bytes) * 1.2L < static_cast<long double>(avail); // 20% headroom
   }
 
-  static void _write_all(int fd, const void *buf, size_t n)
+  static void _write_all(std::FILE *f, const void *buf, size_t n)
   {
     const char *p = static_cast<const char *>(buf);
     while (n)
     {
-      const size_t chunk = n > (size_t(1) << 30) ? (size_t(1) << 30) : n; // <=1 GiB/syscall
-      const ssize_t w = ::write(fd, p, chunk);
-      if (w < 0)
-      {
-        if (errno == EINTR)
-          continue;
+      const size_t chunk = n > (size_t(1) << 30) ? (size_t(1) << 30) : n; // <=1 GiB/write
+      if (std::fwrite(p, 1, chunk, f) != chunk)
         throw std::runtime_error("point_data_store: write failed");
-      }
-      p += w;
-      n -= static_cast<size_t>(w);
+      p += chunk;
+      n -= chunk;
     }
   }
 
-  static void _write_zeros(int fd, size_t n)
+  static void _write_zeros(std::FILE *f, size_t n)
   {
     static const char z[PAGE] = {0};
     while (n)
     {
       const size_t c = n < sizeof(z) ? n : sizeof(z);
-      _write_all(fd, z, c);
+      _write_all(f, z, c);
       n -= c;
     }
   }
@@ -554,30 +739,30 @@ public:
     _place_into(static_cast<uint64_t *>(occ_g.p), static_cast<int32_t *>(keys_g.p),
                 static_cast<value_t *>(vals_g.p), L.C);
 
-    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0)
+    std::FILE *f = std::fopen(path.c_str(), "wb");
+    if (!f)
       throw std::runtime_error("point_data_store::_build_arena_ram: open failed");
     try
     {
-      _write_all(fd, MAGIC, 8);
+      _write_all(f, MAGIC, 8);
       const uint64_t hl = L.header_len;
-      _write_all(fd, &hl, 8);
-      _write_all(fd, L.json, L.header_len);
-      _write_zeros(fd, L.bitmap_off - (16 + L.header_len));
-      _write_all(fd, occ_g.p, L.bitmap_len);
-      _write_zeros(fd, L.keys_off - (L.bitmap_off + L.bitmap_len));
-      _write_all(fd, keys_g.p, L.keys_len);
-      _write_zeros(fd, L.vals_off - (L.keys_off + L.keys_len));
-      _write_all(fd, vals_g.p, L.vals_len);
-      _write_zeros(fd, L.arena_end - (L.vals_off + L.vals_len));
-      ::fsync(fd);
+      _write_all(f, &hl, 8);
+      _write_all(f, L.json, L.header_len);
+      _write_zeros(f, L.bitmap_off - (16 + L.header_len));
+      _write_all(f, occ_g.p, L.bitmap_len);
+      _write_zeros(f, L.keys_off - (L.bitmap_off + L.bitmap_len));
+      _write_all(f, keys_g.p, L.keys_len);
+      _write_zeros(f, L.vals_off - (L.keys_off + L.keys_len));
+      _write_all(f, vals_g.p, L.vals_len);
+      _write_zeros(f, L.arena_end - (L.vals_off + L.vals_len));
+      pds_detail::fsync_file(f);
     }
     catch (...)
     {
-      ::close(fd);
+      std::fclose(f);
       throw;
     }
-    ::close(fd);
+    std::fclose(f);
     return true;
   }
 
@@ -586,32 +771,18 @@ public:
   // it is the safe fallback when the arena does not comfortably fit in RAM.
   void _build_arena_mmap(const std::string &path, const arena_layout_t &L) const
   {
-    const int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0)
-      throw std::runtime_error("point_data_store::_build_arena_mmap: open failed");
-    if (::ftruncate(fd, static_cast<off_t>(L.arena_end)) != 0)
-    {
-      ::close(fd);
-      throw std::runtime_error("point_data_store::_build_arena_mmap: ftruncate failed");
-    }
-    void *base = ::mmap(nullptr, L.arena_end, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (base == MAP_FAILED)
-    {
-      ::close(fd);
-      throw std::runtime_error("point_data_store::_build_arena_mmap: mmap failed");
-    }
-    char *b = static_cast<char *>(base);
+    pds_detail::rw_map m = pds_detail::map_rw_new(path.c_str(), L.arena_end);
+    if (!m.base)
+      throw std::runtime_error("point_data_store::_build_arena_mmap: map failed");
+    char *b = static_cast<char *>(m.base);
     std::memcpy(b, MAGIC, 8);
     const uint64_t hlen64 = L.header_len;
     std::memcpy(b + 8, &hlen64, 8);
-    std::memcpy(b + 16, L.json, L.header_len); // ftruncate zero-fills the rest
+    std::memcpy(b + 16, L.json, L.header_len); // the mapping is zero-filled, so the rest stays 0
     _place_into(reinterpret_cast<uint64_t *>(b + L.bitmap_off),
                 reinterpret_cast<int32_t *>(b + L.keys_off),
                 reinterpret_cast<value_t *>(b + L.vals_off), L.C);
-    ::msync(base, L.arena_end, MS_SYNC);
-    ::munmap(base, L.arena_end);
-    ::fsync(fd);
-    ::close(fd);
+    pds_detail::flush_unmap_rw(m);
   }
 
   // Build a COMPLETE FC03 file at `path` (caller renames atomically). Prefers the fast
@@ -635,28 +806,16 @@ public:
   void mmap_arena_at(const std::string &path, size_t bitmap_off, size_t keys_off,
                      size_t vals_off, size_t C, size_t count)
   {
-    int fd = ::open(path.c_str(), O_RDONLY);
-    if (fd < 0)
-      throw std::runtime_error("point_data_store::mmap_arena_at: open failed");
-    struct stat st;
-    if (::fstat(fd, &st) != 0)
-    {
-      ::close(fd);
-      throw std::runtime_error("point_data_store::mmap_arena_at: fstat failed");
-    }
-    const size_t len = static_cast<size_t>(st.st_size);
-    void *base = ::mmap(nullptr, len, PROT_READ, MAP_PRIVATE, fd, 0);
-    ::close(fd);
-    if (base == MAP_FAILED)
-      throw std::runtime_error("point_data_store::mmap_arena_at: mmap failed");
-    ::madvise(base, len, MADV_RANDOM);
+    size_t len = 0;
+    void *base = pds_detail::map_readonly(path.c_str(), &len);
+    if (!base)
+      throw std::runtime_error("point_data_store::mmap_arena_at: map failed");
     char *b = static_cast<char *>(base);
     attach_arena(reinterpret_cast<const uint64_t *>(b + bitmap_off),
                  reinterpret_cast<const int32_t *>(b + keys_off),
                  reinterpret_cast<const value_t *>(b + vals_off),
                  C, count, base, len);
   }
-#endif // !_WIN32
 
 private:
   struct entry_ref

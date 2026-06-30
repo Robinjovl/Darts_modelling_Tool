@@ -37,11 +37,10 @@ namespace py = pybind11;
 template <typename interpolator_class, uint8_t N_DIMS, uint16_t N_OPS>
 py::tuple bulk_get_point_data_arrays(const interpolator_class &self)
 {
-  // point_data.size() is exact whenever there is no mmap'd arena (the FC02 path:
-  // overlay-only). With an FC03 arena attached, size() may over-count by the
+  // point_data.size() is exact whenever there is no mmap'd arena
+  // With an arena attached, size() may over-count by the
   // overlay∩arena overlap, so the exact deduped union count comes from one
-  // iterator pass (the iterator skips overlay-shadowed arena slots). The FC02
-  // path keeps the O(1) size() and is byte-identical to before.
+  // iterator pass (the iterator skips overlay-shadowed arena slots).
   size_t n;
   if (self.point_data.has_arena())
   {
@@ -419,20 +418,18 @@ struct interpolator_exposer
           // ---- mmap-arena bindings (point_data_store hybrid) ----
           .def("obl_arena_hash_id", [](interpolator_class &self) {
             return std::decay_t<decltype(self.point_data)>::arena_hash_id();
-          }, "FC03 ABI/placement fingerprint; an arena with a mismatching id is rebuilt, never mis-probed")
+          }, "ABI/placement fingerprint; an arena with a mismatching id is rebuilt, never mis-probed")
           .def("has_arena", [](interpolator_class &self) { return self.point_data.has_arena(); },
-            "True if an mmap'd FC03 base arena is currently attached")
-#if !defined(_WIN32)
+            "True if an mmap'd base arena is currently attached")
           .def("build_arena_file", [](interpolator_class &self, const std::string &path, uint64_t hash_id) {
             self.point_data.build_arena_file(path, hash_id);
-          }, "Write a complete FC03 arena file (open-addressing hash table) from the live union (overlay + arena)",
+          }, "Write a complete arena file (open-addressing hash table) from the live union (overlay + arena)",
              "path"_a, "hash_id"_a)
           .def("mmap_arena", [](interpolator_class &self, const std::string &path, size_t bitmap_off,
                                 size_t keys_off, size_t vals_off, size_t capacity, size_t count) {
             self.point_data.mmap_arena_at(path, bitmap_off, keys_off, vals_off, capacity, count);
-          }, "mmap an FC03 arena in place (O(1) load, no per-point rebuild); offsets parsed from the header by Python",
+          }, "mmap an arena in place (O(1) load, no per-point rebuild); offsets parsed from the header by Python",
              "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
-#endif
           ;
       }
       else if constexpr (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>>)
@@ -566,20 +563,18 @@ struct interpolator_exposer
           // ---- mmap-arena bindings (point_data_store hybrid) ----
           .def("obl_arena_hash_id", [](interpolator_class &self) {
             return std::decay_t<decltype(self.point_data)>::arena_hash_id();
-          }, "FC03 ABI/placement fingerprint; an arena with a mismatching id is rebuilt, never mis-probed")
+          }, "ABI/placement fingerprint; an arena with a mismatching id is rebuilt, never mis-probed")
           .def("has_arena", [](interpolator_class &self) { return self.point_data.has_arena(); },
-            "True if an mmap'd FC03 base arena is currently attached")
-#if !defined(_WIN32)
+            "True if an mmap'd base arena is currently attached")
           .def("build_arena_file", [](interpolator_class &self, const std::string &path, uint64_t hash_id) {
             self.point_data.build_arena_file(path, hash_id);
-          }, "Write a complete FC03 arena file (open-addressing hash table) from the live union (overlay + arena)",
+          }, "Write a complete arena file (open-addressing hash table) from the live union (overlay + arena)",
              "path"_a, "hash_id"_a)
           .def("mmap_arena", [](interpolator_class &self, const std::string &path, size_t bitmap_off,
                                 size_t keys_off, size_t vals_off, size_t capacity, size_t count) {
             self.point_data.mmap_arena_at(path, bitmap_off, keys_off, vals_off, capacity, count);
-          }, "mmap an FC03 arena in place (O(1) load, no per-point rebuild); offsets parsed from the header by Python",
+          }, "mmap an arena in place (O(1) load, no per-point rebuild); offsets parsed from the header by Python",
              "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
-#endif
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
       else if constexpr (std::is_same_v<interpolator_class, linear_static_cpu_interpolator<i_t, N_DIMS, N_OPS>>)
@@ -740,20 +735,18 @@ struct interpolator_exposer
           // ---- mmap-arena bindings (point_data_store hybrid) ----
           .def("obl_arena_hash_id", [](interpolator_class &self) {
             return std::decay_t<decltype(self.point_data)>::arena_hash_id();
-          }, "FC03 ABI/placement fingerprint; an arena with a mismatching id is rebuilt, never mis-probed")
+          }, "ABI/placement fingerprint; an arena with a mismatching id is rebuilt, never mis-probed")
           .def("has_arena", [](interpolator_class &self) { return self.point_data.has_arena(); },
-            "True if an mmap'd FC03 base arena is currently attached")
-#if !defined(_WIN32)
+            "True if an mmap'd base arena is currently attached")
           .def("build_arena_file", [](interpolator_class &self, const std::string &path, uint64_t hash_id) {
             self.point_data.build_arena_file(path, hash_id);
-          }, "Write a complete FC03 arena file (open-addressing hash table) from the live union (overlay + arena)",
+          }, "Write a complete arena file (open-addressing hash table) from the live union (overlay + arena)",
              "path"_a, "hash_id"_a)
           .def("mmap_arena", [](interpolator_class &self, const std::string &path, size_t bitmap_off,
                                 size_t keys_off, size_t vals_off, size_t capacity, size_t count) {
             self.point_data.mmap_arena_at(path, bitmap_off, keys_off, vals_off, capacity, count);
-          }, "mmap an FC03 arena in place (O(1) load, no per-point rebuild); offsets parsed from the header by Python",
+          }, "mmap an arena in place (O(1) load, no per-point rebuild); offsets parsed from the header by Python",
              "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
-#endif
           ;
       }
 #endif
