@@ -90,6 +90,34 @@ def _reservoir_discriminator(v: Any) -> str:
     return getattr(v, "type", "structured")
 
 
+def _spec_or_dataref_discriminator(v: Any) -> str:
+    """Route a section payload to the inline spec or the DataRef variant.
+
+    Several top-level sections (``physics``, ``plugin_registry``, ``wells``,
+    ``initial_conditions``, ``well_controls``, ``sim_params``, ``output``) are a
+    JSON union of an inline strict spec and a :class:`DataRef` (path/URI
+    reference). Without an explicit discriminator pydantic treats each as a
+    smart union and, when the inline branch fails, also reports the DataRef
+    branch's errors — flooding a single real mistake (e.g. an evaluator field
+    misplaced on a property region, or a misplaced top-level section) with
+    unrelated ``DataRef`` noise. ``kind``/``value`` are both required on
+    ``DataRef`` and forbidden on every strict spec (each is ``extra="forbid"``
+    and none declares those fields), so their presence is an unambiguous,
+    zero-overlap discriminator. This predicate matches the builder's runtime
+    DataRef detection so static routing agrees with build-time resolution.
+
+    :param v: Section payload (dict, ``DataRef``, or a strict spec instance).
+    :type v: Any
+    :return: ``"dataref"`` for a reference payload, otherwise ``"spec"``.
+    :rtype: str
+    """
+    if isinstance(v, dict):
+        return "dataref" if ("kind" in v and "value" in v) else "spec"
+    if isinstance(v, DataRef):
+        return "dataref"
+    return "spec"
+
+
 class PluginRegistryEntrySpec(SpecBaseModel):
     """JSON-side record for registering a user plugin at load time.
 
@@ -379,6 +407,20 @@ class StrictPropertyRegionSpec(SpecBaseModel):
                             "temperature": 1.0,
                         },
                     },
+                    # Evaluator slots MUST nest under ``plugins`` (their names
+                    # are forbidden directly on the region); see StrictPluginSlots.
+                    "plugins": {
+                        "flash_ev": {
+                            "type_id": "flash/ConstantK@v1",
+                            "config": {"K": [4.0, 2.0, 0.1], "epsilon": 1e-8},
+                        },
+                        "density_ev": {
+                            "gas": {
+                                "type_id": "density/DensityBasic@v1",
+                                "config": {"compr": 1e-3, "dens0": 200.0},
+                            }
+                        },
+                    },
                 }
             ]
         },
@@ -458,6 +500,35 @@ ReservoirUnion = Annotated[
 ]
 
 
+def _spec_or_dataref_union(spec_cls: Any) -> Any:
+    """Build a discriminated ``spec | DataRef`` union for a top-level section.
+
+    Mirrors :data:`ReservoirUnion`: the inline strict spec is tagged ``"spec"``
+    and :class:`DataRef` is tagged ``"dataref"``, routed by
+    :func:`_spec_or_dataref_discriminator`. Using an explicit discriminator
+    (instead of a bare ``spec | DataRef`` smart union) keeps validation errors
+    free of the irrelevant DataRef branch.
+
+    :param spec_cls: The inline strict spec class for the section.
+    :type spec_cls: Any
+    :return: Discriminated ``Annotated`` union of *spec_cls* and ``DataRef``.
+    :rtype: Any
+    """
+    return Annotated[
+        Annotated[spec_cls, Tag("spec")] | Annotated[DataRef, Tag("dataref")],
+        Discriminator(_spec_or_dataref_discriminator),
+    ]
+
+
+PhysicsUnion = _spec_or_dataref_union(StrictPhysicsSpec)
+PluginRegistryUnion = _spec_or_dataref_union(PluginRegistrySpec)
+WellsUnion = _spec_or_dataref_union(StrictWellsSpec)
+InitialConditionsUnion = _spec_or_dataref_union(StrictInitialConditionsSpec)
+WellControlsUnion = _spec_or_dataref_union(StrictWellControlsSpec)
+SimParamsUnion = _spec_or_dataref_union(StrictSimParamsSpec)
+OutputUnion = _spec_or_dataref_union(StrictOutputSpec)
+
+
 class StrictModelSpec(SpecBaseModel):
     """Full model specification."""
 
@@ -494,7 +565,7 @@ class StrictModelSpec(SpecBaseModel):
     )
 
     plugin_registry: Annotated[
-        PluginRegistrySpec | DataRef | None,
+        PluginRegistryUnion | None,
         Field(description="Local plugin registry configuration"),
     ] = None
     reservoir: Annotated[
@@ -502,18 +573,16 @@ class StrictModelSpec(SpecBaseModel):
         Field(description="Reservoir configuration"),
     ] = None
     physics: Annotated[
-        StrictPhysicsSpec | DataRef | None,
+        PhysicsUnion | None,
         Field(description="Physics configuration"),
     ] = None
-    wells: Annotated[
-        StrictWellsSpec | DataRef | None, Field(description="Wells configuration")
-    ] = None
+    wells: Annotated[WellsUnion | None, Field(description="Wells configuration")] = None
     initial_conditions: Annotated[
-        StrictInitialConditionsSpec | DataRef | None,
+        InitialConditionsUnion | None,
         Field(description="Initial conditions"),
     ] = None
     well_controls: Annotated[
-        StrictWellControlsSpec | DataRef | None,
+        WellControlsUnion | None,
         Field(
             description=(
                 "Default well controls applied to all wells. "
@@ -523,11 +592,11 @@ class StrictModelSpec(SpecBaseModel):
         ),
     ] = None
     sim_params: Annotated[
-        StrictSimParamsSpec | DataRef | None,
+        SimParamsUnion | None,
         Field(description="Simulation parameters"),
     ] = None
     output: Annotated[
-        StrictOutputSpec | DataRef | None,
+        OutputUnion | None,
         Field(description="Output configuration"),
     ] = None
 

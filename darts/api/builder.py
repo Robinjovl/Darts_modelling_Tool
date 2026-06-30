@@ -33,6 +33,7 @@ from darts.api.schemas import (
     WellControlsSpec,
     WellsSpec,
 )
+from darts.api.spec_utils import migrate_flattened_region_plugins
 from darts.api.type_registry import (
     TYPE_REGISTRY,
     PluginInstance,
@@ -88,7 +89,11 @@ class ModelBuilder:
             resolution
         :type object_store: dict[str, Any] | None
         """
-        expanded = resolve_section_presets(spec_dict)
+        # Accept the flattened property-region encoding (evaluator slots placed
+        # directly on a region instead of under ``plugins``) on the build path
+        # too, so that anything ``validate_model_spec_dict`` accepts also builds.
+        normalized, _ = migrate_flattened_region_plugins(spec_dict)
+        expanded = resolve_section_presets(normalized)
         spec = ModelSpec.model_validate(expanded)
         ModelBuilder.apply(spec, model, base_path=base_path, object_store=object_store)
 
