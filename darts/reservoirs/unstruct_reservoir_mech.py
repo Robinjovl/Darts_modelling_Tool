@@ -850,18 +850,23 @@ class UnstructReservoirMech:
                 for prop in sub_obj.__dict__.keys():
                     val = sub_obj.__getattribute__(prop)
                     if val is not None:
-                        if np.isscalar(val):
+                        if np.isscalar(val):  # a single value
                             self.props[m][prop] = val
-                        elif len(val) == 1:
+                        elif len(val) == 1:  # a list/array of one value
                             self.props[m][prop] = val[0]
-                        else:
+                        else:  # a list/array
                             self.props[m][prop] = val[i]
-                    else:
-                        if (
+                    else:  # val is None
+                        # permeability can be given as the 'perm' tensor or as permx/permy/permz;
+                        # whichever is None is skipped (init_heterogeneous_properties uses 'perm'
+                        # if present, otherwise permx/permy/permz)
+                        if prop == 'perm':
+                            pass  # perm None -> permx/permy/permz are used instead
+                        elif (
                             prop in ['permx', 'permy', 'permz']
                             and 'perm' in self.props[m]
                         ):
-                            pass
+                            pass  # permx/y/z None -> the 'perm' tensor is used instead
                         else:
                             print('in set_props_tags: ', prop + ' is None')
                             exit(1)

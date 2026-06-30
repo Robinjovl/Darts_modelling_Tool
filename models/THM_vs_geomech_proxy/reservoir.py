@@ -125,9 +125,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         if uniform_props:
             self.init_uniform_properties(idata=idata)
-        else:
+        elif idata.other.set_props_by_tags:
+            # per-tag rock properties via the parent class: set_props_tags builds self.props from
+            # idata.rock arrays (one value per matrix tag), and the parent's
+            # init_heterogeneous_properties applies them per cell using self.tags
+            self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
+            super().init_heterogeneous_properties()
+        else:  # don't use mesh tags, set by interpolation
             self.set_heterogeneous_props_by_interpolation(idata=idata, generate_mesh=generate_mesh)
             self.init_heterogeneous_properties(idata=idata)
+
         self.init_arrays_boundary_condition()
         self.update_boundary_conditions()
         print('Init reservoir finished')

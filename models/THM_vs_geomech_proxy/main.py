@@ -247,7 +247,8 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     #m.output.plot_well_time_data(phase_volumetric_rates=True)
 
     for tstep_to_plot in plot_vtk_timesteps:
-        plot_vtk_pyvista(m.output_directory, tstep_to_plot=tstep_to_plot, idata=m.idata)
+        plot_vtk_pyvista(m.output_directory, tstep_to_plot=tstep_to_plot, idata=m.idata,
+                         use_mesh_bounds=m.idata.other.use_mesh_bounds_in_plot)
 
     return m, data
 
@@ -276,7 +277,9 @@ if __name__ == '__main__':
     #generate_mesh=True
     generate_mesh=False  # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
 
-    cases += ['case_1']
+    #cases += ['case_1']
+    cases += ['case_2']
+    #cases += ['case_3']
 
     #thermal = False
     thermal = True
@@ -294,7 +297,7 @@ if __name__ == '__main__':
     if not thermal:
         n_years = 1
     else:
-        n_years = 30
+        n_years = 1 #30
 
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4

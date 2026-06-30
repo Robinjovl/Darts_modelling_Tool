@@ -29,6 +29,7 @@ class InputDataConfig:
     well_rate_m3_day: float = 2000.0
     delta_temp_inj: float = 40.0
     matrix_tags: tuple = (99991,)
+    set_props_by_tags: bool = False
     pressure_reference_depth: float | None = None
     initial_composition: list | None = None
     dims: tuple | None = None
@@ -66,9 +67,15 @@ def build_input_data(config: InputDataConfig):
     _set_wells(idata, config)
     _set_mesh_tags(idata, config.matrix_tags)
 
+    # if True, reservoir.set_props_tags() assigns rock properties per gmsh physical (matrix) tag;
+    # otherwise properties are set by interpolation (reservoir vs surrounding)
+    idata.other.set_props_by_tags = config.set_props_by_tags
+
     # reference points [x, y, label] for the 1D vertical profiles and the black
     # reference line in plot_vtk_pyvista (if empty, no black line is drawn)
     idata.other.points_xy = [[250., 250., '(250,250)']]
+
+    idata.other.use_mesh_bounds_in_plot = False
 
     if config.add_structured_mesh:
         _set_structured_mesh_coordinates(idata)
@@ -116,6 +123,7 @@ def _set_rock_mechanics(idata, young_modulus_gpa):
     idata.rock.E_non_rsv = idata.rock.E  # homogeneous geomech prop
 
     bulk_modulus = get_bulk_modulus(E=idata.rock.E, nu=idata.rock.nu)
+    idata.rock.kd = bulk_modulus  # drained bulk modulus (read by the parent set_props_tags / init)
     idata.rock.compressibility = get_rock_compressibility(
         kd=bulk_modulus,
         biot=idata.rock.biot,
