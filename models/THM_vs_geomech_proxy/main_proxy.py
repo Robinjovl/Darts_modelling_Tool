@@ -237,7 +237,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
 
     # plot THM solution
     if False:
-        from plot_vtk_pyvista import plot_vtk_pyvista
+        from plot_vtk import plot_vtk_pyvista
         model_folder=case
         m.output_directory = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder)
         plot_vtk_pyvista(m.output_directory, tstep_to_plot=0, idata=m.idata)  # initial
