@@ -13,6 +13,38 @@
 
 #include "point_data_store.hpp"
 
+// --- cross-platform helpers (POSIX setenv/unsetenv + /tmp don't exist on MSVC/Windows) ---
+static void set_env(const char *k, const char *v)
+{
+#if defined(_WIN32)
+  _putenv_s(k, v);
+#else
+  setenv(k, v, 1);
+#endif
+}
+static void unset_env(const char *k)
+{
+#if defined(_WIN32)
+  _putenv_s(k, ""); // empty value removes the variable on Windows
+#else
+  unsetenv(k);
+#endif
+}
+// A writable scratch path. Windows has no /tmp; pick the OS temp dir from the environment
+// (forward slashes work in both POSIX and Win32 file APIs).
+static std::string temp_path(const char *name)
+{
+  const char *d = std::getenv("TMPDIR");
+#if defined(_WIN32)
+  if (!d) d = std::getenv("TEMP");
+  if (!d) d = std::getenv("TMP");
+  if (!d) d = ".";
+#else
+  if (!d) d = "/tmp";
+#endif
+  return std::string(d) + "/" + name;
+}
+
 static constexpr uint8_t ND = 3;
 static constexpr uint16_t NO = 4;
 using store_t = point_data_store<ND, NO, double, cell_key_hash<ND>>;
@@ -106,19 +138,19 @@ int main()
   const uint64_t hid = store_t::arena_hash_id();
 
   // build arena file from the overlay (migration: overlay -> arena)
-  std::string path = "/tmp/_fc3_test_arena.bin";
+  std::string path = temp_path("_fc3_test_arena.bin");
   s1.build_arena_file(path, hid);
 
   // The fast RAM-buffer builder and the memory-bounded mmap builder must produce
   // BYTE-IDENTICAL files (same placement, same layout, zeros in unoccupied slots).
   {
-    std::string ram_path = "/tmp/_fc3_test_ram.bin";
-    std::string mmap_path = "/tmp/_fc3_test_mmap.bin";
-    ::unsetenv("OBL_FC3_BUILD_MMAP");
+    std::string ram_path = temp_path("_fc3_test_ram.bin");
+    std::string mmap_path = temp_path("_fc3_test_mmap.bin");
+    unset_env("OBL_FC3_BUILD_MMAP");
     s1.build_arena_file(ram_path, hid); // RAM path (small arena -> fits)
-    ::setenv("OBL_FC3_BUILD_MMAP", "1", 1);
+    set_env("OBL_FC3_BUILD_MMAP", "1");
     s1.build_arena_file(mmap_path, hid); // forced mmap path
-    ::unsetenv("OBL_FC3_BUILD_MMAP");
+    unset_env("OBL_FC3_BUILD_MMAP");
     auto slurp = [](const std::string &p) {
       FILE *f = std::fopen(p.c_str(), "rb");
       assert(f);
@@ -215,7 +247,7 @@ int main()
   assert(union_cnt == ref.size()); // shadowed arena slot not double-counted in iteration
 
   // compaction: rebuild arena from (arena ∪ overlay), reload, verify union preserved
-  std::string path2 = "/tmp/_fc3_test_arena2.bin";
+  std::string path2 = temp_path("_fc3_test_arena2.bin");
   ref[shadow] = newv; // reflect the shadow overwrite in the reference
   s2.build_arena_file(path2, hid);
   uint64_t bo2, ko2, vo2, C2, cnt2, hid2;
