@@ -5,6 +5,8 @@
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
 #include <type_traits>
+#include <cstring>
+#include <vector>
 
 #include "multilinear_static_cpu_interpolator.hpp"
 #include "multilinear_adaptive_cpu_interpolator.hpp"
@@ -35,7 +37,22 @@ namespace py = pybind11;
 template <typename interpolator_class, uint8_t N_DIMS, uint16_t N_OPS>
 py::tuple bulk_get_point_data_arrays(const interpolator_class &self)
 {
-  const size_t n = self.point_data.size();
+  // point_data.size() is exact whenever there is no mmap'd arena (the FC02 path:
+  // overlay-only). With an FC03 arena attached, size() may over-count by the
+  // overlay∩arena overlap, so the exact deduped union count comes from one
+  // iterator pass (the iterator skips overlay-shadowed arena slots). The FC02
+  // path keeps the O(1) size() and is byte-identical to before.
+  size_t n;
+  if (self.point_data.has_arena())
+  {
+    n = 0;
+    for (auto it = self.point_data.begin(); it != self.point_data.end(); ++it)
+      ++n;
+  }
+  else
+  {
+    n = self.point_data.size();
+  }
   py::array_t<int32_t> keys({static_cast<py::ssize_t>(n), static_cast<py::ssize_t>(N_DIMS)});
   py::array_t<double> vals({static_cast<py::ssize_t>(n), static_cast<py::ssize_t>(N_OPS)});
   int32_t *kp = keys.mutable_data();
@@ -136,6 +153,69 @@ void bulk_add_point_data_arrays(interpolator_class &self,
       v[op] = static_cast<scalar_t>(vrow[op]);
     self.point_data[k] = v; // assign (overwrite if already present); leaves dirty set untouched
   }
+}
+
+// Contiguous-array export of ONLY the supporting points materialized since the last
+// clear_point_data_delta() (the dirty set). Mirrors bulk_get_point_data_arrays but over
+// dirty_point_data, so the append-on-flush path never boxes one Python tuple per point
+// (PhysicsBase._point_data_delta_arrays prefers this when present). Returns
+//   keys : int32   [M, N_DIMS]
+//   vals : float64 [M, N_OPS]
+template <typename interpolator_class, uint8_t N_DIMS, uint16_t N_OPS>
+py::tuple bulk_point_data_delta_arrays(const interpolator_class &self)
+{
+  std::vector<int32_t> kbuf;
+  std::vector<double> vbuf;
+  kbuf.reserve(self.dirty_point_data.size() * static_cast<size_t>(N_DIMS));
+  vbuf.reserve(self.dirty_point_data.size() * static_cast<size_t>(N_OPS));
+  for (const auto &key : self.dirty_point_data)
+  {
+    auto it = self.point_data.find(key);
+    if (it == self.point_data.end())
+      continue; // defensive: a dirty key with no payload is skipped (keeps arrays dense)
+    for (uint8_t d = 0; d < N_DIMS; ++d)
+      kbuf.push_back(key.idx[d]);
+    for (uint16_t op = 0; op < N_OPS; ++op)
+      vbuf.push_back(static_cast<double>(it->second[op]));
+  }
+  const size_t m = vbuf.size() / static_cast<size_t>(N_OPS);
+  py::array_t<int32_t> keys({static_cast<py::ssize_t>(m), static_cast<py::ssize_t>(N_DIMS)});
+  py::array_t<double> vals({static_cast<py::ssize_t>(m), static_cast<py::ssize_t>(N_OPS)});
+  if (m)
+  {
+    std::memcpy(keys.mutable_data(), kbuf.data(), kbuf.size() * sizeof(int32_t));
+    std::memcpy(vals.mutable_data(), vbuf.data(), vbuf.size() * sizeof(double));
+  }
+  return py::make_tuple(std::move(keys), std::move(vals));
+}
+
+// Contiguous-array export of the per-point evaluation epoch for the dirty points. Returns
+//   keys   : int32  [M, N_DIMS]
+//   epochs : uint64 [M]
+// Key order matches bulk_point_data_delta_arrays is NOT guaranteed (separate maps), so each
+// is self-describing (keys + values together).
+template <typename interpolator_class, uint8_t N_DIMS, uint16_t N_OPS>
+py::tuple bulk_point_data_epoch_delta_arrays(const interpolator_class &self)
+{
+  std::vector<int32_t> kbuf;
+  std::vector<uint64_t> ebuf;
+  kbuf.reserve(self.dirty_point_epochs.size() * static_cast<size_t>(N_DIMS));
+  ebuf.reserve(self.dirty_point_epochs.size());
+  for (const auto &kv : self.dirty_point_epochs)
+  {
+    for (uint8_t d = 0; d < N_DIMS; ++d)
+      kbuf.push_back(kv.first.idx[d]);
+    ebuf.push_back(kv.second);
+  }
+  const size_t m = ebuf.size();
+  py::array_t<int32_t> keys({static_cast<py::ssize_t>(m), static_cast<py::ssize_t>(N_DIMS)});
+  py::array_t<uint64_t> eps(static_cast<py::ssize_t>(m));
+  if (m)
+  {
+    std::memcpy(keys.mutable_data(), kbuf.data(), kbuf.size() * sizeof(int32_t));
+    std::memcpy(eps.mutable_data(), ebuf.data(), ebuf.size() * sizeof(uint64_t));
+  }
+  return py::make_tuple(std::move(keys), std::move(eps));
 }
 
 template <uint8_t N_DIMS, uint16_t N_OPS>
@@ -319,10 +399,41 @@ struct interpolator_exposer
             }
             return epochs;
           })
+          // Contiguous-array twins of point_data_delta()/point_data_epoch_delta(): the
+          // append-on-flush path uses these (when present) to avoid boxing one Python
+          // tuple per dirty point. See bulk_point_data_*_delta_arrays above.
+          .def("point_data_delta_arrays",
+            [](const interpolator_class &self) {
+              return bulk_point_data_delta_arrays<interpolator_class, N_DIMS, N_OPS>(self);
+            },
+            "Dirty supporting points since last clear as (keys:int32[M,N_DIMS], vals:float64[M,N_OPS])")
+          .def("point_data_epoch_delta_arrays",
+            [](const interpolator_class &self) {
+              return bulk_point_data_epoch_delta_arrays<interpolator_class, N_DIMS, N_OPS>(self);
+            },
+            "Dirty-point epochs since last clear as (keys:int32[M,N_DIMS], epochs:uint64[M])")
           .def("clear_point_data_delta", [](interpolator_class &self) {
             self.dirty_point_data.clear();
             self.dirty_point_epochs.clear();
-          });
+          })
+          // ---- mmap-arena bindings (point_data_store hybrid) ----
+          .def("obl_arena_hash_id", [](interpolator_class &self) {
+            return std::decay_t<decltype(self.point_data)>::arena_hash_id();
+          }, "FC03 ABI/placement fingerprint; an arena with a mismatching id is rebuilt, never mis-probed")
+          .def("has_arena", [](interpolator_class &self) { return self.point_data.has_arena(); },
+            "True if an mmap'd FC03 base arena is currently attached")
+#if !defined(_WIN32)
+          .def("build_arena_file", [](interpolator_class &self, const std::string &path, uint64_t hash_id) {
+            self.point_data.build_arena_file(path, hash_id);
+          }, "Write a complete FC03 arena file (open-addressing hash table) from the live union (overlay + arena)",
+             "path"_a, "hash_id"_a)
+          .def("mmap_arena", [](interpolator_class &self, const std::string &path, size_t bitmap_off,
+                                size_t keys_off, size_t vals_off, size_t capacity, size_t count) {
+            self.point_data.mmap_arena_at(path, bitmap_off, keys_off, vals_off, capacity, count);
+          }, "mmap an FC03 arena in place (O(1) load, no per-point rebuild); offsets parsed from the header by Python",
+             "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
+#endif
+          ;
       }
       else if constexpr (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>>)
       {
@@ -435,10 +546,40 @@ struct interpolator_exposer
             }
             return epochs;
           })
+          // Contiguous-array twins of point_data_delta()/point_data_epoch_delta(): the
+          // append-on-flush path uses these (when present) to avoid boxing one Python
+          // tuple per dirty point. See bulk_point_data_*_delta_arrays above.
+          .def("point_data_delta_arrays",
+            [](const interpolator_class &self) {
+              return bulk_point_data_delta_arrays<interpolator_class, N_DIMS, N_OPS>(self);
+            },
+            "Dirty supporting points since last clear as (keys:int32[M,N_DIMS], vals:float64[M,N_OPS])")
+          .def("point_data_epoch_delta_arrays",
+            [](const interpolator_class &self) {
+              return bulk_point_data_epoch_delta_arrays<interpolator_class, N_DIMS, N_OPS>(self);
+            },
+            "Dirty-point epochs since last clear as (keys:int32[M,N_DIMS], epochs:uint64[M])")
           .def("clear_point_data_delta", [](interpolator_class &self) {
             self.dirty_point_data.clear();
             self.dirty_point_epochs.clear();
           })
+          // ---- mmap-arena bindings (point_data_store hybrid) ----
+          .def("obl_arena_hash_id", [](interpolator_class &self) {
+            return std::decay_t<decltype(self.point_data)>::arena_hash_id();
+          }, "FC03 ABI/placement fingerprint; an arena with a mismatching id is rebuilt, never mis-probed")
+          .def("has_arena", [](interpolator_class &self) { return self.point_data.has_arena(); },
+            "True if an mmap'd FC03 base arena is currently attached")
+#if !defined(_WIN32)
+          .def("build_arena_file", [](interpolator_class &self, const std::string &path, uint64_t hash_id) {
+            self.point_data.build_arena_file(path, hash_id);
+          }, "Write a complete FC03 arena file (open-addressing hash table) from the live union (overlay + arena)",
+             "path"_a, "hash_id"_a)
+          .def("mmap_arena", [](interpolator_class &self, const std::string &path, size_t bitmap_off,
+                                size_t keys_off, size_t vals_off, size_t capacity, size_t count) {
+            self.point_data.mmap_arena_at(path, bitmap_off, keys_off, vals_off, capacity, count);
+          }, "mmap an FC03 arena in place (O(1) load, no per-point rebuild); offsets parsed from the header by Python",
+             "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
+#endif
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
       else if constexpr (std::is_same_v<interpolator_class, linear_static_cpu_interpolator<i_t, N_DIMS, N_OPS>>)
@@ -579,10 +720,41 @@ struct interpolator_exposer
             }
             return epochs;
           })
+          // Contiguous-array twins of point_data_delta()/point_data_epoch_delta(): the
+          // append-on-flush path uses these (when present) to avoid boxing one Python
+          // tuple per dirty point. See bulk_point_data_*_delta_arrays above.
+          .def("point_data_delta_arrays",
+            [](const interpolator_class &self) {
+              return bulk_point_data_delta_arrays<interpolator_class, N_DIMS, N_OPS>(self);
+            },
+            "Dirty supporting points since last clear as (keys:int32[M,N_DIMS], vals:float64[M,N_OPS])")
+          .def("point_data_epoch_delta_arrays",
+            [](const interpolator_class &self) {
+              return bulk_point_data_epoch_delta_arrays<interpolator_class, N_DIMS, N_OPS>(self);
+            },
+            "Dirty-point epochs since last clear as (keys:int32[M,N_DIMS], epochs:uint64[M])")
           .def("clear_point_data_delta", [](interpolator_class &self) {
             self.dirty_point_data.clear();
             self.dirty_point_epochs.clear();
-          });
+          })
+          // ---- mmap-arena bindings (point_data_store hybrid) ----
+          .def("obl_arena_hash_id", [](interpolator_class &self) {
+            return std::decay_t<decltype(self.point_data)>::arena_hash_id();
+          }, "FC03 ABI/placement fingerprint; an arena with a mismatching id is rebuilt, never mis-probed")
+          .def("has_arena", [](interpolator_class &self) { return self.point_data.has_arena(); },
+            "True if an mmap'd FC03 base arena is currently attached")
+#if !defined(_WIN32)
+          .def("build_arena_file", [](interpolator_class &self, const std::string &path, uint64_t hash_id) {
+            self.point_data.build_arena_file(path, hash_id);
+          }, "Write a complete FC03 arena file (open-addressing hash table) from the live union (overlay + arena)",
+             "path"_a, "hash_id"_a)
+          .def("mmap_arena", [](interpolator_class &self, const std::string &path, size_t bitmap_off,
+                                size_t keys_off, size_t vals_off, size_t capacity, size_t count) {
+            self.point_data.mmap_arena_at(path, bitmap_off, keys_off, vals_off, capacity, count);
+          }, "mmap an FC03 arena in place (O(1) load, no per-point rebuild); offsets parsed from the header by Python",
+             "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
+#endif
+          ;
       }
 #endif
       else {

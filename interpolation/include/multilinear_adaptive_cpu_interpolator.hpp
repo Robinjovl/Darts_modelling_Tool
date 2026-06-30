@@ -9,6 +9,7 @@
 
 #include "multi_index_key.hpp"
 #include "multilinear_interpolator_base.hpp"
+#include "point_data_store.hpp"
 
 /**
  * @brief  Piecewise mulitlinear interpolator with adaptive storage
@@ -71,7 +72,10 @@ public:
     * explores state space; cells beyond the user-prescribed bounds are accepted without
     * complaint.
     */
-   std::unordered_map<key_t, point_data_t, key_hash_t> point_data;
+   // hybrid mmap'd-arena + in-RAM overlay store, drop-in for the
+   // former std::unordered_map. Loads in O(1) via mmap (no per-point rebuild) and
+   // is file-backed (not anonymous)
+   point_data_store<N_DIMS, N_OPS, value_t, key_hash_t> point_data;
 
    /**
     * @brief adaptive hypercube storage: values of operators at every vertex of requested hypercubes.

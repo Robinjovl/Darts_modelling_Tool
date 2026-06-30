@@ -4,6 +4,7 @@
 #include <unordered_set>
 #include "multi_index_key.hpp"
 #include "linear_cpu_interpolator_base.hpp"
+#include "point_data_store.hpp"
 
 /**
  * Adaptive piecewise linear interpolator.
@@ -34,7 +35,8 @@ public:
     /**
      * Adaptive supporting-point storage, keyed on signed multi-index (cell_key_t).
      */
-    std::unordered_map<key_t, std::array<double, N_OPS>, key_hash_t> point_data;
+    // Phase F (FC03): hybrid mmap'd-arena + in-RAM overlay store (drop-in).
+    point_data_store<N_DIMS, N_OPS, double, key_hash_t> point_data;
     /**
      * Multi-index keys of supporting points materialized since the last external cache
      * flush. Mirrors the development-branch dirty-set tracker but in the new key space,

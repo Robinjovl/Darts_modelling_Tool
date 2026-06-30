@@ -17,6 +17,7 @@
 #include "multi_index_key.hpp"
 #include "gpu_hashmap_async.h"
 #include "multilinear_gpu_interpolator_base.hpp"
+#include "point_data_store.hpp"
 
 /**
  * @brief  Piecewise mulitlinear interpolator for GPU with adaptive storage.
@@ -77,7 +78,8 @@ public:
    *        The grid is unbounded; the Python `point_data_full` view exports the full
    *        cell-key map as tuple keys.
    */
-  std::unordered_map<key_t, point_data_t, key_hash_t> point_data;
+  // hybrid mmap'd-arena + in-RAM overlay store (host-side; drop-in).
+  point_data_store<N_DIMS, N_OPS, value_t, key_hash_t> point_data;
 
   size_t get_n_cached_points() const { return point_data.size(); }
   size_t get_n_cached_hypercubes() const { return generated_hypercubes.size(); }
