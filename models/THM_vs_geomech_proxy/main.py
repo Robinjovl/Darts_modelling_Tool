@@ -5,7 +5,7 @@ import os
 import shutil
 import time
 from darts.engines import redirect_darts_output, timer_node
-from plot_vtk_pyvista import plot_vtk_pyvista
+from plot_vtk import plot_vtk_pyvista
 
 def run_python(m, days=0, restart_dt=0, init_step = False):
     if days:

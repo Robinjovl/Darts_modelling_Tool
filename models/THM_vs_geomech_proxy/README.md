@@ -61,10 +61,9 @@ THM_vs_geomech_proxy/
 ├── plot_vtk.py                  # PyVista / matplotlib VTK visualization
 ├── geomechanics.py              # Proxy utilities (deriv, HAS_GPU flag, fault/Mohr-Coulomb)
 ├── tools.py                     # Miscellaneous helpers
-├── examples/
-│   ├── base.py                  # build_input_data() factory + mesh coordinate tables
-│   ├── case_1.py                # input_data_case_1/2/3() definitions
-│   └── generate_model_case.py   # input_data_struct_like() for NX_NY_NZ cases
+├── cases/
+│   ├── base.py                  # input_data_base(), input_data_struct_like(), mesh coordinate tables
+│   └── case_1.py                # input_data_case_1/2/3() definitions
 └── meshes/
     └── case_1/
         └── mesh.msh             # Pre-generated mesh for the named cases (case_1/2/3)
@@ -84,11 +83,11 @@ Two mesh strategies are supported, selected by the case name passed to `run()` /
 
 ### Rectangular hexahedra, generated on the fly (`NX_NY_NZ` naming)
 
-Cases named as `NX_NY_NZ` (e.g. `17_17_15`, `41_41_66`, `71_71_66`, `83_83_90`, `97_97_90`) use `examples/generate_model_case.py::input_data_struct_like`. The mesh is built at runtime by Gmsh (`gen_msh.py`) as a structured grid of regular hexahedra with `generate_mesh=True` on the first run; subsequent runs reuse the saved `.msh` file.
+Cases named as `NX_NY_NZ` (e.g. `17_17_15`, `41_41_66`, `71_71_66`, `83_83_90`, `97_97_90`) use `cases/base.py::input_data_struct_like`. The mesh is built at runtime by Gmsh (`gen_msh.py`) as a structured grid of regular hexahedra with `generate_mesh=True` on the first run; subsequent runs reuse the saved `.msh` file.
 
 - **Single mesh tag** (`99991`) covers the entire domain.
 - Rock properties (permeability, porosity, Young's modulus) are assigned per cell by coordinate-based interpolation: reservoir-layer values inside the bounding box `[rsv_top, rsv_bottom] × [rsv_x1, rsv_x2] × [rsv_y1, rsv_y2]`, non-reservoir values elsewhere.
-- Cell coordinates are refined near the reservoir and near well locations; the refinement pattern for each `NX` value is defined in `examples/base.py::_xc_from_nx`.
+- Cell coordinates are refined near the reservoir and near well locations; the refinement pattern for each `NX` value is defined in `cases/base.py::_xc_from_nx`.
 
 ### Pre-generated mesh with multiple tags (`case_1`, `case_2`, `case_3`)
 
@@ -97,8 +96,8 @@ These cases share a committed mesh (`meshes/case_1/mesh.msh`) with **three Gmsh 
 The input-data functions are layered on top of each other:
 
 ```
-examples/base.py :: build_input_data()       ← shared geometry, fluid, OBL, well defaults
-    └── examples/case_1.py :: input_data_case_1()   ← sets rsv bounds, perm=1000 mD, matrix_tags=(1,2,3)
+cases/base.py :: build_input_data()       ← shared geometry, fluid, OBL, well defaults
+    └── cases/case_1.py :: input_data_case_1()   ← sets rsv bounds, perm=1000 mD, matrix_tags=(1,2,3)
             └── input_data_case_2()   ← overrides props per tag (set_props_by_tags=True)
                     └── input_data_case_3()   ← also sets per-tag heat capacity and thermal conductivity
 ```
@@ -249,13 +248,13 @@ Output goes into `results/.../plots_timestep_<N>/` for each processed VTK timest
 - **Geomechanics decoupled from flow by default** (`main.py`, `decouple_geomech=True`).
   The volumetric-strain transmissibility terms that feed mechanics back into porosity (and therefore pressure) are zeroed out. This is a common approximation for field-scale problems where the mechanical compaction signal is small compared to the fluid driving force.
 
-- **Temperature scale is relative, not absolute** (`examples/base.py`, `MaoDuan2009Shifted`).
+- **Temperature scale is relative, not absolute** (`cases/base.py`, `MaoDuan2009Shifted`).
   The OBL range spans −50 to +50 K around a baseline of 0. `MaoDuan2009Shifted` maps that baseline to 373.15 K (100 °C) before calling the correlation. If the actual reservoir temperature differs significantly from 100 °C, `t_abs0` in `MaoDuan2009Shifted.__init__` must be adjusted.
 
 - **Single-phase water physics** (`model.py`, `ModelProperties.evaluate`).
   `ModelProperties.evaluate` uses a trivial flash: water is assumed to be always single-phase liquid.
 
-- **Initial temperature is uniform and equal to zero** (`examples/base.py`).
+- **Initial temperature is uniform and equal to zero** (`cases/base.py`).
   `idata.initial.temperature_at_ref_depth = 0` and `idata.initial.temperature_gradient = 0`, so there is no geothermal gradient. The temperature field starts flat and evolves only through injection/production. Enabling a gradient requires setting both parameters and adjusting `t_abs0` in `MaoDuan2009Shifted` so the correlation receives a physically meaningful absolute temperature at every depth.
 
 ### Geomechanical proxy

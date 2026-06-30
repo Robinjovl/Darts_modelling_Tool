@@ -1,5 +1,5 @@
-from examples.case_1 import input_data_case_1, input_data_case_2, input_data_case_3
-from examples.generate_model_case import input_data_struct_like
+from cases.case_1 import input_data_case_1, input_data_case_2, input_data_case_3
+from cases.base import input_data_struct_like
 import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 

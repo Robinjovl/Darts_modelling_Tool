@@ -803,7 +803,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
     plot_mesh_skeleton(output_folder)
 
     # reference points for the 1D vertical profiles; taken from idata.other.points_xy
-    # (set in examples/base.py) as a list of [x, y, label]
+    # (set in cases/base.py) as a list of [x, y, label]
     points_xy = dict()
     for x_pt, y_pt, label in m.idata.other.points_xy:  # the order is actually Y,X
         points_xy[label] = [y_pt, x_pt]

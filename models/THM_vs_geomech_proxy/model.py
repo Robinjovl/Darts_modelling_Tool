@@ -64,18 +64,14 @@ def fmt(x : float):
     return "{:.3}".format(x) if np.isscalar(x) else str(x)
 
 class Model(THMCModel):
-    def __init__(self, model_folder, physics_type='dead_oil',
+    def __init__(self, model_folder, physics_type='single_phase',
                  uniform_props=False, wells_type=None,
                  decouple_geomech=False, generate_mesh=False, dummy='no'):
         self.model_folder = os.path.join('meshes', model_folder)
         self.uniform_props = uniform_props
         self.physics_type = physics_type
         self.discretizer_name = 'mech_discretizer'
-        if self.physics_type == 'single_phase_thermal' or \
-            self.physics_type == 'dead_oil_thermal':
-            self.thermal = True
-        else:
-            self.thermal = False
+        self.thermal = self.physics_type == 'single_phase_thermal'
         self.decouple_geomech = decouple_geomech
         self.generate_mesh = generate_mesh
         self.wells_type = wells_type
@@ -244,11 +240,6 @@ class Model(THMCModel):
                 inj = []
                 inj_temp = None
                 if self.physics_type == 'single_phase_thermal':
-                    inj_temp = t_cell - delta_temp_inj
-                elif self.physics_type == 'dead_oil':
-                    inj = [1.0 - self.idata.obl.zero]
-                elif self.physics_type == 'dead_oil_thermal':
-                    inj = [1.0 - self.idata.obl.zero]
                     inj_temp = t_cell - delta_temp_inj
                 target = p_cell + delta_p if wctrl_type == well_control_iface.BHP else well_rate
                 print('inj well', w.name, 'control', wctrl_type, 'target ' + fmt(target), 'inj_temp = ' + fmt(inj_temp))
