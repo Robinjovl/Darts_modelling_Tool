@@ -120,7 +120,7 @@ class Model(THMCModel):
         if self.physics_type == 'single_phase':
             pass
         elif self.physics_type == 'single_phase_thermal':
-            pass
+            # pass
             # MaoDuan2009 requires ABSOLUTE temperature in Kelvin; this model runs on a relative
             # temperature scale with baseline 0 (OBL range -50..50). MaoDuan2009Shifted maps the
             # model baseline T=0 to 373.15 K (assume 100 degrees C in the reservoir)
@@ -129,6 +129,7 @@ class Model(THMCModel):
             components = self.physics.components
             property_container = self.regions[0]
             property_container.viscosity_ev = dict([('wat', MaoDuan2009Shifted(components, t_abs0=373.15))])
+            property_container.density_ev = dict([('wat', DensityBasicTdep(dens0=1000))])
         return
 
     def set_wells(self):
