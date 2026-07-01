@@ -84,8 +84,10 @@ class Model(THMCModel):
 
     def set_solver_params(self):
         super().set_solver_params()
-        self.params.linear_type = sim_params.cpu_gmres_fs_cpr
-        #self.params.linear_type = sim_params.cpu_superlu
+        if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
+            self.params.linear_type = sim_params.cpu_gmres_fs_cpr
+        else:
+            self.params.linear_type = sim_params.cpu_superlu
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2
         self.params.max_ts = 5
