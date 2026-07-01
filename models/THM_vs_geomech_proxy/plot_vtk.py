@@ -1,11 +1,15 @@
-import pyvista as pv
+try:
+    import pyvista as pv
+except ImportError:
+    pv = None
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 from matplotlib.ticker import MaxNLocator
 import os
 import numpy as np
 
-pv.global_theme.jupyter_backend = 'static' # do not print Widget(...) output messages - they appear in case of pyvista[jupyter] is installed
+if pv is not None:
+    pv.global_theme.jupyter_backend = 'static' # do not print Widget(...) output messages - they appear in case of pyvista[jupyter] is installed
 
 def plot_slice_matplotlib(slice_plane, arr_name, tensor, component_index, scale,
                           arr_name_plot, contour, rsv_top, rsv_bottom,
@@ -92,6 +96,10 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
         the default pyvista rendering. Gives centered axes with proper titles, but see the
         drawbacks documented on plot_slice_matplotlib.
     '''
+
+    if pv is None:
+        print('pyvista is not installed, skipping VTK plotting')
+        return
 
     if 'sawcut' in output_dir or '2rocks' in output_dir: # contours help to see that u_z is the same along X-axes in the inclined hex mesh
         contour = True
