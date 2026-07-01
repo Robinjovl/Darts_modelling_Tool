@@ -25,6 +25,9 @@ def input_data_case_1():
     # mesh: three Gmsh physical tags (1=overburden, 2=reservoir, 3=underburden)
     idata.other.matrix_tags = (1, 2, 3)
 
+    # case_2 and case_3 inherit this, so all three cases share one mesh
+    idata.other.mesh_dir = 'case_1'
+
     # recompute derived values that depend on the overridden parameters above
     _set_reservoir_bounds(idata)
     _set_wells(idata)

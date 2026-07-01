@@ -55,6 +55,9 @@ def input_data_base(thermal=True):
     _set_wells(idata)
     _set_mesh_tags(idata)
 
+    # a folder name with the mesh file, None if the mesh is generated on the fly
+    idata.other.mesh_dir = None
+
     # reference points [x, y, label] drawn as a black line in plot_vtk (empty = no line)
     idata.other.points_xy = [[250., 250., '(250,250)']]
     idata.other.use_mesh_bounds_in_plot = False

@@ -110,6 +110,13 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     test_dirs_mech += ['1ph_1comp_poroelastic_convergence']
     test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
+    test_dirs_mech += ['THM_vs_geomech_proxy']
+    test_args_mech += [[
+        ['case_1',   'single_phase_thermal'],
+        ['17_17_15', 'single_phase'],
+        ['17_17_15', 'single_phase_thermal'],
+    ]]
+
     if iter_solvers:
         test_dirs_mech += ['SPE10_mech']
         physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']

@@ -252,6 +252,37 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     return m, data
 
+
+def run_test(args: list = [], platform='cpu'):
+    import time
+    if len(args) < 2:
+        print('Not enough arguments for run_test:', args)
+        return 1, 0.0
+    case = args[0]
+    physics_type = args[1]
+    thermal = physics_type == 'single_phase_thermal'
+    wells_type = 'doublet' if thermal else 'inj'
+    # structured NX_NY_NZ cases need mesh generation; named cases have a committed mesh
+    generate_mesh = case not in ('case_1', 'case_2', 'case_3')
+    t0 = time.time()
+    try:
+        run(
+            model_folder=case,
+            physics_type=physics_type,
+            wells_type=wells_type,
+            decouple_geomech=True,
+            generate_mesh=generate_mesh,
+            sim_time=30.0,
+            report_step=30.0,
+            clear_output_dir=True,
+        )
+        return 0, time.time() - t0
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return 1, time.time() - t0
+
+
 if __name__ == '__main__':
     try:
         # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet

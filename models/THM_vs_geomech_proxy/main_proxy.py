@@ -1174,8 +1174,8 @@ if __name__ == '__main__':
 
     print('timestep_list for proxy :', timestep_list)
 
-    run_thm = True  # runs THM first, then Proxy
-    #run_thm = False # don't recompute THM (use vtk files from its previous run)
+    #run_thm = True  # runs THM first, then Proxy
+    run_thm = False # don't recompute THM (use vtk files from its previous run)
 
     generate_mesh=False # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
     #generate_mesh=True

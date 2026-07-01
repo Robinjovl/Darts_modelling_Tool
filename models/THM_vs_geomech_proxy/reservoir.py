@@ -44,7 +44,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     def field_reservoir(self, idata: InputData, model_folder, uniform_props=False, generate_mesh=False):
 
-        self.mesh_filename = os.path.join(BASE_DIR, model_folder, 'mesh.msh')
+        self.mesh_filename = os.path.join(BASE_DIR, 'meshes', model_folder, 'mesh.msh')
         if generate_mesh:
             nx, ny, nz = idata.other.nx, idata.other.ny, idata.other.nz
             self.Xc = idata.other.Xc
