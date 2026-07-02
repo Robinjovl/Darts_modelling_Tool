@@ -117,7 +117,7 @@ def run_timestep_python(m, dt, t):
 
 def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90., plot_vtk_timesteps=[],
-        clear_output_dir=False):
+        clear_output_dir=False, solver_type='fs_cpr'):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
     :param physics_type: 'single_phase', 'single_phase_thermal'
@@ -125,6 +125,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     :param wells_type: 'prod', 'inj', 'doublet'
     :param decouple_geomech: turn off mechanics->porosity (so pressure and flow) influence
     :param generate_mesh: if True, mesh will be generated, otherwise it will be loaded from the model_folder/meshes
+    :param solver_type: 'superlu', 'fs_cpr', or 'by_env_var' (see Model.set_solver_params)
     :return:
     '''
 
@@ -138,7 +139,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         pass
 
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type,
-              decouple_geomech=decouple_geomech, generate_mesh=generate_mesh)
+              decouple_geomech=decouple_geomech, generate_mesh=generate_mesh, solver_type=solver_type)
 
     m.timer.node["model.init()"] = timer_node()
     m.timer.node["model.init()"].start()
@@ -275,6 +276,7 @@ def run_test(args: list = [], platform='cpu'):
             sim_time=30.0,
             report_step=30.0,
             clear_output_dir=True,
+            solver_type='by_env_var',
         )
         return 0, time.time() - t0
     except Exception as e:

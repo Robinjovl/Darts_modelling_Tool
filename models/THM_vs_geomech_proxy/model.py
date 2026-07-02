@@ -66,7 +66,8 @@ def fmt(x : float):
 class Model(THMCModel):
     def __init__(self, model_folder, physics_type='single_phase',
                  uniform_props=False, wells_type=None,
-                 decouple_geomech=False, generate_mesh=False, dummy='no'):
+                 decouple_geomech=False, generate_mesh=False, dummy='no',
+                 solver_type='by_env_var'):
         self.model_folder = model_folder
         self.uniform_props = uniform_props
         self.physics_type = physics_type
@@ -75,6 +76,7 @@ class Model(THMCModel):
         self.decouple_geomech = decouple_geomech
         self.generate_mesh = generate_mesh
         self.wells_type = wells_type
+        self.solver_type = solver_type  # 'superlu', 'fs_cpr', 'by_env_var'
 
         if dummy == 'yes':  # save time for proxy run
             return
@@ -84,10 +86,18 @@ class Model(THMCModel):
 
     def set_solver_params(self):
         super().set_solver_params()
-        if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-            self.params.linear_type = sim_params.cpu_gmres_fs_cpr
-        else:
+        if self.solver_type == 'superlu':
             self.params.linear_type = sim_params.cpu_superlu
+        elif self.solver_type == 'fs_cpr':
+            self.params.linear_type = sim_params.cpu_gmres_fs_cpr
+        elif self.solver_type == 'by_env_var':
+            if os.getenv('ODLS') == '-a':
+                self.params.linear_type = sim_params.cpu_gmres_fs_cpr
+            else:
+                self.params.linear_type = sim_params.cpu_superlu
+        else:
+            raise ValueError(f"Unknown solver_type: {self.solver_type!r}, "
+                              f"expected 'superlu', 'fs_cpr' or 'by_env_var'")
         self.params.first_ts = 0.0001
         self.params.mult_ts = 2
         self.params.max_ts = 5
