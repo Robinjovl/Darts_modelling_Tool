@@ -28,6 +28,18 @@ from darts.models.solver_types import linear_solver_types
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
+#: Map of newton_type string names to the engine ``newton_solver_t`` enum.
+#: Shared by :meth:`DartsModel.set_sim_params` (imperative path) and
+#: :meth:`DartsModel.set_sim_params_from_config` (JSON/config path) so both
+#: accept the string spelling.  ``"default"`` is intentionally absent: it
+#: means "leave the engine's built-in default newton solver".
+NEWTON_TYPE_MAP: dict[str, Any] = {
+    "newton_std": sim_params.newton_std,
+    "newton_local_chop": sim_params.newton_local_chop,
+    "newton_global_chop": sim_params.newton_global_chop,
+    "newton_inflection_point": sim_params.newton_inflection_point,
+}
+
 
 class SimParamsConfig(BaseModel):
     """Pydantic configuration for simulation parameters.
@@ -942,7 +954,12 @@ class DartsModel:
         :type it_newton: int
         :param it_linear: Maximum number of linear iterations
         :type it_linear: int
-        :param newton_type:
+        :param newton_type: Newton solver variant — a
+            :class:`darts.engines.sim_params` enum member or its string
+            name (e.g. ``"newton_local_chop"``, mapped via
+            :data:`NEWTON_TYPE_MAP`); unknown strings (including
+            ``"default"``) keep the engine default
+        :type newton_type: sim_params.newton_solver_t | str | None
         :param newton_params:
         :param coupled_well_res_norm_method: Method of norm evaluation of residuals for the coupled well-reservoir model
         :type coupled_well_res_norm_method: int
@@ -964,6 +981,13 @@ class DartsModel:
         self.data_ts.newton_tol = (
             tol_newton if tol_newton is not None else self.data_ts.newton_tol
         )
+
+        # Accept the string spelling of the newton_type enum (JSON/task-text
+        # form); unknown strings (including "default") keep the engine
+        # default, mirroring set_sim_params_from_config.  The pybind11 enum
+        # slot rejects raw strings with an opaque TypeError otherwise.
+        if isinstance(newton_type, str):
+            newton_type = NEWTON_TYPE_MAP.get(newton_type)
 
         self.params.newton_type = (
             newton_type if newton_type is not None else self.params.newton_type
@@ -1085,17 +1109,12 @@ class DartsModel:
         if config.line_search is not None:
             kwargs["line_search"] = config.line_search
 
-        # Map newton_type string → engine enum.  "default" means "leave the
-        # engine's built-in default newton solver" — do NOT forward the
-        # string to the C++ bindings (which expect ``newton_solver_t`` enum).
-        _NEWTON_TYPE_MAP = {
-            "newton_std": sim_params.newton_std,
-            "newton_local_chop": sim_params.newton_local_chop,
-            "newton_global_chop": sim_params.newton_global_chop,
-            "newton_inflection_point": sim_params.newton_inflection_point,
-        }
-        if config.newton_type in _NEWTON_TYPE_MAP:
-            kwargs["newton_type"] = _NEWTON_TYPE_MAP[config.newton_type]
+        # Map newton_type string → engine enum via the shared module-level
+        # table.  "default" means "leave the engine's built-in default
+        # newton solver" — do NOT forward the string to the C++ bindings
+        # (which expect ``newton_solver_t`` enum).
+        if config.newton_type in NEWTON_TYPE_MAP:
+            kwargs["newton_type"] = NEWTON_TYPE_MAP[config.newton_type]
         # Any other value (including ``"default"``) is intentionally ignored.
 
         self.set_sim_params(**kwargs)

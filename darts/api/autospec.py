@@ -9,6 +9,7 @@ schema-first JSON workflow.
 """
 
 import atexit
+import inspect
 import json
 from collections.abc import Callable
 from typing import Any
@@ -593,22 +594,49 @@ def enable_autorecording() -> None:
         )
 
         def wrap_pc_init(orig):
+            """Wrap ``PropertyContainer.__init__`` to record its config.
+
+            :param orig: Original unbound ``__init__``.
+            :type orig: Callable
+            :return: Recording wrapper.
+            :rtype: Callable
+            """
+
             def _wrapped(self, *args, **kwargs):
+                """Record explicitly-passed constructor args, then delegate.
+
+                Binds positionals to parameter names via the original
+                signature (M1 audit item 4b): recording from ``kwargs``
+                alone silently dropped positionally-passed arguments (e.g.
+                ``PropertyContainer(phases_name, components_name, ...)``).
+                No ``apply_defaults()`` — only arguments the caller passed
+                are recorded, preserving the "record what was written"
+                semantics.
+
+                :param self: Property-container instance under construction.
+                :param args: Positional constructor arguments.
+                :param kwargs: Keyword constructor arguments.
+                :return: Whatever ``orig`` returns.
+                """
                 res = orig(self, *args, **kwargs)
                 try:
+                    passed = (
+                        inspect.signature(orig).bind(self, *args, **kwargs).arguments
+                    )
                     cfg: dict[str, Any] = {}
                     for k in (
                         "phases_name",
                         "components_name",
                         "Mw",
                         "min_z",
+                        "eps_z",
                         "temperature",
                         "nc_sol",
                         "np_sol",
                         "rock_comp",
                     ):
-                        if k in kwargs and kwargs[k] is not None:
-                            v = kwargs[k]
+                        if k in passed and passed[k] is not None:
+                            v = passed[k]
                             cfg[k] = list(v) if isinstance(v, list | tuple) else v
                     _STATE.record_property_container(self, cfg)
                 except Exception:
@@ -626,22 +654,40 @@ def enable_autorecording() -> None:
         from darts.physics.properties.flash import ConstantK  # type: ignore
 
         def wrap_ck_init(orig):
+            """Wrap ``ConstantK.__init__`` to record the flash config.
+
+            :param orig: Original unbound ``__init__``.
+            :type orig: Callable
+            :return: Recording wrapper.
+            :rtype: Callable
+            """
+
             def _wrapped(self, *args, **kwargs):
+                """Record the flash K-values/epsilon, then delegate.
+
+                Binds through the real signature ``(nc, ki, eps)``: the
+                previous ``kwargs.get("K")``/``kwargs.get("epsilon")``
+                lookups matched the CONFIG field names instead, so keyword
+                calls ``ConstantK(nc=..., ki=..., eps=...)`` were silently
+                not recorded and ``flash_ev`` vanished from the emitted
+                config (G3 "missing in current", 2026-06-28 failure
+                study).  Recorded config keys stay ``K``/``epsilon``
+                (``ConstantKConfig`` field names, as ``to_config`` maps).
+
+                :param self: Flash instance under construction.
+                :param args: Positional constructor arguments.
+                :param kwargs: Keyword constructor arguments.
+                :return: Whatever ``orig`` returns.
+                """
                 res = orig(self, *args, **kwargs)
                 try:
-                    # Signature: (nc, K, epsilon)
-                    K = (
-                        kwargs.get("K")
-                        if "K" in kwargs
-                        else (args[1] if len(args) > 1 else None)
+                    passed = (
+                        inspect.signature(orig).bind(self, *args, **kwargs).arguments
                     )
-                    eps = (
-                        kwargs.get("epsilon")
-                        if "epsilon" in kwargs
-                        else (args[2] if len(args) > 2 else None)
-                    )
-                    if K is not None:
-                        cfg = {"K": list(K)}
+                    ki = passed.get("ki")
+                    eps = passed.get("eps")
+                    if ki is not None:
+                        cfg = {"K": list(ki)}
                         if eps is not None:
                             cfg["epsilon"] = _STATE._to_jsonable(eps)
                         _STATE.record_plugin_instance(self, "flash/ConstantK@v1", cfg)
