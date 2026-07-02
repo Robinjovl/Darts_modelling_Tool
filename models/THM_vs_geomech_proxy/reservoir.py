@@ -135,6 +135,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.set_heterogeneous_props_by_interpolation(idata=idata, generate_mesh=generate_mesh)
             self.init_heterogeneous_properties(idata=idata)
 
+        # per-cell biot array used by write_to_vtk (eff_stress = tot_stress - biot * pressure).
+        # idata.rock.biot may be a scalar (homogeneous) or a per-tag array (e.g. case_4);
+        # expand the per-tag case to one value per matrix cell so it broadcasts against pressure.
+        if np.isscalar(idata.rock.biot):
+            self.biot_cell = idata.rock.biot
+        else:
+            self.biot_cell = np.array([self.props[tag]['biot'] for tag in self.tags[:self.n_matrix]])
+
         self.init_arrays_boundary_condition()
         self.update_boundary_conditions()
         print('Init reservoir finished')
@@ -289,7 +297,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 if 'eff_stress' not in cell_data: cell_data['eff_stress'] = []
                 cell_data['eff_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
                 for j in range(6):
-                    cell_data['eff_stress'][-1][:, j] = np.fabs(cell_data['tot_stress'][-1][:, j]) - self.idata.rock.biot * pressure
+                    cell_data['eff_stress'][-1][:, j] = np.fabs(cell_data['tot_stress'][-1][:, j]) - self.biot_cell * pressure
 
                 if 'delta_tot_stress' not in cell_data: cell_data['delta_tot_stress'] = []
                 cell_data['delta_tot_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
@@ -304,7 +312,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 if 'delta_eff_stress' not in cell_data: cell_data['delta_eff_stress'] = []
                 cell_data['delta_eff_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
                 for j in range(6):
-                    cell_data['delta_eff_stress'][-1][:, j] = cell_data['delta_tot_stress'][-1][:, j] - self.idata.rock.biot * delta_pressure
+                    cell_data['delta_eff_stress'][-1][:, j] = cell_data['delta_tot_stress'][-1][:, j] - self.biot_cell * delta_pressure
 
                 if hasattr(self, 'temperature_initial'): # if thermal simulation
                     if 'delta_temperature' not in cell_data: cell_data['delta_temperature'] = []

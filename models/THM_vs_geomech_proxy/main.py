@@ -264,7 +264,7 @@ def run_test(args: list = [], platform='cpu'):
     thermal = physics_type == 'single_phase_thermal'
     wells_type = 'doublet' if thermal else 'inj'
     # structured NX_NY_NZ cases need mesh generation; named cases have a committed mesh
-    generate_mesh = case not in ('case_1', 'case_2', 'case_3')
+    generate_mesh = case not in ('case_1', 'case_2', 'case_3', 'case_4')
     t0 = time.time()
     try:
         run(
@@ -313,6 +313,7 @@ if __name__ == '__main__':
     #cases += ['case_1']
     #cases += ['case_2']
     cases += ['case_3']
+    #cases += ['case_4']
 
     #thermal = False
     thermal = True

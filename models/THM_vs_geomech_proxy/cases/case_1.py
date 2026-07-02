@@ -5,6 +5,10 @@ from cases.base import (
     _set_wells,
     _set_mesh_tags,
 )
+from darts.reservoirs.unstruct_reservoir_mech import (
+    get_bulk_modulus,
+    get_rock_compressibility,
+)
 
 
 def input_data_case_1():
@@ -69,5 +73,39 @@ def input_data_case_3():
     rcond_sand  = 3.0 * 86.4  # [kJ/m/day/K]
     rcond_shale = 2.2 * 86.4  # [kJ/m/day/K]
     idata.rock.thermal_conductivity = np.array([rcond_shale, rcond_sand, rcond_shale])
+
+    return idata
+
+
+def input_data_case_4():
+    # same as case_3 but with heterogeneous geomechanical properties per tag (sand vs shale):
+    # a softer, more compressible reservoir sand sandwiched between stiffer shale burdens.
+    idata = input_data_case_3()
+
+    E_sand  = 8.0 * 1e4   # [bars]  (1e4: [GPa] -> [bar])
+    E_shale = 20.0 * 1e4  # [bars]
+    idata.rock.E = np.array([E_shale, E_sand, E_shale])
+
+    nu_sand  = 0.20  # Poisson ratio
+    nu_shale = 0.30
+    idata.rock.nu = np.array([nu_shale, nu_sand, nu_shale])
+
+    biot_sand  = 0.8
+    biot_shale = 0.6
+    idata.rock.biot = np.array([biot_shale, biot_sand, biot_shale])
+
+    th_expn_sand  = 1.2e-5  # [1/K] linear thermal expansion coefficient
+    th_expn_shale = 0.8e-5
+    idata.rock.th_expn_orig = np.array([th_expn_shale, th_expn_sand, th_expn_shale])  # preserve original for proxy
+
+    # recompute derived geomechanical quantities per tag (mirrors _set_rock_mechanics in base.py)
+    bulk_modulus = get_bulk_modulus(E=idata.rock.E, nu=idata.rock.nu)
+    idata.rock.kd = bulk_modulus  # drained bulk modulus (read by set_props_tags / init)
+    idata.rock.compressibility = get_rock_compressibility(
+        kd=bulk_modulus,
+        biot=idata.rock.biot,
+        poro0=idata.rock.porosity,
+    )
+    idata.rock.th_expn = idata.rock.th_expn_orig * bulk_modulus * 3.0  # Cauchy 4.19a/4.21a, linear -> volumetric (4.22)
 
     return idata

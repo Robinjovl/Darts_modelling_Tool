@@ -211,12 +211,21 @@ def run_geomech_proxy(case, physics_type='single_phase',
               wells_type=wells_type, decouple_geomech=True, generate_mesh=generate_mesh,
               dummy='yes')
     m.set_input_data()
+
+    def scalar_or_mean(val):
+        # the analytic proxy assumes a homogeneous elastic medium; if idata carries
+        # per-tag heterogeneous geomech properties (e.g. case_4), fall back to their mean
+        if np.isscalar(val):
+            return val
+        print(f'warning: proxy assumes homogeneous properties, using mean of {val} = {val.mean()}')
+        return val.mean()
+
     # elastic constants
-    g.poisson = m.idata.rock.nu
-    g.young = m.idata.rock.E if np.isscalar(m.idata.rock.E) else m.idata.rock.E.mean()
+    g.poisson = scalar_or_mean(m.idata.rock.nu)
+    g.young = scalar_or_mean(m.idata.rock.E)
     g.young *= bars2mpa
-    g.thermal_expansion = m.idata.rock.th_expn_orig
-    g.biot = m.idata.rock.biot
+    g.thermal_expansion = scalar_or_mean(m.idata.rock.th_expn_orig)
+    g.biot = scalar_or_mean(m.idata.rock.biot)
 
     g.set_num_threads(n_threads)
     print('N_THREADS =', n_threads)
@@ -442,9 +451,9 @@ def run_geomech_proxy(case, physics_type='single_phase',
             dp_z = np.zeros_like(z_range)
             z_range_rsv = reduce(np.logical_and, [z_range > 2100, z_range < 2200])
             dp_z[z_range_rsv] = dp.max() #m.idata.other.delta_p #MPa
-        sx_total_prx = sx_prx + m.idata.rock.biot * dp
-        sy_total_prx = sy_prx + m.idata.rock.biot * dp
-        sz_total_prx = sz_prx + m.idata.rock.biot * dp
+        sx_total_prx = sx_prx + g.biot * dp
+        sy_total_prx = sy_prx + g.biot * dp
+        sz_total_prx = sz_prx + g.biot * dp
 
         plot_thm2 = False
 
@@ -1082,7 +1091,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
         dsxx_total_thm = get_thm_total_stress(point)[0]
         #dsxx_thm2 = get_thm_stress_by_deriv(point) * bars2mpa
         dsxx_total_prx = get_proxy_strain_stress(point)[3][0]  # need to X<->Y if non-symmetric
-        dsxx_total_prx += m.idata.rock.biot * dp # get total from effective stress
+        dsxx_total_prx += g.biot * dp # get total from effective stress
 
         print('Compare at the point=', point)
         print('\tTHM   ', 'delta_P=', fmt(dp), 'MPa')
@@ -1096,7 +1105,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
         print('THM delta_pressure_max=', np.fabs(thm_sol.delta_pressure).max())
         print('THM delta_total_Sxx_thm_max / delta_pressure_max=', fmt(np.fabs(thm_sol.delta_total_Sxx_last).max() / np.fabs(thm_sol.delta_pressure).max()))  # MAX
         print('THM delta_total_Sxx_thm_point / delta_pressure_point =', fmt(dsxx_total_thm / dp)) # at point
-        print('Analytical delta_total_Sxx/dp =', m.idata.rock.biot * (1 - 2 * m.idata.rock.nu)/(1 - m.idata.rock.nu))
+        print('Analytical delta_total_Sxx/dp =', g.biot * (1 - 2 * g.poisson)/(1 - g.poisson))
 
     if 'check_initial' in modes: # check initial pressure and stress for THM
         max_depth = thm_sol.bounds[2][1]  # max z m
