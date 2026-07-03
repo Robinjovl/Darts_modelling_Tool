@@ -16,6 +16,11 @@ Defines the set of checks ("hooks") that run automatically on `git commit` and `
 
 ## Hooks configured in `.pre-commit-config.yaml`
 
+Local project hooks:
+- `gitlab-ci-verify`: Validates selected GitLab CI YAML files.
+- `sync-agent-skills-check`: Verifies that `.agents/skills` and the mirrored
+  skill tree stay synchronized.
+
 Ruff hooks (from `astral-sh/ruff-pre-commit`):
 - `ruff-check` (with `--fix`, `--show-fixes`): Lints Python and applies safe, non-breaking fixes.
 - `ruff-format`: Formats Python code (Ruff formatter)
@@ -25,10 +30,15 @@ General quality and hygiene (from `pre-commit/pre-commit-hooks`):
 - `trailing-whitespace`: Removes stray trailing whitespace.
 - `check-yaml`: Validates YAML syntax for selected files.
 - `check-toml`: Validates TOML syntax (e.g., `pyproject.toml`).
-- `mixed-line-ending`: Normalizes line endings; prevents mixed CRLF/LF.
+- `mixed-line-ending`: Normalizes files that contain more than one line-ending
+  style, such as both LF and CRLF in the same file. It is a consistency check
+  within each file; it does not enforce that all source files are stored as LF.
 - `detect-private-key`: Detects accidentally committed private keys.
 - `check-added-large-files --maxkb=500`: Prevents committing very large files to the repo.
 - `check-merge-conflict`: Detects unresolved merge conflict markers.
+
+The `mixed-line-ending` hook only handles files that mix different EOL styles
+within one file; it does not enforce a repository-wide line-ending format.
 
 Notes:
 - Hook environments are downloaded and cached automatically on first use by pre-commit (into `.cache/pre-commit`).
@@ -44,7 +54,7 @@ Ruff is configured in `pyproject.toml` in the `[tool.ruff*]` sections.
 Automatic, on commit or push:
 ```bash
 git commit -m "..."   # hooks run automatically
-git push -m "..."     # hooks run automatically
+git push              # hooks run automatically
 ```
 
 Manually, mirror the CI job's file selection (Python, YAML, TOML in selected paths):
@@ -75,7 +85,7 @@ Local pre-commit (via hooks) uses the `files` patterns defined in `.pre-commit-c
 ---
 
 ## CI Pipeline Integration
-The pre-commit job runs in the `pre_commit` stage using `python:3.10`, installs `pre-commit`, selects target files and executes:
+The pre-commit job runs in the `pre_commit` stage using `python:3.11`, installs `pre-commit`, selects target files and executes:
 
 ```bash
 pre-commit run --files $FILES --show-diff-on-failure --color always
@@ -89,7 +99,7 @@ The job currently allows failure (`allow_failure: true`) to ease adoption; aim t
 - To update hook versions: `pre-commit autoupdate` (we also auto-update quarterly).
 - Hook environments are cached under `.cache/pre-commit`.
 - If a new directory is added for Python code, update the `files` glob for Ruff in `.pre-commit-config.yaml`.
-- In CI/CD, failures in the pre-commit job currently do not fail the pipeline; treat them as warnings to be fixed.
+- In CI/CD, failures in the pre-commit job fail the pipeline.
 
 ---
 

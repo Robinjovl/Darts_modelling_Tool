@@ -6,9 +6,7 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import vtk
 import xarray as xr
-from vtk.util.numpy_support import numpy_to_vtk
 
 from darts.engines import (
     index_vector,
@@ -21,13 +19,14 @@ from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.geothermal.physics import Geothermal
 from darts.physics.super.physics import Compositional
 from darts.tools.hdf5_tools import load_hdf5_to_dict
+from darts.tools.vtk_io import write_lines_vtp, write_pvd
 
 
 class Output:
     """
-    This class handles simulation output including primary variables, secondary variables,
-    well reporting and visualizations (pyplots, .vtk files). All simulation output is saved
-    into HDF5 files. To view the contents of these HDF5 files users are recommended to use an HDF5 viewer.
+    This class handles simulation output including reservoir/well primary variables, secondary variables,
+    well time-series, and visualizations (pyplots, .vtk files). All simulation output is saved
+    into HDF5 files. To view the contents of these HDF5 files, users are recommended to use an HDF5 viewer.
     Alternatively, primary and secondary variables can also be processed into xarray format.
 
     * **Primary variables** (state/unknowns) for reservoir blocks and well blocks are written
@@ -69,7 +68,7 @@ class Output:
         has_dfm_well: bool = False,
     ):
         """
-        :param timer: timer object, measurs time spent saving data, and evaluating properties.
+        :param timer: timer object, measures time spent saving data, and evaluating properties.
         :param reservoir: reservoir object.
         :param physics: physics object.
         :param wells: dict of well objects if the DFM well is used
@@ -654,8 +653,6 @@ class Output:
         if hasattr(self.reservoir, "discretizer"):
             if hasattr(self.reservoir.discretizer, "centroids_all_cells"):
                 centroids = self.reservoir.discretizer.centroids_all_cells
-            elif hasattr(self.reservoir.discretizer, "centroid_all_cells"):
-                centroids = self.reservoir.discretizer.centroid_all_cells
 
         if centroids is None and hasattr(self.reservoir, "centroids_all_cells"):
             centroids = self.reservoir.centroids_all_cells
@@ -1683,12 +1680,12 @@ class Output:
         """
         Evaluate and store well primary and secondary variables of the ith step in vtp files
 
-        :param output_properties: List of properties to evaluate. Defaults to None, which considers only primary vars.
-        :type output_properties: list
         :param ith_step: ith reporting step for which you want to create vtp files for
         :type ith_step: int
+        :param output_properties: List of properties to evaluate. Defaults to None, which considers only primary vars.
+        :type output_properties: list
         :param output_directory: Directory of where to save vtp files
-        :type: str
+        :type output_directory: str
         """
         if not self.has_dfm_well:
             return
@@ -1705,6 +1702,11 @@ class Output:
         time, output_data = self.well_output_properties(
             output_properties=output_properties, ith_step=ith_step
         )
+
+        if not hasattr(self, "_vtp_time_series"):
+            self._vtp_time_series = {}
+        output_key = os.path.abspath(output_directory)
+        output_time_series = self._vtp_time_series.setdefault(output_key, {})
 
         # Store well primary and seconday props in vtp files
         for w_name in self.wells.keys():
@@ -1731,12 +1733,31 @@ class Output:
                 nodes_xyz=nodes_coords,
                 output_properties=output_data,
                 ith_step=ith_step,
-                time=time,
                 output_directory=output_directory,
             )
 
+            # Accumulate time-series entries for this well
+            entries = output_time_series.setdefault(w_name, [])
+            vtp_filename = f"solution_well_{w_name}_ts{ith_step:d}.vtp"
+            if not any(f == vtp_filename for _, f in entries):
+                entries.append((time, vtp_filename))
+
+        self._write_wells_pvd(output_directory, output_time_series)
+
         self.timer.node["vtp_output"].stop()
         self.timer.stop()
+
+    def _write_wells_pvd(self, output_directory: str, output_time_series: dict):
+        """
+        Write one PVD collection containing all DFM well VTP files.
+        """
+        pvd_entries = []
+        for part, (w_name, entries) in enumerate(output_time_series.items(), start=1):
+            for time, vtp_filename in entries:
+                pvd_entries.append((time, vtp_filename, f"well_{w_name}", part))
+
+        pvd_entries.sort(key=lambda entry: (entry[0], entry[3], entry[1]))
+        write_pvd(os.path.join(output_directory, "wells.pvd"), pvd_entries)
 
     def well_output_properties(
         self,
@@ -1841,12 +1862,10 @@ class Output:
         nodes_xyz: np.ndarray,
         output_properties: dict,
         ith_step: int,
-        time: float,
         output_directory: str,
-        active: bool = None,
     ):
         """
-        Write well trajectory as .vtp (VTK PolyData) with segment-based primary and secondary vars as CELL data.
+        Write well output as .vtp (VTK PolyData) with segment-based primary and secondary vars as CELL data.
 
         :param well_name: Name of the well
         :type well_name: str
@@ -1856,63 +1875,14 @@ class Output:
         :type output_properties: dict
         :param ith_step: i'th reporting step for which you want to create a .vtp file for
         :type ith_step: int
-        :param time: Current simulation time
-        :type time: float
         :param output_directory: Directory of where to save the vtp file
-        :type: str
-        :param active: Optional name of variable to set as active scalars
-        :type active: bool
+        :type output_directory: str
         """
-        coords = np.asarray(nodes_xyz, dtype=float)
-        npts = coords.shape[0]
-        nseg = npts - 1
-
-        # Points
-        vtk_points = vtk.vtkPoints()
-        vtk_points.SetNumberOfPoints(npts)
-        for i, (x, y, z) in enumerate(coords):
-            vtk_points.SetPoint(i, float(x), float(y), float(z))
-
-        # Lines
-        vtk_lines = vtk.vtkCellArray()
-        for i in range(nseg):
-            vtk_lines.InsertNextCell(2)
-            vtk_lines.InsertCellPoint(i)
-            vtk_lines.InsertCellPoint(i + 1)
-
-        poly = vtk.vtkPolyData()
-        poly.SetPoints(vtk_points)
-        poly.SetLines(vtk_lines)
-
-        # Add time
-        tarr = vtk.vtkDoubleArray()
-        tarr.SetName("TimeValue")
-        tarr.SetNumberOfTuples(1)
-        tarr.SetValue(0, float(time))
-        poly.GetFieldData().AddArray(tarr)
-
-        # Cell data (segment-based)
-        cd = poly.GetCellData()
-        for name, vals in output_properties.items():
-            arr = np.asarray(vals).reshape((-1, 1))
-            if arr.shape[0] != nseg:
-                raise ValueError(f"'{name}' length {arr.shape[0]} != Nseg {nseg}")
-            vtk_arr = numpy_to_vtk(arr.astype(float), deep=True)
-            vtk_arr.SetName(name)
-            cd.AddArray(vtk_arr)
-
-        if active is None and output_properties:
-            active = next(iter(output_properties.keys()))
-        if active is not None:
-            cd.SetActiveScalars(active)
-
-        # Write
-        writer = vtk.vtkXMLPolyDataWriter()
         output_file_name = f"solution_well_{well_name}_ts{ith_step:d}.vtp"
         output_file_path = os.path.join(output_directory, output_file_name)
-        writer.SetFileName(output_file_path)
-        writer.SetInputData(poly)
-        writer.Write()
+        write_lines_vtp(
+            output_file_path, nodes_xyz, output_properties=output_properties
+        )
 
     def store_well_time_data(
         self,
