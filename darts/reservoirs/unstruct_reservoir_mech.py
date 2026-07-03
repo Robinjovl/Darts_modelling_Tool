@@ -1038,7 +1038,24 @@ class UnstructReservoirMech:
 
     def init_wells(self):
         # # Add wells to the DARTS mesh object and sort connection (DARTS related):
-        self.mesh.add_wells_mpfa(ms_well_vector(self.wells), self.P_VAR)
+        g_constant = abs(getattr(self, 'grav', 9.80665e-5))
+        # Populate reservoir-cell depths in mesh.depth before add_wells_mpfa so it can
+        # read correct depths to set well-segment depths and compute chain grav_rhs.
+        # Also fix well_head_depth which add_perforation set incorrectly (mesh.depth was
+        # zero at that time, before the discretizer was linked to the mesh).
+        if self.discretizer_name == 'mech_discretizer' and hasattr(self, 'discr_mesh'):
+            depth = np.asarray(self.mesh.depth)
+            for i, c in enumerate(self.discr_mesh.centroids[: self.n_res_blocks]):
+                depth[i] = c.values[2]
+            for w in self.wells:
+                if w.perforations:
+                    perf_res_ids = [int(i_r) for _, i_r, _, _ in w.perforations]
+                    # mesh.depth stores the z-centroid (elevation; up = +, values are
+                    # negative here). The well head is the TOP (shallowest) perforation,
+                    # i.e. the largest z, not the smallest.
+                    w.well_head_depth = float(depth[perf_res_ids].max())
+                    w.well_body_depth = w.well_head_depth
+        self.mesh.add_wells_mpfa(ms_well_vector(self.wells), self.P_VAR, g_constant)
         if self.discretizer_name == 'mech_discretizer':
             if self.thermoporoelasticity:
                 self.mesh.reverse_and_sort_pme_mech_discretizer()
