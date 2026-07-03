@@ -96,6 +96,7 @@ class Pipe:
         eps_z: float = 0.00001,
         enable_profile_parameter: bool = True,
         enable_drift_velocity: bool = True,
+        exclude_top_control_block_from_velocity: bool = False,
         verbose: bool = False,
     ):
         """
@@ -167,6 +168,23 @@ class Pipe:
         :param enable_drift_velocity: Whether to calculate and use drift velocity for multiphase flow. If False,
                                       drift velocity is set to zero.
         :type enable_drift_velocity: bool
+        :param exclude_top_control_block_from_velocity: If True, interface 0 uses segment 1 for phase properties
+                                                        in the DFM velocity closure. The pressure gradient still
+                                                        uses segment 0 and 1, but the ghost wellhead/control
+                                                        block is not used for saturation, density, viscosity,
+                                                        composition, profile parameter, or drift velocity. Enable
+                                                        this for DFM production wells controlled by the C++
+                                                        wellhead rate-control block in PH formulation. In that
+                                                        setup, the C++ control equation keeps the wellhead/control
+                                                        block pressure as the rate-control unknown, while the
+                                                        remaining primary variables are constrained from the first
+                                                        physical segment. For PH formulation, this means the
+                                                        control block can have a different pressure but the same
+                                                        enthalpy as the first physical segment. Flashing that
+                                                        artificial pressure-enthalpy pair can produce nonphysical
+                                                        temperature/saturation, so those phase properties should
+                                                        not be used in the DFM velocity closure.
+        :type exclude_top_control_block_from_velocity: bool
         :type verbose: boolean
         """
         assert pipe_name == pipe_geometry.pipe_name, (
@@ -437,6 +455,9 @@ class Pipe:
 
         self.enable_profile_parameter = enable_profile_parameter
         self.enable_drift_velocity = enable_drift_velocity
+        self.exclude_top_control_block_from_velocity = (
+            exclude_top_control_block_from_velocity
+        )
 
         if verbose:
             print(f'** Model of the pipe "{self.geometry.pipe_name}" is created!')
@@ -966,6 +987,16 @@ class Pipe:
                     muL0_face[i] = 0.0
                     xL_mass0_face[i] = 0.0
 
+            if self.exclude_top_control_block_from_velocity:
+                sG0_face[0] = sG0[1]
+                sL0_face[0] = sL0[1]
+                rhoG0_face[0] = rhoG0[1]
+                rhoL0_face[0] = rhoL0[1]
+                muG0_face[0] = muG0[1]
+                muL0_face[0] = muL0[1]
+                xG_mass0_face[0] = xG_mass0[1]
+                xL_mass0_face[0] = xL_mass0[1]
+
             self.iter_phases_props0_face = [
                 xG_mass0_face,
                 xL_mass0_face,
@@ -1027,6 +1058,17 @@ class Pipe:
 
                 if self.diff_method == "OBL":
                     rhoL_face_der[i, :] = (rhoL_der[i, :] + rhoL_der[i + 1, :]) / 2
+
+        if self.exclude_top_control_block_from_velocity:
+            sG_face[0] = sG[1]
+            sL_face[0] = sL[1]
+            rhoG_face[0] = rhoG[1]
+            rhoL_face[0] = rhoL[1]
+            if self.diff_method == "OBL":
+                sG_face_der[0, :] = sG_der[1, :]
+                sL_face_der[0, :] = sL_der[1, :]
+                rhoG_face_der[0, :] = rhoG_der[1, :]
+                rhoL_face_der[0, :] = rhoL_der[1, :]
 
         self.iter_phases_props_face = [sG_face, sL_face, rhoG_face, rhoL_face]
         if self.diff_method == "OBL":
