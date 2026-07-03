@@ -1050,7 +1050,7 @@ class UnstructReservoirMech:
         # zero at that time, before the discretizer was linked to the mesh).
         if self.discretizer_name == 'mech_discretizer' and hasattr(self, 'discr_mesh'):
             depth = np.asarray(self.mesh.depth)
-            for i, c in enumerate(self.discr_mesh.centroids[: self.n_res_blocks]):
+            for i, c in enumerate(self.discr_mesh.centroids[: self.n_matrix]):
                 depth[i] = c.values[2]
             for w in self.wells:
                 if w.perforations:
@@ -1267,13 +1267,17 @@ class UnstructReservoirMech:
         well.well_head_depth = np.array(self.mesh.depth, copy=False)[res_indices].min()
         well.well_body_depth = well.well_head_depth
 
-        if well_index is None or well_indexD is None:
-            # calculate well index and get local index of reservoir block
-            wi, wid = self.discretizer.calc_equivalent_well_index(
-                res_cell_idx, well_diameter, skin
+        # The mechanical unstructured reservoir uses self.discr (the C++
+        # mech discretizer), which has no calc_equivalent_well_index. Callers must
+        # therefore supply well_index explicitly; the thermal well index defaults to
+        # zero when not given (only used by thermoporoelastic physics).
+        if well_index is None:
+            raise ValueError(
+                "well_index must be provided for the mechanical unstructured reservoir "
+                "(the mech discretizer has no calc_equivalent_well_index)."
             )
-            well_index = wi if well_index is None else well_index
-            well_indexD = wid if well_indexD is None else well_indexD
+        if well_indexD is None:
+            well_indexD = 0.0
 
         assert well_index >= 0
         assert well_indexD >= 0
