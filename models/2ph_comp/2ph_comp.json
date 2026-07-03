@@ -21,8 +21,8 @@
         "n_points": 200,
         "min_p": 1,
         "max_p": 300,
-        "min_z": 1e-09,
-        "max_z": 0.999999,
+        "min_z": 0.0,
+        "max_z": 1.0,
         "epsilon_z": 1e-09
       }
     },
@@ -106,7 +106,11 @@
             "oil": {
               "type_id": "relperm/PhaseRelPerm@v1",
               "config": {
-                "$preset": "evaluators/rel_perm/quadratic_oil"
+                "phase": "oil",
+                "swc": 0.0,
+                "sgr": 0.0,
+                "kre": 1.0,
+                "n": 2.0
               }
             }
           }

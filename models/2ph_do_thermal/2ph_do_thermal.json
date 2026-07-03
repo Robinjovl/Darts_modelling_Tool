@@ -2,7 +2,7 @@
   "plugin_registry": {
     "entries": [
       {
-        "type_id": "pc/ModelProperties@v1",
+        "type_id": "pc/DeadOil2phThermalProperties@v1",
         "kind": "pc",
         "constructor": "model.py:ModelProperties",
         "config_model": "darts.api.type_registry:PropertyContainerConfig",
