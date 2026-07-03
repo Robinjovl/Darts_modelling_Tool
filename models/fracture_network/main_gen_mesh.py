@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 import shutil
 
-from darts.input.input_data import InputData
+from darts.models.legacy_input_data import InputData
 from darts.tools.fracture_network.preprocessing_code import frac_preprocessing
 from darts.engines import redirect_darts_output
 

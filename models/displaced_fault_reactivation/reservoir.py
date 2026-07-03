@@ -15,7 +15,7 @@ from darts.reservoirs.unstruct_reservoir_mech import get_rock_compressibility, b
 from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_bulk_modulus, get_biot_modulus
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 
-from darts.input.input_data import InputData
+from darts.models.mech_config import MechModelConfig
 
 from utils import dict_hash
 
@@ -56,7 +56,7 @@ class UnstructReservoir(UnstructReservoirMech):
         self.timer.node["discretization"] = timer_node()
         self.timer.node["discretization"].start()
 
-        self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type='uniform')
+        self.idata = MechModelConfig.create(type_hydr='isothermal', type_mech='poroelasticity', init_type='uniform')
         self.idata.rock.biot = 0.9
         self.idata.rock.perm = 100.0
         self.idata.other.friction = 0.7
@@ -173,7 +173,7 @@ class UnstructReservoir(UnstructReservoirMech):
                             self.unstr_discr.fracture_cell_count)
         self.f[:] = self.unstr_discr.f
 
-    def initial_stage(self, idata: InputData):
+    def initial_stage(self, idata: MechModelConfig):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init0 = 350.0
         self.porosity = 0.15
@@ -294,7 +294,7 @@ class UnstructReservoir(UnstructReservoirMech):
         self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc
 
-    def reservoir_depletion(self, idata: InputData):
+    def reservoir_depletion(self, idata: MechModelConfig):
         self.u_init = [0.0, 0.0, 0.0]
         self.p_init0 = 350.0
         self.porosity = 0.16 #0.15

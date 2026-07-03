@@ -3,7 +3,7 @@ from reservoir import UnstructReservoirCustom
 from darts.reservoirs.unstruct_reservoir_mech import bound_cond
 import numpy as np
 import os
-from darts.input.input_data import InputData
+from darts.models.mech_config import MechModelConfig
 from darts.engines import value_vector, sim_params, mech_operators
 
 class Model(THMCModel):
@@ -50,7 +50,7 @@ class Model(THMCModel):
         elif self.mode == 'poroelastic':
             type_hydr = 'isothermal'
             type_mech = 'poroelasticity'  # Note: not supported with thermal
-        self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech, init_type='uniform')
+        self.idata = MechModelConfig.create(type_hydr=type_hydr, type_mech=type_mech, init_type='uniform')
 
         self.bc_type = bound_cond()  # get predefined constants for boundary conditions
 

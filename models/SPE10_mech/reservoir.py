@@ -6,12 +6,12 @@ from darts.discretizer import matrix33 as disc_matrix33
 from darts.discretizer import Stiffness as disc_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_biot_modulus
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
-from darts.input.input_data import InputData
+from darts.models.mech_config import MechModelConfig
 from darts.engines import timer_node, ms_well, ms_well_vector
 import copy
 
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False):
+    def __init__(self, timer, idata: MechModelConfig, model_folder, fluid_vars=['p'], uniform_props=False):
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         thermoporoelasticity = True if 'temperature' in fluid_vars else False
         super().__init__(timer, discretizer='mech_discretizer',
@@ -36,7 +36,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         temp_grad = (t_bot - t_top) / (bot - top)
         return t_top + temp_grad * (depths - top)
 
-    def spe10(self, idata: InputData, model_folder, uniform_props=False):
+    def spe10(self, idata: MechModelConfig, model_folder, uniform_props=False):
         self.mesh_filename = model_folder + '/spe10.msh'
         self.mesh_data = meshio.read(self.mesh_filename)
 
@@ -70,7 +70,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
 
-    def set_boundary_conditions(self, idata: InputData):
+    def set_boundary_conditions(self, idata: MechModelConfig):
         self.F = -900.0
         self.boundary_conditions = {}
         self.boundary_conditions[idata.mesh.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
@@ -106,7 +106,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.bc_rhs[self.n_bc_vars * id + self.u_bc_var:self.n_bc_vars * id + self.u_bc_var + self.n_dim] = \
                     bc['mech']['rn'] * n + bc['mech']['rt']
 
-    def init_heterogeneous_properties(self, idata: InputData):
+    def init_heterogeneous_properties(self, idata: MechModelConfig):
         '''
         set matrix properties using InputData
         :return:

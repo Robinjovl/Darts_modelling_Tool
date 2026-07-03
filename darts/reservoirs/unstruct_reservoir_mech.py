@@ -854,15 +854,9 @@ class UnstructReservoirMech:
                             self.props[m][prop] = val[0]
                         else:
                             self.props[m][prop] = val[i]
-                    else:
-                        if (
-                            prop in ['permx', 'permy', 'permz']
-                            and 'perm' in self.props[m]
-                        ):
-                            pass
-                        else:
-                            print('in set_props_tags: ', prop + ' is None')
-                            exit(1)
+                    # A ``None`` field is not applicable to this case.  Typed
+                    # configs (MechModelConfig) declare every field, so unset
+                    # ones are simply skipped rather than treated as an error.
 
     def init_heterogeneous_properties(self):
         '''

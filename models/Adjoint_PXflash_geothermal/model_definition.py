@@ -5,8 +5,6 @@ import numpy as np
 
 from darts.models.opt.opt_module_settings import OptModuleSettings
 
-from darts.input.input_data import InputData
-
 
 class Model(CICDModel, OptModuleSettings):
     def __init__(self, T, report_step=120, perm=300, poro=0.2, iapws_physics=False, n_points=128):
@@ -22,7 +20,7 @@ class Model(CICDModel, OptModuleSettings):
 
         self.set_reservoir(perm, poro)
         self.iapws_physics = iapws_physics
-        self.set_input_data(n_points=n_points)
+        self.n_points = n_points
         self.set_physics()
         self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1000, tol_newton=1e-3, tol_linear=1e-6)
 
@@ -75,8 +73,13 @@ class Model(CICDModel, OptModuleSettings):
     def set_physics(self):
         """Physical properties"""
         if self.iapws_physics:
-            from darts.physics.geothermal.geothermal import Geothermal
-            self.physics = Geothermal(self.idata, self.timer)
+            from darts.physics.geothermal.geothermal import Geothermal, GeothermalConfig
+            config = GeothermalConfig(state_spec="PH", n_points=self.n_points,
+                                      min_p=1., max_p=351., min_e=1000., max_e=10000.,
+                                      rock_compressibility=0.,
+                                      rock_compressibility_ref_p=1.,
+                                      rock_compressibility_ref_T=273.15)
+            self.physics = Geothermal(config, self.timer)
         else:
             # Define fluid components, phases and Flash object
             from dartsflash.libflash import EoS
@@ -180,62 +183,3 @@ class Model(CICDModel, OptModuleSettings):
             if export_to_vtk:
                 ith_step += 1
                 self.output_to_vtk(ith_step=ith_step, output_directory=output_path, output_properties=output_props)
-
-    def set_input_data(self, n_points):
-        # init_type = 'uniform'
-        init_type = 'gradient'
-        self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
-
-        self.idata.rock.compressibility = 0.  # [1/bars]
-        self.idata.rock.compressibility_ref_p = 1.  # [bars]
-        self.idata.rock.compressibility_ref_T = 273.15  # [K]
-
-        if self.iapws_physics:
-            from darts.physics.geothermal.geothermal import GeothermalIAPWSFluidProps
-            self.idata.fluid = GeothermalIAPWSFluidProps()
-            self.compositional = False
-        else:
-            self.compositional = True
-            if self.compositional:
-                pass
-            else:
-                from darts.physics.geothermal.geothermal import GeothermalPHFluidProps
-                self.idata.fluid = GeothermalPHFluidProps()
-
-        # example - how to change the properties
-        # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
-
-        # from darts.physics.properties.basic import ConstFunc
-        # self.idata.fluid.conduction_ev['water'] = ConstFunc(172.8)
-
-        # if init_type== 'uniform': # uniform initial conditions
-        #     self.idata.initial.initial_pressure = 200.  # bars
-        #     self.idata.initial.initial_temperature = 350.  # K
-        # elif init_type == 'gradient':         # gradient by depth
-        #     self.idata.initial.reference_depth_for_pressure = 0  # [m]
-        #     self.idata.initial.pressure_gradient = 100  # [bar/km]
-        #     self.idata.initial.pressure_at_ref_depth = 1 # [bars]
-        #
-        #     self.idata.initial.reference_depth_for_temperature = 0  # [m]
-        #     self.idata.initial.temperature_gradient = 30  # [K/km]
-        #     self.idata.initial.temperature_at_ref_depth = 273.15 + 20 # [K]
-
-        # # well controls
-        # wctrl = self.idata.wells.controls  # short name
-        # wctrl.type = 'rate'
-        # #wctrl.type = 'bhp'
-        # if wctrl.type == 'bhp':
-        #     self.idata.wells.controls.inj_bhp = 250 # bars
-        #     self.idata.wells.controls.prod_bhp = 100 # bars
-        # elif wctrl.type == 'rate':
-        #     self.idata.wells.controls.inj_rate = 5500 # m3/day
-        #     self.idata.wells.controls.inj_bhp_constraint = 300 # upper limit for bhp, bars
-        #     self.idata.wells.controls.prod_rate = 5500 # m3/day
-        #     self.idata.wells.controls.prod_bhp_constraint = 70 # lower limit for bhp, bars
-        # self.idata.wells.controls.inj_bht = 300  # K
-
-        self.idata.obl.n_points = n_points
-        self.idata.obl.min_p = 1.
-        self.idata.obl.max_p = 351.
-        self.idata.obl.min_e = 1000.  # kJ/kmol, will be overwritten in PHFlash physics
-        self.idata.obl.max_e = 10000.  # kJ/kmol, will be overwritten in PHFlash physics

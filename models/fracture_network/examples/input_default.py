@@ -1,5 +1,4 @@
-from darts.input.input_data import InputData
-from darts.physics.geothermal.geothermal import GeothermalIAPWSFluidProps
+from darts.models.legacy_input_data import InputData
 
 def input_data_default():
     idata = InputData(type_hydr='thermal', type_mech='none', init_type='gradient')
@@ -78,7 +77,8 @@ def input_data_default():
     idata.rock.heat_capacity = 2200. # [kJ/m3/K]
     idata.rock.conductivity = 181.44  # [kJ/m/day/K]
 
-    idata.fluid = GeothermalIAPWSFluidProps()
+    # Fluid evaluators are now built inside Geothermal from GeothermalConfig
+    # (see model.py set_physics); no idata.fluid facade needed.
 
     # well controls
     class InputDataWellControls():  # an empty class - to group custom well control input data

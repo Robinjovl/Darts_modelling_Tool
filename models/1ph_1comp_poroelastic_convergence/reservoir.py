@@ -23,10 +23,10 @@ from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vec
 from darts.discretizer import matrix33 as disc_matrix33
 from darts.engines import Stiffness as engine_stiffness
 from darts.discretizer import Stiffness as disc_stiffness
-from darts.input.input_data import InputData
+from darts.models.mech_config import MechModelConfig
 # Definitions for the unstructured reservoir class:
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, idata: InputData, discretizer, mode, mesh_filename, fluid_vars):
+    def __init__(self, timer, idata: MechModelConfig, discretizer, mode, mesh_filename, fluid_vars):
         thermoporoelasticity = True if mode == 'thermoporoelastic' else False
         super().__init__(timer, discretizer, thermoporoelasticity, fluid_vars)
         # define correspondence between the physical tags in msh file and mesh elements types
@@ -107,7 +107,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             return dev_u, dev_p, dev_s, dev_seff, dev_v, dev_t
         else:
             return dev_u, dev_p, dev_s, dev_seff, dev_v
-    def calc_peclet_number(self, idata: InputData, time):
+    def calc_peclet_number(self, idata: MechModelConfig, time):
         assert(self.thermoporoelasticity)
 
         per_day_2_per_sec = 86400.0
@@ -164,7 +164,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.total_stress_an[cell_id] = self.r.total_stress_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time)[:,0]
             self.effective_stresses_an[cell_id] = self.r.effective_stress_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time)[:,0]
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(cell.centroid[0], cell.centroid[1], cell.centroid[2], time)[:,0]
-    def convergence_study_setup_pm_discretizer(self, idata: InputData):
+    def convergence_study_setup_pm_discretizer(self, idata: MechModelConfig):
         physical_tags = {}
         physical_tags['matrix'] = list(self.domain_tags[elem_loc.MATRIX])
         physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
@@ -231,7 +231,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.total_stress_an[cell_id] = self.r.total_stress_func(c.values[0], c.values[1], c.values[2], time)[:,0]
             self.effective_stresses_an[cell_id] = self.r.effective_stress_func(c.values[0], c.values[1], c.values[2], time)[:,0]
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
-    def convergence_study_setup_mech_discretizer_poroelasticity(self, idata: InputData):
+    def convergence_study_setup_mech_discretizer_poroelasticity(self, idata: MechModelConfig):
         self.mesh_data = meshio.read(self.mesh_filename)
         self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)
@@ -295,7 +295,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.total_stress_an[cell_id] = self.r.total_stress_func(c.values[0], c.values[1], c.values[2], time)[:,0]
             self.effective_stresses_an[cell_id] = self.r.effective_stress_func(c.values[0], c.values[1], c.values[2], time)[:,0]
             self.darcy_velocities_an[cell_id] = self.r.darcy_velocity_func(c.values[0], c.values[1], c.values[2], time)[:,0]
-    def convergence_study_setup_mech_discretizer_thermoporoelasticity(self, idata: InputData):
+    def convergence_study_setup_mech_discretizer_thermoporoelasticity(self, idata: MechModelConfig):
         self.mesh_data = meshio.read(self.mesh_filename)
         self.set_boundary_conditions(idata=idata)
         self.init_mech_discretizer(idata=idata)

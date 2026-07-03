@@ -2,9 +2,8 @@ import numpy as np
 import pandas as pd
 from scipy import interpolate
 
-from darts.input.input_data import InputData
+from darts.models.legacy_input_data import InputData
 from darts.engines import value_vector
-from darts.physics.deadoil import DeadOil, DeadOil2PFluidProps
 from darts.engines import well_control_iface
 
 from model_cpg import Model_CPG, fmt
@@ -213,8 +212,8 @@ class ModelCCS(Model_CPG):
 
         self.idata.geom.burden_layers = 0
 
-        # this sets default properties
-        self.idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
+        # CCS physics builds its own Compositional PropertyContainer in
+        # set_physics; the idata.fluid facade is unused here.
 
         # example - how to change the properties
         # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)

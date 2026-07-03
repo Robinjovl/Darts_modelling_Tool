@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 from scipy import interpolate
 
-from darts.input.input_data import InputData
+from darts.models.legacy_input_data import InputData
 from darts.engines import value_vector
-from darts.physics.deadoil import DeadOil, DeadOil2PFluidProps
+from darts.physics.deadoil import DeadOil, DeadOilConfig
 from darts.engines import well_control_iface
 
 from model_cpg import Model_CPG, fmt
@@ -17,7 +17,14 @@ class ModelDeadOil(Model_CPG):
         super().__init__()
 
     def set_physics(self):
-        self.physics = DeadOil(self.idata, self.timer, thermal=False)
+        config = DeadOilConfig(
+            thermal=False, n_phases=2,
+            n_points=self.idata.obl.n_points,
+            min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
+            min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
+            epsilon_z=self.idata.obl.epsilon_z,
+        )
+        self.physics = DeadOil(config, self.timer)
         self.ini = value_vector([1 - self.zero])  # initial composition (above water table depth) - oil
 
     def set_initial_conditions(self):  # override origin set_initial_conditions function from darts_model
@@ -120,8 +127,8 @@ class ModelDeadOil(Model_CPG):
 
         self.idata.geom.burden_layers = 0
 
-        # this sets default properties
-        self.idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
+        # Default 2-phase dead-oil fluid evaluators are now built inside DeadOil
+        # from DeadOilConfig (see set_physics); no idata.fluid facade needed.
 
         # example - how to change the properties
         # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)

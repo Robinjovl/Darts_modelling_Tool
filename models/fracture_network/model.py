@@ -1,5 +1,5 @@
 from darts.engines import value_vector, sim_params, well_control_iface
-from darts.physics.geothermal.geothermal import Geothermal
+from darts.physics.geothermal.geothermal import Geothermal, GeothermalConfig
 from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
@@ -7,7 +7,7 @@ from darts.engines import ms_well
 import os
 import numpy as np
 import meshio
-from darts.input.input_data import InputData
+from darts.models.legacy_input_data import InputData
 
 def fmt(x):
     return '{:.3}'.format(x)
@@ -102,7 +102,17 @@ class Model(CICDModel):
         # initialize physics
         self.cell_property = ['pressure', 'enthalpy', 'temperature']
 
-        self.physics = Geothermal(self.idata, self.timer)
+        self.physics = Geothermal(
+            GeothermalConfig(
+                n_points=self.idata.obl.n_points,
+                min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
+                min_e=self.idata.obl.min_e, max_e=self.idata.obl.max_e,
+                rock_compressibility=self.idata.rock.compressibility,
+                rock_compressibility_ref_p=self.idata.rock.compressibility_ref_p,
+                rock_compressibility_ref_T=self.idata.rock.compressibility_ref_T,
+            ),
+            self.timer,
+        )
 
         # Some tuning parameters:
         self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_newton=1e-4, tol_linear=1e-5)

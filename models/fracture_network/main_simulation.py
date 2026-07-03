@@ -9,7 +9,7 @@ import shutil
 from datetime import datetime
 from darts.tools.plot_darts import plot_temp_darts
 import pickle
-from darts.input.input_data import InputData
+from darts.models.legacy_input_data import InputData
 from set_case import set_input_data
 
 def run_simulation(idata : InputData, platform : str ='cpu'):

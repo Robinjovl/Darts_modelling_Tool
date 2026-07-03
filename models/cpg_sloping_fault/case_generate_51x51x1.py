@@ -1,5 +1,5 @@
 import numpy as np
-from darts.input.input_data import InputData
+from darts.models.legacy_input_data import InputData
 from case_base import input_data_base
 
 def set_fault_mult(idata: InputData):

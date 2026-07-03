@@ -9,7 +9,7 @@ from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus
-from darts.input.input_data import InputData
+from darts.models.mech_config import MechModelConfig
 from darts.engines import well_control_iface
 from darts.models.thmc_model import THMCModel
 from darts.physics.mech.poroelasticity import Poroelasticity
@@ -81,9 +81,9 @@ class Model(THMCModel):
         p_init = 300 * np.ones(nx * ny * nz)  # [bar]
 
         if 'thermal' in self.physics_type:
-            self.idata = InputData(type_hydr='thermal', type_mech='thermoporoelasticity', init_type = 'gradient')
+            self.idata = MechModelConfig.create(type_hydr='thermal', type_mech='thermoporoelasticity', init_type = 'gradient')
         else:
-            self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
+            self.idata = MechModelConfig.create(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
 
         self.idata.other.nx, self.idata.other.ny, self.idata.other.nz = nx, ny, nz
 

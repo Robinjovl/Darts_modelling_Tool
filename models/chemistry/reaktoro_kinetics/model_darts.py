@@ -13,7 +13,7 @@ from darts.physics.chemistry.property_container import (
 )
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.input.input_data import linear_solver_types
+from darts.models.solver_types import linear_solver_types
 from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,

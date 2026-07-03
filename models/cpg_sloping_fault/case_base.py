@@ -1,7 +1,8 @@
 import numpy as np
 import os
 
-from darts.input.input_data import InputData, linear_solver_types
+from darts.models.legacy_input_data import InputData
+from darts.models.solver_types import linear_solver_types
 from darts.models.darts_model import DataTS
 from darts.engines import sim_params
 

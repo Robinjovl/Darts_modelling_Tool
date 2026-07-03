@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 
 from darts.engines import value_vector
-from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
+from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH, GeothermalConfig
 from darts.engines import well_control_iface
 
-from darts.input.input_data import InputData
+from darts.models.legacy_input_data import InputData
 from set_case import set_input_data
 from model_cpg import Model_CPG, fmt
 
@@ -17,10 +17,18 @@ class ModelGeothermal(Model_CPG):
 
     def set_physics(self):
         # single component, two phase. Pressure and enthalpy are the main variables
+        config = GeothermalConfig(
+            n_points=self.idata.obl.n_points,
+            min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
+            min_e=self.idata.obl.min_e, max_e=self.idata.obl.max_e,
+            rock_compressibility=self.idata.rock.compressibility,
+            rock_compressibility_ref_p=self.idata.rock.compressibility_ref_p,
+            rock_compressibility_ref_T=self.idata.rock.compressibility_ref_T,
+        )
         if self.iapws_physics:
-            self.physics = Geothermal(self.idata, self.timer)  # IAPWS
+            self.physics = Geothermal(config, self.timer)  # IAPWS
         else:
-            self.physics = GeothermalPH(self.idata, self.timer)  # Flash
+            self.physics = GeothermalPH(config, self.timer)  # Flash
             self.physics.determine_obl_bounds(
                 min_p=self.idata.obl.min_p,
                 max_p=self.idata.obl.max_p,
@@ -111,10 +119,8 @@ class ModelGeothermal(Model_CPG):
 
         set_input_data(self.idata, case)
 
-        if self.iapws_physics:
-            self.idata.fluid = GeothermalIAPWSFluidProps()
-        else:
-            self.idata.fluid = GeothermalPHFluidProps()
+        # Fluid evaluators are now built inside Geothermal/GeothermalPH from
+        # GeothermalConfig (see set_physics); no idata.fluid facade needed.
 
         # example - how to change the properties
         # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)

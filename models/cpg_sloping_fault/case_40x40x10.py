@@ -1,6 +1,6 @@
 import numpy as np
 import os
-from darts.input.input_data import InputData
+from darts.models.legacy_input_data import InputData
 from case_base import input_data_base, get_case_files
 
 def input_data_case_40x40x10(idata: InputData, case: str):

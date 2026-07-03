@@ -21,7 +21,7 @@ from darts.engines import timer_node
 from darts.discretizer import elem_loc
 from darts.discretizer import vector_matrix33, vector_vector3, matrix, value_vector, index_vector
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
-from darts.input.input_data import InputData
+from darts.models.mech_config import MechModelConfig
 
 def get_mesh_filename(mesh='rect', suffix='', prop=''):
     if 'rect' in mesh:
@@ -36,7 +36,7 @@ def get_mesh_filename(mesh='rect', suffix='', prop=''):
 
 # Definitions for the unstructured reservoir class:
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, idata: InputData, fluid_vars, case='mandel', discretizer='mech_discretizer'):
+    def __init__(self, timer, idata: MechModelConfig, fluid_vars, case='mandel', discretizer='mech_discretizer'):
         thermoporoelasticity = idata.type_mech == 'thermoporoelasticity'
         super().__init__(timer, discretizer=discretizer, fluid_vars=fluid_vars, thermoporoelasticity=thermoporoelasticity)
 
@@ -73,7 +73,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_reservoir_main(idata=idata)
         self.set_pzt_bounds(p=self.p_init, z=None, t=self.t_init)
 
-    def init_tD_pD(self, idata: InputData, F, a=1):
+    def init_tD_pD(self, idata: MechModelConfig, F, a=1):
         '''
         set self.tD and self.pD, they used to get dimensionless solution to compare with analytic solution
         '''
@@ -84,7 +84,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.tD = self.a ** 2 / Cv / 86400
         self.pD = abs(F / a) / 2
     # Mandel
-    def mandel_north_dirichlet_mech_discretizer(self, idata: InputData):
+    def mandel_north_dirichlet_mech_discretizer(self, idata: MechModelConfig):
         self.mesh_data = meshio.read(idata.mesh.mesh_filename)
         self.set_uniform_initial_conditions(idata=idata)
         self.set_mandel_boundary_conditions(idata)
@@ -112,7 +112,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         # from compare_grad_discr import compare_gradients
         # compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
 
-    def mandel_north_dirichlet_pm_discretizer(self, idata: InputData):
+    def mandel_north_dirichlet_pm_discretizer(self, idata: MechModelConfig):
         self.set_uniform_initial_conditions(idata=idata)
         physical_tags = {}
         physical_tags['matrix'] = list(self.domain_tags[elem_loc.MATRIX])
@@ -162,7 +162,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_boundary_conditions(idata)
         self.boundary_conditions[self.bnd_tags['BND_Y+']]['mech'] = self.bc_type.STUCK_ROLLER(v_north)
         self.set_boundary_conditions_pm_discretizer()
-    def update_mandel_boundary(self, time, idata: InputData):
+    def update_mandel_boundary(self, time, idata: MechModelConfig):
         '''
         time-dependent boundary condition from the analytic solution
         :param time: time in days
@@ -172,7 +172,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_bc_rhs()
 
     # Terzaghi
-    def terzaghi_mech_discretizer(self, idata: InputData):
+    def terzaghi_mech_discretizer(self, idata: MechModelConfig):
         self.mesh_data = meshio.read(idata.mesh.mesh_filename)
 
         self.set_uniform_initial_conditions(idata=idata)
@@ -200,7 +200,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         # from compare_grad_discr import compare_gradients
         # compare_gradients('pm.pkl', new_cache_filename=None, orig_pm_arg=None, new_pm_arg=self.discr)
-    def terzaghi_pm_discretizer(self, idata: InputData):
+    def terzaghi_pm_discretizer(self, idata: MechModelConfig):
         self.set_uniform_initial_conditions(idata=idata)
         physical_tags = {'matrix': list(self.domain_tags[elem_loc.MATRIX])}
         physical_tags['fracture'] = list(self.domain_tags[elem_loc.FRACTURE])
@@ -251,7 +251,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_tD_pD(idata, self.F, a=0.5)
 
     # Two-layer Terzaghi
-    def two_layers_pm_discretizer(self, idata: InputData):
+    def two_layers_pm_discretizer(self, idata: MechModelConfig):
         self.set_uniform_initial_conditions(idata=idata)
 
         # define correspondence between the physical tags in msh file and mesh elements types
@@ -291,7 +291,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.init_bc_rhs()
         self.unstr_discr.f[3::4] = self.p_init - self.unstr_discr.p_ref[:]
 
-    def terzaghi_two_layers_pm_discretizer(self, idata: InputData):
+    def terzaghi_two_layers_pm_discretizer(self, idata: MechModelConfig):
         self.two_layers_pm_discretizer(idata)
 
         self.a = np.max(self.unstr_discr.mesh_data.points[:, 0])
@@ -299,7 +299,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.tD = 1.0
         self.pD = 1.0
 
-    def terzaghi_two_layers_no_analytics_pm_discretizer(self, idata: InputData):
+    def terzaghi_two_layers_no_analytics_pm_discretizer(self, idata: MechModelConfig):
         self.set_uniform_initial_conditions(idata=idata)
 
         # define correspondence between the physical tags in msh file and mesh elements types
@@ -339,7 +339,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.tD = 1.0
         self.pD = 1.0
 
-    def two_layers_mech_discretizer(self, idata: InputData):
+    def two_layers_mech_discretizer(self, idata: MechModelConfig):
         self.mesh_data = meshio.read(idata.mesh.mesh_filename)
         # define correspondence between the physical tags in msh file and mesh elements types
         # two regions for different properties
@@ -362,14 +362,14 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.discr.calc_cell_centered_stress_velocity_approximations()
         self.timer.node["discretization"].stop()
 
-    def terzaghi_two_layers_mech_discretizer(self, idata: InputData):
+    def terzaghi_two_layers_mech_discretizer(self, idata: MechModelConfig):
         self.two_layers_mech_discretizer(idata)
         self.omega = self.approximate_roots_two_layers_terzaghi()
         self.tD = 1.0
         self.pD = 1.0
 
     # Bai, 2005 (unidimensional thermoporoelastic consolidation)
-    def bai_thermoporoelastic_consolidation(self, idata: InputData):
+    def bai_thermoporoelastic_consolidation(self, idata: MechModelConfig):
         self.mesh_data = meshio.read(idata.mesh.mesh_filename)
         self.set_uniform_initial_conditions(idata=idata)
         self.F = idata.other.F
@@ -396,7 +396,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.timer.node["discretization"].stop()
 
     # Mandel analytics
-    def get_params_analytic(self, idata: InputData):
+    def get_params_analytic(self, idata: MechModelConfig):
         F = np.fabs(self.F)
         K_s = self.lam + 2 * self.mu / 3
         skempton = idata.rock.biot * self.M / (K_s + self.M * idata.rock.biot ** 2)
@@ -411,7 +411,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         cy1 = F * (1 - nu_u) / (mu_s * self.a)
         return c_f, cy0, cy1, skempton, nu_u, nu_s, k_s
 
-    def get_vertical_displacement_north_mandel(self, t, idata: InputData):
+    def get_vertical_displacement_north_mandel(self, t, idata: MechModelConfig):
         c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata)
 
         # Calculate constants
@@ -426,7 +426,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         north_bc = (cy0 + cy1 * uy_sum) * self.b
         return north_bc
-    def approximate_roots(self, idata: InputData) -> np.ndarray:
+    def approximate_roots(self, idata: MechModelConfig) -> np.ndarray:
         """
         f(x) = tan(x) - ((1-nu)/(nu_u-nu)) x
         """
@@ -450,7 +450,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             x0 += np.pi  # apply a phase change of pi to get the next root
 
         return a_n
-    def mandel_exact_pressure(self, idata:InputData, t, xc) -> np.ndarray:
+    def mandel_exact_pressure(self, idata: MechModelConfig, t, xc) -> np.ndarray:
         """
         Pressure solution for a given time `t`.
         """
@@ -474,7 +474,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             p = c0 * p_sum_0
 
         return p
-    def mandel_exact_displacements(self, idata:InputData, t, xc) -> np.ndarray:
+    def mandel_exact_displacements(self, idata: MechModelConfig, t, xc) -> np.ndarray:
         """
         Exact pressure solution for a given time `t`.
 
@@ -539,7 +539,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     * np.exp((-((2 * i - 1) ** 2)) * (np.pi ** 2 / 4) * dimless_t) )
         p = (4 / np.pi) * vertical_load * sum_series
         return p
-    def terzaghi_exact_pressure(self, idata: InputData, t, xc) -> np.ndarray:
+    def terzaghi_exact_pressure(self, idata: MechModelConfig, t, xc) -> np.ndarray:
         # Parameters
         c_f, cy0, cy1, skempton, nu_u, nu_s, k_s = self.get_params_analytic(idata=idata)
         h = self.a
@@ -560,7 +560,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         else:
             p = p0
         return p
-    def terzaghi_exact_displacements(self, idata: InputData, t, xc) -> np.ndarray:
+    def terzaghi_exact_displacements(self, idata: MechModelConfig, t, xc) -> np.ndarray:
         """Compute exact pressure.
         Args:
             t: Time in seconds.

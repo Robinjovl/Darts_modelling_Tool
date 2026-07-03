@@ -1,6 +1,6 @@
 import os
 
-from darts.input.input_data import InputData
+from darts.models.legacy_input_data import InputData
 
 from case_base import input_data_base
 from case_generate_5x3x4 import input_data_case_5x3x4

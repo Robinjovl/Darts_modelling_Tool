@@ -6,14 +6,14 @@ from darts.discretizer import matrix33 as disc_matrix33
 from darts.discretizer import Stiffness as disc_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_biot_modulus
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
-from darts.input.input_data import InputData
+from darts.models.mech_config import MechModelConfig
 from darts.engines import timer_node, ms_well, ms_well_vector
 import copy
 from scipy.interpolate import griddata as gd
 from functools import reduce
 
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False, generate_mesh=False):
+    def __init__(self, timer, idata: MechModelConfig, model_folder, fluid_vars=['p'], uniform_props=False, generate_mesh=False):
         self.idata = idata
 
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
@@ -43,7 +43,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
     def get_reservoir_initial_temperature(self, depths):
         return self.idata.initial.temperature_at_ref_depth + self.idata.initial.temperature_gradient * depths
 
-    def field_reservoir(self, idata: InputData, model_folder, uniform_props=False, generate_mesh=False):
+    def field_reservoir(self, idata: MechModelConfig, model_folder, uniform_props=False, generate_mesh=False):
 
         self.mesh_filename = os.path.join(model_folder, 'mesh.msh')
         nx, ny, nz = idata.other.nx, idata.other.ny, idata.other.nz
@@ -130,7 +130,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.timer.node["discretization"].stop()
         print('Init reservoir finished')
 
-    def set_boundary_conditions(self, idata: InputData):
+    def set_boundary_conditions(self, idata: MechModelConfig):
         self.boundary_conditions = {}
         self.boundary_conditions[idata.mesh.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
         self.boundary_conditions[idata.mesh.bnd_tags['BND_X+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
@@ -171,7 +171,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.bc_rhs[self.n_bc_vars * id + self.u_bc_var:self.n_bc_vars * id + self.u_bc_var + self.n_dim] = \
                     bc['mech']['rn'] * n + bc['mech']['rt']
 
-    def init_heterogeneous_properties(self, idata: InputData):
+    def init_heterogeneous_properties(self, idata: MechModelConfig):
         '''
         set matrix properties using InputData
         :return:

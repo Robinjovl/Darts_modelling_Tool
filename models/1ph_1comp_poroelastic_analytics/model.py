@@ -6,7 +6,8 @@ from darts.engines import sim_params
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus, bound_cond
-from darts.input.input_data import InputData, linear_solver_types
+from darts.models.mech_config import MechModelConfig
+from darts.models.solver_types import linear_solver_types
 
 
 class Model(THMCModel):
@@ -30,7 +31,7 @@ class Model(THMCModel):
             self.physics.engine.ls_params[-1].linear_type = linear_type
 
         # data_ts is used only for linear solver params for PETSc
-        self.data_ts = self.idata.sim.DataTS  # this needed as mech models have their own run_python implementation
+        self.data_ts = self.idata.sim.data_ts  # this needed as mech models have their own run_python implementation
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
@@ -44,7 +45,7 @@ class Model(THMCModel):
         else:
             type_hydr = 'isothermal'
             type_mech = 'poroelasticity'  # Note: not supported with thermal
-        self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech, init_type='uniform')
+        self.idata = MechModelConfig.create(type_hydr=type_hydr, type_mech=type_mech, init_type='uniform')
 
         self.idata.other.case_name = self.case
 
@@ -237,12 +238,12 @@ class Model(THMCModel):
 
         # optional: use PETSc linear solver
         from darts.models.darts_model import DataTS
-        self.idata.sim.DataTS = DataTS(n_vars=0)
-        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
-        #self.idata.sim.DataTS.linear_print_level = 0
+        self.idata.sim.data_ts = DataTS(n_vars=0)
+        #self.idata.sim.data_ts.linear_type = linear_solver_types.CPU_PETSC_FS
+        #self.idata.sim.data_ts.linear_print_level = 0
 
         # optional: use PARDISO linear solver
-        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PARDISO
+        #self.idata.sim.data_ts.linear_type = linear_solver_types.CPU_PARDISO
 
         self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9

@@ -14,7 +14,7 @@ from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus
-from darts.input.input_data import InputData
+from darts.models.mech_config import MechModelConfig
 from reservoir import UnstructReservoirCustom
 
 class Model(THMCModel):
@@ -71,7 +71,7 @@ class Model(THMCModel):
                         reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
         nu = 0.2
 
-        self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
+        self.idata = MechModelConfig.create(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
         self.idata.rock.density = 2650.
         self.idata.rock.porosity = porosity
         self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
