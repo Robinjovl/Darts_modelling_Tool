@@ -1,4 +1,4 @@
-// Standalone unit test for point_data_store (Phase F / FC03 hybrid arena+overlay).
+// Standalone unit test for point_data_store (hybrid arena+overlay).
 // Build:  g++ -std=c++20 -O2 -I interpolation/include tests/interpolators/cpp/test_point_data_store.cpp -o /tmp/t && /tmp/t
 #undef NDEBUG  // keep assert() active even in a Release/NDEBUG ctest build
 #include <cassert>
@@ -69,7 +69,7 @@ struct kcmp
   bool operator()(const K &a, const K &b) const { return a.idx < b.idx; }
 };
 
-// minimal JSON int field reader for the FC03 header
+// minimal JSON int field reader for the arena-file header
 static uint64_t jint(const std::string &s, const char *field)
 {
   std::string pat = std::string("\"") + field + "\":";
@@ -99,8 +99,8 @@ static void read_header(const std::string &path, uint64_t &bo, uint64_t &ko, uin
   hash_id = jint(json, "hash_id");
 }
 
-// Golden cell_key_hash::hash64 vectors. hash64 is the FC03 on-disk slot-placement
-// function: if these change, every existing FC03 arena's placement is invalid. The
+// Golden cell_key_hash::hash64 vectors. hash64 is the on-disk slot-placement
+// function: if these change, every existing arena's placement is invalid. The
 // arena_hash_id() fingerprint already auto-detects this (old arenas are safely
 // rebuilt, never mis-probed), but this pin makes an *accidental* hash change a loud
 // CI failure so the version tag is bumped deliberately.
@@ -146,11 +146,11 @@ int main()
   {
     std::string ram_path = temp_path("_fc3_test_ram.bin");
     std::string mmap_path = temp_path("_fc3_test_mmap.bin");
-    unset_env("OBL_FC3_BUILD_MMAP");
+    unset_env("OBL_CACHE_BUILD_MMAP");
     s1.build_arena_file(ram_path, hid); // RAM path (small arena -> fits)
-    set_env("OBL_FC3_BUILD_MMAP", "1");
+    set_env("OBL_CACHE_BUILD_MMAP", "1");
     s1.build_arena_file(mmap_path, hid); // forced mmap path
-    unset_env("OBL_FC3_BUILD_MMAP");
+    unset_env("OBL_CACHE_BUILD_MMAP");
     auto slurp = [](const std::string &p) {
       FILE *f = std::fopen(p.c_str(), "rb");
       assert(f);

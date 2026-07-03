@@ -12,7 +12,7 @@
 // token per branch.
 //
 // Storage is a HYBRID:
-//   * arena_  — an mmap'd, IMMUTABLE open-addressing hash table (the on-disk FC03
+//   * arena_  — an mmap'd, IMMUTABLE open-addressing hash table (the on-disk cache
 //               base). Loaded in O(1) by mmap (no per-point rebuild) and used in
 //               place for lookups; its pages are file-backed / demand-paged, NOT
 //               anonymous RAM -> the ~150 GB resident-map OOM is structurally gone.
@@ -39,8 +39,14 @@
 // contiguous little-endian float64, 8-byte aligned (page-aligned region start), so
 // at()/val_at() return a const std::array<value_t,N_OPS>& by reinterpret_cast
 // directly into the mmap (zero copy). Endianness/alignment are recorded in the
-// FC03 header and validated by the Python loader before mmap_arena_at is called.
-// POSIX only (Linux); on other platforms FC03 falls back to FC02 in Python.
+// cache-file header and validated by the Python loader before mmap_arena_at is called.
+// Cross-platform: both POSIX mmap (Linux/macOS) and the Win32
+// CreateFileMapping/MapViewOfFile path are implemented (see map_readonly /
+// map_rw_new / flush_unmap_rw) and the cache-file bytes are identical on every OS,
+// so the arena is used on all supported platforms. The Python loader
+// (darts/tools/obl_cache.py) selects the arena path on interpolator capability
+// (has_arena / mmap_arena), never on the OS; interpolators built without arena
+// support (static/non-adaptive itors, some GPU builds) use the plain-pickle cache.
 // ============================================================================
 
 #include <array>
@@ -411,8 +417,8 @@ public:
   // ---- map-like surface used by the interpolators ----
   size_t size() const { return overlay_.size() + arena_.count; }
   void reserve(size_t n) { overlay_.reserve(n > arena_.count ? n - arena_.count : 0); }
-  // Wipe overlay AND detach/unmap the arena: restores FC02 overlay-only semantics
-  // (used by bulk_set_point_data_arrays = FC02 full reload).
+  // Wipe overlay AND detach/unmap the arena: restores arena-less overlay-only
+  // semantics (used by bulk_set_point_data_arrays = full overlay reload).
   void clear()
   {
     overlay_.clear();
@@ -594,7 +600,7 @@ public:
     map_len_ = map_len;
   }
 
-  // ---- FC03 fingerprint: changes if the hash64 output, the slot-PLACEMENT algorithm,
+  // ---- arena fingerprint: changes if the hash64 output, the slot-PLACEMENT algorithm,
   // N_DIMS or N_OPS change. An arena whose recorded hash_id != this is never mis-probed
   // (the loader rebuilds it from a placement-independent occupied-slot scan). PLACEMENT_VER
   // bumps whenever the home/probe scheme changes (v2 = Lemire reduction, non-power-of-two).
@@ -627,7 +633,7 @@ public:
     char json[1024];
   };
 
-  // Compute the FC03 layout + JSON header for the current live count.
+  // Compute the arena layout + JSON header for the current live count.
   arena_layout_t _arena_layout(uint64_t hash_id) const
   {
     arena_layout_t L;
@@ -796,14 +802,14 @@ public:
     pds_detail::flush_unmap_rw(m);
   }
 
-  // Build a COMPLETE FC03 file at `path` (caller renames atomically). Prefers the fast
+  // Build a COMPLETE arena file at `path` (caller renames atomically). Prefers the fast
   // RAM-buffer builder when the arena fits comfortably in available RAM, else falls back
   // to the memory-bounded mmap builder. Both produce byte-identical files. Set the env var
-  // OBL_FC3_BUILD_MMAP to force the mmap builder.
+  // OBL_CACHE_BUILD_MMAP to force the mmap builder.
   void build_arena_file(const std::string &path, uint64_t hash_id) const
   {
     const arena_layout_t L = _arena_layout(hash_id);
-    const bool force_mmap = std::getenv("OBL_FC3_BUILD_MMAP") != nullptr;
+    const bool force_mmap = std::getenv("OBL_CACHE_BUILD_MMAP") != nullptr;
     if (!force_mmap && _arena_fits_in_ram(L.arena_end))
     {
       if (_build_arena_ram(path, L))
@@ -812,7 +818,7 @@ public:
     _build_arena_mmap(path, L);
   }
 
-  // mmap an FC03 arena written by build_arena_file (offsets parsed by Python and
+  // mmap an arena written by build_arena_file (offsets parsed by Python and
   // passed in). Read-only, private mapping; the store owns it (munmap on destruct).
   void mmap_arena_at(const std::string &path, size_t bitmap_off, size_t keys_off,
                      size_t vals_off, size_t C, size_t count)

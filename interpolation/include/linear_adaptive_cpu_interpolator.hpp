@@ -35,7 +35,7 @@ public:
     /**
      * Adaptive supporting-point storage, keyed on signed multi-index (cell_key_t).
      */
-    // Phase F (FC03): hybrid mmap'd-arena + in-RAM overlay store (drop-in).
+    // Hybrid mmap'd-arena + in-RAM overlay store (drop-in).
     point_data_store<N_DIMS, N_OPS, double, key_hash_t> point_data;
     /**
      * Multi-index keys of supporting points materialized since the last external cache

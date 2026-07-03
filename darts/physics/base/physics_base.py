@@ -1522,7 +1522,7 @@ class PhysicsBase:
             return
         self._cache_finalized = True
         try:
-            # write_cache() now writes the self-contained FC02 file directly; there is no
+            # write_cache() now writes the self-contained arena cache file directly; there is no
             # separate derived snapshot to refresh.
             self.write_cache()
         finally:
