@@ -1001,7 +1001,15 @@ class CPG_Reservoir(ReservoirBase):
         :rtype: str or None
         :raises ValueError: If geometry controls are invalid.
         """
-        import vtk
+        try:
+            import vtk
+        except ImportError:
+            warnings.warn(
+                "Well VTK export skipped: the optional 'vtk' package is not "
+                "installed (install open-darts[viz] to enable create_vtk_wells).",
+                stacklevel=2,
+            )
+            return None
 
         if tube_sides < 3:
             raise ValueError(f"tube_sides must be >= 3, got {tube_sides}.")
