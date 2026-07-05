@@ -7,7 +7,13 @@
   - Live PH-diagram: `plot_live` no longer auto-derives its axes from the (now unbounded) OBL grid — set `LivePlotConfig.p_bounds`, `h_bounds` and `n_points` before enabling `enable_ph_diagram`.
   - Output / post-processing: `output.py` drops OBL-window single-precision state clipping and the P-T dead-operator guard, and the `body_path.txt` / output-header format changed from `n_points min max` to per-axis `origin step` with space-joined multi-index hypercube keys — update any parser of those files.
   - The `darts.engines.uint128` Python binding and the 128-bit-index interpolator instantiations were removed (superseded by the multi-index storage); out-of-tree C++ engine subclasses overriding `get_n_ops()` must change the return type to `uint16_t` and be recompiled.
-- Migration guide ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)) — OBL grid API: convert each axis with `step = (max - min) / (n_points - 1)` and `origin = min` (the composition origin defaults to `epsilon_z`; `axes_step`/`axes_origin` length = `1` pressure `+ (nc-1)` compositions `[+ 1` thermal `]`; for `extrapolation_flag=True` all composition steps must be equal):\
+- Migration guide ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)) — OBL grid API. Per axis `i` (pressure, each composition, thermal):
+  ```
+  # axes_min[i], axes_max[i], n_points  ->  axes_origin[i], axes_step[i]
+  axes_origin[i] = axes_min[i]                             # grid floor; composition axes use epsilon_z (not 0)
+  axes_step[i]   = (axes_max[i] - axes_min[i]) / (n_points - 1)
+  ```
+  `axes_step`/`axes_origin` length = `1` pressure `+ (nc-1)` compositions `[+ 1` thermal `]`; for `extrapolation_flag=True` all composition steps must be equal. The formula above reproduces the previous grid; but since the grid is now unbounded, `axes_origin` is only the index-0 anchor, so a better choice is to set its pressure and thermal entries to the model's **initial conditions** (keep the `epsilon_z` floor on composition axes) — the initial state then lands exactly on a grid node and the grid grows around the operating point. It does not default to the initial state (physics is built before the initial conditions are set); `axes_origin` otherwise falls back to a fixed unit floor (1 bar / `epsilon_z` / 273.15 K). Worked examples:\
   {- Before (isothermal, nc=3): Compositional(components, phases, timer, n_points=200, min_p=1, max_p=300, min_z=0., max_z=1., epsilon_z=eps, extrapolation_flag=True) -}\
   {+ Now:    Compositional(components, phases, timer, axes_step=[(300-1)/199, (1-3*eps)/199, (1-3*eps)/199], axes_origin=[1.0, eps, eps], epsilon_z=eps, extrapolation_flag=True) +}
   \

@@ -244,21 +244,15 @@ if(NOT OPENDARTS_INTERPOLATOR_PROFILE MATCHES "^(MINIMAL|FULL)$")
 endif()
 message(STATUS "  Interpolator profile: ${OPENDARTS_INTERPOLATOR_PROFILE}")
 
-# Maximum number of OBL parameter-space dimensions for interpolator template
-# instantiation. The recursive_exposer loops produce one class per (N_DIMS,
-# N_OPS) pair for N_DIMS in 1..OPENDARTS_MAX_DIMS, so this is also the dominant
-# knob on compile-time memory: interpolate_with_derivatives unrolls O(2^N_DIMS)
-# per instantiation. Default 8 matches the historical hardcoded value.
-#
-# This single variable drives BOTH:
-#   - MAX_DIMS in interpolation_config.h (per-TU define on the interpolators target)
-#   - MAX_NC   in engines/src/globals.h  (global define; bounds the engine_nc_*
-#                                         and engine_super_* component count loop)
-# The two were always set to the same value in practice; mapping them to one
-# cmake variable removes the silent NC=8 thermal mismatch (MAX_DIMS must be at
-# least MAX_NC + 1 for thermal models — keep them equal here, document the
-# constraint, and increase OPENDARTS_MAX_DIMS if a thermal-at-max-NC model is
-# needed).
+# OPENDARTS_MAX_DIMS = N drives BOTH from one knob (kept equal):
+#   - MAX_DIMS (interpolation_config.h): OBL dimensions, N_DIMS in 1..N
+#   - MAX_NC   (engines/src/globals.h) : engine components, NC in 2..N
+# A model's OBL dimension is NC (isothermal) or NC+1 (thermal, +1 per history axis),
+# so MAX_NC = MAX_DIMS = N supports isothermal up to N components and thermal up to N-1.
+# Example (default N=8): isothermal up to 8 components, thermal up to 7; thermal at 8
+# components needs N_DIMS=9, which is not compiled and would fail -- bump N to 9 for that.
+# N is the dominant compile-time/RAM knob (interpolate_with_derivatives unrolls
+# O(2^N_DIMS) per instantiation), so raise it only when needed. Default 8 = historical value.
 set(OPENDARTS_MAX_DIMS "8" CACHE STRING
     "Maximum number of OBL parameter-space dimensions and engine components (typical: 6–8). Drives both MAX_DIMS (interpolators) and MAX_NC (engines).")
 if(NOT OPENDARTS_MAX_DIMS MATCHES "^[1-9][0-9]*$")
