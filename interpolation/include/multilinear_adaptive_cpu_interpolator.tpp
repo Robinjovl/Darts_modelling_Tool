@@ -147,6 +147,7 @@ int multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::interpolate(
   value_t mult[N_DIMS];
   key_t hc_key;
 
+  int axis_overflows = 0; // branchless tally of int32 cell-index overflows for this point
   for (uint8_t i = 0; i < N_DIMS; ++i)
   {
     hc_key.idx[i] = get_axis_interval_index_low_mult_unbounded<value_t>(
@@ -154,8 +155,10 @@ int multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::interpolate(
         this->axes_origin_internal[i],
         this->axes_step_internal[i],
         this->axes_step_inv_internal[i],
-        &axis_low[i], &mult[i]);
+        &axis_low[i], &mult[i], &axis_overflows);
   }
+  this->report_axis_index_overflows(static_cast<uint64_t>(axis_overflows),
+                                    this->axes_origin, this->axes_step);
 
   const hypercube_data_t &hc = this->get_hypercube_data(hc_key);
 
@@ -352,23 +355,37 @@ int multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::interpolate_w
 
   std::vector<key_t> hc_keys(n_cells);
 
+  // Branchless per-axis int32 overflow tally, summed across threads via OpenMP
+  // reduction (each cell increments a per-iteration stack local, added into the
+  // reduction variable) so the hot loop stays lock-free. Reported once, off the loop,
+  // below. This is the canonical index computation for the batch; the Phase-3
+  // re-computation and the get_hypercube_data path deliberately do NOT count, to
+  // avoid double-tallying the same cells.
+  long long batch_overflows = 0;
+
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static) reduction(+ : batch_overflows)
 #endif
   for (int p = 0; p < static_cast<int>(n_cells); p++)
   {
     int offset = points_idxs[p];
     key_t hc_key;
+    int cell_overflows = 0;
     for (uint8_t i = 0; i < N_DIMS; ++i)
     {
       const size_t coord_index = static_cast<size_t>(offset) * N_DIMS + i;
       hc_key.idx[i] = get_axis_interval_index_unbounded<value_t>(
           points[coord_index],
           this->axes_origin_internal[i],
-          this->axes_step_inv_internal[i]);
+          this->axes_step_inv_internal[i],
+          &cell_overflows);
     }
+    batch_overflows += cell_overflows;
     hc_keys[p] = hc_key;
   }
+
+  this->report_axis_index_overflows(static_cast<uint64_t>(batch_overflows),
+                                    this->axes_origin, this->axes_step);
 
   // Collect unique missing hypercube keys
   std::vector<key_t> unique_hc(hc_keys.begin(), hc_keys.end());

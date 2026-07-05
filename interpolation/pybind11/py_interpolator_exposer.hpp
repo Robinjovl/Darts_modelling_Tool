@@ -333,6 +333,11 @@ struct interpolator_exposer
             "Number of supporting points currently in the adaptive cache")
           .def("get_n_cached_hypercubes", &interpolator_class::get_n_cached_hypercubes,
             "Number of hypercubes currently in the adaptive cache")
+          .def("get_axis_overflow_count", &interpolator_class::get_axis_overflow_count,
+            "Cumulative count of per-axis cell indices that overflowed int32 and were "
+            "saturation-clamped (all batches). Nonzero => some queried state fell so far "
+            "outside the OBL grid that its multi-index did not fit in int32 (typically a "
+            "diverging Newton step); a one-time host warning is also emitted.")
           .def("set_hypercube_cap", &interpolator_class::set_hypercube_cap,
             "Bound the in-memory derived hypercube cache to ~N most-recently-used "
             "entries (0 = unbounded). Caps peak RAM; the persisted supporting-point "
@@ -663,6 +668,10 @@ struct interpolator_exposer
             "keys"_a, "vals"_a)
           .def("get_n_cached_points", &interpolator_class::get_n_cached_points)
           .def("get_n_cached_hypercubes", &interpolator_class::get_n_cached_hypercubes)
+          .def("get_axis_overflow_count", &interpolator_class::get_axis_overflow_count,
+            "Cumulative count of per-axis cell indices that overflowed int32 and were "
+            "saturation-clamped (all batches); nonzero indicates states driven far outside "
+            "the OBL grid (typically a diverging Newton step).")
           .def("set_hypercube_cap", &interpolator_class::set_hypercube_cap,
             "Bound the device hypercube cache to ~N hypercubes (0 = unbounded); on "
             "overflow the device map + host key tracker are dropped and rebuilt on "

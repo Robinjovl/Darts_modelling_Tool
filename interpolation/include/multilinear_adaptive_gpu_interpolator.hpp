@@ -162,6 +162,7 @@ protected:
   pinned_value_vector_t new_hypercube_data_buffer;  ///< Generated hypercube data buffer to copy to device (host)
   pinned_key_vector_t new_hypercube_index_buffer;   ///< Generated hypercube multi-indices buffer to copy to device (host)
   pinned_int_vector_t hashmap_expansion_needed;     ///< Flag showing if hashmap expansion needed (host)
+  pinned_int_vector_t axis_overflow_count_host;     ///< Per-batch count of int32 cell-index overflows read back from device (host)
 
   std::vector<value_t> new_hypercube_data;  ///< Data storage for generated hypercubes (host stable buffer)
   std::vector<key_t> new_hypercube_index;   ///< Multi-index storage for generated hypercubes (host stable buffer)
@@ -182,6 +183,7 @@ protected:
   thrust::device_vector<value_t> new_hypercube_data_buffer_d;  ///< Generated hypercube data buffer (device)
   thrust::device_vector<key_t> new_hypercube_index_buffer_d;   ///< Generated hypercube multi-indices buffer (device)
   thrust::device_vector<int> hashmap_expansion_needed_d;
+  thrust::device_vector<int> axis_overflow_count_d; ///< Per-batch int32 cell-index overflow accumulator (device; atomicAdd target)
 
   cudaStream_t hypercube_generation_stream;
   cudaStream_t stage1_interpolation_stream;

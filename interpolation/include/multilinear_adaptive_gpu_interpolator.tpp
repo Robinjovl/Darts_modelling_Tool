@@ -77,6 +77,8 @@ multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::multilinear_adapt
   new_hypercube_index.resize(HYPERCUBE_BUFFER_SIZE);
   hashmap_expansion_needed.resize(1);
   hashmap_expansion_needed_d.resize(1);
+  axis_overflow_count_host.resize(1);
+  axis_overflow_count_d.resize(1);
 }
 
 template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
@@ -192,6 +194,10 @@ int multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::evaluate_with
   state_hc_keys_d.resize(n_states_idxs);
   hypercubes_to_compute.resize(n_states_idxs);
 
+  // Reset the per-batch int32 cell-index overflow accumulator; the check kernel
+  // atomicAdds into it, and it is read back off the hot path near the end of the batch.
+  axis_overflow_count_d[0] = 0;
+
   if (detailed_timing)
     this->timer->node["gpu interpolation"].node["check"].start_gpu();
   multilinear_adaptive3_check_hypercube_ready_kernel<value_t, N_DIMS, N_OPS>
@@ -200,7 +206,8 @@ int multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::evaluate_with
           thrust::raw_pointer_cast(this->axes_origin_d.data()),
           thrust::raw_pointer_cast(this->axes_step_inv_d.data()),
           hypercube_data_d,
-          thrust::raw_pointer_cast(state_hc_keys_d.data()));
+          thrust::raw_pointer_cast(state_hc_keys_d.data()),
+          thrust::raw_pointer_cast(axis_overflow_count_d.data()));
   if (detailed_timing)
     this->timer->node["gpu interpolation"].node["check"].stop_gpu();
 
@@ -342,6 +349,16 @@ int multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::evaluate_with
   }
 
   this->timer->node["gpu interpolation"].stop();
+
+  // Off the hot path: read back this batch's int32 cell-index overflow tally and hand
+  // it to the unified reporter (blocking copy also guarantees the check kernel, which
+  // ran on the default stream, has completed). Same warning path as the CPU backend.
+  cudaMemcpy(thrust::raw_pointer_cast(axis_overflow_count_host.data()),
+             thrust::raw_pointer_cast(axis_overflow_count_d.data()), sizeof(int),
+             cudaMemcpyDeviceToHost);
+  this->report_axis_index_overflows(static_cast<uint64_t>(axis_overflow_count_host[0]),
+                                    this->axes_origin, this->axes_step);
+
   this->n_interpolations += N_OPS * n_states_idxs;
   this->timer->stop();
   return 0;
@@ -354,7 +371,7 @@ __global__ void multilinear_adaptive3_check_hypercube_ready_kernel(
     const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
     const value_t *axis_min_d, const value_t *axis_step_inv_d,
     gpu_hashmap_async::gpu_hash_map<value_t, (1 << N_DIMS) * N_OPS> *hypercube_data_d,
-    cell_key_t<N_DIMS> *state_hc_keys)
+    cell_key_t<N_DIMS> *state_hc_keys, int *overflow_counter_d)
 {
   const unsigned i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i > n_states_idxs - 1)
@@ -362,12 +379,20 @@ __global__ void multilinear_adaptive3_check_hypercube_ready_kernel(
 
   int state_idx = states_idxs_d[i];
 
+  // Per-thread int32 cell-index overflow tally, accumulated branchlessly into a
+  // register. This is the canonical index computation for the batch (mirrors CPU
+  // Phase 1); the interpolate kernels re-derive the index without counting so cells
+  // are tallied once. Reduced to the device accumulator below only if nonzero — a
+  // warp-coherent, almost-always-not-taken branch, so effectively free on the hot path.
+  int cell_overflows = 0;
   cell_key_t<N_DIMS> hc_key;
   for (int d = 0; d < N_DIMS; ++d)
   {
     hc_key.idx[d] = get_axis_interval_index_unbounded<value_t>(
-        states_d[state_idx * N_DIMS + d], axis_min_d[d], axis_step_inv_d[d]);
+        states_d[state_idx * N_DIMS + d], axis_min_d[d], axis_step_inv_d[d], &cell_overflows);
   }
+  if (cell_overflows)
+    atomicAdd(overflow_counter_d, cell_overflows);
 
   value_t *hypercube_data;
   if (lookup_data(hypercube_data_d, gpu_hashmap_async::key_from_cell<N_DIMS>(hc_key), &hypercube_data))
