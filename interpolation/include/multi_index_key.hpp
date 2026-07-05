@@ -59,7 +59,7 @@ struct cell_key_t
 };
 
 /**
- * High-quality multi-index hash: a boost::hash_combine over the axes whose inner
+ * Multi-index hash: a boost::hash_combine over the axes whose inner
  * mixer is the MurmurHash3 fmix64 finalizer.
  *
  * Each per-component 32-bit value is folded into the running hash with the
