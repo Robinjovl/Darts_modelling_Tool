@@ -59,11 +59,14 @@ struct cell_key_t
 };
 
 /**
- * High-quality multi-index hash (wyhash-style).
+ * High-quality multi-index hash: a boost::hash_combine over the axes whose inner
+ * mixer is the MurmurHash3 fmix64 finalizer.
  *
- * Mixes per-component 32-bit values with 64-bit multiplications and xors so every
- * axis contributes independent entropy. Tested against birthday-collision rates
- * up to N_DIMS=20; collision rate is on the order of 2^-32 at 10^6 keys.
+ * Each per-component 32-bit value is folded into the running hash with the
+ * boost::hash_combine spreader (golden-ratio constant + shift-6/shift-2), and the
+ * added term is avalanched through fmix64 so every axis contributes independent
+ * entropy. Tested against birthday-collision rates up to N_DIMS=20; collision rate
+ * is on the order of 2^-32 at 10^6 keys.
  *
  * NOTE: an FNV-1a alternative over uint64 chunks compute-wise ~3× cheaper was
  * benchmarked and rejected — its weaker distribution increased
