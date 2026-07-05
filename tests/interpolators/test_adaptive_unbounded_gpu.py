@@ -27,9 +27,13 @@ N_OPS = 4
 
 
 def _resolve_gpu_cls():
-    """Return the (uint32- or uint64-index) GPU adaptive template, or None on a CPU build."""
-    for tag in ("i", "l"):
-        cls_name = f"multilinear_adaptive_gpu_interpolator_{tag}_d_{N_DIMS}_{N_OPS}"
+    """Return the GPU adaptive template, or None on a CPU build. Letterless name first
+    (index-type template parameter dropped), legacy _i_/_l_ names as fallback."""
+    for cls_name in (
+        f"multilinear_adaptive_gpu_interpolator_d_{N_DIMS}_{N_OPS}",
+        f"multilinear_adaptive_gpu_interpolator_i_d_{N_DIMS}_{N_OPS}",
+        f"multilinear_adaptive_gpu_interpolator_l_d_{N_DIMS}_{N_OPS}",
+    ):
         if hasattr(_itor, cls_name):
             return getattr(_itor, cls_name)
     return None

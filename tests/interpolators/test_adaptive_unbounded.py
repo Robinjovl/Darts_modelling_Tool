@@ -34,15 +34,17 @@ N_OPS = 4
 
 
 def _resolve_cls(base):
-    # The CPU adaptive templates are stamped per index type: '_l_' (uint64 index,
-    # the one currently built) and '_i_' (uint32, legacy/not compiled). Pick
-    # whichever is exposed so the test is robust to that build choice.
-    for tag in ("l", "i"):
-        name = f"{base}_{tag}_d_{N_DIMS}_{N_OPS}"
+    # Letterless naming since the index-type template parameter was dropped from
+    # the adaptive interpolators; the legacy '_l_'/'_i_' suffixed names are kept
+    # as fallbacks so the test still runs against an older compiled module.
+    candidates = [f"{base}_d_{N_DIMS}_{N_OPS}"] + [
+        f"{base}_{tag}_d_{N_DIMS}_{N_OPS}" for tag in ("l", "i")
+    ]
+    for name in candidates:
         if hasattr(_itor_module, name):
             return name
     raise SystemExit(
-        f"No {base}_[l|i]_d_{N_DIMS}_{N_OPS} template exposed in darts.interpolators — "
+        f"None of {candidates} exposed in darts.interpolators — "
         f"rebuild with this (n_dims, n_ops) pair."
     )
 

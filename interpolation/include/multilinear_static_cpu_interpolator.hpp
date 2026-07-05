@@ -57,7 +57,7 @@ public:
       * @param filename name of the file
       * @return int error code
       */
-   int write_to_file(const std::string filename) override;
+   int write_to_file(const std::string &filename) override;
 
    /**
    * @brief static point storage: the values of operators at all supporting points

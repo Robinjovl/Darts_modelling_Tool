@@ -73,8 +73,10 @@ class Nonlinear(operator_set_evaluator_iface):
 
 
 def get_interpolator_name(algorithm, mode, platform, precision, n_dims, n_ops):
+    # Letterless naming: the index-type template parameter was dropped from the
+    # adaptive interpolators, so exposed names carry no _i_/_l_ index-type letter.
     itor_name = (
-        f"{algorithm}_{mode}_{platform}_interpolator_l_{precision}_{n_dims}_{n_ops}"
+        f"{algorithm}_{mode}_{platform}_interpolator_{precision}_{n_dims}_{n_ops}"
     )
     return itor_name
 

@@ -28,37 +28,39 @@
  * may explore state space freely; cells outside the prescribed window are evaluated
  * and cached on demand.
  *
- * @tparam index_t legacy integer index type (kept for ABI compat; unused on the GPU hot path)
  * @tparam value_t value type used for supporting point and hypercube storage
  * @tparam N_DIMS  number of dimensions in parameter space
  * @tparam N_OPS   number of operators to be interpolated
  */
 // N_OPS widened to uint16_t — must match base class.
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-class multilinear_adaptive_gpu_interpolator : public multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+class multilinear_adaptive_gpu_interpolator : public multilinear_gpu_interpolator_base<uint64_t, value_t, N_DIMS, N_OPS>
 {
 public:
   const static uint32_t N_VERTS = (1 << N_DIMS);
 
-  using typename multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::point_coordinates_t;
-  using typename multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::point_data_t;
-  using typename multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::hypercube_points_index_t;
+  // The GPU base is shared with the bounded/static GPU interpolator, whose dense
+  // storage genuinely needs an integer index type (mixed-radix packed index). The
+  // adaptive path never forms that packed index — host storage is keyed on cell_key_t
+  // and the device hashmap on a 64-bit content hash of it — so the base is
+  // instantiated with a fixed uint64_t and no index-type template parameter is
+  // exposed on this class.
+  using base_t = multilinear_gpu_interpolator_base<uint64_t, value_t, N_DIMS, N_OPS>;
+  using typename base_t::point_coordinates_t;
+  using typename base_t::point_data_t;
 
   typedef cell_key_t<N_DIMS> key_t;
   typedef cell_key_hash<N_DIMS> key_hash_t;
 
 #if 1 //CUDA12
   using mr = thrust::cuda::universal_host_pinned_memory_resource;
-  using index_pinned_allocator = thrust::mr::stateless_resource_allocator<index_t, mr>;
   using value_pinned_allocator = thrust::mr::stateless_resource_allocator<value_t, mr>;
   using int_pinned_allocator = thrust::mr::stateless_resource_allocator<int, mr>;
   using key_pinned_allocator = thrust::mr::stateless_resource_allocator<key_t, mr>;
-  typedef thrust::host_vector<index_t, index_pinned_allocator> pinned_index_vector_t;
   typedef thrust::host_vector<value_t, value_pinned_allocator> pinned_value_vector_t;
   typedef thrust::host_vector<int, int_pinned_allocator> pinned_int_vector_t;
   typedef thrust::host_vector<key_t, key_pinned_allocator> pinned_key_vector_t;
 #else
-  typedef thrust::host_vector<index_t, thrust::cuda::experimental::pinned_allocator<index_t>> pinned_index_vector_t;
   typedef thrust::host_vector<value_t, thrust::cuda::experimental::pinned_allocator<value_t>> pinned_value_vector_t;
   typedef thrust::host_vector<int, thrust::cuda::experimental::pinned_allocator<int>> pinned_int_vector_t;
   typedef thrust::host_vector<key_t, thrust::cuda::experimental::pinned_allocator<key_t>> pinned_key_vector_t;

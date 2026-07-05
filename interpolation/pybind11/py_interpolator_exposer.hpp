@@ -220,27 +220,17 @@ py::tuple bulk_point_data_epoch_delta_arrays(const interpolator_class &self)
 template <uint8_t N_DIMS, uint16_t N_OPS>
 struct interpolator_exposer
 {
-  // template function used to expose different interpolators with the same Python interface
-  template <typename i_t, typename f_t, typename interpolator_class>
+  // template function used to expose different interpolators with the same Python interface.
+  // Exposed name pattern: <base_name>_<s|d>_<N_DIMS>_<N_OPS>. The former index-type letter
+  // (_i_/_l_) is gone: adaptive storage is keyed on cell_key_t, so the index type is no
+  // longer part of the class identity (physics_base.py still falls back to the legacy
+  // suffixed names when running against an older prebuilt library).
+  template <typename f_t, typename interpolator_class>
   void expose_class(py::module &m, std::string base_name)
   {
     using namespace pybind11::literals;
 
     std::string name = base_name + '_';
-
-    if (typeid(i_t) == typeid(int) || typeid(i_t) == typeid(uint32_t))
-    {
-      name += "i_";
-    }
-    else if (typeid(i_t) == typeid(long long) || typeid(i_t) == typeid(uint64_t))
-    {
-      name += "l_";
-    }
-    else
-    {
-      std::cout << "Error: Unexpected index type id (" << typeid(i_t).name() << ") specified while exposing " << name << std::endl;
-      return;
-    }
 
     if (typeid(f_t) == typeid(float))
     {
@@ -252,17 +242,16 @@ struct interpolator_exposer
     }
     else
     {
-      std::cout << "Error: Unexpected index type id (" << typeid(f_t).name() << ") specified while exposing " << name << std::endl;
+      std::cout << "Error: Unexpected value type id (" << typeid(f_t).name() << ") specified while exposing " << name << std::endl;
       return;
     }
 
     name = name + std::to_string(N_DIMS) + "_" + std::to_string(N_OPS);
-    std::string i_typename = typeid(i_t).name();
     std::string f_typename = typeid(f_t).name();
-    std::string long_name = "Operator set interpolator with " + i_typename + " index type and " + f_typename + " value type for " + std::to_string(N_OPS) + " operators in " + std::to_string(N_DIMS) + "-dimensional parameter space";
+    std::string long_name = "Operator set interpolator with " + f_typename + " value type for " + std::to_string(N_OPS) + " operators in " + std::to_string(N_DIMS) + "-dimensional parameter space";
     try
     {
-      if constexpr (std::is_same_v<interpolator_class, multilinear_adaptive_cpu_interpolator<i_t, f_t, N_DIMS, N_OPS>>)
+      if constexpr (std::is_same_v<interpolator_class, multilinear_adaptive_cpu_interpolator<f_t, N_DIMS, N_OPS>>)
       {
         using point_data_t = typename interpolator_class::point_data_t;
         py::class_<interpolator_class,
@@ -432,7 +421,7 @@ struct interpolator_exposer
              "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
           ;
       }
-      else if constexpr (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<i_t, N_DIMS, N_OPS>>)
+      else if constexpr (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>>)
       {
         // Linear adaptive: storage is keyed on multi-index (cell_key_t). Python
         // cache I/O goes through the tuple-keyed point_data_full / point_data_delta
@@ -577,7 +566,7 @@ struct interpolator_exposer
              "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
-      else if constexpr (std::is_same_v<interpolator_class, linear_static_cpu_interpolator<i_t, N_DIMS, N_OPS>>)
+      else if constexpr (std::is_same_v<interpolator_class, linear_static_cpu_interpolator<N_DIMS, N_OPS>>)
       {
         py::class_<interpolator_class,
           operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
@@ -597,7 +586,7 @@ struct interpolator_exposer
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
 #ifdef WITH_GPU
-      else if constexpr (std::is_same_v<interpolator_class, multilinear_adaptive_gpu_interpolator<i_t, f_t, N_DIMS, N_OPS>>)
+      else if constexpr (std::is_same_v<interpolator_class, multilinear_adaptive_gpu_interpolator<f_t, N_DIMS, N_OPS>>)
       {
         // GPU adaptive multilinear: unbounded grid keyed on cell_key_t; cache I/O via
         // the tuple-keyed point_data_full view (no integer-key packing).
@@ -792,48 +781,40 @@ struct interpolator_exposer
   // variable, forwarded as one of OD_INTERP_PROFILE_MINIMAL / OD_INTERP_PROFILE_FULL.
   // Default (no macro defined) behaves like FULL so older build scripts keep
   // working.
-  //   MINIMAL: only multilinear_adaptive uint64. Drops linear; callers that set
+  //   MINIMAL: only multilinear_adaptive. Drops linear; callers that set
   //            itor_type='linear' must switch to 'multilinear'.
-  //   FULL:    multilinear_adaptive uint64 + linear_adaptive uint64.
+  //   FULL:    multilinear_adaptive + linear_adaptive.
+  // One exposed class per (algorithm, platform, precision): the adaptive classes carry
+  // no index-type template parameter any more (storage is keyed on cell_key_t), so the
+  // former uint32/uint64 duplicates are gone and names carry no index-type letter.
   void expose(py::module &m)
   {
     // do not expose multilinear for higher dimensions, as it becomes inefficient
     if constexpr (N_DIMS <= 12)
     {
-      // Multilinear adaptive uint64 — exposed under all profiles. Python's
-      // physics_base.py first tries the *_i_* (uint32) name and falls back to
-      // *_l_* (uint64) on NameError; uint32 is no longer compiled, so the
-      // fallback path is now the only path. One-time try/except cost per
-      // interpolator at construction, zero runtime cost after.
-      // expose_class<uint32_t, double, multilinear_adaptive_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
-      expose_class<uint64_t, double, multilinear_adaptive_cpu_interpolator<uint64_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
-      // __uint128_t exposure removed alongside the move to cell_key_t multi-index keys —
-      // see interpolation_config.h. uint64_t legacy_index is still enough for diagnostic
-      // counters; out-of-uint64 cells live in the multi-index map directly.
+      expose_class<double, multilinear_adaptive_cpu_interpolator<double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
     }
-    // expose_class<uint64_t, float, multilinear_adaptive_cpu_interpolator<uint64_t, float, N_DIMS, N_OPS>>(m, "multilinear_adaptive2_cpu_interpolator");
+    // expose_class<float, multilinear_adaptive_cpu_interpolator<float, N_DIMS, N_OPS>>(m, "multilinear_adaptive2_cpu_interpolator");
 
 #if !defined(OD_INTERP_PROFILE_MINIMAL)
-    // Linear adaptive with 64-bit legacy index and 64-bit data — exposed under FULL.
-    expose_class<uint64_t, double, linear_adaptive_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
-    // expose_class<__uint128_t, double, linear_adaptive_cpu_interpolator<__uint128_t, N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
+    // Linear adaptive — exposed under FULL. Like the multilinear adaptive classes it
+    // carries no index-type template parameter (int32-native vertex enumeration).
+    expose_class<double, linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
 #endif
-    //expose_class<uint64_t, double, linear_static_cpu_interpolator<uint64_t, N_DIMS, N_OPS>>(m, "linear_static_cpu_interpolator");
+    //expose_class<double, linear_static_cpu_interpolator<N_DIMS, N_OPS>>(m, "linear_static_cpu_interpolator");
     // we expose static versions only when needed
     //#ifdef WITH_GPU
-    //expose_class<uint32_t, double, multilinear_static_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_static_cpu_interpolator");
+    //expose_class<double, multilinear_static_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_static_cpu_interpolator");
 //#endif
 // we expose static GPU versions only when GPU build is active
 #ifdef WITH_GPU
 
-    //expose_class<uint32_t, double, multilinear_static_gpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_static_gpu_interpolator");
-    //expose_class<uint32_t, float, multilinear_static_gpu_interpolator<uint32_t, float, N_DIMS, N_OPS>>(m, "multilinear_static_gpu_interpolator");
+    //expose_class<double, multilinear_static_gpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_static_gpu_interpolator");
+    //expose_class<float, multilinear_static_gpu_interpolator<uint32_t, float, N_DIMS, N_OPS>>(m, "multilinear_static_gpu_interpolator");
 
-    expose_class<uint32_t, double, multilinear_adaptive_gpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_gpu_interpolator");
-    expose_class<uint64_t, double, multilinear_adaptive_gpu_interpolator<uint64_t, double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_gpu_interpolator");
+    expose_class<double, multilinear_adaptive_gpu_interpolator<double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_gpu_interpolator");
 
-   // expose_class<uint32_t, float, multilinear_adaptive_gpu_interpolator<uint32_t, float, N_DIMS, N_OPS>>(m, "multilinear_adaptive_gpu_interpolator");
-    //expose_class<uint64_t, float, multilinear_adaptive_gpu_interpolator<uint64_t, float, N_DIMS, N_OPS>>(m, "multilinear_adaptive_gpu_interpolator");
+    // expose_class<float, multilinear_adaptive_gpu_interpolator<float, N_DIMS, N_OPS>>(m, "multilinear_adaptive_gpu_interpolator");
 
 #endif //WITH_GPU
   }

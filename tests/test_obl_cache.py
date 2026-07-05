@@ -21,7 +21,11 @@ ND, NO = 8, 8
 def _itor_cls():
     import darts.interpolators as it
 
-    cls = getattr(it, f"multilinear_adaptive_cpu_interpolator_l_d_{ND}_{NO}", None)
+    # Letterless naming (index-type template parameter dropped); legacy _l_ name
+    # kept as fallback for older compiled modules.
+    cls = getattr(it, f"multilinear_adaptive_cpu_interpolator_d_{ND}_{NO}", None)
+    if cls is None:
+        cls = getattr(it, f"multilinear_adaptive_cpu_interpolator_l_d_{ND}_{NO}", None)
     if cls is None or not hasattr(cls, "build_arena_file"):
         pytest.skip("arena-capable interpolator template not built")
     return cls

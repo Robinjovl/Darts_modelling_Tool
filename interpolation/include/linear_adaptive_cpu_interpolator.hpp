@@ -16,16 +16,23 @@
  * the legacy integer-keyed `point_data` shim was retired alongside the multi-index
  * migration since the unbounded grid has no integer-key packing.
  *
- * @tparam index_t legacy packed-integer index type (used by pybind/cache compat layer)
+ * Vertex enumeration is int32-native and shared with the base (vertex_t has the same
+ * element type as cell_key_t), so a vertex converts to a cache key by a plain element
+ * copy — the same storage and hashing as the multilinear adaptive interpolators, with
+ * the standard-triangulation (Kuhn) simplex identification of the base preserved
+ * verbatim (all simplices share the hypercube's lower corner; the walk adds +1 along
+ * the sorted fractional coordinates).
+ *
  * @tparam N_DIMS  number of dimensions in parameter space
  * @tparam N_OPS   number of operators to be interpolated
  */
-template <typename index_t, int N_DIMS, int N_OPS>
-class linear_adaptive_cpu_interpolator : public linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>
+template <int N_DIMS, int N_OPS>
+class linear_adaptive_cpu_interpolator : public linear_cpu_interpolator_base<N_DIMS, N_OPS>
 {
 public:
     typedef cell_key_t<N_DIMS> key_t;
     typedef cell_key_hash<N_DIMS> key_hash_t;
+    using typename linear_cpu_interpolator_base<N_DIMS, N_OPS>::vertex_t;
 
     linear_adaptive_cpu_interpolator(operator_set_evaluator_iface *base_points_generator,
                                      const std::vector<double> &axes_origin,
@@ -67,9 +74,10 @@ public:
                                      std::vector<double> &values, std::vector<double> &derivatives) override;
 
     /**
-     * @brief Build the multi-index key from a vertex (with int32 bit pattern packed in index_t).
+     * @brief Build the multi-index key from a vertex (plain element copy — vertex_t and
+     *        cell_key_t share the int32 element type).
      */
-    key_t key_from_vertex(const std::array<index_t, N_DIMS> &vertex) const;
+    key_t key_from_vertex(const vertex_t &vertex) const;
 
     size_t get_n_cached_points() const { return point_data.size(); }
 
@@ -80,7 +88,7 @@ private:
      * Decodes the vertex into a multi-index, then looks up the cell_key map. On miss,
      * evaluates through the supporting_point_evaluator and stores.
      */
-    void get_supporting_point(const std::array<index_t, N_DIMS> &vertex, std::array<double, N_OPS> &values) override;
+    void get_supporting_point(const vertex_t &vertex, std::array<double, N_OPS> &values) override;
 
     /**
      * @brief Pre-fetch all missing supporting points for the given set of cells via batch evaluation.

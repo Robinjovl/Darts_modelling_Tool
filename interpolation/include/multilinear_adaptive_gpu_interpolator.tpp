@@ -53,12 +53,12 @@ __global__ void check_if_hashmap_expansion_needed(
 
 // ─── constructor / destructor / init ───────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinear_adaptive_gpu_interpolator(
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::multilinear_adaptive_gpu_interpolator(
     operator_set_evaluator_iface *supporting_point_evaluator,
     const std::vector<double> &axes_origin,
     const std::vector<double> &axes_step)
-    : multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_origin, axes_step)
+    : multilinear_gpu_interpolator_base<uint64_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_origin, axes_step)
 {
   this->kernel_block_size = 128;
 
@@ -79,20 +79,20 @@ multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilin
   hashmap_expansion_needed_d.resize(1);
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::~multilinear_adaptive_gpu_interpolator()
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::~multilinear_adaptive_gpu_interpolator()
 {
   gpu_hashmap_async::delete_hashmap(hypercube_data_d);
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+int multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::init()
 {
   return 0;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-void multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::clear_hypercube_data()
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+void multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::clear_hypercube_data()
 {
   // Drop the device hypercube map and the host key tracker; both are rebuilt on
   // demand from point_data (no flash). Mirrors the destructor + constructor so the
@@ -104,17 +104,17 @@ void multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::cle
   generated_hypercubes.clear();
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::write_to_file(const std::string filename)
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+int multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::write_to_file(const std::string filename)
 {
   return 0;
 }
 
 // ─── supporting-point access (host) ────────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-const typename multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::point_data_t &
-multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_point_data(const key_t &point_key)
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+const typename multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::point_data_t &
+multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::get_point_data(const key_t &point_key)
 {
   auto item = point_data.find(point_key);
   if (item != point_data.end())
@@ -145,8 +145,8 @@ multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_poin
   return insert_result.first->second;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::generate_hypercube(
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+int multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::generate_hypercube(
     const key_t &hc_key, value_t *new_hypercube)
 {
   // Build the N_VERTS supporting-point keys from the lower corner.
@@ -168,8 +168,8 @@ int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::gene
 
 // ─── batch evaluation ──────────────────────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-int multilinear_adaptive_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::evaluate_with_derivatives_d(
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+int multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::evaluate_with_derivatives_d(
     int n_states_idxs, double *states_d, int *states_idxs_d,
     double *values_d, double *derivatives_d)
 {

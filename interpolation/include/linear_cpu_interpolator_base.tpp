@@ -12,8 +12,8 @@ typedef linalg::Matrix<double> Matrix;
 
 // Unbounded grid (adaptive linear): (origin, step). The flat mixed-radix axes_mult
 // is unused (adaptive keys on cell_key_t); zero it for safety.
-template <typename index_t, int N_DIMS, int N_OPS>
-linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
+template <int N_DIMS, int N_OPS>
+linear_cpu_interpolator_base<N_DIMS, N_OPS>::linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
                                                                                    const std::vector<double> &axes_origin_,
                                                                                    const std::vector<double> &axes_step_,
                                                                                    bool _use_barycentric_interpolation)
@@ -26,8 +26,8 @@ linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::linear_cpu_interpolator_ba
 
 // Bounded dense grid (static linear): builds the flat mixed-radix axes_mult used by
 // get_index_from_vertex for the dense storage layout.
-template <typename index_t, int N_DIMS, int N_OPS>
-linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
+template <int N_DIMS, int N_OPS>
+linear_cpu_interpolator_base<N_DIMS, N_OPS>::linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
                                                                                    const std::vector<double> &axes_origin_,
                                                                                    const std::vector<double> &axes_step_,
                                                                                    const std::vector<int> &axes_points_,
@@ -41,8 +41,8 @@ linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::linear_cpu_interpolator_ba
     init_simplex_and_barycentric();
 }
 
-template <typename index_t, int N_DIMS, int N_OPS>
-void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::init_simplex_and_barycentric()
+template <int N_DIMS, int N_OPS>
+void linear_cpu_interpolator_base<N_DIMS, N_OPS>::init_simplex_and_barycentric()
 {
     // initialize the values with 0
     standard_simplex = {};
@@ -60,8 +60,8 @@ void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::init_simplex_and_bary
     }
 }
 
-template <typename index_t, int N_DIMS, int N_OPS>
-void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::load_delaunay_triangulation(const std::string filename)
+template <int N_DIMS, int N_OPS>
+void linear_cpu_interpolator_base<N_DIMS, N_OPS>::load_delaunay_triangulation(const std::string filename)
 {
   /*std::ifstream file(filename, std::ios::binary);
 
@@ -120,8 +120,8 @@ void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::load_delaunay_triangu
   file.close();*/
 }
 
-template <typename index_t, int N_DIMS, int N_OPS>
-void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::find_delaunay_and_barycentric()
+template <int N_DIMS, int N_OPS>
+void linear_cpu_interpolator_base<N_DIMS, N_OPS>::find_delaunay_and_barycentric()
 {
   py::gil_scoped_acquire acquire;
 
@@ -179,9 +179,9 @@ void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::find_delaunay_and_bar
   }
 }
 
-template <typename index_t, int N_DIMS, int N_OPS>
-void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::find_hypercube(const std::vector<double> &points,
-                                                                          std::array<index_t, N_DIMS> &hypercube,
+template <int N_DIMS, int N_OPS>
+void linear_cpu_interpolator_base<N_DIMS, N_OPS>::find_hypercube(const std::vector<double> &points,
+                                                                          vertex_t &hypercube,
                                                                           std::array<double, N_DIMS> &scaled_point,
                                                                           const int point_index)
 {
@@ -203,31 +203,30 @@ void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::find_hypercube(const 
         scaled_point[i] = (point - axes_origin[i]) * axes_step_inv[i];
         if (use_unbounded_axis_index)
         {
-            // Signed floor: stores int32 bit-pattern into index_t. Negative values become
-            // large unsigned values, which is intended — the adaptive cell_key map decodes
-            // them back as int32 in get_supporting_point.
+            // Signed floor, stored natively as int32 (the cell_key element type) —
+            // negative indices are legal on the unbounded adaptive grid.
             // Saturating clamp keeps the float->int cast in range so it is defined
             // behaviour (out-of-range float->int is UB; also maps NaN to a defined
             // value). Mirrors the branchless clamp in multi_index_key.hpp.
             const double floored = std::floor(scaled_point[i]);
             const int32_t floor_idx = static_cast<int32_t>(
                 std::fmin(std::fmax(floored, -2147483648.0), 2147483647.0));
-            hypercube[i] = static_cast<index_t>(static_cast<uint32_t>(floor_idx));
+            hypercube[i] = floor_idx;
             scaled_point[i] -= static_cast<double>(floor_idx);
         }
         else
         {
-            hypercube[i] = (int)scaled_point[i];
+            hypercube[i] = static_cast<int32_t>(scaled_point[i]);
             scaled_point[i] -= hypercube[i];
         }
     }
 }
 
-template <typename index_t, int N_DIMS, int N_OPS>
-void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::find_simplex(const std::array<index_t, N_DIMS> &hypercube,
+template <int N_DIMS, int N_OPS>
+void linear_cpu_interpolator_base<N_DIMS, N_OPS>::find_simplex(const vertex_t &hypercube,
                                                                         const std::array<double, N_DIMS> &scaled_point,
                                                                         std::array<int, N_DIMS> &tri_order,
-                                                                        std::array<std::array<index_t, N_DIMS>, N_DIMS + 1> &simplex)
+                                                                        std::array<vertex_t, N_DIMS + 1> &simplex)
 {
     std::iota(tri_order.begin(), tri_order.end(), 0);
     std::sort(tri_order.begin(), tri_order.end(),
@@ -242,14 +241,14 @@ void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::find_simplex(const st
     }
 }
 
-template <typename index_t, int N_DIMS, int N_OPS>
-int linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::interpolate(const std::vector<value_t> &point, std::vector<value_t> &values)
+template <int N_DIMS, int N_OPS>
+int linear_cpu_interpolator_base<N_DIMS, N_OPS>::interpolate(const std::vector<value_t> &point, std::vector<value_t> &values)
 {
-    std::array<index_t, N_DIMS> hypercube;
+    vertex_t hypercube;
     std::array<double, N_DIMS> scaled_point;
     find_hypercube(point, hypercube, scaled_point);
     std::array<double, N_DIMS + 1> weights;
-    std::array<std::array<index_t, N_DIMS>, N_DIMS + 1> simplex;
+    std::array<vertex_t, N_DIMS + 1> simplex;
     std::array<double, N_OPS> supp_values;
 
     if (use_barycentric_interpolation)
@@ -289,7 +288,7 @@ int linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::interpolate(const std:
       {
         vertex = &vertices[simplices[vertex_i] * N_DIMS];
         for (int dim_i = 0; dim_i < N_DIMS; dim_i++)
-          simplex[vertex_i][dim_i] = hypercube[dim_i] + static_cast<index_t>(vertex[dim_i]);
+          simplex[vertex_i][dim_i] = hypercube[dim_i] + static_cast<int32_t>(vertex[dim_i]);
       }
     }
     else
@@ -318,8 +317,8 @@ int linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::interpolate(const std:
     return 0;
 }
 
-template <typename index_t, int N_DIMS, int N_OPS>
-int linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::interpolate_with_derivatives(const std::vector<double> &points,
+template <int N_DIMS, int N_OPS>
+int linear_cpu_interpolator_base<N_DIMS, N_OPS>::interpolate_with_derivatives(const std::vector<double> &points,
                                                                                        const std::vector<int> &points_idxs,
                                                                                        std::vector<double> &values,
                                                                                        std::vector<double> &derivatives)
@@ -331,10 +330,10 @@ int linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::interpolate_with_deriv
     {
         int point_offset = points_idxs[point_i];
 
-        std::array<index_t, N_DIMS> hypercube;
+        vertex_t hypercube;
         std::array<double, N_DIMS> scaled_point;
         find_hypercube(points, hypercube, scaled_point, point_offset * N_DIMS);
-        std::array<std::array<index_t, N_DIMS>, N_DIMS + 1> simplex;
+        std::array<vertex_t, N_DIMS + 1> simplex;
 
         if (use_barycentric_interpolation)
         {
@@ -372,7 +371,7 @@ int linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::interpolate_with_deriv
             vertex = &vertices[simplices[vertex_i] * N_DIMS];
             for (int dim_i = 0; dim_i < N_DIMS; dim_i++)
             {
-              simplex[vertex_i][dim_i] = hypercube[dim_i] + static_cast<index_t>(vertex[dim_i]);
+              simplex[vertex_i][dim_i] = hypercube[dim_i] + static_cast<int32_t>(vertex[dim_i]);
             }
           }
 
@@ -435,32 +434,25 @@ int linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::interpolate_with_deriv
     return 0;
 }
 
-template <typename index_t, int N_DIMS, int N_OPS>
-index_t linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::get_index_from_vertex(const std::array<index_t, N_DIMS> &vertex)
+template <int N_DIMS, int N_OPS>
+uint64_t linear_cpu_interpolator_base<N_DIMS, N_OPS>::get_index_from_vertex(const vertex_t &vertex)
 {
-    index_t index = 0;
+    // Bounded/static storage only: vertices are non-negative on the dense grid.
+    uint64_t index = 0;
     for (int dim_i = 0; dim_i < N_DIMS; dim_i++)
-        index += vertex[dim_i] * this->axes_mult[dim_i];
+        index += static_cast<uint64_t>(vertex[dim_i]) * this->axes_mult[dim_i];
     return index;
 }
 
-template <typename index_t, int N_DIMS, int N_OPS>
-void linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::get_point_from_vertex(const std::array<index_t, N_DIMS> &vertex,
+template <int N_DIMS, int N_OPS>
+void linear_cpu_interpolator_base<N_DIMS, N_OPS>::get_point_from_vertex(const vertex_t &vertex,
                                                                                  std::vector<double> &point)
 {
     for (int i = 0; i < N_DIMS; i++)
     {
-        double axis_idx_d;
-        if (use_unbounded_axis_index)
-        {
-            // Decode int32 bit-pattern stored in index_t (see find_hypercube).
-            axis_idx_d = static_cast<double>(static_cast<int32_t>(static_cast<uint32_t>(vertex[i])));
-        }
-        else
-        {
-            axis_idx_d = static_cast<double>(vertex[i]);
-        }
-        point[i] = axis_idx_d * axes_step[i] + axes_origin[i];
+        // Vertex elements are native int32 (signed on the unbounded adaptive grid,
+        // non-negative on the bounded static grid) — no decoding needed.
+        point[i] = static_cast<double>(vertex[i]) * axes_step[i] + axes_origin[i];
     }
     if (transform_last_axis)
     {

@@ -32,20 +32,24 @@
  * no integer-key packing; legacy caches written by older builds are detected on
  * load and skipped (see physics_base.py).
  *
- * @tparam index_t type used for legacy packed-integer indexing (backward compat only)
  * @tparam value_t value type used for supporting point storage, hypercube storage and interpolation
  * @tparam N_DIMS The number of dimensions in paramter space
  * @tparam N_OPS The number of operators to be interpolated
  */
 // N_OPS widened to uint16_t — must match base class.
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-class multilinear_adaptive_cpu_interpolator : public multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+class multilinear_adaptive_cpu_interpolator : public multilinear_interpolator_base<uint64_t, value_t, N_DIMS, N_OPS>
 {
 public:
-   using typename multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::point_coordinates_t;
-   using typename multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::point_data_t;
-   using typename multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::hypercube_data_t;
-   using typename multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::hypercube_points_index_t;
+   // The base class is shared with the bounded/static interpolators, whose dense
+   // storage genuinely needs an integer index type (mixed-radix packed index). The
+   // adaptive path never forms that packed index — storage is keyed on cell_key_t —
+   // so the base is instantiated with a fixed uint64_t and no index-type template
+   // parameter is exposed on this class.
+   using base_t = multilinear_interpolator_base<uint64_t, value_t, N_DIMS, N_OPS>;
+   using typename base_t::point_coordinates_t;
+   using typename base_t::point_data_t;
+   using typename base_t::hypercube_data_t;
 
    typedef cell_key_t<N_DIMS> key_t;
    typedef cell_key_hash<N_DIMS> key_hash_t;
@@ -160,11 +164,11 @@ public:
    int interpolate(const std::vector<double> &point, std::vector<double> &values) override;
 
 protected:
-   // Bring the base's bounded (index_t) get_hypercube_data into scope so the cell-key
-   // overload below *overloads* rather than *hides* it (silences -Wxxx #997-D). The
-   // bounded overload is never called on this adaptive path; it only exists for the
+   // Bring the base's bounded (integer-index) get_hypercube_data into scope so the
+   // cell-key overload below *overloads* rather than *hides* it (silences -Wxxx #997-D).
+   // The bounded overload is never called on this adaptive path; it only exists for the
    // shared static-storage machinery in the base.
-   using multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_data;
+   using base_t::get_hypercube_data;
 
    /**
     * @brief Cell-key-driven supporting-point access (creates on miss).

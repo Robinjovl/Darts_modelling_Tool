@@ -1120,33 +1120,43 @@ class PhysicsBase:
             else:
                 ctor_args = (axes_origin_vec, axes_step_vec)
 
-        # calculate object name using 32 bit index type (i)
-        itor_name = f"{algorithm}_{mode}_{platform}_interpolator_i_{precision}_{n_dims:d}_{n_ops:d}"
+        # Exposed interpolator names carry no index-type letter any more (the index-type
+        # template parameter was dropped from the adaptive classes — storage is keyed on
+        # a multi-index, so the index type is not part of the class identity):
+        #   {algorithm}_{mode}_{platform}_interpolator_{precision}_{n_dims}_{n_ops}
+        # Older prebuilt libraries still export the legacy _i_ (uint32) / _l_ (uint64)
+        # suffixed names, so those are tried as fallbacks for py/lib version skew
+        # (e.g. an editable install with a stale compiled module).
+        itor_base = f"{algorithm}_{mode}_{platform}_interpolator"
+        name_variants = ['', 'i_', 'l_']  # current letterless first, then legacy
+        itor_names = [
+            f"{itor_base}_{v}{precision}_{n_dims:d}_{n_ops:d}" for v in name_variants
+        ]
         itor = None
         general = False
         cache_loaded = 0
         signature_n_ops = n_ops
-        # try to create itor with 32-bit index type first (kinda a bit faster)
-        try:
-            itor = eval(itor_name)(evaluator, *ctor_args)
-        except (ValueError, NameError):
-            # 32-bit index overflow or this (n_dims, n_ops) pair was not compiled.
-            # Fall back to 64-bit; multi-index storage is unaffected.
-            itor_name = itor_name.replace('interpolator_i', 'interpolator_l')
+        err = None
+        for itor_name in itor_names:
             try:
                 itor = eval(itor_name)(evaluator, *ctor_args)
-            except (ValueError, NameError) as err:
-                # Try to find a templatized interpolator with the same name pattern
-                # but with the closest possible higher n_ops available in darts.interpolators.
-                try:
-                    import importlib
-                    import re
+                break
+            except (ValueError, NameError) as e:
+                err = e
+        if itor is None:
+            # Try to find a templatized interpolator with the same name pattern
+            # but with the closest possible higher n_ops available in darts.interpolators.
+            try:
+                import importlib
+                import re
 
-                    engines_module = importlib.import_module("darts.interpolators")
-                    base_prefix = itor_name.rsplit('_', 1)[0]
-                    pattern = rf"^{re.escape(base_prefix)}_(\d+)$"
-                    # Find candidates with higher n_ops
-                    candidates = []
+                engines_module = importlib.import_module("darts.interpolators")
+                # Find candidates with higher n_ops under any naming scheme
+                candidates = []
+                for v in name_variants:
+                    pattern = (
+                        rf"^{re.escape(itor_base)}_{v}{precision}_{n_dims:d}_(\d+)$"
+                    )
                     for attr_name in dir(engines_module):
                         match = re.match(pattern, attr_name)
                         if match:
@@ -1154,36 +1164,34 @@ class PhysicsBase:
                             if available_n_ops > n_ops:
                                 candidates.append((available_n_ops, attr_name))
 
-                    if candidates:
-                        # Sort candidates by n_ops in ascending order
-                        candidates.sort(key=lambda x: x[0])
-                        selected_n_ops, selected_name = candidates[0]
-                        selected_cls = getattr(engines_module, selected_name)
-                        if algorithm not in ('multilinear', 'linear'):
-                            raise ValueError("Invalid algorithm: " + algorithm)
-                        itor = selected_cls(evaluator, *ctor_args)
-                        signature_n_ops = selected_n_ops
-                        print(
-                            "Falling back to interpolator with higher n_ops:",
-                            selected_name,
-                            f"(n_ops={selected_n_ops})",
-                        )
-                    else:
-                        raise RuntimeError(
-                            "No higher n_ops templatized interpolator found"
-                        )
-                except Exception:
-                    # No compiled template for this (n_dims, n_ops). Name the two real
-                    # causes instead of the old misleading "operators" message (there is
-                    # no '*_general' interpolator — that fallback was always dead).
-                    raise ValueError(
-                        f"No compiled OBL interpolator template for "
-                        f"(n_dims={n_dims}, n_ops={n_ops}). "
-                        f"If n_dims exceeds the compiled maximum, rebuild with a larger "
-                        f"-DOPENDARTS_MAX_DIMS (must be >= n_dims). The interpolator "
-                        f"family is selected by -DOPENDARTS_INTERPOLATOR_PROFILE "
-                        f"(MINIMAL omits the 'linear' templates). Tried: {itor_name}."
-                    ) from err
+                if candidates:
+                    # Sort candidates by n_ops in ascending order
+                    candidates.sort(key=lambda x: x[0])
+                    selected_n_ops, selected_name = candidates[0]
+                    selected_cls = getattr(engines_module, selected_name)
+                    if algorithm not in ('multilinear', 'linear'):
+                        raise ValueError("Invalid algorithm: " + algorithm)
+                    itor = selected_cls(evaluator, *ctor_args)
+                    signature_n_ops = selected_n_ops
+                    print(
+                        "Falling back to interpolator with higher n_ops:",
+                        selected_name,
+                        f"(n_ops={selected_n_ops})",
+                    )
+                else:
+                    raise RuntimeError("No higher n_ops templatized interpolator found")
+            except Exception:
+                # No compiled template for this (n_dims, n_ops). Name the two real
+                # causes instead of the old misleading "operators" message (there is
+                # no '*_general' interpolator — that fallback was always dead).
+                raise ValueError(
+                    f"No compiled OBL interpolator template for "
+                    f"(n_dims={n_dims}, n_ops={n_ops}). "
+                    f"If n_dims exceeds the compiled maximum, rebuild with a larger "
+                    f"-DOPENDARTS_MAX_DIMS (must be >= n_dims). The interpolator "
+                    f"family is selected by -DOPENDARTS_INTERPOLATOR_PROFILE "
+                    f"(MINIMAL omits the 'linear' templates). Tried: {itor_names}."
+                ) from err
 
         # In-RAM cap on the derived hypercube cache (LRU on CPU; clear-on-overflow on
         # GPU). Purely an in-memory bound: it does NOT change the on-disk OBL cache

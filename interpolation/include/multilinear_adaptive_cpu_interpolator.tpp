@@ -11,20 +11,20 @@
 
 #include "multilinear_adaptive_cpu_interpolator.hpp"
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::
     multilinear_adaptive_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator_,
                                           const std::vector<double> &axes_origin_,
                                           const std::vector<double> &axes_step_)
-    : multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator_, axes_origin_, axes_step_)
+    : multilinear_interpolator_base<uint64_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator_, axes_origin_, axes_step_)
 
 {
 }
 
 // ─── multi-index key utilities ──────────────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_point_coordinates_from_key(
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::get_point_coordinates_from_key(
     const key_t &k, point_coordinates_t &coordinates) const
 {
   for (uint8_t i = 0; i < N_DIMS; ++i)
@@ -33,8 +33,8 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get
   }
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_vertex_keys(
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::get_hypercube_vertex_keys(
     const key_t &hc_key, hypercube_vertex_keys_t &vertex_keys) const
 {
   // Vertex layout matches the legacy MSB-first ordering in get_hypercube_points()
@@ -52,9 +52,9 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get
 
 // ─── cache accessors ────────────────────────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-const typename multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::point_data_t &
-multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_point_data(const key_t &point_key)
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+const typename multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::point_data_t &
+multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::get_point_data(const key_t &point_key)
 {
   auto item = point_data.find(point_key);
   if (item != point_data.end())
@@ -87,9 +87,9 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_poin
   return insert_result.first->second;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-const typename multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::hypercube_data_t &
-multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_data(const key_t &hypercube_key)
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+const typename multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::hypercube_data_t &
+multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::get_hypercube_data(const key_t &hypercube_key)
 {
   auto item = hypercube_data.find(hypercube_key);
   if (item != hypercube_data.end())
@@ -120,9 +120,9 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hype
 
 // ─── hypercube-key export (multi-index view) ───────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-std::vector<typename multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::key_t>
-multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_keys() const
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+std::vector<typename multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::key_t>
+multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::get_hypercube_keys() const
 {
   std::vector<key_t> keys;
   keys.reserve(hypercube_data.size());
@@ -133,8 +133,8 @@ multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hype
 
 // ─── single-point interpolation (multi-index path) ─────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::interpolate(
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+int multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::interpolate(
     const std::vector<double> &point, std::vector<double> &values)
 {
   if (point.size() != N_DIMS)
@@ -169,8 +169,8 @@ int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::inte
 
 // ─── batch materialization ─────────────────────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::materialize_missing_cache(
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::materialize_missing_cache(
     const std::vector<key_t> &missing_hc)
 {
   // Phase 2a: collect all unique missing supporting-point keys.
@@ -283,8 +283,8 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::mat
 
 // ─── derived-cache bounding (LRU eviction of hypercube payloads) ────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::clear_hypercube_data()
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::clear_hypercube_data()
 {
   // Swap-with-empty so the 130 KiB payloads are actually returned to the allocator.
   // point_data and the on-disk cache are untouched.
@@ -292,8 +292,8 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::cle
   std::unordered_map<key_t, uint64_t, key_hash_t>().swap(hc_last_used);
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::evict_hypercubes()
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::evict_hypercubes()
 {
   if (hypercube_cap == 0 || hypercube_data.size() <= hypercube_cap)
     return;
@@ -334,8 +334,8 @@ void multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::evi
 
 // ─── batch interpolation (multi-index path) ────────────────────────────────────
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-int multilinear_adaptive_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::interpolate_with_derivatives(
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+int multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::interpolate_with_derivatives(
     const std::vector<double> &points, const std::vector<int> &points_idxs,
     std::vector<double> &values, std::vector<double> &derivatives)
 {

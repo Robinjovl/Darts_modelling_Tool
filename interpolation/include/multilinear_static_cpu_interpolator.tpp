@@ -88,7 +88,7 @@ const typename multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_O
 }
 
 template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
-int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::write_to_file(const std::string filename)
+int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::write_to_file(const std::string &filename)
 {
   std::ofstream txtFile;
 

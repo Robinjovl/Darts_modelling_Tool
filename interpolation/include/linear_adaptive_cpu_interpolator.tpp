@@ -1,13 +1,13 @@
 #include <cmath>
 #include "linear_adaptive_cpu_interpolator.hpp"
 
-template <typename index_t, int N_DIMS, int N_OPS>
-linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::linear_adaptive_cpu_interpolator(
+template <int N_DIMS, int N_OPS>
+linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>::linear_adaptive_cpu_interpolator(
     operator_set_evaluator_iface *supporting_point_evaluator_,
     const std::vector<double> &axes_origin_,
     const std::vector<double> &axes_step_,
     bool _use_barycentric_interpolation)
-    : linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>(supporting_point_evaluator_, axes_origin_, axes_step_, _use_barycentric_interpolation)
+    : linear_cpu_interpolator_base<N_DIMS, N_OPS>(supporting_point_evaluator_, axes_origin_, axes_step_, _use_barycentric_interpolation)
 {
     // Enable signed-floor axis indexing in find_hypercube / get_point_from_vertex so the
     // adaptive cache can grow freely (the grid is unbounded — origin + step only).
@@ -16,24 +16,22 @@ linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::linear_adaptive_cpu_in
 
 // ─── multi-index key utilities ──────────────────────────────────────────────────
 
-template <typename index_t, int N_DIMS, int N_OPS>
-typename linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::key_t
-linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::key_from_vertex(const std::array<index_t, N_DIMS> &vertex) const
+template <int N_DIMS, int N_OPS>
+typename linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>::key_t
+linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>::key_from_vertex(const vertex_t &vertex) const
 {
     key_t k;
+    // vertex_t and cell_key_t share the int32 element type — plain copy, no decoding.
     for (int i = 0; i < N_DIMS; ++i)
-    {
-        // vertex[i] holds an int32 bit-pattern in the low 32 bits — decode through uint32.
-        k.idx[i] = static_cast<int32_t>(static_cast<uint32_t>(vertex[i]));
-    }
+        k.idx[i] = vertex[i];
     return k;
 }
 
 // ─── adaptive supporting-point lookup ──────────────────────────────────────────
 
-template <typename index_t, int N_DIMS, int N_OPS>
-void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::get_supporting_point(
-    const std::array<index_t, N_DIMS> &vertex, std::array<double, N_OPS> &values)
+template <int N_DIMS, int N_OPS>
+void linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>::get_supporting_point(
+    const vertex_t &vertex, std::array<double, N_OPS> &values)
 {
     const key_t k = this->key_from_vertex(vertex);
     auto search = point_data.find(k);
@@ -72,8 +70,8 @@ void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::get_supporting_po
 
 // ─── batch materialization ─────────────────────────────────────────────────────
 
-template <typename index_t, int N_DIMS, int N_OPS>
-void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::materialize_missing_points(
+template <int N_DIMS, int N_OPS>
+void linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>::materialize_missing_points(
     const std::vector<double> &points, const std::vector<int> &points_idxs)
 {
     std::unordered_set<key_t, key_hash_t> missing_set;
@@ -83,11 +81,11 @@ void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::materialize_missi
     for (std::size_t point_i = 0; point_i < points_idxs.size(); point_i++)
     {
         int point_offset = points_idxs[point_i];
-        std::array<index_t, N_DIMS> hypercube;
+        vertex_t hypercube;
         std::array<double, N_DIMS> scaled_point;
         this->find_hypercube(points, hypercube, scaled_point, point_offset * N_DIMS);
 
-        std::array<std::array<index_t, N_DIMS>, N_DIMS + 1> simplex;
+        std::array<vertex_t, N_DIMS + 1> simplex;
 
         if (this->use_barycentric_interpolation)
         {
@@ -105,7 +103,7 @@ void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::materialize_missi
             {
                 double* vertex = &vertices[simplices[vertex_i] * N_DIMS];
                 for (int dim_i = 0; dim_i < N_DIMS; dim_i++)
-                    simplex[vertex_i][dim_i] = hypercube[dim_i] + static_cast<index_t>(vertex[dim_i]);
+                    simplex[vertex_i][dim_i] = hypercube[dim_i] + static_cast<int32_t>(vertex[dim_i]);
             }
         }
         else
@@ -166,8 +164,8 @@ void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::materialize_missi
     if (this->timer) this->timer->node["point generation"].stop();
 }
 
-template <typename index_t, int N_DIMS, int N_OPS>
-int linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::interpolate_with_derivatives(
+template <int N_DIMS, int N_OPS>
+int linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>::interpolate_with_derivatives(
     const std::vector<double> &points, const std::vector<int> &points_idxs,
     std::vector<double> &values, std::vector<double> &derivatives)
 {
@@ -180,6 +178,6 @@ int linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::interpolate_with_d
     materialize_missing_points(points, points_idxs);
 
     // Delegate to base class for actual interpolation
-    return linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>::interpolate_with_derivatives(
+    return linear_cpu_interpolator_base<N_DIMS, N_OPS>::interpolate_with_derivatives(
         points, points_idxs, values, derivatives);
 }
