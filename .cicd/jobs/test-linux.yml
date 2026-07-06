@@ -29,7 +29,13 @@
         - darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
-        - python -m pytest tests/interpolators -v
+        # test interpolators from outside the checkout so Python imports the installed wheel
+        - |
+          PROJECT_DIR="${CI_PROJECT_DIR:-$PWD}"
+          INTERPOLATOR_TEST_WORKDIR="$(mktemp -d)"
+          cd "$INTERPOLATOR_TEST_WORKDIR" || exit
+          python -m pytest "$PROJECT_DIR/tests/interpolators" -v
+          cd "$PROJECT_DIR" || exit
         # test discretizer
         - cd discretizer/tests/compare_discretizers
         - darts main.py
