@@ -93,7 +93,7 @@ class VariableRole(IntEnum):
 
     Used for ``MGRSolverSpec.reservoir_variable_roles`` /
     ``well_variable_roles``. Mirrors the ``VariableRole`` enum in
-    ``solvers/include/CompositionalFlowStrategy.hpp``.
+    ``solvers/include/mgr_compositional_flow_strategy.hpp``.
     """
 
     PRESSURE = 0

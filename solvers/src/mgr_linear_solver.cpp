@@ -4,7 +4,7 @@
 
 #include "mgr_linear_solver.hpp"
 #include "OpendartsJacobian.hpp"
-#include "CompositionalFlowStrategy.hpp"
+#include "mgr_compositional_flow_strategy.hpp"
 #include "timer_node.h"
 #include <iostream>
 #include <chrono>

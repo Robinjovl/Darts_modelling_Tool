@@ -16,7 +16,7 @@
 
 #include "linsolv_iface_bos.hpp"
 #include "mgr_linear_solver.hpp"
-#include "CompositionalFlowStrategy.hpp"
+#include "mgr_compositional_flow_strategy.hpp"
 #include <memory>
 #include <string>
 

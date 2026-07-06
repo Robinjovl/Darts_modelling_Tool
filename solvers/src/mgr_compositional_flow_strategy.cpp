@@ -8,7 +8,7 @@
  * - Best convergence for small to medium problems
  */
 
-#include "CompositionalFlowStrategy.hpp"
+#include "mgr_compositional_flow_strategy.hpp"
 #include <iostream>
 #include <algorithm>
 #include <numeric>

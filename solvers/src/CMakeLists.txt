@@ -82,7 +82,7 @@ source_group(src FILES ${OD_AUXILIARY_SRC_FILES})
 set(OD_MGR_SOLVER_SRC_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/mgr_linear_solver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/mgrStrategy.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/compositionalFlowStrategy.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/mgr_compositional_flow_strategy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_mgr.cpp
 )
 
@@ -145,7 +145,7 @@ set(OD_LINEAR_SOLVERS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linear_solvers_data_types.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/mgr_linear_solver.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/MGRStrategy.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../include/CompositionalFlowStrategy.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/mgr_compositional_flow_strategy.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/Types.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/solver_config.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linear_solver.hpp

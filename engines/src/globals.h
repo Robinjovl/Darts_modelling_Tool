@@ -81,7 +81,6 @@ public:
     GPU_GMRES_CPR_AMGX_AMGX,
     GPU_GMRES_AMGX,
     GPU_AMGX,
-    GPU_GMRES_CPR_NF,
     GPU_BICGSTAB_CPR_AMGX,
     GPU_CUSOLVER,
     CPU_GMRES_MGR,
@@ -167,8 +166,6 @@ public:
   std::vector<value_t> newton_params;
   std::vector<value_t> linear_params;
 
-  // for NF solver
-  std::vector<int> global_actnum;
 
   // Global chop: 0 - solution increment/value (dX/X) ratio threshold (default 1)
   // Local chop:  1 - composition increment is limited by max_dx (default 0.1)

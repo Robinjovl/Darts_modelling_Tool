@@ -202,52 +202,6 @@ int engine_elasticity_cpu<ND>::init_base(conn_mesh *mesh_, std::vector<ms_well *
 			break;
 		}
 #endif // OPENDARTS_GPU_HAS_AMGX
-#ifdef WITH_ADGPRS_NF
-		case sim_params::GPU_GMRES_CPR_NF:
-		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			// NF was initially created for CPU-based solver, so keeping unnesessary GPU->CPU->GPU copies so far for simplicity
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
-
-			int nx, ny, nz;
-			int n_colors = 4;
-			int coloring_scheme = 3;
-			bool is_ordering_reversed = true;
-			bool is_factorization_twisted = true;
-			if (params->linear_params.size() < 3)
-			{
-				printf("Error: Missing nx, ny, nz parameters, required for NF solver\n");
-				exit(-3);
-			}
-
-			nx = params->linear_params[0];
-			ny = params->linear_params[1];
-			nz = params->linear_params[2];
-			if (params->linear_params.size() > 3)
-			{
-				n_colors = params->linear_params[3];
-				if (params->linear_params.size() > 4)
-				{
-					coloring_scheme = params->linear_params[4];
-					if (params->linear_params.size() > 5)
-					{
-						is_ordering_reversed = params->linear_params[5];
-						if (params->linear_params.size() > 6)
-						{
-							is_factorization_twisted = params->linear_params[6];
-						}
-					}
-				}
-			}
-
-			cpr->set_prec(new linsolv_adgprs_nf<1>(nx, ny, nz, params->global_actnum, n_colors, coloring_scheme, is_ordering_reversed, is_factorization_twisted));
-			linear_solver->set_prec(cpr);
-			break;
-		}
-#endif //WITH_ADGPRS_NF
 		case sim_params::GPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
