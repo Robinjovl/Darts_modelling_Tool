@@ -16,7 +16,7 @@ Help_Info()
   echo "USAGE: "
   echo "   -h : displays this help menu."
   echo "   -c : cleans up build to prepare a new fresh build. Default: don't clean"
-  echo "   -t : Enable testing: ctest of solvers. Default: don't test"
+  echo "   -t : Enable testing: ctest of solvers and install open-darts[test]. Default: don't test"
   echo "   -w : Enable generation of python wheel. Default: false"
   echo "   -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true"
   echo "   -G : Enable GPU build. Warning: Requires GPU bos solvers. Default: false"
@@ -83,6 +83,7 @@ PY
 # Read input arguments ---------------------------------------------------------
 clean_mode=false  # Set mode to clean up, cleans build to prepare for fresh new build
 testing=false     # Whether to enable the testing (ctest) of solvers.
+install_test_extra=false # Whether to install the Python package with the test extra.
 wheel=false       # Whether to generate python wheel.
 bos_solvers_artifact=false # Fetch the bos_solvers library from artifacts (for CI/CD purposes)
 iter_solvers=false # Iterative linear solvers, will be set below depending on -a and -b flags
@@ -104,7 +105,8 @@ while getopts ":chtwmrab:d:j:g:Gpv" option; do
         c) # Clean mode
            clean_mode=true;;
         t) # Testing
-           testing=true;;
+           testing=true
+           install_test_extra=true;;
         w) # Generate wheel
            wheel=true;;
         m) # Multi-thread
@@ -367,8 +369,12 @@ if [[ "$wheel" == true ]]; then
     echo -e "-- Python wheel generated! \n"
 fi
 
-# installing python package with -e flag for interactive install (changes will be applied live)
-python3 -m pip install . 2>&1 | tee -a make_wheel.log
+# install the Python package; -t keeps pytest and future test dependencies in one place
+install_target="."
+if [[ "$install_test_extra" == true ]]; then
+    install_target=".[test]"
+fi
+python3 -m pip install "$install_target" 2>&1 | tee -a make_wheel.log
 
 if [[ "$phreeqc" == true ]]; then
     ensure_reaktoro_conda

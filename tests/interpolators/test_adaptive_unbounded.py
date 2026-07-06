@@ -33,7 +33,7 @@ N_DIMS = 3
 N_OPS = 4
 
 
-def _resolve_cls(base):
+def _resolve_cls(base, *, required=True):
     # Letterless naming since the index-type template parameter was dropped from
     # the adaptive interpolators; the legacy '_l_'/'_i_' suffixed names are kept
     # as fallbacks so the test still runs against an older compiled module.
@@ -43,6 +43,8 @@ def _resolve_cls(base):
     for name in candidates:
         if hasattr(_itor_module, name):
             return name
+    if not required:
+        return None
     raise SystemExit(
         f"None of {candidates} exposed in darts.interpolators — "
         f"rebuild with this (n_dims, n_ops) pair."
@@ -50,9 +52,16 @@ def _resolve_cls(base):
 
 
 ML_CLS_NAME = _resolve_cls("multilinear_adaptive_cpu_interpolator")
-LIN_CLS_NAME = _resolve_cls("linear_adaptive_cpu_interpolator")
+LIN_CLS_NAME = _resolve_cls("linear_adaptive_cpu_interpolator", required=False)
 MultilinearAdaptiveCls = getattr(_itor_module, ML_CLS_NAME)
-LinearAdaptiveCls = getattr(_itor_module, LIN_CLS_NAME)
+LinearAdaptiveCls = (
+    getattr(_itor_module, LIN_CLS_NAME) if LIN_CLS_NAME is not None else None
+)
+
+
+def _require_linear_adaptive():
+    if LinearAdaptiveCls is None:
+        pytest.skip("linear adaptive CPU interpolator is not exposed in this build")
 
 
 class LinearEvaluator(operator_set_evaluator_iface):
@@ -130,6 +139,7 @@ def build_itor(axes_min, axes_max, n_points, kind="multilinear"):
             value_vector(axes_step),
         )
     elif kind == "linear":
+        _require_linear_adaptive()
         # Last argument is use_barycentric_interpolation; keep False for the simplex path.
         itor = LinearAdaptiveCls(
             evaluator,
@@ -161,6 +171,8 @@ def fmt(x):
 
 def run_one(kind: str):
     print("=" * 78)
+    if kind == "linear":
+        _require_linear_adaptive()
     cls_name = ML_CLS_NAME if kind == "multilinear" else LIN_CLS_NAME
     print(f"Test: multi-index-keyed {kind} adaptive CPU interpolator")
     print(f"  N_DIMS={N_DIMS}, N_OPS={N_OPS}, class={cls_name}")
@@ -378,7 +390,25 @@ def run_axes_step_helper_test():
     assert err < 1e-9, f"multilinear correctness fail: {err}"
     assert warn == 0, f"unexpected extrapolation warnings: {warn}"
 
-    print("\nConstructing linear adaptive itor with axes_step only...")
+    print(
+        "\n    axes_step helper OK — multilinear constructed without specifying bounds."
+    )
+
+
+def run_axes_step_linear_helper_test():
+    """Linear adaptive axes_step-only construction placeholder.
+
+    MINIMAL interpolator builds intentionally omit the linear adaptive classes;
+    keep this as a collected test and skip it when that class is absent.
+    """
+    _require_linear_adaptive()
+    axes_step = [0.1, 0.1, 0.1]
+    origin = [0.0] * N_DIMS
+    rng = np.random.default_rng(seed=7)
+
+    print("=" * 78)
+    print("Test: linear adaptive axes_step-only direct construction")
+    print("=" * 78)
     evaluator2 = LinearEvaluator(N_DIMS, N_OPS, seed=42)
     itor_l = LinearAdaptiveCls(
         evaluator2,
@@ -401,9 +431,7 @@ def run_axes_step_helper_test():
     assert err_l < 1e-9, f"linear correctness fail: {err_l}"
     assert warn_l == 0, f"unexpected extrapolation warnings: {warn_l}"
 
-    print(
-        "\n    axes_step helper OK — interpolators constructed without specifying bounds."
-    )
+    print("\n    axes_step helper OK — linear constructed without specifying bounds.")
 
 
 @pytest.mark.parametrize("kind", ["multilinear", "linear"])
@@ -413,6 +441,10 @@ def test_adaptive_unbounded(kind):
 
 def test_axes_step_helper():
     run_axes_step_helper_test()
+
+
+def test_axes_step_linear_helper():
+    run_axes_step_linear_helper_test()
 
 
 if __name__ == "__main__":

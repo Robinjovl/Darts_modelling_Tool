@@ -64,8 +64,9 @@ struct cell_key_t
  * Each per-component 32-bit value is folded into the running hash with the
  * boost::hash_combine spreader (golden-ratio constant + shift-6/shift-2), and the
  * added term is avalanched through fmix64 so every axis contributes independent
- * entropy. Tested against birthday-collision rates up to N_DIMS=20; collision rate
- * is on the order of 2^-32 at 10^6 keys.
+ * entropy. Distribution is covered by test_cell_key_collision.cpp on realistic
+ * sparse cell sets and forced reduced-hash collision cases; the full key equality
+ * path is still authoritative for CPU unordered_map lookups.
  *
  * NOTE: an FNV-1a alternative over uint64 chunks compute-wise ~3× cheaper was
  * benchmarked and rejected — its weaker distribution increased

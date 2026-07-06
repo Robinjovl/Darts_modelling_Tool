@@ -7,8 +7,7 @@
         - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
-        # test interpolators (pytest; on a GPU build the GPU interpolator test
-        - python -m pip install pytest
+        # test interpolators
         - python -m pytest tests/interpolators -v
         # test discretizer
         - cd discretizer/tests/compare_discretizers
@@ -54,7 +53,8 @@ test-linux-oahu-gpu:
         # upgrade pip package first
         - python -m pip install --upgrade pip
         - pip uninstall open-darts-flash  --yes
-        - pip install ./dist/*.whl
+        - export WHEEL_PATH="$(ls ./dist/*.whl | head -n 1)"
+        - pip install "${WHEEL_PATH}[test]"
     after_script:
         - *archive_logic  # parent's commands
         - source ${CONDAPATH}/bin/activate
@@ -77,7 +77,8 @@ test-linux-oahu-gpu:
         # upgrade pip package first
         - python -m pip install --upgrade pip
         - pip uninstall open-darts-flash --yes
-        - pip install ./dist/*.whl
+        - export WHEEL_PATH="$(ls ./dist/*.whl | head -n 1)"
+        - pip install "${WHEEL_PATH}[test]"
     after_script:
         - spack env activate open_darts_gcc134
         - . "${CONDAPATH}/etc/profile.d/conda.sh"
@@ -114,7 +115,8 @@ test-linux-tahiti-image-gpu:
             # make sure pip is fresh and reinstall your wheel
             python -m pip install --upgrade pip && \
             pip uninstall open-darts-flash --yes && \
-            pip install ./dist/*.whl --force-reinstall
+            WHEEL_PATH=\$(ls ./dist/*.whl | head -n 1) && \
+            pip install \"\${WHEEL_PATH}[test]\" --force-reinstall
             "
     script:
         - |
@@ -126,8 +128,7 @@ test-linux-tahiti-image-gpu:
             darts run_test_suite2.py LOG && \
             echo 'run_test_suite2 returned' $? && \
             cd .. && \
-            # test interpolators (pytest; GPU interpolator test runs here)
-            python -m pip install pytest && \
+            # test interpolators
             python -m pytest tests/interpolators -v && \
             # test discretizer
             cd discretizer/tests/compare_discretizers && \

@@ -29,14 +29,13 @@
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
         - pip install --force-reinstall --no-deps .\dist\$WHEEL_NAME
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
-        - pip install --upgrade --upgrade-strategy eager .\dist\$WHEEL_NAME
+        - pip install --upgrade --upgrade-strategy eager ".\dist\$WHEEL_NAME[test]"
     script:
         # run simulation fot test models set
         - cd models
         # passing additional argument to trigger verbose check performance
         - darts run_test_suite2.py LOG
         - cd ..
-        - python -m pip install pytest
         - python -m pytest tests\interpolators -v
         # test discretizer
         - cd discretizer\tests\compare_discretizers

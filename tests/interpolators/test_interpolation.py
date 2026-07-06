@@ -81,6 +81,18 @@ def get_interpolator_name(algorithm, mode, platform, precision, n_dims, n_ops):
     return itor_name
 
 
+def get_interpolator_class(algorithm, mode, platform, precision, n_dims, n_ops):
+    itor_name = get_interpolator_name(
+        algorithm, mode, platform, precision, n_dims, n_ops
+    )
+    itor_cls = globals().get(itor_name)
+    if itor_cls is None:
+        if algorithm == 'linear' and mode == 'adaptive':
+            pytest.skip(f'{itor_name} is not exposed in this build')
+        pytest.fail(f'{itor_name} is not exposed in darts.interpolators')
+    return itor_name, itor_cls
+
+
 @pytest.mark.parametrize(
     "itor_type, itor_mode, n_dim, is_barycentric, norm",
     [
@@ -95,7 +107,7 @@ def test_interpolator_convergence(itor_type, itor_mode, n_dim, is_barycentric, n
     axes_min = n_dim * [-1 - zero]
     axes_max = n_dim * [1 + zero]
     evaluator = Nonlinear(n_dim, n_ops)
-    itor_name = get_interpolator_name(itor_type, itor_mode, 'cpu', 'd', n_dim, n_ops)
+    _, itor_cls = get_interpolator_class(itor_type, itor_mode, 'cpu', 'd', n_dim, n_ops)
     resolutions = [n_dim * [8], n_dim * [32], n_dim * [128]]
 
     # generate random states
@@ -139,14 +151,14 @@ def test_interpolator_convergence(itor_type, itor_mode, n_dim, is_barycentric, n
             (axes_max[d] - axes_min[d]) / (resolutions[i][d] - 1) for d in range(n_dim)
         ]
         if itor_type == 'linear':
-            itor = eval(itor_name)(
+            itor = itor_cls(
                 evaluator,
                 value_vector(axes_min),
                 value_vector(axes_step),
                 is_barycentric,
             )
         else:
-            itor = eval(itor_name)(
+            itor = itor_cls(
                 evaluator,
                 value_vector(axes_min),
                 value_vector(axes_step),
@@ -204,19 +216,19 @@ def test_linearity_preservation(itor_type, itor_mode, n_dim, is_barycentric):
 
     # initialize interpolator. New adaptive ctor is (evaluator, axes_origin,
     # axes_step); derive step from the (n_axes_points, axes_min, axes_max) window.
-    itor_name = get_interpolator_name(itor_type, itor_mode, 'cpu', 'd', n_dim, n_ops)
+    _, itor_cls = get_interpolator_class(itor_type, itor_mode, 'cpu', 'd', n_dim, n_ops)
     axes_step = [
         (axes_max[d] - axes_min[d]) / (n_axes_points[d] - 1) for d in range(n_dim)
     ]
     if itor_type == 'linear':
-        itor = eval(itor_name)(
+        itor = itor_cls(
             evaluator,
             value_vector(axes_min),
             value_vector(axes_step),
             is_barycentric,
         )
     else:
-        itor = eval(itor_name)(
+        itor = itor_cls(
             evaluator,
             value_vector(axes_min),
             value_vector(axes_step),
@@ -304,7 +316,7 @@ def _build_multilinear_adaptive(
     No timer node is attached on purpose: this exercises the null-timer path of
     the three-phase adaptive update (the ``if (this->timer)`` guards added in MR297).
     """
-    itor_name = get_interpolator_name(
+    _, itor_cls = get_interpolator_class(
         'multilinear', 'adaptive', 'cpu', 'd', n_dim, n_ops
     )
     # New adaptive ctor is (evaluator, axes_origin, axes_step); derive step from the
@@ -312,7 +324,7 @@ def _build_multilinear_adaptive(
     axes_step = [
         (axes_max[d] - axes_min[d]) / (n_axes_points[d] - 1) for d in range(n_dim)
     ]
-    itor = eval(itor_name)(
+    itor = itor_cls(
         evaluator,
         value_vector(list(axes_min)),
         value_vector(axes_step),

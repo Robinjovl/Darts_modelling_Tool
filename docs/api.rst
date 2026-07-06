@@ -10,7 +10,7 @@ Engines
 Physics
 #######
 
-.. autoclass:: darts.physics.physics_base.PhysicsBase
+.. autoclass:: darts.physics.base.physics_base.PhysicsBase
    :members:
    :undoc-members:
    :show-inheritance:
@@ -29,6 +29,24 @@ Super
 ******
 
 .. autoclass:: darts.physics.super.physics.Compositional
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Chemistry
+**********
+
+.. autoclass:: darts.physics.chemistry.physics.ElementBasedReactiveFlow
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
+Poromechanics
+**************
+
+.. autoclass:: darts.physics.mech.poroelasticity.Poroelasticity
    :members:
    :undoc-members:
    :show-inheritance:

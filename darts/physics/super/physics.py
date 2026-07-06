@@ -23,7 +23,8 @@ class Compositional(PhysicsBase):
     sets well controls; and defines initial / boundary conditions.
 
     The OBL grid is defined by ``axes_step`` (per-axis cell size) and an optional
-    ``axes_origin`` (default zeros, with ``epsilon_z`` added on composition axes).
+    ``axes_origin``. Defaults are pressure = 1 bar, composition axes = ``epsilon_z``,
+    and thermal axis = 273.15 K for P-T or 0 for P-H.
     The adaptive multi-index-keyed interpolator caches cells on demand wherever
     the solver lands; there is no fixed grid window.
     """
@@ -110,10 +111,9 @@ class Compositional(PhysicsBase):
                     "extrapolation requires equal dz across all composition axes"
                 )
 
-        # Fill in per-field defaults (mostly n_axis_points falling back to n_points) so that
-        # callers can pass HistoryField(label="sg_max") without repeating axis resolution.
-        # n_points isn't available with the multi-index adaptive grid; HistoryField specs
-        # must set n_axis_points explicitly, so we just pass entries through.
+        # HistoryField axis bounds are retained as metadata for history-aware evaluators.
+        # The multi-index adaptive grid has no global n_points fallback, so pass entries
+        # through unchanged.
         resolved_history_fields = list(history_fields or [])
         super().__init__(
             state_spec=state_spec,

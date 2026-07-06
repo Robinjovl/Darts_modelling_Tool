@@ -30,8 +30,8 @@ class HistoryField:
     :param label: Axis label used for interpolator state ordering (e.g. ``"sg_max"``)
     :param axis_min: Lower bound of the OBL axis for this history variable
     :param axis_max: Upper bound of the OBL axis for this history variable
-    :param n_axis_points: Number of OBL supporting points on this axis; ``None`` falls back to the
-                          physics default ``n_points``
+    :param n_axis_points: Reserved history-axis resolution metadata; adaptive grids no longer
+                          use a global OBL point count
     :param default: Reservoir initial value and fallback value at wells / boundaries
     """
 
@@ -231,11 +231,6 @@ class PhysicsBase:
         # An empty list disables history-aware behaviour; a non-empty list extends the OBL
         # interpolation state without touching the Newton system.
         self.history_fields: list[HistoryField] = list(history_fields or [])
-        # Populated by set_interpolators when history_fields is non-empty, so create_interpolator
-        # can decide between primary-axes and extended-axes interpolator construction.
-        self._extended_axes_min: value_vector | None = None
-        self._extended_axes_max: value_vector | None = None
-        self._extended_n_axes_points: index_vector | None = None
 
     @property
     def n_history(self) -> int:
@@ -256,46 +251,6 @@ class PhysicsBase:
         :rtype: int
         """
         return self.n_vars + self.n_history
-
-    def get_interpolator_axes(
-        self,
-    ) -> tuple[value_vector, value_vector, index_vector]:
-        """
-        Return the ``(axes_min, axes_max, n_axes_points)`` triple that OBL interpolators
-        running on the full OBL state ``[X | Xhistory]`` should be built on.
-
-        When ``history_fields`` is empty this is identical to ``(self.axes_min, self.axes_max,
-        self.n_axes_points)``. When non-empty the primary axes are extended with one axis per
-        history field (using ``n_axes_points[0]`` as the default axis resolution). The result
-        is cached on ``self._extended_axes_*`` so callers (``set_interpolators`` and
-        :mod:`darts.output`) see identical bounds.
-
-        :returns: ``(axes_min, axes_max, n_axes_points)`` suitable for :meth:`create_interpolator`
-        :rtype: tuple[value_vector, value_vector, index_vector]
-        """
-        if not self.history_fields:
-            return self.axes_min, self.axes_max, self.n_axes_points
-        if self._extended_axes_min is None:
-            h_min = [h.axis_min for h in self.history_fields]
-            h_max = [h.axis_max for h in self.history_fields]
-            h_npts = [
-                (
-                    h.n_axis_points
-                    if h.n_axis_points is not None
-                    else self.n_axes_points[0]
-                )
-                for h in self.history_fields
-            ]
-            self._extended_axes_min = value_vector(list(self.axes_min) + h_min)
-            self._extended_axes_max = value_vector(list(self.axes_max) + h_max)
-            self._extended_n_axes_points = index_vector(
-                list(self.n_axes_points) + h_npts
-            )
-        return (
-            self._extended_axes_min,
-            self._extended_axes_max,
-            self._extended_n_axes_points,
-        )
 
     def get_interpolator_state_labels(self) -> list:
         """
