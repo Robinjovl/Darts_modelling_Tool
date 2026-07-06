@@ -98,6 +98,12 @@ namespace opendarts
       fill_even_row_partition(row_thread_starts_.host_data(), n_block_rows_, n_threads);
     }
 
+    void sparsity_pattern::ensure_row_partition_current()
+    {
+      if (omp_assembly_n_threads() != n_thread_partitions_)
+        install_even_row_partition();
+    }
+
     void sparsity_pattern::compute_diag_ind()
     {
       const index_t *rp = row_ptr_.host_data();

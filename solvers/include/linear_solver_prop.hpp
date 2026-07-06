@@ -74,18 +74,23 @@ namespace opendarts
       //  VARIABLES
       //-----------------------------------------
       private:
-        opendarts::config::index_t max_iters;                      //!< maximum number of iteration
-        opendarts::config::mat_float tol;                         //!< tolerance
+        // All members carried over from the legacy bos class uninitialised;
+        // initialise them so accessors never read indeterminate values.
+        // max_iters/tol take the proprietary constructor's defaults (30 /
+        // 1e-5) -- set_tolerance() only assigns when the CURRENT tol exceeds
+        // 1e-15, so a zero init would have made it a permanent no-op.
+        opendarts::config::index_t max_iters = 30;                 //!< maximum number of iteration
+        opendarts::config::mat_float tol = 1.0e-5;                //!< tolerance
 
-        opendarts::config::mat_float *resid;                      //!< array of L2 residuals sqrt (<b - Ax, b - Ax>) (resid[0] -- initial residual,
+        opendarts::config::mat_float *resid = nullptr;            //!< array of L2 residuals sqrt (<b - Ax, b - Ax>) (resid[0] -- initial residual,
                                                                   //!< resid[iters] -- final residual)
-        opendarts::config::mat_float *convergence_rate;           //!< array of convergence rate
+        opendarts::config::mat_float *convergence_rate = nullptr; //!< array of convergence rate
       public:
-        opendarts::config::mat_float final_resid;
-        opendarts::config::mat_float relative_factor;             //!< denominator for resid array to get relative residual
+        opendarts::config::mat_float final_resid = 0.0;
+        opendarts::config::mat_float relative_factor = 1.0;       //!< denominator for resid array to get relative residual
 
-        opendarts::config::index_t success;                        //!< != 0 if successivly converged
-        opendarts::config::index_t iters;                          //!< number of iteration spend for convergence
+        opendarts::config::index_t success = 0;                    //!< != 0 if successivly converged
+        opendarts::config::index_t iters = 0;                      //!< number of iteration spend for convergence
     };
   } // namespace linear_solvers
 } // namespace opendarts

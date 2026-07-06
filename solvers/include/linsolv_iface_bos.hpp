@@ -74,7 +74,9 @@ namespace opendarts
           return solver;
         };
 
-        opendarts::linear_solvers::linear_solver_base *solver;
+        // Null-initialised: most derived solvers never assign it, and
+        // get_bos_solver() previously returned an indeterminate pointer.
+        opendarts::linear_solvers::linear_solver_base *solver = nullptr;
 
       private:
         // Checked replacement for the former bare static_cast: returns null

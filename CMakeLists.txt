@@ -95,11 +95,23 @@ message(STATUS "  git dirtiness: ${GIT_DIRTY}")
 option(ENABLE_BOS_SOLVERS "Link the proprietary BOS solvers instead of the in-tree open-source stack" OFF)
 add_feature_info(ENABLE_BOS_SOLVERS ENABLE_BOS_SOLVERS "Link the proprietary BOS solvers")
 # Back-compat: an explicit BOS_SOLVERS_DIR used to be the switch; keep old
-# invocations working by implying ENABLE_BOS_SOLVERS=ON.
+# invocations working by implying ENABLE_BOS_SOLVERS=ON -- but only ONCE per
+# build directory. Previously the shim re-fired on every configure, so an
+# explicit -D ENABLE_BOS_SOLVERS=OFF could never win while BOS_SOLVERS_DIR
+# remained in the cache.
 if(DEFINED BOS_SOLVERS_DIR AND NOT ENABLE_BOS_SOLVERS)
-  message(STATUS "  BOS_SOLVERS_DIR given -> ENABLE_BOS_SOLVERS=ON (back-compat)")
-  set(ENABLE_BOS_SOLVERS ON)
+  if(NOT DEFINED _BOS_SHIM_APPLIED)
+    message(STATUS "  BOS_SOLVERS_DIR given -> ENABLE_BOS_SOLVERS=ON (back-compat)")
+    set(ENABLE_BOS_SOLVERS ON)
+    set(ENABLE_BOS_SOLVERS ON CACHE BOOL
+        "Link the proprietary BOS solvers instead of the in-tree open-source stack" FORCE)
+  else()
+    message(STATUS
+        "  BOS_SOLVERS_DIR is cached but ENABLE_BOS_SOLVERS=OFF -- building the "
+        "open-source stack (pass -D ENABLE_BOS_SOLVERS=ON to link BOS).")
+  endif()
 endif()
+set(_BOS_SHIM_APPLIED ON CACHE INTERNAL "back-compat BOS shim evaluated")
 if(ENABLE_BOS_SOLVERS AND NOT DEFINED BOS_SOLVERS_DIR)
   message(FATAL_ERROR "ENABLE_BOS_SOLVERS=ON requires -D BOS_SOLVERS_DIR=<path to darts-linear-solvers>")
 endif()

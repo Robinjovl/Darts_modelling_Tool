@@ -40,6 +40,7 @@ void pybind_engine_base (py::module &m)
 	   .def_readwrite("newton_residual_last_dt", &engine_base::newton_residual_last_dt) \
 	   .def_readwrite("stat", &engine_base::stat) \
 	   .def_readwrite("n_linear_last_dt", &engine_base::n_linear_last_dt) \
+	   .def_readwrite("linear_solver_error_last_dt", &engine_base::linear_solver_error_last_dt) \
 	   .def_readwrite("op_vals_arr_n", &engine_base::op_vals_arr_n) \
 	   .def_readwrite("region_cell_idx", &engine_base::block_idxs) \
 	   .def_readwrite("time_data", &engine_base::time_data) \

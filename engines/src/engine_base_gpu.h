@@ -2,6 +2,7 @@
 #define ENGINE_BASE_GPU_H
 
 #include <vector>
+#include <stdexcept>
 #include <unordered_map>
 #include <cmath>
 #ifdef _OPENMP
@@ -572,8 +573,8 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
       bool is_factorization_twisted = true;
       if (params->linear_params.size() < 3)
       {
-        printf("Error: Missing nx, ny, nz parameters, required for NF solver\n");
-        exit(-3);
+        throw std::runtime_error(
+            "Missing nx, ny, nz parameters, required for NF solver");
       }
 
       nx = params->linear_params[0];
@@ -625,8 +626,9 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 #endif // OPENDARTS_GPU_HAS_AMGX
     default:
     {
-      std::cerr << "Linear solver type " << params->linear_type << " is not supported for " << engine_name << std::endl << std::flush;
-      exit(1);
+      throw std::runtime_error("Linear solver type " +
+          std::to_string(static_cast<int>(params->linear_type)) +
+          " is not supported for " + engine_name);
     }
     }
 #endif // OPENDARTS_LINEAR_SOLVERS

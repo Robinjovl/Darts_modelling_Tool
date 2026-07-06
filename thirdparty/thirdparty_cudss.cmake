@@ -25,6 +25,10 @@ find_package(cudss CONFIG QUIET HINTS "${CUDSS_ROOT}")
 if(cudss_FOUND AND TARGET cudss)
   # NVIDIA's config file exports a bare `cudss` target; normalise the name.
   add_library(cudss::cudss ALIAS cudss)
+  # Bundle the runtime library on this path too -- previously only the
+  # manual-discovery branch installed it, so a CONFIG-package build produced
+  # a wheel without libcudss (see the bundling comment below).
+  install(FILES "$<TARGET_FILE:cudss>" DESTINATION "${CMAKE_INSTALL_PREFIX}/solvers")
   message(STATUS "  cuDSS: found via CONFIG package (${cudss_DIR})")
   return()
 endif()
@@ -65,8 +69,11 @@ if(NOT CUDSS_INCLUDE_DIR OR NOT CUDSS_LIBRARY)
     "    -D CUDSS_ROOT=<dir>             (NVIDIA redistributable layout)\n"
     "    CMAKE_PREFIX_PATH containing cudss-config.cmake\n"
     "  Pass -D WITH_CUDSS=OFF to silence this warning. Searched hints: ${_cudss_hint_dirs}")
-  set(WITH_CUDSS OFF CACHE BOOL
-    "Build the cuDSS GPU direct solver (prebuilt NVIDIA library)" FORCE)
+  # Directory-scope shadow only: downstream CMakeLists in this configure see
+  # WITH_CUDSS=OFF, but the cache value is untouched -- the next configure
+  # retries discovery (previously the FORCE-cached OFF ratcheted permanently,
+  # so installing the cuDSS wheel later silently never re-enabled it).
+  set(WITH_CUDSS OFF)
   unset(_cudss_hint_dirs)
   return()
 endif()

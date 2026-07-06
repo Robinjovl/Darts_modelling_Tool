@@ -42,6 +42,7 @@ CompositionalFlowStrategyConfig::CompositionalFlowStrategyConfig()
   , pressureAmgTruncFactor( -1.0 )
   , pressureAmgPMaxElmts( -1 )
   , pressureAmgMaxLevels( 0 )
+  , verbose( false )
 {
   wellLevel.fRelaxType = FRelaxationType::directInverse;
   wellLevel.fRelaxIters = 1;
@@ -105,36 +106,51 @@ CompositionalFlowStrategy::CompositionalFlowStrategy( int_t numComponents,
   }
 }
 
+CompositionalFlowStrategy::~CompositionalFlowStrategy()
+{
+  if ( m_coarseSolver != nullptr )
+  {
+    HYPRE_BoomerAMGDestroy( m_coarseSolver );
+    m_coarseSolver = nullptr;
+  }
+}
+
 void CompositionalFlowStrategy::setup()
 {
-  std::cout << "\nSetting up Compositional Flow Strategy (physical-role-aware MGR)..." << std::endl;
-  std::cout << "  Components: " << m_numComponents << std::endl;
-  std::cout << "  DOFs: " << m_numDOF << std::endl;
-  std::cout << "  Cells: " << m_numCells << std::endl;
-  std::cout << "  Reservoir cells: " << m_numReservoirCells << std::endl;
-  std::cout << "  Well cells: " << (m_numCells - m_numReservoirCells) << std::endl;
-  std::cout << "  Marker labels: " << m_numBlocks << std::endl;
-  std::cout << "  Reduction levels: " << m_numLevels << std::endl;
-  std::cout << "  Well level: " << (m_config.enableWellLevel ? "enabled" : "disabled") << std::endl;
-  std::cout << "  Custom levels: " << m_config.customLevels.size() << std::endl;
-  std::cout << "  Composition level: " << (m_config.enableCompositionLevel ? "enabled" : "disabled") << std::endl;
-  logVariableRolesAndLabels();
-  if( hasWellCells() )
+  // Diagnostics gated behind config.verbose: previously ~25 unconditional
+  // stdout lines were re-emitted on every strategy rebuild (per adjoint
+  // solve / configuration change).
+  if( m_config.verbose )
   {
-    if( useWellEliminationLevel() )
+    std::cout << "\nSetting up Compositional Flow Strategy (physical-role-aware MGR)..." << std::endl;
+    std::cout << "  Components: " << m_numComponents << std::endl;
+    std::cout << "  DOFs: " << m_numDOF << std::endl;
+    std::cout << "  Cells: " << m_numCells << std::endl;
+    std::cout << "  Reservoir cells: " << m_numReservoirCells << std::endl;
+    std::cout << "  Well cells: " << (m_numCells - m_numReservoirCells) << std::endl;
+    std::cout << "  Marker labels: " << m_numBlocks << std::endl;
+    std::cout << "  Reduction levels: " << m_numLevels << std::endl;
+    std::cout << "  Well level: " << (m_config.enableWellLevel ? "enabled" : "disabled") << std::endl;
+    std::cout << "  Custom levels: " << m_config.customLevels.size() << std::endl;
+    std::cout << "  Composition level: " << (m_config.enableCompositionLevel ? "enabled" : "disabled") << std::endl;
+    logVariableRolesAndLabels();
+    if( hasWellCells() )
     {
-      std::cout << "  Well strategy: eliminate well block" << std::endl;
-      std::cout << "  Well marker labels: " << wellLabelBase()
-                << ".." << (wellLabelBase() + m_numComponents - 1) << std::endl;
-    }
-    else if( keepWellPrimaryOnPressureLevel() )
-    {
-      std::cout << "  Well strategy: keep well primary on coarse grid" << std::endl;
-      std::cout << "  Well primary marker label: " << wellLabelBase() << std::endl;
-    }
-    else
-    {
-      std::cout << "  Well strategy: fold well variables into reservoir labels" << std::endl;
+      if( useWellEliminationLevel() )
+      {
+        std::cout << "  Well strategy: eliminate well block" << std::endl;
+        std::cout << "  Well marker labels: " << wellLabelBase()
+                  << ".." << (wellLabelBase() + m_numComponents - 1) << std::endl;
+      }
+      else if( keepWellPrimaryOnPressureLevel() )
+      {
+        std::cout << "  Well strategy: keep well primary on coarse grid" << std::endl;
+        std::cout << "  Well primary marker label: " << wellLabelBase() << std::endl;
+      }
+      else
+      {
+        std::cout << "  Well strategy: fold well variables into reservoir labels" << std::endl;
+      }
     }
   }
 
@@ -574,6 +590,14 @@ void CompositionalFlowStrategy::setupPressureAMG()
 
   // Clear any previous errors
   HYPRE_ClearAllErrors();
+
+  // Re-entrant setup: release the previous hierarchy first (it was leaked
+  // once per strategy rebuild before).
+  if ( m_coarseSolver != nullptr )
+  {
+    HYPRE_BoomerAMGDestroy( m_coarseSolver );
+    m_coarseSolver = nullptr;
+  }
 
   // Create BoomerAMG solver for pressure system (Schur complement)
   int rc_create = HYPRE_BoomerAMGCreate( &m_coarseSolver );

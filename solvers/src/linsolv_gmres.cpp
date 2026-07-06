@@ -291,7 +291,9 @@ namespace opendarts
       const int N = static_cast<int>(N_BLOCK_SIZE);
       const index_t n_block_rows = A_->n_rows;
       const std::size_t n = static_cast<std::size_t>(n_block_rows) * N;
-      const int m = restart_m_;
+      // restart < 2 makes the Arnoldi loop body unreachable (i starts at 1),
+      // which previously spun the outer loop forever and back-solved rs[-1].
+      const int m = restart_m_ < 2 ? 2 : restart_m_;
       const int max_iter = max_iters_;
       const mat_float tol_in = static_cast<mat_float>(tolerance_);
       const mat_float epsmac = 1.0e-16;
@@ -312,9 +314,10 @@ namespace opendarts
       mat_float *rs = c + m;
       mat_float *hh = rs + (m + 1);
 
-      // sol = 0; p_0 = rhs - A * sol = rhs (since sol = 0)
+      // sol = 0; p_0 = rhs - A * sol = rhs. Copy directly instead of paying
+      // a full SpMV against the just-zeroed guess (one SpMV per solve).
       std::memset(sol, 0, n * sizeof(mat_float));
-      block_csr_lin_comb<N_BLOCK_SIZE>(A_, -1.0, 1.0, sol, rhs, p, n, transpose);
+      std::memcpy(p, rhs, n * sizeof(mat_float));
 
       const mat_float b_norm = std::sqrt(dot(rhs, rhs, n));
       mat_float r_norm = std::sqrt(dot(p, p, n));
@@ -474,15 +477,21 @@ namespace opendarts
       // residual already met the tolerance and no Arnoldi step ran at all.
       n_iters_ = did_arnoldi ? (iter + 1) : 0;
       final_resid_ = (den_norm > 1.0e-12) ? (r_norm / den_norm) : r_norm;
-      // Feed the iteration count back to a CPR preconditioner so its
+      last_converged_ = (r_norm <= tol_scaled);
+      // A non-finite residual means the update is garbage (NaN/Inf out of the
+      // preconditioner or the matrix); report a hard failure so the engine
+      // cuts the timestep instead of applying it. Plain non-convergence at
+      // max_iters keeps the legacy 0 return (bos parity) -- it is visible
+      // through stats().converged for diagnostics and adaptive policies.
+      if (!std::isfinite(r_norm))
+        return -4;
+      // Feed the iteration count back to the preconditioner so its
       // hierarchy-reuse / adaptive-rebuild policy (opt-in via
       // cpr_solver_config) can decide whether the next setup() may skip the
-      // BoomerAMG/ILU rebuild. No-op for other preconditioners.
+      // BoomerAMG/ILU rebuild. Virtual on the base interface -- a no-op for
+      // preconditioners without a reuse policy.
       if (prec_ != nullptr)
-      {
-        if (auto *cpr = dynamic_cast<opendarts::linear_solvers::linsolv_cpr<N_BLOCK_SIZE> *>(prec_))
-          cpr->set_last_outer_iters(n_iters_);
-      }
+        prec_->set_last_outer_iters(n_iters_);
       return 0;
     }
 

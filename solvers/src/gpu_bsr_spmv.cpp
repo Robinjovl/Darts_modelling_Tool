@@ -178,10 +178,14 @@ namespace opendarts
       }
 
       // bsr2csr writes both structure and values; for fixed sparsity the
-      // structure portion is stable across calls.
+      // structure portion is stable across calls. Read the source matrix via
+      // the const accessors: the non-const values_device() marks the device
+      // side modified, which poisoned the dual_array dirty protocol on this
+      // read-only path (tripping the lost-update assert in debug builds).
+      const block_csr_matrix &m_src = *matrix_;
       const cusparseStatus_t status = cusparseDbsr2csr(handle_, CUSPARSE_DIRECTION_ROW,
-        mb, mb, descr_, matrix_->values_device(), matrix_->row_ptr_device(),
-        matrix_->col_ind_device(), bs, scalar_csr_descr_, scalar_csr_val_d_,
+        mb, mb, descr_, m_src.values_device(), m_src.row_ptr_device(),
+        m_src.col_ind_device(), bs, scalar_csr_descr_, scalar_csr_val_d_,
         scalar_csr_row_ptr_d_, scalar_csr_col_ind_d_);
       if (status != CUSPARSE_STATUS_SUCCESS)
       {
@@ -197,10 +201,13 @@ namespace opendarts
     {
       const int mb = static_cast<int>(matrix_->n_block_rows());
       const int nnzb = static_cast<int>(matrix_->n_blocks());
+      // Const access: SpMV only READS the matrix; the non-const accessor
+      // would spuriously mark the device side modified.
+      const block_csr_matrix &m_src = *matrix_;
       const cusparseStatus_t status = cusparseDbsrmv(handle_, CUSPARSE_DIRECTION_ROW,
         CUSPARSE_OPERATION_NON_TRANSPOSE, mb, mb, nnzb, &alpha, descr_,
-        matrix_->values_device(), matrix_->row_ptr_device(), matrix_->col_ind_device(),
-        matrix_->block_size(), x_d, &beta, y_d);
+        m_src.values_device(), m_src.row_ptr_device(), m_src.col_ind_device(),
+        m_src.block_size(), x_d, &beta, y_d);
       if (status != CUSPARSE_STATUS_SUCCESS)
       {
         printf("gpu_bsr_spmv: cusparseDbsrmv failed (status %d)\n", static_cast<int>(status));

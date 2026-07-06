@@ -73,18 +73,29 @@ class _BlockToScalarExpander:
         self.n = n_block_rows * b
         self.block_size = b
 
+        # Vectorised construction (the previous interpreted triple loop over
+        # nnz_blocks * b^2 took minutes-to-hours at million-cell scale).
+        rows64 = rows.astype(np.int64)
+        cols64 = cols.astype(np.int64)
+        d = np.diff(rows64)  # blocks per block-row
+        # Blocks per scalar row: each block-row contributes b scalar rows of
+        # d[ib] blocks each.
+        reps = np.repeat(d, b)
         self.scalar_rows[0] = 0
-        pos = 0
-        for ib in range(n_block_rows):
-            blk_start, blk_end = rows[ib], rows[ib + 1]
-            for r in range(b):
-                for bi in range(blk_start, blk_end):
-                    jb = cols[bi]
-                    for c in range(b):
-                        self.scalar_cols[pos] = jb * b + c
-                        self._gather_idx[pos] = bi * b2 + r * b + c
-                        pos += 1
-                self.scalar_rows[ib * b + r + 1] = pos
+        self.scalar_rows[1:] = np.cumsum(reps * b)
+        # Block index for every (scalar row, k) pair: grouped arange over the
+        # row's block range, repeated for each of the b scalar sub-rows.
+        csum = np.cumsum(reps)
+        total = int(csum[-1]) if csum.size else 0
+        grouped = np.arange(total, dtype=np.int64) - np.repeat(csum - reps, reps)
+        bi_seq = np.repeat(np.repeat(rows64[:-1], b), reps) + grouped
+        r_seq = np.repeat(np.arange(n_block_rows * b, dtype=np.int64) % b, reps)
+        # Expand each (block, r) into the b scalar columns of the block.
+        bi_full = np.repeat(bi_seq, b)
+        r_full = np.repeat(r_seq, b)
+        c_full = np.tile(np.arange(b, dtype=np.int64), bi_seq.size)
+        self.scalar_cols[:] = (cols64[bi_full] * b + c_full).astype(np.int32)
+        self._gather_idx[:] = bi_full * b2 + r_full * b + c_full
 
     def refresh(self, block_vals):
         """Gather the current block values into ``scalar_vals`` (in place)."""
@@ -206,6 +217,12 @@ class PETScSolver(PythonLinearSolver):
 
         self._PETSc = PETSc
         self._expander = _BlockToScalarExpander(rows, cols, block_size)
+        # Persistent PETSc objects, created on the first solve and reused for
+        # the whole run (previously the AIJ matrix, KSP, fieldsplit index sets
+        # and the composite PC -- including the GAMG hierarchy setup -- were
+        # rebuilt from scratch on every Newton iteration).
+        self._mat = None
+        self._ksp = None
 
     def _field_index_sets(self, block_size):
         """Build the fieldsplit index sets (pressure / transport|displacement).
@@ -236,18 +253,17 @@ class PETScSolver(PythonLinearSolver):
             csr=(exp.scalar_rows, exp.scalar_cols, exp.scalar_vals),
         )
 
-    def solve(self, rows, cols, vals, block_size, rhs, sol):
-        PETSc = self._PETSc
-        self._expander.refresh(vals)
+    def _ensure_ksp(self, block_size):
+        """Build the persistent AIJ matrix + KSP + fieldsplit wiring once.
 
+        Composite / fieldsplit *types* come from the option database (see
+        _petsc_args); the fieldsplit *index sets* are attached
+        programmatically because they depend on the runtime layout.
+        """
+        PETSc = self._PETSc
         mat = self._build_aij(block_size)
         mat.assemble()
-        petsc_rhs = PETSc.Vec().createWithArray(rhs, rhs.size)
-        petsc_sol = PETSc.Vec().createWithArray(sol, sol.size)
 
-        # Build the KSP. Composite / fieldsplit *types* come from the option
-        # database (see _petsc_args); the fieldsplit *index sets* are attached
-        # programmatically here because they depend on the runtime layout.
         ksp = PETSc.KSP().create()
         ksp.setFromOptions()
         ksp.setOperators(mat, mat)
@@ -270,6 +286,29 @@ class PETScSolver(PythonLinearSolver):
             pc.setFieldSplitIS(("displacement", is_other), ("pressure", is_pressure))
 
         ksp.setUp()
+        self._mat = mat
+        self._ksp = ksp
+
+    def solve(self, rows, cols, vals, block_size, rhs, sol):
+        PETSc = self._PETSc
+        self._expander.refresh(vals)
+
+        if self._ksp is None:
+            # First solve: scalar_vals already hold the refreshed values.
+            self._ensure_ksp(block_size)
+        else:
+            # Subsequent Newton iterations: in-place value update on the fixed
+            # structure. The state bump from assemble() makes the KSP re-run
+            # PCSetUp on the next solve (fresh GAMG hierarchy on the new
+            # values), while the AIJ matrix, index sets, KSP and composite PC
+            # objects are all reused.
+            exp = self._expander
+            self._mat.setValuesCSR(exp.scalar_rows, exp.scalar_cols, exp.scalar_vals)
+            self._mat.assemble()
+
+        ksp = self._ksp
+        petsc_rhs = PETSc.Vec().createWithArray(rhs, rhs.size)
+        petsc_sol = PETSc.Vec().createWithArray(sol, sol.size)
         if self.print_level >= 4:
             ksp.view()
         ksp.solve(petsc_rhs, petsc_sol)
@@ -280,10 +319,10 @@ class PETScSolver(PythonLinearSolver):
                 f"rnorm={ksp.getResidualNorm():.3e}",
                 flush=True,
             )
-        mat.destroy()
+        # mat / ksp are persistent (destroyed with the solver); only the
+        # per-solve vector wrappers are released.
         petsc_rhs.destroy()
         petsc_sol.destroy()
-        ksp.destroy()
 
 
 class PardisoSolver(PythonLinearSolver):

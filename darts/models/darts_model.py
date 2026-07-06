@@ -306,10 +306,11 @@ class DartsModel:
             self.reset()
             self.initialize_history_fields()
         self.data_ts.print()
-        if (
+        _solver_is_superlu = (
             self.params.linear_type == sim_params.linear_solver_t.cpu_superlu
-            and self.reservoir.mesh.n_res_blocks > 30000
-        ):
+            or type(getattr(self, "solver", None)).__name__ == "SuperLUSolverSpec"
+        )
+        if _solver_is_superlu and self.reservoir.mesh.n_res_blocks > 30000:
             warnings.warn(
                 "The number of cells looks too big to use a direct linear solver: "
                 + str(self.reservoir.mesh.n_res_blocks)
@@ -400,6 +401,23 @@ class DartsModel:
         if platform != "cpu":
             return
         spec = self._resolve_solver_spec()
+        if spec is None and self.solver is not None:
+            # A raw compiled solver object (darts.solvers.LinearSolver handle
+            # built outside the spec API) -- the documented fine-control path.
+            # Previously it was silently replaced by the default GMRES+CPR.
+            raw = self.solver
+            if not (hasattr(raw, "setup") and hasattr(raw, "solve")):
+                raise TypeError(
+                    "self.solver must be a LinearSolverSpec or a compiled "
+                    f"darts.solvers solver handle, got {type(raw).__name__}"
+                )
+            self._adaptive_solver_index = 0
+            self._adaptive_failures = 0
+            self._linear_solver = raw
+            self.physics.engine.set_linear_solver(
+                self._linear_solver, getattr(self, "solver_label", None) or "raw"
+            )
+            return
         if not isinstance(spec, LinearSolverSpec):
             # No explicit solver chosen (self.solver is None). Apply the platform
             # default when this model uses the registry path, i.e. it has a data_ts --
@@ -444,10 +462,30 @@ class DartsModel:
         spec = getattr(self, "solver", None)
         linear_type_name = getattr(spec, "linear_type_name", None)
         if not linear_type_name:
+            if isinstance(spec, LinearSolverSpec):
+                # A CPU registry spec (MGR / GMRES+CPR / SuperLU / ...) on the
+                # GPU platform cannot be honoured -- the GPU engine factory
+                # selects from params.linear_type. Previously this was silent
+                # and the model ran the GPU default while the user believed
+                # their spec was active.
+                warnings.warn(
+                    f"self.solver = {type(spec).__name__} is a CPU registry spec; "
+                    "on platform='gpu' the engine uses the GPU factory "
+                    "(params.linear_type) and this spec is ignored. Use a "
+                    "GPUSolverSpec subclass (AMGXCPRSolverSpec, CuDSSSolverSpec, ...) "
+                    "or run on platform='cpu'.",
+                    stacklevel=2,
+                )
             return
         enum_value = getattr(sim_params, linear_type_name, None)
-        if enum_value is not None:
-            self.params.linear_type = enum_value
+        if enum_value is None:
+            raise ValueError(
+                f"GPU solver spec {type(spec).__name__} names linear_type "
+                f"'{linear_type_name}', which does not exist in this build's "
+                "darts.engines.sim_params -- the requested GPU solver is not "
+                "available."
+            )
+        self.params.linear_type = enum_value
 
     def set_solver(self):
         """Configure the model's solver and time-stepping (override hook).

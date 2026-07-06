@@ -14,6 +14,7 @@
 // *************************************************************************
 
 #include <iostream>
+#include <stdexcept>
 #include <vector>
 #include <numeric>
 #include <cmath>
@@ -39,7 +40,11 @@ namespace opendarts
 {
   namespace linear_solvers
   {
-    void check_result(int res);
+    namespace
+    {
+      void check_result(int res);
+      void check_result_nothrow(int res);
+    }
 
     template <uint8_t N_BLOCK_SIZE>
     linsolv_hypre_ilu<N_BLOCK_SIZE>::linsolv_hypre_ilu()
@@ -72,27 +77,27 @@ namespace opendarts
       // a no-op as well.
       if (this->solver != nullptr)
       {
-        check_result(HYPRE_ILUDestroy(this->solver));
+        check_result_nothrow(HYPRE_ILUDestroy(this->solver));
         this->solver = nullptr;
       }
       if (this->A_ij != nullptr)
       {
-        check_result(HYPRE_IJMatrixDestroy(this->A_ij));
+        check_result_nothrow(HYPRE_IJMatrixDestroy(this->A_ij));
         this->A_ij = nullptr;
       }
-      // check_result(HYPRE_ParCSRMatrixDestroy(this->A_parcsr));  // gives error
+      // check_result_nothrow(HYPRE_ParCSRMatrixDestroy(this->A_parcsr));  // gives error
       if (this->b_ij != nullptr)
       {
-        check_result(HYPRE_IJVectorDestroy(this->b_ij));
+        check_result_nothrow(HYPRE_IJVectorDestroy(this->b_ij));
         this->b_ij = nullptr;
       }
-      // check_result(HYPRE_ParVectorDestroy(this->b_par));  // gives error
+      // check_result_nothrow(HYPRE_ParVectorDestroy(this->b_par));  // gives error
       if (this->x_ij != nullptr)
       {
-        check_result(HYPRE_IJVectorDestroy(this->x_ij));
+        check_result_nothrow(HYPRE_IJVectorDestroy(this->x_ij));
         this->x_ij = nullptr;
       }
-      // check_result(HYPRE_ParVectorDestroy(this->x_par));  // gives error
+      // check_result_nothrow(HYPRE_ParVectorDestroy(this->x_par));  // gives error
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -148,6 +153,30 @@ namespace opendarts
 
       // linsolv_iface::timer_setup->node["AMG"].start();
 
+      try
+      {
+      // Re-entrant setup: destroy the previous call's handles first (they
+      // were unconditionally re-created, leaking one IJ matrix and two IJ
+      // vectors per Newton iteration).
+      if (this->b_ij != nullptr)
+      {
+        check_result_nothrow(HYPRE_IJVectorDestroy(this->b_ij));
+        this->b_ij = nullptr;
+        this->b_par = nullptr;
+      }
+      if (this->x_ij != nullptr)
+      {
+        check_result_nothrow(HYPRE_IJVectorDestroy(this->x_ij));
+        this->x_ij = nullptr;
+        this->x_par = nullptr;
+      }
+      if (this->A_ij != nullptr)
+      {
+        check_result_nothrow(HYPRE_IJMatrixDestroy(this->A_ij));
+        this->A_ij = nullptr;
+        this->A_parcsr = nullptr;
+      }
+
       // Store input system matrix
       this->A = A_in;
 
@@ -180,11 +209,19 @@ namespace opendarts
       // linsolv_iface::timer_setup->node["AMG"].stop();
 
       return 0;
+      }
+      catch (const std::exception &e)
+      {
+        std::cout << e.what() << std::endl;
+        return -1;
+      }
     }
 
     template <uint8_t N_BLOCK_SIZE>
     int linsolv_hypre_ilu<N_BLOCK_SIZE>::solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X)
     {
+      try
+      {
 
       // Generate Hypre right hand side vector b_ij
       opendarts::config::index_t n_rows = this->A->n_cols;;  // number of rows in vector must
@@ -223,6 +260,12 @@ namespace opendarts
       check_result(HYPRE_IJVectorGetValues(x_ij, n_rows, rows_data, X));
 
       return 0;
+      }
+      catch (const std::exception &e)
+      {
+        std::cout << e.what() << std::endl;
+        return -1;
+      }
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -312,17 +355,34 @@ namespace opendarts
       check_result(HYPRE_IJMatrixGetObject(this->A_ij, (void **)&(this->A_parcsr)));
     }
 
-    inline void check_result(int res)
+    namespace
     {
-      char err_msg_char[256];
-      if (res)
+      // Internal linkage: the AMG sibling wrapper defines its own helper of
+      // the same name; keeping both file-local avoids any ODR interaction.
+      inline void check_result(int res)
       {
-      	HYPRE_DescribeError(res, err_msg_char);
-        std::string err_msg(err_msg_char);
-      	std::cout << "\n" << err_msg << std::endl;
-        exit(-1);
+        char err_msg_char[256];
+        if (res)
+        {
+          HYPRE_DescribeError(res, err_msg_char);
+          std::string err_msg(err_msg_char);
+          std::cout << "\n" << err_msg << std::endl;
+          // Throw instead of exit(-1); setup()/solve() translate to a
+          // nonzero return so the engine cuts the timestep.
+          throw std::runtime_error("linsolv_hypre_ilu: HYPRE error -- " + err_msg);
+        }
       }
-    }
+
+      inline void check_result_nothrow(int res)
+      {
+        char err_msg_char[256];
+        if (res)
+        {
+          HYPRE_DescribeError(res, err_msg_char);
+          std::cout << "\nlinsolv_hypre_ilu (dtor): " << err_msg_char << std::endl;
+        }
+      }
+    } // namespace
 
     template class linsolv_hypre_ilu<1>;
     // Note that for values of block size larger than 1 a matrix copy must be carried

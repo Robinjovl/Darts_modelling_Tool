@@ -1335,6 +1335,9 @@ namespace opendarts
       if (first_solve)
       {
         ScopedTimer timer(mgr_timer ? &mgr_timer->node["strategy setup"] : nullptr);
+        // Strategy diagnostics follow the solver's log level (quiet at the
+        // default 0/1; >= 2 restores the full setup printout).
+        mgr_strategy_config_cached.verbose = (log_level_cached >= 2);
         auto strategy = std::make_unique<mgr::strategies::CompositionalFlowStrategy>(
             block_size,
             n_blocks * block_size,

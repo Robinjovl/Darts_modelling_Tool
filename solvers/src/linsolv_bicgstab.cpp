@@ -15,6 +15,8 @@
 
 #ifdef WITH_GPU
 
+#include <cmath>
+#include <limits>
 #include <cstdio>
 
 #include <cuda_runtime.h>
@@ -165,6 +167,17 @@ namespace opendarts
 
         cublasDdot(cub_handle, n, rw, 1, v, 1, &temp);
         alpha = rho / temp;
+        // Krylov breakdown (rho or (rw,v) vanished) or NaN propagation from
+        // the preconditioner/matrix: the update would be garbage. Fail hard
+        // so the engine cuts the timestep instead of applying it.
+        if (!std::isfinite(alpha))
+        {
+          n_iters = i;
+          final_resid = std::numeric_limits<double>::infinity();
+          last_converged = false;
+          this->timer_solve->node["BiCGStab"].stop();
+          return -4;
+        }
         negalpha = -(alpha);
         cublasDaxpy(cub_handle, n, &negalpha, v, 1, r, 1);
         cublasDaxpy(cub_handle, n, &alpha, pw, 1, X, 1);
@@ -185,6 +198,14 @@ namespace opendarts
         cublasDdot(cub_handle, n, t, 1, r, 1, &temp);
         cublasDdot(cub_handle, n, t, 1, t, 1, &temp2);
         omega = temp / temp2;
+        if (!std::isfinite(omega))
+        {
+          n_iters = i;
+          final_resid = std::numeric_limits<double>::infinity();
+          last_converged = false;
+          this->timer_solve->node["BiCGStab"].stop();
+          return -4;
+        }
         negomega = -(omega);
         cublasDaxpy(cub_handle, n, &omega, s, 1, X, 1);
         cublasDaxpy(cub_handle, n, &negomega, t, 1, r, 1);
@@ -199,8 +220,14 @@ namespace opendarts
       }
       n_iters = i;
       final_resid = nrmr / nrmr0;
+      last_converged = (nrmr < tolerance * nrmr0);
 
       this->timer_solve->node["BiCGStab"].stop();
+      // A non-finite residual means the iterate is garbage -- hard failure.
+      // Plain non-convergence at max_iters keeps the legacy 0 return; it is
+      // visible through stats().converged.
+      if (!std::isfinite(nrmr))
+        return -4;
       return 0;
     }
 

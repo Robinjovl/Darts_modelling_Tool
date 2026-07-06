@@ -62,6 +62,21 @@ namespace opendarts
 
       opendarts::config::mat_float get_residual() override;
 
+      /** Outcome of the last solve; converged distinguishes genuine
+       *  convergence from a max_iters exit (solve() returns 0 in both cases,
+       *  legacy parity; hard failures -- breakdown / NaN -- return nonzero). */
+      opendarts::linear_solvers::solver_stats stats() const override
+      {
+        opendarts::linear_solvers::solver_stats st;
+        st.iterations = n_iters;
+        st.residual = final_resid;
+        st.converged = last_converged;
+        return st;
+      }
+
+      // Set by solve(): whether the last solve met the tolerance.
+      bool last_converged = false;
+
       // Preconditioner applied at every iteration (not owned until set_prec).
       opendarts::linear_solvers::linsolv_iface *prec;
 

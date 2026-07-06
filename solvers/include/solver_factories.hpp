@@ -25,11 +25,14 @@ namespace opendarts
     /** Register every open-source solver compiled into this build with the
      *  solver registry.
      *
-     *  Currently registers: "mgr" (HYPRE MGR) and "superlu" (direct).
+     *  Currently registers: "mgr" (HYPRE MGR), "superlu" (direct), "gmres"
+     *  (restarted right-preconditioned GMRES), "cpr" (two-stage CPR) and
+     *  "fs_cpr" (poromechanics fixed-stress CPR).
      *
-     *  Idempotent -- repeated calls are harmless -- but it must be called once
-     *  before create_linear_solver() is used. It is invoked from the pybind
-     *  solvers module initialization and from engine initialization.
+     *  Idempotent (self-guarded) -- repeated calls are no-ops -- but it must
+     *  be called once before create_linear_solver() is used. It is invoked
+     *  from the pybind solvers module initialization and from engine
+     *  initialization.
      */
     void register_builtin_solvers();
   } // namespace linear_solvers

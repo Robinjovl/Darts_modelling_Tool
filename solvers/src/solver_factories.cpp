@@ -16,6 +16,7 @@
 #include "solver_factories.hpp"
 
 #include <cstddef>
+#include <typeinfo>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
@@ -45,6 +46,33 @@ namespace opendarts
       constexpr int MAX_BLOCK_SIZE = 13;
 
       using solver_handle = std::shared_ptr<opendarts::linear_solvers::linear_solver>;
+
+      // Resolve the typed configuration for a factory. Exact type passes
+      // through; a plain base solver_config yields the solver's defaults
+      // carrying the base tolerance/max_iterations; any OTHER derived config
+      // type is a caller bug -- previously the entire user configuration was
+      // silently discarded and the solver ran on defaults.
+      template <class ConfigT>
+      ConfigT resolve_config(const opendarts::linear_solvers::solver_config &config,
+          const char *solver_name)
+      {
+        if (const auto *typed = dynamic_cast<const ConfigT *>(&config))
+          return *typed;
+        if (typeid(config) == typeid(opendarts::linear_solvers::solver_config))
+        {
+          ConfigT defaults;
+          defaults.tolerance = config.tolerance;
+          defaults.max_iterations = config.max_iterations;
+          return defaults;
+        }
+        throw std::runtime_error(
+            std::string("openDARTS linear solver registry: solver '") + solver_name +
+            "' was given a configuration of mismatched type " +
+            typeid(config).name() +
+            "; pass the solver's own config class (or a plain SolverConfig "
+            "for defaults).");
+      }
+
 
       // ---- MGR (HYPRE Multigrid Reduction) ---------------------------------
 
@@ -220,12 +248,11 @@ namespace opendarts
           int block_size)
       {
         // Use the MGR-specific configuration if one was supplied; a plain
-        // solver_config falls back to the MGR defaults.
-        const opendarts::linear_solvers::mgr_solver_config default_config;
-        const opendarts::linear_solvers::mgr_solver_config *mgr_config =
-            dynamic_cast<const opendarts::linear_solvers::mgr_solver_config *>(&config);
-        if (mgr_config == nullptr)
-          mgr_config = &default_config;
+        // solver_config falls back to the MGR defaults (carrying the base
+        // fields); a mismatched derived config type throws.
+        const auto resolved_config =
+            resolve_config<opendarts::linear_solvers::mgr_solver_config>(config, "mgr");
+        const opendarts::linear_solvers::mgr_solver_config *mgr_config = &resolved_config;
 
         return build_mgr_for_block_size(block_size, *mgr_config);
       }
@@ -311,12 +338,9 @@ namespace opendarts
       solver_handle make_gmres_solver(
           const opendarts::linear_solvers::solver_config &config, int block_size)
       {
-        const opendarts::linear_solvers::gmres_solver_config default_config;
-        const opendarts::linear_solvers::gmres_solver_config *gmres_config =
-            dynamic_cast<const opendarts::linear_solvers::gmres_solver_config *>(&config);
-        if (gmres_config == nullptr)
-          gmres_config = &default_config;
-        return build_gmres_for_block_size(block_size, *gmres_config);
+        const auto gmres_config =
+            resolve_config<opendarts::linear_solvers::gmres_solver_config>(config, "gmres");
+        return build_gmres_for_block_size(block_size, gmres_config);
       }
 
       // ---- CPR (open-source two-stage CPR preconditioner) ------------------
@@ -373,12 +397,9 @@ namespace opendarts
       solver_handle make_cpr_solver(
           const opendarts::linear_solvers::solver_config &config, int block_size)
       {
-        const opendarts::linear_solvers::cpr_solver_config default_config;
-        const opendarts::linear_solvers::cpr_solver_config *cpr_config =
-            dynamic_cast<const opendarts::linear_solvers::cpr_solver_config *>(&config);
-        if (cpr_config == nullptr)
-          cpr_config = &default_config;
-        return build_cpr_for_block_size(block_size, *cpr_config);
+        const auto cpr_config =
+            resolve_config<opendarts::linear_solvers::cpr_solver_config>(config, "cpr");
+        return build_cpr_for_block_size(block_size, cpr_config);
       }
 
       // ---- FS-CPR (4-block poromechanics CPR) -----------------------------
@@ -552,11 +573,9 @@ namespace opendarts
       solver_handle make_fs_cpr_solver(
           const opendarts::linear_solvers::solver_config &config, int block_size)
       {
-        const opendarts::linear_solvers::fs_cpr_solver_config default_config;
-        const opendarts::linear_solvers::fs_cpr_solver_config *fs_config =
-            dynamic_cast<const opendarts::linear_solvers::fs_cpr_solver_config *>(&config);
-        if (fs_config == nullptr)
-          fs_config = &default_config;
+        const auto resolved_config =
+            resolve_config<opendarts::linear_solvers::fs_cpr_solver_config>(config, "fs_cpr");
+        const opendarts::linear_solvers::fs_cpr_solver_config *fs_config = &resolved_config;
         const std::uint8_t ND = 3;
         const std::uint8_t NE = static_cast<std::uint8_t>(block_size - ND);
         // Default to engine_super_elastic_cpu convention; an explicit
@@ -578,8 +597,13 @@ namespace opendarts
 
     void register_builtin_solvers()
     {
-      // register_solver() returns false if the name is already registered,
-      // which makes repeated calls to register_builtin_solvers() harmless.
+      // Self-guarded: repeated calls are no-ops without relying on the
+      // registry's duplicate handling, so a register_solver() duplicate
+      // warning always indicates a genuine name conflict.
+      static bool done = false;
+      if (done)
+        return;
+      done = true;
       register_solver("mgr", make_mgr_solver);
       register_solver("superlu", make_superlu_solver);
       register_solver("gmres", make_gmres_solver);

@@ -163,7 +163,7 @@ namespace opendarts
       }
 
       // Identity permutation (sparse -> dense vector mapping).
-      h_Q = (int *)malloc(sizeof(int) * n_rows * N_BLOCK_SIZE);
+      h_Q = new int[static_cast<std::size_t>(n_rows) * N_BLOCK_SIZE];
       for (int i = 0; i < n_rows * N_BLOCK_SIZE; i++)
         h_Q[i] = i;
 
@@ -275,7 +275,14 @@ namespace opendarts
       }
 
       if (0 <= singularity)
-        printf("WARNING: the matrix is singular at row %d under tol (%E)\n", singularity, tol);
+      {
+        // A singular matrix means the direct solve produced garbage; report
+        // failure (consistent with the cuDSS wrapper) so the engine cuts the
+        // timestep instead of applying the solution.
+        printf("Error: the matrix is singular at row %d under tol (%E)\n", singularity, tol);
+        this->timer_solve->node["CUSOLVER"].stop();
+        return -1;
+      }
 
       cudaDeviceSynchronize();
       cudaStat = cudaMemcpy(X, d_Z, sizeof(opendarts::config::mat_float) * n_rows, cudaMemcpyDeviceToHost);

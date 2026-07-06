@@ -172,6 +172,11 @@ namespace opendarts
 
     block_csr_matrix::index_t *block_csr_matrix::get_row_thread_starts()
     {
+      // The engines fetch the partition once, right before opening their
+      // OpenMP assembly region; re-derive it here when the team size changed
+      // since the Jacobian was built (a set_num_threads() call after model
+      // init previously left tail rows unassembled or read out of bounds).
+      structure_->ensure_row_partition_current();
       return const_cast<index_t *>(structure_->row_thread_starts());
     }
 

@@ -110,6 +110,14 @@ namespace opendarts
       virtual int solve(opendarts::config::mat_float *B,
           opendarts::config::mat_float *X) = 0;
 
+      /** Outer-solver feedback: iteration count of the last outer Krylov
+       *  solve. Preconditioners with reuse policies (CPR's adaptive AMG
+       *  rebuild) override this; the default ignores it. Replaces the former
+       *  hard dynamic_cast from linsolv_gmres to the concrete linsolv_cpr,
+       *  so ANY preconditioner can now participate in the adaptive-rebuild
+       *  feedback loop. */
+      virtual void set_last_outer_iters(int /*n_iters*/) {}
+
       /** Whether the solver requires its setup() to be called again before a
        *  solve_transposed() call. Solvers that materialise a separate
        *  transpose system internally inside solve_transposed() return false;

@@ -420,7 +420,7 @@ public:
       /// Outer solver hook -- the outer Krylov (or external client) reports
       /// the iteration count of the previous solve so the policy can decide
       /// whether to reuse on the next setup. 0 means "no history".
-      void set_last_outer_iters(int n) { last_outer_iters_ = n; }
+      void set_last_outer_iters(int n) override { last_outer_iters_ = n; }
 private:
 
       // True until the first setup() completes. After the first setup the

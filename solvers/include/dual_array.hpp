@@ -134,6 +134,10 @@ namespace opendarts
       {
         ensure_device_allocated();
         device_modified_ = true;
+        // A device-side write populates the buffer: without this, a later
+        // sync_to_device() saw !device_populated_ and silently overwrote the
+        // freshly written device data with stale host data.
+        device_populated_ = true;
         return device_;
       }
       [[nodiscard]] const T *device_data() const

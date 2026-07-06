@@ -244,6 +244,19 @@ namespace opendarts
       AMGX_solver_solve_with_0_initial_guess((AMGX_solver_handle)solver, (AMGX_vector_handle)b,
         (AMGX_vector_handle)x);
 
+      // Previously the solve status was never inspected, so a failed or
+      // diverged AMGX solve (NaNs and all) was reported as success.
+      // NOT_CONVERGED is fine here -- as a preconditioner stage AMGX runs a
+      // fixed cycle budget and the outer Krylov drives convergence.
+      AMGX_SOLVE_STATUS st = AMGX_SOLVE_SUCCESS;
+      AMGX_solver_get_status((AMGX_solver_handle)solver, &st);
+      if (st == AMGX_SOLVE_FAILED || st == AMGX_SOLVE_DIVERGED)
+      {
+        printf("AMGX: solve %s\n", st == AMGX_SOLVE_FAILED ? "failed" : "diverged");
+        this->timer_solve->node[timer_key].stop();
+        return -1;
+      }
+
       AMGX_vector_download((AMGX_vector_handle)x, X);
 
       this->timer_solve->node[timer_key].stop();

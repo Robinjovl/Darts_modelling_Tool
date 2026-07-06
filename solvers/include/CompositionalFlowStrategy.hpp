@@ -59,6 +59,11 @@ struct CompositionalFlowStrategyConfig
   int pressureAmgPMaxElmts;
   int pressureAmgMaxLevels;
 
+  // Gate for the strategy's setup() diagnostics (~25 stdout lines,
+  // re-emitted on every strategy rebuild). Wired from linsolv_mgr's
+  // log level; default quiet.
+  bool verbose;
+
   CompositionalFlowStrategyConfig();
 };
 
@@ -104,6 +109,12 @@ public:
    * @brief Get coarse solver (BoomerAMG configured for pressure)
    */
   HYPRE_Solver getCoarseSolver() const override { return m_coarseSolver; }
+
+  /**
+   * @brief Releases the owned BoomerAMG hierarchy (previously leaked: the
+   *        base destructor is defaulted and nothing destroyed m_coarseSolver).
+   */
+  ~CompositionalFlowStrategy() override;
 
 private:
 

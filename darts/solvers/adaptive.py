@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from .specs import LinearSolverSpec
+from .specs import GPUSolverSpec, LinearSolverSpec, PythonLinearSolverSpec
 
 
 @dataclass
@@ -64,6 +64,24 @@ class AdaptiveSolverSpec(LinearSolverSpec):
     def __post_init__(self):
         if not self.candidates:
             raise ValueError("AdaptiveSolverSpec requires at least one candidate")
+        # Validate candidate types NOW: switching rebuilds a candidate through
+        # the open-source CPU registry and injects it into the live engine.
+        # GPU specs (enum-selected by the engine factory) and Python-resident
+        # solvers (owned by the model, not injectable) previously failed only
+        # at switch time -- potentially hours into a run.
+        for i, cand in enumerate(self.candidates):
+            if isinstance(cand, GPUSolverSpec | PythonLinearSolverSpec):
+                raise TypeError(
+                    f"AdaptiveSolverSpec candidate {i} ({type(cand).__name__}) "
+                    "cannot be switched mid-run: only engine-resident CPU "
+                    "registry specs (MGRSolverSpec, GMRESSolverSpec, "
+                    "CPRSolverSpec, SuperLUSolverSpec, ...) are supported."
+                )
+            if not isinstance(cand, LinearSolverSpec):
+                raise TypeError(
+                    f"AdaptiveSolverSpec candidate {i} must be a "
+                    f"LinearSolverSpec, got {type(cand).__name__}"
+                )
         if self.policy is None:
             self.policy = fallback_on_failure
 

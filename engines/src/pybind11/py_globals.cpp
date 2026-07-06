@@ -1,5 +1,6 @@
 #ifdef PYBIND11_ENABLED
 #include <pybind11/stl_bind.h>
+#include <algorithm>
 #include "py_globals.h"
 #include "globals.h"
 #include "engines_build_info.h"
@@ -343,12 +344,18 @@ void pybind_globals(py::module &m)
 
 
 #ifdef _OPENMP
-  m.def("get_num_threads", &omp_get_num_threads, "Get the number of OpenMP threads to be used");
+  // omp_get_max_threads() is the configured team size ("threads to be used");
+  // omp_get_num_threads() returns 1 outside a parallel region, which made
+  // every Python-side thread-count check (e.g. the THMCModel no-OpenMP guard)
+  // dead code.
+  m.def("get_num_threads", &omp_get_max_threads, "Get the number of OpenMP threads to be used");
   m.def("set_num_threads", &omp_set_num_threads, "Set the number of OpenMP threads to be used", "num_threads"_a);
   // if the amount of threads is not defined explicitly, use a half of available threads
   if (!std::getenv("OMP_NUM_THREADS"))
     {
-      omp_set_num_threads(omp_get_max_threads() / 2);
+      // std::max keeps single-core hosts at 1 (omp_set_num_threads(0) is
+      // non-conforming and silently mutates the ICV on some runtimes).
+      omp_set_num_threads(std::max(1, omp_get_max_threads() / 2));
     }
 #endif
 

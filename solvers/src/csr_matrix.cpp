@@ -742,6 +742,18 @@ namespace opendarts
 
     template <uint8_t N_BLOCK_SIZE> opendarts::config::index_t *csr_matrix<N_BLOCK_SIZE>::get_row_thread_starts()
     {
+      // Re-derive the even-row partition when the OpenMP assembly team size
+      // changed since init() built it (set_num_threads() after model init):
+      // the engines call this right before opening their parallel region, so
+      // a stale partition would leave tail rows unassembled (smaller team)
+      // or be read out of bounds (larger team).
+      const int n_threads = opendarts::linear_solvers::omp_assembly_n_threads();
+      if (static_cast<int>(this->row_thread_starts.size()) != n_threads + 1)
+      {
+        this->row_thread_starts.resize(static_cast<std::size_t>(n_threads) + 1);
+        opendarts::linear_solvers::fill_even_row_partition(
+            this->row_thread_starts.data(), this->n_rows, n_threads);
+      }
       return this->row_thread_starts.data();
     }
 

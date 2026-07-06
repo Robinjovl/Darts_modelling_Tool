@@ -885,13 +885,23 @@ namespace opendarts
       // set up the second stage first to benefit from asynchronous execution.
       // Forward the polymorphic csr_matrix_base*; the downstream preconditioner
       // will accept either the legacy csr_matrix<N> or block_csr_matrix.
-      full_system_preconditioner->setup(A_);
+      if (full_system_preconditioner->setup(A_))
+      {
+        printf("CPR GPU: full-system preconditioner setup failed\n");
+        this->timer_setup->node["CPR"].stop();
+        return -1;
+      }
 
       // Synchronise before the first-stage setup. Removing this allows the two
       // setups to overlap when they run on different devices (CPU and GPU).
       cudaDeviceSynchronize();
 
-      p_system_preconditioner->setup(P);
+      if (p_system_preconditioner->setup(P))
+      {
+        printf("CPR GPU: pressure-system preconditioner setup failed\n");
+        this->timer_setup->node["CPR"].stop();
+        return -1;
+      }
 
       lin_it = 0;
       this->timer_setup->node["CPR"].stop();
@@ -923,7 +933,11 @@ namespace opendarts
         }
         this->timer_solve->node["CPR"].node["P_comm"].stop();
         std::memset(P_X_h, 0, n_rows * sizeof(value_t));
-        p_system_preconditioner->solve(P_B_h, P_X_h);
+        if (p_system_preconditioner->solve(P_B_h, P_X_h))
+        {
+          this->timer_solve->node["CPR"].stop();
+          return -1;
+        }
 
         this->timer_solve->node["CPR"].node["P_comm"].start();
         cudaStat = cudaMemcpy(P_X, P_X_h, sizeof(value_t) * n_rows, cudaMemcpyHostToDevice);
@@ -937,7 +951,11 @@ namespace opendarts
       else
       {
         cudaMemset(P_X, 0, sizeof(value_t) * n_rows);
-        p_system_preconditioner->solve(P_B, P_X);
+        if (p_system_preconditioner->solve(P_B, P_X))
+        {
+          this->timer_solve->node["CPR"].stop();
+          return -1;
+        }
         cudaDeviceSynchronize();
       }
 
@@ -952,7 +970,11 @@ namespace opendarts
       cudaDeviceSynchronize();
 
       // Solve the full system.
-      full_system_preconditioner->solve(full_B, X);
+      if (full_system_preconditioner->solve(full_B, X))
+      {
+        this->timer_solve->node["CPR"].stop();
+        return -1;
+      }
 
       // Add up the two-stage solutions.
       grid_size = (n_rows + solve_sum_up_block_size - 1) / solve_sum_up_block_size;

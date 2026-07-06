@@ -284,6 +284,25 @@ namespace opendarts
         cusparseDbsrilu02(handle, dir, mb, nnzb, descr_M, values_d_ilu,
           d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_M, policy_M, pBufferM);
 
+      // Query the zero-pivot report: a structural/numerical zero pivot means
+      // the triangular factors contain garbage (previously never checked --
+      // a singular diagonal block produced a silent NaN preconditioner).
+      // Report failure so the caller (CPR-GPU / BiCGStab -> engine) can cut
+      // the timestep.
+      {
+        int pivot_row = -1;
+        cusparseStatus_t piv_stat =
+            cusparseXbsrilu02_zeroPivot(handle, info_M, &pivot_row);
+        if (piv_stat == CUSPARSE_STATUS_ZERO_PIVOT)
+        {
+          numerical_zero = pivot_row;
+          printf("cusparse ILU(0): zero pivot at block row %d -- "
+                 "factorisation unusable\n", pivot_row);
+          this->timer_setup->node["ILU(0)"].stop();
+          return -1;
+        }
+      }
+
       this->timer_setup->node["ILU(0)"].stop();
       return 0;
     }

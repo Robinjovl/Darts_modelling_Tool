@@ -109,6 +109,15 @@ namespace opendarts
       }
       [[nodiscard]] int n_thread_partitions() const noexcept { return n_thread_partitions_; }
 
+      /** Re-installs the even-row partition when the OpenMP assembly team
+          size changed since the partition was built (e.g. a user called
+          darts.engines.set_num_threads() after the Jacobian was created).
+          Without this, a smaller team silently leaves the tail rows
+          unassembled and a larger team reads past the partition array. Must
+          be called OUTSIDE any parallel region -- the engines call it (via
+          get_row_thread_starts()) right before opening theirs. */
+      void ensure_row_partition_current();
+
       // --- validation --------------------------------------------------------
       /** Checks the structural invariants: row_ptr non-decreasing and
           terminated by nnzb, every column index in range, and a diagonal

@@ -88,6 +88,19 @@ namespace opendarts
       int get_n_iters() override { return n_iters_; }
       opendarts::config::mat_float get_residual() override { return final_resid_; }
 
+      /** Outcome of the last solve. converged distinguishes a genuine
+       *  convergence from a max_iters exit -- the return code of solve()
+       *  stays 0 in both cases (legacy bos parity), so this is the channel
+       *  diagnostics and adaptive policies should read. */
+      opendarts::linear_solvers::solver_stats stats() const override
+      {
+        opendarts::linear_solvers::solver_stats st;
+        st.iterations = n_iters_;
+        st.residual = final_resid_;
+        st.converged = last_converged_;
+        return st;
+      }
+
       /** Restart (Krylov subspace) dimension; default 30. */
       void set_restart(int m) { restart_m_ = m; }
       int get_restart() const { return restart_m_; }
@@ -105,6 +118,7 @@ namespace opendarts
       int restart_m_;
       int n_iters_;
       double final_resid_;
+      bool last_converged_ = false;
       std::vector<opendarts::config::mat_float> wksp_;
     };
   } // namespace linear_solvers

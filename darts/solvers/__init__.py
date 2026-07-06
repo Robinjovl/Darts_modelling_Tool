@@ -62,6 +62,7 @@ from .specs import (  # noqa: F401
     BILU0Spec,
     CPRSolverSpec,
     CuDSSSolverSpec,
+    FSCPRSolverSpec,
     GMRESSolverSpec,
     GPUBiCGStabCPRSolverSpec,
     GPUCuSolverSpec,

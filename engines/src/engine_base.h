@@ -2,6 +2,7 @@
 #define ENGINE_BASE_HPP
 
 #include <vector>
+#include <stdexcept>
 #include <unordered_map>
 #include <cmath>
 #include <iostream>
@@ -820,11 +821,14 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		// proprietary bos solvers, which are not available here. The linear
 		// solver must be injected from Python -- built from a LinearSolverSpec
 		// via the open-source registry; see darts_model._apply_linear_solver_spec().
-		std::cerr << "ERROR: no linear solver was provided for " << engine_name
-		          << ". The open-source build requires a linear solver injected via "
-		             "set_linear_solver() (a LinearSolverSpec built through the "
-		             "darts.solvers registry)." << std::endl << std::flush;
-		exit(1);
+		// Throw instead of exit(1): engine init is entered through pybind11,
+		// which translates the exception into a Python RuntimeError -- the
+		// previous exit killed the host process (including Jupyter kernels).
+		throw std::runtime_error(
+		    "no linear solver was provided for " + engine_name +
+		    ". The open-source build requires a linear solver injected via "
+		    "set_linear_solver() (a LinearSolverSpec built through the "
+		    "darts.solvers registry).");
 #else
 		switch (params->linear_type)
 		{
@@ -989,8 +993,8 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			bool is_factorization_twisted = true;
 			if (params->linear_params.size() < 3)
 			{
-				printf("Error: Missing nx, ny, nz parameters, required for NF solver\n");
-				exit(-3);
+				throw std::runtime_error(
+				    "Missing nx, ny, nz parameters, required for NF solver");
 			}
 
 			nx = params->linear_params[0];
@@ -1029,8 +1033,9 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 #endif
 		default:
 		{
-		    std::cerr << "Linear solver type " << params->linear_type << " is not supported for " << engine_name << std::endl << std::flush;
-		    exit(1);
+		    throw std::runtime_error("Linear solver type " +
+		        std::to_string(static_cast<int>(params->linear_type)) +
+		        " is not supported for " + engine_name);
 		}
 
 		}

@@ -6715,14 +6715,19 @@ int LinearSolver::solve(mat_float* B, mat_float* X)
     }
   }
 
-  // Return number of iterations (or negative error code)
+  // Return number of iterations (or negative error code). A failed
+  // preconditioner setup reports converged == false with iterations == 0;
+  // clamping the failure code to at least -1 keeps it distinguishable from
+  // a successful 0-iteration solve (-0 == 0 would read as success in callers
+  // that test the sign -- previously a setup failure surfaced as a
+  // "successful" solve with a zero solution).
   if( m_lastResults.converged )
   {
     return m_lastResults.iterations;
   }
   else
   {
-    return -m_lastResults.iterations; // Negative to indicate non-convergence
+    return m_lastResults.iterations > 0 ? -m_lastResults.iterations : -1;
   }
 }
 
