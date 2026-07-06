@@ -16,6 +16,10 @@ class SemiAnalyticalWellLateralHeatTransfer:
         Heat Losses in Directional Wells Under Changing Injection Conditions",
         SPE 22870.
 
+        Zhang, Y., Pan, L., Pruess, K., and Finsterle, S. (2011),
+        "A Time-Convolution Approach for Modeling Heat Exchange Between a
+        Wellbore and Surrounding Formation", Geothermics, 40(4), 261-266.
+
     In Ramey's Appendix, the transient radial conduction from the wellbore outer
     boundary to the undisturbed earth is written as
 
@@ -38,12 +42,27 @@ class SemiAnalyticalWellLateralHeatTransfer:
 
         f(t) = 0.982*ln(1 + 1.81*sqrt(alpha*t)/r_h)
 
-    This implementation uses either Ramey's long-time expression or Chiu and
-    Thakur's empirical expression for f(t). It does not implement Chiu and
-    Thakur's full WHAP model, superposition treatment for changing injection
-    conditions, pressure-drop model, or Willhite U calculation.
+    The Zhang option follows the finite-radius formation time function used by
+    the OGS WellboreSimulator:
 
-    In both time-function options, r_h is the hole or outer-boundary radius used
+        beta = (pi*t_d)^(-1/2) + 1/2
+               - (1/4)*sqrt(t_d/pi) + t_d/8,             t_d < 2.8
+
+        beta = 2*[1/(ln(4*t_d) - 2*gamma)
+                  - gamma/(ln(4*t_d) - 2*gamma)^2],      t_d >= 2.8
+
+        t_d = alpha*t/r_h^2
+
+    It is represented in the common resistance form by f(t) = 1/beta. This
+    reproduces the instantaneous OGS heat-rate expression, but not Zhang et
+    al.'s full time-convolution superposition for a changing boundary
+    temperature.
+
+    This implementation does not implement Chiu and Thakur's full WHAP model,
+    a superposition treatment for changing injection conditions, a
+    pressure-drop model, or Willhite U calculation.
+
+    In all time-function options, r_h is the hole or outer-boundary radius used
     for the formation solution and is set from outermost_layer_OD/2. Ramey's main
     result also includes the wellbore thermal resistance through an overall
     heat-transfer coefficient U between the fluid and the outer boundary.
@@ -100,9 +119,11 @@ class SemiAnalyticalWellLateralHeatTransfer:
         calculations. If well_layers_props is not specified, Ui must be specified.
         :type well_layers_props: dict
         :param time_function_name: The name of the time function used for transient calculation of heat transfer.
-        Available options are "Ramey" and "Chiu&Thakur". Default is "Chiu&Thakur".
+        Available options are "Ramey", "Chiu&Thakur", and "Zhang". Default is "Chiu&Thakur".
         "Ramey" is a long-time asymptotic expression and should not be used for
         simulated times shorter than about seven days.
+        "Zhang" is the finite-radius Carslaw-Jaeger response used by the OGS
+        WellboreSimulator.
         :type time_function_name: str
         :param verbose: Whether to display extra info about SemiAnalyticalWellLateralHeatTransfer
         :type verbose: boolean
@@ -192,6 +213,19 @@ class SemiAnalyticalWellLateralHeatTransfer:
                 * np.sqrt(self.alpha * simulation_timer)
                 / (self.outermost_layer_OD / 2)
             )
+        elif self.time_function_name == "Zhang":
+            t_d = self.alpha * simulation_timer / (self.outermost_layer_OD / 2) ** 2
+            beta = np.empty_like(t_d)
+            early_time = t_d < 2.8
+            beta[early_time] = (
+                np.power(np.pi * t_d[early_time], -0.5)
+                + 0.5
+                - 0.25 * np.sqrt(t_d[early_time] / np.pi)
+                + 0.125 * t_d[early_time]
+            )
+            log_term = np.log(4 * t_d[~early_time]) - 2 * 0.57722
+            beta[~early_time] = 2 * (1 / log_term - 0.57722 / np.square(log_term))
+            f_t = 1 / beta
         else:
             raise TypeError(
                 "Unrecognized time function name " + self.time_function_name
