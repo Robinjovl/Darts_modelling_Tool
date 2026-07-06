@@ -111,9 +111,8 @@ class Compositional(PhysicsBase):
                     "extrapolation requires equal dz across all composition axes"
                 )
 
-        # HistoryField axis bounds are retained as metadata for history-aware evaluators.
-        # The multi-index adaptive grid has no global n_points fallback, so pass entries
-        # through unchanged.
+        # HistoryField descriptors are appended to reservoir / well interpolator axes by
+        # PhysicsBase while remaining outside the Newton unknown vector.
         resolved_history_fields = list(history_fields or [])
         super().__init__(
             state_spec=state_spec,

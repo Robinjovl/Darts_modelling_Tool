@@ -134,6 +134,7 @@ class Initialize:
             algorithm=algorithm,
             mode=mode,
             is_barycentric=is_barycentric,
+            include_history=False,
         )
         self.n_ops = n_ops
 

@@ -2506,6 +2506,18 @@ class Output:
         )
         n_reservoir_ops = physics.reservoir_operators[0].n_ops
         n_vars = physics.n_vars
+        # The reservoir / well-control interpolators consume the full OBL state
+        # [primary | history] (n_state axes), but the well H5 stores only the primary
+        # Newton state (n_vars-wide). Pad the missing history columns with each field's
+        # default so evaluated states match the interpolator dimensionality — feeding a
+        # primary-only state to a history-aware interpolator reads past the buffer and
+        # corrupts memory. Gravity (the only reservoir operator used here) depends on
+        # phase densities, not on the history axes, so the defaults do not bias rates.
+        n_state = getattr(physics, "n_state", n_vars)
+        history_defaults = np.array(
+            [h.default for h in getattr(physics, "history_fields", [])],
+            dtype=float,
+        )
         block_idx = index_vector(np.arange(batch_size).astype(np.int32))
 
         states_m = h5_well_data["dynamic"]["X"][time_idx, cell_m]
@@ -2516,10 +2528,14 @@ class Output:
 
         states_m_2d = states_m.reshape(batch_size, n_vars)
         states_p_2d = states_p.reshape(batch_size, n_vars)
+        if n_state > n_vars:
+            history_pad = np.tile(history_defaults, (batch_size, 1))
+            states_m_2d = np.concatenate([states_m_2d, history_pad], axis=1)
+            states_p_2d = np.concatenate([states_p_2d, history_pad], axis=1)
 
         def evaluate_ops(states_2d, n_ops, evaluator):
             values = value_vector(np.zeros(batch_size * n_ops))
-            dvalues = value_vector(np.zeros((batch_size * n_ops) * n_vars))
+            dvalues = value_vector(np.zeros((batch_size * n_ops) * n_state))
             evaluator.evaluate_with_derivatives(
                 value_vector(states_2d.ravel()), block_idx, values, dvalues
             )
