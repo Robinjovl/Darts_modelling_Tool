@@ -210,11 +210,54 @@ namespace opendarts
      */
     struct cpr_solver_config : opendarts::linear_solvers::solver_config
     {
-      int amg_max_iters = 2;          // AMG sweeps on the pressure subsystem per CPR apply
-      int ilu_fill_level = 0;         // full-system ILU(k)
+      int amg_max_iters = 1;          // AMG V-cycles on the pressure subsystem per CPR apply
+      int ilu_fill_level = 0;         // full-system ILU(k) (stage2_type == 0)
       // No amg_tolerance: BoomerAMG is configured with tol=0 since it is used
       // as a preconditioner stage of CPR; convergence is driven by the outer
       // Krylov, the AMG sweep budget is set by amg_max_iters.
+
+      // Pressure-stage BoomerAMG configuration. Negative values leave the
+      // HYPRE built-in default untouched. The defaults below mirror the
+      // proprietary BOS AMG as configured by the legacy cpu_gmres_cpr_amg
+      // stack (PMIS coarsening, theta = 0.75, standard interpolation with no
+      // truncation, C/F-ordered hybrid Gauss-Seidel with 1 sweep, plain
+      // V-cycle, dense direct coarse solve at <= 100 rows, no aggressive
+      // coarsening). See the HYPRE BoomerAMG reference manual for the codes.
+      int amg_coarsen_type = 8;       // HYPRE_BoomerAMGSetCoarsenType (8 = PMIS; BOS: PMIS_2)
+      int amg_interp_type = 8;        // HYPRE_BoomerAMGSetInterpType (8 = standard; BOS: Stuben standard)
+      int amg_relax_type = 3;         // HYPRE_BoomerAMGSetRelaxType (3 = hybrid forward GS)
+      int amg_relax_order = 1;        // HYPRE_BoomerAMGSetRelaxOrder (1 = C/F ordering: C->F down, F->C up)
+      int amg_num_sweeps = 1;         // HYPRE_BoomerAMGSetNumSweeps
+      double amg_strong_threshold = 0.75; // HYPRE_BoomerAMGSetStrongThreshold (BOS: 0.75)
+      int amg_agg_num_levels = 0;     // HYPRE_BoomerAMGSetAggNumLevels (BOS: no aggressive coarsening)
+      int amg_agg_interp_type = 6;    // HYPRE_BoomerAMGSetAggInterpType (used only when agg levels > 0)
+      int amg_agg_pmax_elmts = 20;    // HYPRE_BoomerAMGSetAggPMaxElmts (used only when agg levels > 0)
+      int amg_pmax_elmts = 0;         // HYPRE_BoomerAMGSetPMaxElmts (0 = no interp truncation; BOS: none)
+      double amg_trunc_factor = 0.0;  // HYPRE_BoomerAMGSetTruncFactor (BOS: 0)
+      int amg_max_levels = -1;        // HYPRE_BoomerAMGSetMaxLevels
+      int amg_cycle_type = -1;        // HYPRE_BoomerAMGSetCycleType (HYPRE default 1 = V; BOS: V)
+      int amg_max_coarse_size = 100;  // HYPRE_BoomerAMGSetMaxCoarseSize (BOS: dense LU at <= 100 rows)
+      int amg_coarse_relax_type = 9;  // HYPRE_BoomerAMGSetCycleRelaxType(.., 3) (9 = Gaussian elim.)
+      double amg_relax_wt = -1.0;     // HYPRE_BoomerAMGSetRelaxWt (HYPRE default 1.0 = BOS plain GS)
+
+      // Pressure-decoupling weight scheme: 1 = column-sum True-IMPES
+      // (Wallis 1983; parity with the proprietary linsolv_bos_cpr), 0 =
+      // diagonal-block-only (the previous behaviour).
+      int weight_scheme = 1;
+      // Full-system smoothing stage: 1 = in-tree block ILU(0) on the
+      // block-CSR system (dense NxN block inverses; parity with the
+      // proprietary csr_ilu_prec), 0 = HYPRE scalar ILU(k) on the expanded
+      // scalar system (the previous behaviour).
+      int stage2_type = 1;
+
+      // Adjoint (CPRA) transpose-chain policy. The transpose hierarchies
+      // (BoomerAMG on A_p^T + HYPRE_ILU on A_s^T) are only needed by
+      // solve_transposed(); by default they are built lazily on the first
+      // transposed solve and kept refreshed afterwards. eager_adjoint = true
+      // restores the historical behaviour of building them on every setup()
+      // from the start (paying ~2x preconditioner-setup cost in forward-only
+      // simulations).
+      bool eager_adjoint = false;
 
       // Hierarchy-reuse policy (mirrors mgr::SolverParameters' BCSR-CPR knobs).
       // OFF by default -- rebuild AMG/ILU every Newton iteration, the proven

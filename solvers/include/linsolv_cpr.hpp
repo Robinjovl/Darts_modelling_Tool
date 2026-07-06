@@ -19,6 +19,7 @@
 #include "HYPRE_parcsr_mv.h"
 
 #include "block_csr_matrix.hpp"
+#include "cpr_block_ilu0.hpp"
 #include "csr_matrix.hpp"
 #include "csr_matrix_base.hpp"
 #include "data_types.hpp"
@@ -133,6 +134,50 @@ namespace opendarts
       void set_amg_max_iters(int n) { amg_max_iters_ = n; }
       void set_ilu_fill_level(int k) { ilu_fill_level_ = k; }
 
+      /** Pressure-stage BoomerAMG configuration (see cpr_solver_config for the
+       *  field semantics; negative values keep the HYPRE built-in default). */
+      void set_pressure_amg_options(int coarsen_type, int interp_type,
+          int relax_type, int relax_order, int num_sweeps,
+          double strong_threshold, int agg_num_levels, int agg_interp_type,
+          int agg_pmax_elmts, int pmax_elmts, double trunc_factor,
+          int max_levels, int cycle_type, int max_coarse_size,
+          int coarse_relax_type, double relax_wt)
+      {
+        amg_coarsen_type_ = coarsen_type;
+        amg_interp_type_ = interp_type;
+        amg_relax_type_ = relax_type;
+        amg_relax_order_ = relax_order;
+        amg_num_sweeps_ = num_sweeps;
+        amg_strong_threshold_ = strong_threshold;
+        amg_agg_num_levels_ = agg_num_levels;
+        amg_agg_interp_type_ = agg_interp_type;
+        amg_agg_pmax_elmts_ = agg_pmax_elmts;
+        amg_pmax_elmts_ = pmax_elmts;
+        amg_trunc_factor_ = trunc_factor;
+        amg_max_levels_ = max_levels;
+        amg_cycle_type_ = cycle_type;
+        amg_max_coarse_size_ = max_coarse_size;
+        amg_coarse_relax_type_ = coarse_relax_type;
+        amg_relax_wt_ = relax_wt;
+      }
+
+      /** Build the CPRA transpose hierarchies on every setup() from the start
+       *  (historical behaviour) instead of lazily on the first
+       *  solve_transposed() call. */
+      void set_eager_adjoint(bool eager) { eager_adjoint_ = eager; }
+
+      /** Pressure-decoupling weight scheme: 0 = diagonal-block (quasi-IMPES
+       *  with local f-elimination, historical behaviour), 1 = column-sum
+       *  (True-IMPES, Wallis 1983 -- what the proprietary linsolv_bos_cpr
+       *  computes). */
+      void set_weight_scheme(int scheme) { weight_scheme_ = scheme; }
+
+      /** Full-system smoothing stage: 0 = HYPRE scalar ILU(k) on the
+       *  expanded system (historical behaviour), 1 = in-tree block ILU(0)
+       *  on the block-CSR system (dense NxN block inverses -- the
+       *  proprietary csr_ilu_prec equivalent). */
+      void set_stage2_type(int type) { stage2_type_ = type; }
+
     private:
       // Unguarded implementations of the public entry points. The public
       // setup()/solve()/solve_transposed() wrap these in try/catch and
@@ -148,6 +193,12 @@ namespace opendarts
       // Extract the scalar pressure subsystem A_p (block (0,0) of each block)
       // into a csr_matrix<1> sharing the block-CSR structure.
       void build_pressure_subsystem(opendarts::linear_solvers::csr_matrix_base *A);
+
+      // (Re)populate the scalar expansion As_ of the full block system
+      // (structure once, values every call). Used by setup() when the HYPRE
+      // scalar-ILU stage or the adjoint chain needs it, and by
+      // activate_adjoint_chain() when the block-ILU0 stage skipped it.
+      void refresh_scalar_expansion(opendarts::linear_solvers::csr_matrix_base *A_input);
 
       // Build a HYPRE IJ matrix from a scalar csr_matrix<1> (sequential, single rank).
       void build_hypre_ij(opendarts::linear_solvers::csr_matrix<1> &A,
@@ -294,6 +345,63 @@ namespace opendarts
       int consecutive_bad_streak_;
       // Set to true when the next setup() must rebuild rather than reuse.
       bool force_amg_rebuild_;
+
+      // Pressure-stage BoomerAMG options (see cpr_solver_config; negative =
+      // keep the HYPRE built-in default). Defaults reproduce the historical
+      // configuration: HYPRE defaults + one aggressive-coarsening level with
+      // multipass-family interpolation + C/F relaxation ordering.
+      int amg_coarsen_type_ = -1;
+      int amg_interp_type_ = -1;
+      int amg_relax_type_ = -1;
+      int amg_relax_order_ = 1;
+      int amg_num_sweeps_ = -1;
+      double amg_strong_threshold_ = -1.0;
+      int amg_agg_num_levels_ = 1;
+      int amg_agg_interp_type_ = 6;
+      int amg_agg_pmax_elmts_ = 20;
+      int amg_pmax_elmts_ = -1;
+      double amg_trunc_factor_ = -1.0;
+      int amg_max_levels_ = -1;
+      int amg_cycle_type_ = -1;
+      int amg_max_coarse_size_ = -1;
+      int amg_coarse_relax_type_ = -1;
+      double amg_relax_wt_ = -1.0;
+
+      // CPRA transpose-chain policy: with eager_adjoint_ == false (default)
+      // the A_p^T / A_s^T transposes and their BoomerAMG / HYPRE_ILU
+      // hierarchies are not touched by setup() until the first
+      // solve_transposed() call flips adjoint_active_; from then on every
+      // setup() keeps them refreshed alongside the forward chain.
+      bool eager_adjoint_ = false;
+      bool adjoint_active_ = false;
+
+      // Pressure-decoupling weight scheme (see set_weight_scheme): 1 =
+      // column-sum True-IMPES (BOS parity, default), 0 = diagonal-block.
+      int weight_scheme_ = 1;
+      // Row sign normalisation of A_p (+1 / -1 per row so the pressure
+      // diagonal is positive -- helps AMG's M-matrix-oriented heuristics;
+      // mirrors linsolv_bos_cpr's rhs_mults). Applied to the restricted
+      // residual on the forward path and to the prolonged solution on the
+      // transposed path.
+      std::vector<opendarts::config::mat_float> rhs_mults_;
+      // Column-sum accumulator for the True-IMPES weights (n_rows x N x N).
+      std::vector<opendarts::config::mat_float> colsum_;
+
+      // Full-system stage selector (see set_stage2_type): 1 = in-tree block
+      // ILU(0) (BOS parity, default), 0 = HYPRE scalar ILU(k).
+      int stage2_type_ = 1;
+      std::unique_ptr<opendarts::linear_solvers::cpr_block_ilu0<N_BLOCK_SIZE>>
+          bilu0_;
+      bool bilu0_ready_ = false;
+
+      // Create + configure a BoomerAMG solver handle for the pressure stage
+      // (shared by the forward and transpose hierarchies).
+      void create_pressure_amg(HYPRE_Solver &amg, const char *tag);
+      // Create + configure a HYPRE_ILU handle for the full-system stage.
+      void create_fullsystem_ilu(HYPRE_Solver &ilu, const char *tag);
+      // Build the transpose matrices + hierarchies (first solve_transposed()
+      // on the lazy path, or every first setup() on the eager path).
+      void activate_adjoint_chain();
 public:
       /// Hierarchy-reuse policy: skip BoomerAMG/ILU Setup on subsequent
       /// Newton iterations when the previous solve converged in fewer than

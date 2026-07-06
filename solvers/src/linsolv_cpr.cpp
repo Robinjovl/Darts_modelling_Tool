@@ -223,6 +223,30 @@ namespace opendarts
         dst.is_square = (n_rows == n_cols) ? 1 : 0;
         dst.type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
       }
+
+      // Child timer node under an (optional) parent; null-safe so the solver
+      // works identically when the engine never wired timer nodes.
+      inline ::timer_node *cpr_sub_timer(::timer_node *parent, const char *name)
+      {
+        return parent ? &parent->node[name] : nullptr;
+      }
+
+      struct cpr_scoped_timer
+      {
+        ::timer_node *t;
+        explicit cpr_scoped_timer(::timer_node *tn) : t(tn)
+        {
+          if (t)
+            t->start();
+        }
+        ~cpr_scoped_timer()
+        {
+          if (t)
+            t->stop();
+        }
+        cpr_scoped_timer(const cpr_scoped_timer &) = delete;
+        cpr_scoped_timer &operator=(const cpr_scoped_timer &) = delete;
+      };
     } // namespace
 
     template <uint8_t N_BLOCK_SIZE>
@@ -383,6 +407,26 @@ namespace opendarts
         if (v != P_VAR)
           f_vars[a++] = v;
 
+      // weight_scheme_ == 1 (default): column-sum True-IMPES (Wallis 1983;
+      // parity with the proprietary linsolv_bos_cpr). The decoupling block
+      // for cell i is the sum of A(m,i) over ALL block-rows m holding a
+      // block in column i (diagonal included) -- the IMPES mass-balance
+      // lumping. weight_scheme_ == 0 keeps the previous diagonal-block-only
+      // variant (quasi-IMPES with local f-elimination).
+      if (n_f > 0 && weight_scheme_ == 1)
+      {
+        colsum_.assign(static_cast<std::size_t>(n_block_rows) * b2, 0.0);
+        for (index_t m = 0; m < n_block_rows; ++m)
+          for (index_t jb = rows[m]; jb < rows[m + 1]; ++jb)
+          {
+            const index_t ci = cols[jb];
+            const mat_float *blk = vals + static_cast<std::size_t>(jb) * b2;
+            mat_float *cs = colsum_.data() + static_cast<std::size_t>(ci) * b2;
+            for (std::size_t e = 0; e < b2; ++e)
+              cs[e] += blk[e];
+          }
+      }
+
       for (index_t i = 0; i < n_block_rows; ++i)
       {
         mat_float *w = &cpr_weights_[static_cast<std::size_t>(i) * Ni];
@@ -390,14 +434,24 @@ namespace opendarts
 
         if (n_f > 0)
         {
-          // Locate the diagonal block (col == i) of block-row i.
-          index_t diag = -1;
-          for (index_t jb = rows[i]; jb < rows[i + 1]; ++jb)
-            if (cols[jb] == i) { diag = jb; break; }
-
-          if (diag >= 0)
+          const mat_float *D = nullptr;
+          if (weight_scheme_ == 1)
           {
-            const mat_float *D = vals + static_cast<std::size_t>(diag) * b2;
+            D = colsum_.data() + static_cast<std::size_t>(i) * b2;
+          }
+          else
+          {
+            // Locate the diagonal block (col == i) of block-row i.
+            for (index_t jb = rows[i]; jb < rows[i + 1]; ++jb)
+              if (cols[jb] == i)
+              {
+                D = vals + static_cast<std::size_t>(jb) * b2;
+                break;
+              }
+          }
+
+          if (D != nullptr)
+          {
             mat_float M[NF * NF];
             mat_float rhs[NF];
             for (int a = 0; a < n_f; ++a)
@@ -438,6 +492,29 @@ namespace opendarts
           for (int v = 0; v < Ni; ++v)
             acc += w[v] * blk[static_cast<std::size_t>(v) * Ni + P_VAR];
           ap_vals[jb] = acc;
+        }
+      }
+
+      // Row sign normalisation (BOS rhs_mults parity): flip rows whose
+      // pressure diagonal is negative so the AMG's M-matrix-oriented
+      // coarsening/smoothing heuristics see a positive diagonal. The same
+      // +-1 multiplier is applied to the restricted residual on the forward
+      // path and to the prolonged solution on the transposed path.
+      rhs_mults_.assign(static_cast<std::size_t>(n_block_rows), 1.0);
+      for (index_t i = 0; i < n_block_rows; ++i)
+      {
+        mat_float diag_val = 0.0;
+        for (index_t jb = rows[i]; jb < rows[i + 1]; ++jb)
+          if (cols[jb] == i)
+          {
+            diag_val = ap_vals[jb];
+            break;
+          }
+        if (diag_val < 0.0)
+        {
+          for (index_t jb = rows[i]; jb < rows[i + 1]; ++jb)
+            ap_vals[jb] = -ap_vals[jb];
+          rhs_mults_[i] = -1.0;
         }
       }
 
@@ -570,25 +647,9 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    int linsolv_cpr<N_BLOCK_SIZE>::setup_unguarded(csr_matrix_base *A_input)
+    void linsolv_cpr<N_BLOCK_SIZE>::refresh_scalar_expansion(
+        csr_matrix_base *A_input)
     {
-      // Ensure HYPRE is initialised; when CPR is used without MGR alive in
-      // the process the wrappers would otherwise hit "[Generic error]" out of
-      // HYPRE's diagnostic layer.
-      if (!HYPRE_Initialized())
-        HYPRE_Initialize();
-      HYPRE_ClearAllErrors();
-
-      A_ = A_input;
-
-      // Rebuild the (block-extracted) pressure subsystem and the scalar
-      // expansion of the full system. Both are CSR<1> objects owned here;
-      // their sparsity pattern is reused across nonlinear iterations.
-      build_pressure_subsystem(A_input);
-      if (!Ap_T_)
-        Ap_T_ = std::make_unique<opendarts::linear_solvers::csr_matrix<1>>();
-      csr_transpose_scalar(*Ap_, *Ap_T_);
-
       if (!As_)
         As_ = std::make_unique<opendarts::linear_solvers::csr_matrix<1>>();
 
@@ -646,112 +707,238 @@ namespace opendarts
         scalar_adapter_.reset();
         As_->to_nb_1(A_input);
       }
+    }
 
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_cpr<N_BLOCK_SIZE>::create_pressure_amg(HYPRE_Solver &amg,
+        const char *tag)
+    {
+      const std::string t(tag);
+      check_hypre(HYPRE_BoomerAMGCreate(&amg),
+          ("BoomerAMGCreate" + t).c_str());
+      check_hypre(HYPRE_BoomerAMGSetPrintLevel(amg, 0),
+          ("BoomerAMGSetPrintLevel" + t).c_str());
+      check_hypre(HYPRE_BoomerAMGSetLogging(amg, 0),
+          ("BoomerAMGSetLogging" + t).c_str());
+      check_hypre(HYPRE_BoomerAMGSetMaxIter(amg, amg_max_iters_),
+          ("BoomerAMGSetMaxIter" + t).c_str());
+      check_hypre(HYPRE_BoomerAMGSetTol(amg, 0.0),
+          ("BoomerAMGSetTol" + t).c_str());
+      // Negative option values leave the HYPRE built-in default untouched
+      // (see cpr_solver_config).
+      if (amg_coarsen_type_ >= 0)
+        check_hypre(HYPRE_BoomerAMGSetCoarsenType(amg, amg_coarsen_type_),
+            ("BoomerAMGSetCoarsenType" + t).c_str());
+      if (amg_interp_type_ >= 0)
+        check_hypre(HYPRE_BoomerAMGSetInterpType(amg, amg_interp_type_),
+            ("BoomerAMGSetInterpType" + t).c_str());
+      if (amg_relax_type_ >= 0)
+        check_hypre(HYPRE_BoomerAMGSetRelaxType(amg, amg_relax_type_),
+            ("BoomerAMGSetRelaxType" + t).c_str());
+      if (amg_relax_order_ >= 0)
+        check_hypre(HYPRE_BoomerAMGSetRelaxOrder(amg, amg_relax_order_),
+            ("BoomerAMGSetRelaxOrder" + t).c_str());
+      if (amg_num_sweeps_ > 0)
+        check_hypre(HYPRE_BoomerAMGSetNumSweeps(amg, amg_num_sweeps_),
+            ("BoomerAMGSetNumSweeps" + t).c_str());
+      if (amg_strong_threshold_ >= 0.0)
+        check_hypre(
+            HYPRE_BoomerAMGSetStrongThreshold(amg, amg_strong_threshold_),
+            ("BoomerAMGSetStrongThreshold" + t).c_str());
+      if (amg_agg_num_levels_ >= 0)
+        check_hypre(HYPRE_BoomerAMGSetAggNumLevels(amg, amg_agg_num_levels_),
+            ("BoomerAMGSetAggNumLevels" + t).c_str());
+      if (amg_agg_num_levels_ > 0)
+      {
+        check_hypre(HYPRE_BoomerAMGSetAggPMaxElmts(amg, amg_agg_pmax_elmts_),
+            ("BoomerAMGSetAggPMaxElmts" + t).c_str());
+        check_hypre(HYPRE_BoomerAMGSetAggInterpType(amg, amg_agg_interp_type_),
+            ("BoomerAMGSetAggInterpType" + t).c_str());
+      }
+      if (amg_pmax_elmts_ >= 0)
+        check_hypre(HYPRE_BoomerAMGSetPMaxElmts(amg, amg_pmax_elmts_),
+            ("BoomerAMGSetPMaxElmts" + t).c_str());
+      if (amg_trunc_factor_ >= 0.0)
+        check_hypre(HYPRE_BoomerAMGSetTruncFactor(amg, amg_trunc_factor_),
+            ("BoomerAMGSetTruncFactor" + t).c_str());
+      if (amg_max_levels_ > 0)
+        check_hypre(HYPRE_BoomerAMGSetMaxLevels(amg, amg_max_levels_),
+            ("BoomerAMGSetMaxLevels" + t).c_str());
+      if (amg_cycle_type_ > 0)
+        check_hypre(HYPRE_BoomerAMGSetCycleType(amg, amg_cycle_type_),
+            ("BoomerAMGSetCycleType" + t).c_str());
+      if (amg_max_coarse_size_ > 0)
+        check_hypre(HYPRE_BoomerAMGSetMaxCoarseSize(amg, amg_max_coarse_size_),
+            ("BoomerAMGSetMaxCoarseSize" + t).c_str());
+      if (amg_coarse_relax_type_ >= 0)
+        check_hypre(
+            HYPRE_BoomerAMGSetCycleRelaxType(amg, amg_coarse_relax_type_, 3),
+            ("BoomerAMGSetCycleRelaxType" + t).c_str());
+      if (amg_relax_wt_ >= 0.0)
+        check_hypre(HYPRE_BoomerAMGSetRelaxWt(amg, amg_relax_wt_),
+            ("BoomerAMGSetRelaxWt" + t).c_str());
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_cpr<N_BLOCK_SIZE>::create_fullsystem_ilu(HYPRE_Solver &ilu,
+        const char *tag)
+    {
+      const std::string t(tag);
+      check_hypre(HYPRE_ILUCreate(&ilu), ("ILUCreate" + t).c_str());
+      check_hypre(HYPRE_ILUSetPrintLevel(ilu, 0),
+          ("ILUSetPrintLevel" + t).c_str());
+      check_hypre(HYPRE_ILUSetLogging(ilu, 0), ("ILUSetLogging" + t).c_str());
+      check_hypre(HYPRE_ILUSetMaxIter(ilu, 1), ("ILUSetMaxIter" + t).c_str());
+      check_hypre(HYPRE_ILUSetTol(ilu, 0.0), ("ILUSetTol" + t).c_str());
+      check_hypre(HYPRE_ILUSetType(ilu, 0), ("ILUSetType" + t).c_str());
+      check_hypre(HYPRE_ILUSetLevelOfFill(ilu, ilu_fill_level_),
+          ("ILUSetLevelOfFill" + t).c_str());
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_cpr<N_BLOCK_SIZE>::activate_adjoint_chain()
+    {
+      if (adjoint_active_)
+        return;
+      cpr_scoped_timer timer(cpr_sub_timer(this->timer_setup, "CPR adjoint chain"));
+
+      // The block-ILU0 forward stage skips the scalar expansion; the adjoint
+      // ILU factorisation of A_s^T needs it, so materialise it now from the
+      // matrix of the last setup().
+      if (stage2_type_ == 1)
+        refresh_scalar_expansion(A_);
+
+      // Transpose twins of the current pressure / full-system matrices. The
+      // forward Ap_ / As_ always hold the values of the last setup(), so the
+      // chain built here matches the matrix the engine just assembled.
+      if (!Ap_T_)
+        Ap_T_ = std::make_unique<opendarts::linear_solvers::csr_matrix<1>>();
+      csr_transpose_scalar(*Ap_, *Ap_T_);
       if (!As_T_)
         As_T_ = std::make_unique<opendarts::linear_solvers::csr_matrix<1>>();
       csr_transpose_scalar(*As_, *As_T_);
 
+      // Transpose AMG on A_p^T -- a separate hierarchy because
+      // HYPRE_BoomerAMGSolveT supports only relax types 7 / 9 and interacts
+      // poorly with the flow-tuned configuration.
+      if (!amg_T_)
+      {
+        build_hypre_ij(*Ap_T_, Ap_T_ij_, Ap_T_parcsr_);
+        create_hypre_vectors(Ap_T_->n_rows, amg_T_b_ij_, amg_T_x_ij_);
+        create_pressure_amg(amg_T_, "(T)");
+      }
+      else
+      {
+        refresh_hypre_ij(*Ap_T_, Ap_T_ij_, Ap_T_parcsr_);
+      }
+      check_hypre(
+          HYPRE_BoomerAMGSetup(amg_T_, Ap_T_parcsr_, amg_T_b_par_, amg_T_x_par_),
+          "BoomerAMGSetup(T)");
+      amg_T_setup_done_ = true;
+
+      // Transpose HYPRE_ILU on A_s^T (HYPRE_ILU has no transpose-solve entry
+      // point, so the adjoint path uses a second factorisation).
+      if (!ilu_T_)
+      {
+        build_hypre_ij(*As_T_, As_T_ij_, As_T_parcsr_);
+        create_hypre_vectors(As_T_->n_rows, ilu_T_b_ij_, ilu_T_x_ij_);
+        create_fullsystem_ilu(ilu_T_, "(T)");
+      }
+      else
+      {
+        refresh_hypre_ij(*As_T_, As_T_ij_, As_T_parcsr_);
+      }
+      check_hypre(
+          HYPRE_ILUSetup(ilu_T_, As_T_parcsr_, ilu_T_b_par_, ilu_T_x_par_),
+          "ILUSetup(T)");
+      ilu_T_setup_done_ = true;
+
+      adjoint_active_ = true;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_cpr<N_BLOCK_SIZE>::setup_unguarded(csr_matrix_base *A_input)
+    {
+      // Ensure HYPRE is initialised; when CPR is used without MGR alive in
+      // the process the wrappers would otherwise hit "[Generic error]" out of
+      // HYPRE's diagnostic layer.
+      if (!HYPRE_Initialized())
+        HYPRE_Initialize();
+      HYPRE_ClearAllErrors();
+
+      A_ = A_input;
+
+      // Rebuild the (block-extracted) pressure subsystem and the scalar
+      // expansion of the full system. Both are CSR<1> objects owned here;
+      // their sparsity pattern is reused across nonlinear iterations. The
+      // transposed twins (A_p^T / A_s^T, CPRA adjoint path) are handled by
+      // activate_adjoint_chain() / the refresh branch below -- they are not
+      // touched until the adjoint chain is active.
+      {
+        cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR pressure system"));
+        build_pressure_subsystem(A_input);
+      }
+
+      // The scalar expansion feeds the HYPRE scalar-ILU stage and the
+      // adjoint chain; with the block-ILU0 stage and no active adjoint it is
+      // skipped entirely (the block stage factors the block matrix in
+      // place).
+      if (stage2_type_ == 0 || eager_adjoint_ || adjoint_active_)
+      {
+        cpr_scoped_timer expand_timer(
+            cpr_sub_timer(this->timer_setup, "CPR scalar expand"));
+        refresh_scalar_expansion(A_input);
+      }
+
       if (first_setup_)
       {
-        // First setup -- create all HYPRE handles fresh. Subsequent setup()
-        // calls reuse them; a destroy/recreate cycle on every Newton iteration
-        // crashes BoomerAMGSetup on the second call (HYPRE accumulates state
-        // that BoomerAMGDestroy doesn't fully release).
-        //
-        // Forward AMG on A_p. Configuration mirrors
-        // mgr::CompositionalFlowStrategy::setupPressureAMG: aggressive
-        // coarsening + multipass interp + C-F relax, configured as a
-        // preconditioner (MaxIter=amg_max_iters_, Tol=0). The
-        // elasticity-tuned linsolv_hypre_amg wrapper is intentionally not
-        // used here -- this is the flow-tuned configuration MGR uses.
+        // First setup -- create the forward HYPRE handles fresh. Subsequent
+        // setup() calls reuse them; a destroy/recreate cycle on every Newton
+        // iteration crashes BoomerAMGSetup on the second call (HYPRE
+        // accumulates state that BoomerAMGDestroy doesn't fully release).
         build_hypre_ij(*Ap_, Ap_ij_, Ap_parcsr_);
         create_hypre_vectors(Ap_->n_rows, amg_b_ij_, amg_x_ij_);
 
-        check_hypre(HYPRE_BoomerAMGCreate(&amg_), "BoomerAMGCreate");
-        check_hypre(HYPRE_BoomerAMGSetPrintLevel(amg_, 0),
-            "BoomerAMGSetPrintLevel");
-        check_hypre(HYPRE_BoomerAMGSetLogging(amg_, 0), "BoomerAMGSetLogging");
-        check_hypre(HYPRE_BoomerAMGSetMaxIter(amg_, amg_max_iters_),
-            "BoomerAMGSetMaxIter");
-        check_hypre(HYPRE_BoomerAMGSetTol(amg_, 0.0), "BoomerAMGSetTol");
-        check_hypre(HYPRE_BoomerAMGSetAggNumLevels(amg_, 1),
-            "BoomerAMGSetAggNumLevels");
-        check_hypre(HYPRE_BoomerAMGSetAggPMaxElmts(amg_, 20),
-            "BoomerAMGSetAggPMaxElmts");
-        check_hypre(HYPRE_BoomerAMGSetAggInterpType(amg_, 6),
-            "BoomerAMGSetAggInterpType");
-        check_hypre(HYPRE_BoomerAMGSetRelaxOrder(amg_, 1),
-            "BoomerAMGSetRelaxOrder");
-
-        check_hypre(
-            HYPRE_BoomerAMGSetup(amg_, Ap_parcsr_, amg_b_par_, amg_x_par_),
-            "BoomerAMGSetup");
+        create_pressure_amg(amg_, "");
+        {
+          cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR AMG setup"));
+          check_hypre(
+              HYPRE_BoomerAMGSetup(amg_, Ap_parcsr_, amg_b_par_, amg_x_par_),
+              "BoomerAMGSetup");
+        }
         amg_setup_done_ = true;
 
-        // Transpose AMG on A_p^T (for CPRA solve_transposed) -- separate
-        // hierarchy because HYPRE_BoomerAMGSolveT supports only relax types
-        // 7 / 9 and interacts poorly with our aggressive-coarsening flow
-        // config.
-        build_hypre_ij(*Ap_T_, Ap_T_ij_, Ap_T_parcsr_);
-        create_hypre_vectors(Ap_T_->n_rows, amg_T_b_ij_, amg_T_x_ij_);
+        if (stage2_type_ == 1)
+        {
+          // Full-system stage: in-tree block ILU(0) on the block-CSR matrix
+          // (BOS csr_ilu_prec equivalent) -- no scalar expansion involved.
+          cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR BILU0 setup"));
+          if (!bilu0_)
+            bilu0_ = std::make_unique<
+                opendarts::linear_solvers::cpr_block_ilu0<N_BLOCK_SIZE>>();
+          bilu0_ready_ = (bilu0_->factor(A_input) == 0);
+        }
+        else
+        {
+          // Forward HYPRE_ILU on A_s (full-system scalar expansion).
+          build_hypre_ij(*As_, As_ij_, As_parcsr_);
+          create_hypre_vectors(As_->n_rows, ilu_b_ij_, ilu_x_ij_);
 
-        check_hypre(HYPRE_BoomerAMGCreate(&amg_T_), "BoomerAMGCreate(T)");
-        check_hypre(HYPRE_BoomerAMGSetPrintLevel(amg_T_, 0),
-            "BoomerAMGSetPrintLevel(T)");
-        check_hypre(HYPRE_BoomerAMGSetLogging(amg_T_, 0),
-            "BoomerAMGSetLogging(T)");
-        check_hypre(HYPRE_BoomerAMGSetMaxIter(amg_T_, amg_max_iters_),
-            "BoomerAMGSetMaxIter(T)");
-        check_hypre(HYPRE_BoomerAMGSetTol(amg_T_, 0.0), "BoomerAMGSetTol(T)");
-        check_hypre(HYPRE_BoomerAMGSetAggNumLevels(amg_T_, 1),
-            "BoomerAMGSetAggNumLevels(T)");
-        check_hypre(HYPRE_BoomerAMGSetAggPMaxElmts(amg_T_, 20),
-            "BoomerAMGSetAggPMaxElmts(T)");
-        check_hypre(HYPRE_BoomerAMGSetAggInterpType(amg_T_, 6),
-            "BoomerAMGSetAggInterpType(T)");
-        check_hypre(HYPRE_BoomerAMGSetRelaxOrder(amg_T_, 1),
-            "BoomerAMGSetRelaxOrder(T)");
-        check_hypre(
-            HYPRE_BoomerAMGSetup(amg_T_, Ap_T_parcsr_, amg_T_b_par_,
-                amg_T_x_par_),
-            "BoomerAMGSetup(T)");
-        amg_T_setup_done_ = true;
+          create_fullsystem_ilu(ilu_, "");
+          {
+            cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR ILU(0) setup"));
+            check_hypre(HYPRE_ILUSetup(ilu_, As_parcsr_, ilu_b_par_, ilu_x_par_),
+                "ILUSetup");
+          }
+          ilu_setup_done_ = true;
+        }
 
-        // Forward HYPRE_ILU on A_s (full-system scalar expansion).
-        build_hypre_ij(*As_, As_ij_, As_parcsr_);
-        create_hypre_vectors(As_->n_rows, ilu_b_ij_, ilu_x_ij_);
-
-        check_hypre(HYPRE_ILUCreate(&ilu_), "ILUCreate");
-        check_hypre(HYPRE_ILUSetPrintLevel(ilu_, 0), "ILUSetPrintLevel");
-        check_hypre(HYPRE_ILUSetLogging(ilu_, 0), "ILUSetLogging");
-        check_hypre(HYPRE_ILUSetMaxIter(ilu_, 1), "ILUSetMaxIter");
-        check_hypre(HYPRE_ILUSetTol(ilu_, 0.0), "ILUSetTol");
-        check_hypre(HYPRE_ILUSetType(ilu_, 0), "ILUSetType");
-        check_hypre(HYPRE_ILUSetLevelOfFill(ilu_, ilu_fill_level_),
-            "ILUSetLevelOfFill");
-
-        check_hypre(HYPRE_ILUSetup(ilu_, As_parcsr_, ilu_b_par_, ilu_x_par_),
-            "ILUSetup");
-        ilu_setup_done_ = true;
-
-        // Transpose HYPRE_ILU on A_s^T (HYPRE_ILU has no transpose-solve
-        // entry point, so the adjoint path uses a second factorisation).
-        build_hypre_ij(*As_T_, As_T_ij_, As_T_parcsr_);
-        create_hypre_vectors(As_T_->n_rows, ilu_T_b_ij_, ilu_T_x_ij_);
-
-        check_hypre(HYPRE_ILUCreate(&ilu_T_), "ILUCreate(T)");
-        check_hypre(HYPRE_ILUSetPrintLevel(ilu_T_, 0),
-            "ILUSetPrintLevel(T)");
-        check_hypre(HYPRE_ILUSetLogging(ilu_T_, 0), "ILUSetLogging(T)");
-        check_hypre(HYPRE_ILUSetMaxIter(ilu_T_, 1), "ILUSetMaxIter(T)");
-        check_hypre(HYPRE_ILUSetTol(ilu_T_, 0.0), "ILUSetTol(T)");
-        check_hypre(HYPRE_ILUSetType(ilu_T_, 0), "ILUSetType(T)");
-        check_hypre(HYPRE_ILUSetLevelOfFill(ilu_T_, ilu_fill_level_),
-            "ILUSetLevelOfFill(T)");
-        check_hypre(
-            HYPRE_ILUSetup(ilu_T_, As_T_parcsr_, ilu_T_b_par_, ilu_T_x_par_),
-            "ILUSetup(T)");
-        ilu_T_setup_done_ = true;
+        // Transpose (CPRA / adjoint) chain: built here only on the eager
+        // path. The default lazy path defers it to the first
+        // solve_transposed() call -- forward-only simulations then never pay
+        // for the A_p^T / A_s^T transposes and their hierarchies.
+        if (eager_adjoint_)
+          activate_adjoint_chain();
 
         first_setup_ = false;
       }
@@ -772,10 +959,20 @@ namespace opendarts
         //   - adaptive_amg_rebuild_: even with reuse on, force a rebuild when
         //     the last solve took more than adaptive_iter_threshold_ iters
         //     for adaptive_consecutive_bad_ solves in a row.
-        refresh_hypre_ij(*Ap_, Ap_ij_, Ap_parcsr_);
-        refresh_hypre_ij(*Ap_T_, Ap_T_ij_, Ap_T_parcsr_);
-        refresh_hypre_ij(*As_, As_ij_, As_parcsr_);
-        refresh_hypre_ij(*As_T_, As_T_ij_, As_T_parcsr_);
+        {
+          cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR IJ refresh"));
+          refresh_hypre_ij(*Ap_, Ap_ij_, Ap_parcsr_);
+          if (stage2_type_ == 0)
+            refresh_hypre_ij(*As_, As_ij_, As_parcsr_);
+          if (adjoint_active_)
+          {
+            // Keep the transpose twins in sync with the refreshed values.
+            csr_transpose_scalar(*Ap_, *Ap_T_);
+            csr_transpose_scalar(*As_, *As_T_);
+            refresh_hypre_ij(*Ap_T_, Ap_T_ij_, Ap_T_parcsr_);
+            refresh_hypre_ij(*As_T_, As_T_ij_, As_T_parcsr_);
+          }
+        }
 
         bool rebuild = !reuse_amg_hierarchy_ || force_amg_rebuild_;
         if (reuse_amg_hierarchy_ && adaptive_amg_rebuild_ && last_outer_iters_ > 0)
@@ -798,19 +995,36 @@ namespace opendarts
 
         if (rebuild)
         {
-          check_hypre(
-              HYPRE_BoomerAMGSetup(amg_, Ap_parcsr_, amg_b_par_, amg_x_par_),
-              "BoomerAMGSetup(re)");
-          check_hypre(
-              HYPRE_BoomerAMGSetup(amg_T_, Ap_T_parcsr_, amg_T_b_par_,
-                  amg_T_x_par_),
-              "BoomerAMGSetup(T,re)");
-          check_hypre(
-              HYPRE_ILUSetup(ilu_, As_parcsr_, ilu_b_par_, ilu_x_par_),
-              "ILUSetup(re)");
-          check_hypre(
-              HYPRE_ILUSetup(ilu_T_, As_T_parcsr_, ilu_T_b_par_, ilu_T_x_par_),
-              "ILUSetup(T,re)");
+          {
+            cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR AMG setup"));
+            check_hypre(
+                HYPRE_BoomerAMGSetup(amg_, Ap_parcsr_, amg_b_par_, amg_x_par_),
+                "BoomerAMGSetup(re)");
+            if (adjoint_active_)
+              check_hypre(
+                  HYPRE_BoomerAMGSetup(amg_T_, Ap_T_parcsr_, amg_T_b_par_,
+                      amg_T_x_par_),
+                  "BoomerAMGSetup(T,re)");
+          }
+          if (stage2_type_ == 1)
+          {
+            cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR BILU0 setup"));
+            bilu0_ready_ = bilu0_ && (bilu0_->factor(A_input) == 0);
+          }
+          else
+          {
+            cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR ILU(0) setup"));
+            check_hypre(
+                HYPRE_ILUSetup(ilu_, As_parcsr_, ilu_b_par_, ilu_x_par_),
+                "ILUSetup(re)");
+          }
+          if (adjoint_active_)
+          {
+            cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR ILU(0) setup"));
+            check_hypre(
+                HYPRE_ILUSetup(ilu_T_, As_T_parcsr_, ilu_T_b_par_, ilu_T_x_par_),
+                "ILUSetup(T,re)");
+          }
         }
       }
 
@@ -858,19 +1072,26 @@ namespace opendarts
         mat_float acc = 0.0;
         for (int v = 0; v < static_cast<int>(N_BLOCK_SIZE); ++v)
           acc += w[v] * B[static_cast<std::size_t>(i) * N_BLOCK_SIZE + v];
-        r_p[i] = acc;
+        // rhs_mults_ carries the A_p row sign normalisation (see
+        // build_pressure_subsystem): scaling row i of A_p and entry i of the
+        // restricted residual identically leaves the pressure solution
+        // unchanged.
+        r_p[i] = rhs_mults_[i] * acc;
       }
       std::memset(x_p, 0, n_pressure * sizeof(mat_float));
 
-      set_hypre_vector(amg_b_ij_, n_block_rows, r_p, amg_b_par_);
-      set_hypre_vector(amg_x_ij_, n_block_rows, x_p, amg_x_par_);
-      check_hypre(HYPRE_BoomerAMGSolve(amg_, Ap_parcsr_, amg_b_par_, amg_x_par_),
-          "BoomerAMGSolve");
-      // row_indices_ was already grown to at least n_block_rows by
-      // set_hypre_vector above; reuse it for HYPRE_IJVectorGetValues.
-      check_hypre(HYPRE_IJVectorGetValues(amg_x_ij_, n_block_rows,
-                      row_indices_.data(), x_p),
-          "IJVectorGetValues(amg_x)");
+      {
+        cpr_scoped_timer t(cpr_sub_timer(this->timer_solve, "CPR AMG"));
+        set_hypre_vector(amg_b_ij_, n_block_rows, r_p, amg_b_par_);
+        set_hypre_vector(amg_x_ij_, n_block_rows, x_p, amg_x_par_);
+        check_hypre(HYPRE_BoomerAMGSolve(amg_, Ap_parcsr_, amg_b_par_, amg_x_par_),
+            "BoomerAMGSolve");
+        // row_indices_ was already grown to at least n_block_rows by
+        // set_hypre_vector above; reuse it for HYPRE_IJVectorGetValues.
+        check_hypre(HYPRE_IJVectorGetValues(amg_x_ij_, n_block_rows,
+                        row_indices_.data(), x_p),
+            "IJVectorGetValues(amg_x)");
+      }
 
       std::memset(x_g, 0, n_scalar * sizeof(mat_float));
       for (index_t i = 0; i < n_block_rows; ++i)
@@ -883,10 +1104,16 @@ namespace opendarts
       for (std::size_t k = 0; k < n_scalar; ++k)
         r_m[k] -= x_f[k];
 
-      // Apply HYPRE-ILU to r_m for x_f.
+      // Apply the full-system smoother to r_m for x_f.
       std::memset(x_f, 0, n_scalar * sizeof(mat_float));
-      if (ilu_setup_done_)
+      if (stage2_type_ == 1 && bilu0_ready_)
       {
+        cpr_scoped_timer t(cpr_sub_timer(this->timer_solve, "CPR BILU0"));
+        bilu0_->apply(r_m, x_f);
+      }
+      else if (ilu_setup_done_)
+      {
+        cpr_scoped_timer t(cpr_sub_timer(this->timer_solve, "CPR ILU(0)"));
         const index_t n_s = static_cast<index_t>(n_scalar);
         set_hypre_vector(ilu_b_ij_, n_s, r_m, ilu_b_par_);
         set_hypre_vector(ilu_x_ij_, n_s, x_f, ilu_x_par_);
@@ -908,7 +1135,14 @@ namespace opendarts
     template <uint8_t N_BLOCK_SIZE>
     int linsolv_cpr<N_BLOCK_SIZE>::solve_transposed_unguarded(mat_float *B, mat_float *X)
     {
-      if (!A_ || !amg_T_setup_done_ || !ilu_T_setup_done_)
+      if (!A_)
+        return -1;
+      // Lazy CPRA: the transpose hierarchies are built on the first
+      // transposed solve (forward-only simulations never pay for them). The
+      // chain is refreshed by every subsequent setup().
+      if (!adjoint_active_)
+        activate_adjoint_chain();
+      if (!amg_T_setup_done_ || !ilu_T_setup_done_)
         return -1;
 
       // CPRA (Han et al. 2013, eq 13). Each stage is the transpose of the
@@ -946,14 +1180,14 @@ namespace opendarts
                       row_indices_.data(), x_f),
           "IJVectorGetValues(ilu_T_x)");
 
-      // Step 2: r_m = r - A^T x_f
+      // Step 2: r_m = r - A^T x_f. x_g is unused on the transpose path --
+      // reuse it as the SpMV accumulator instead of a per-apply heap
+      // allocation.
       std::memcpy(r_m, B, n_scalar * sizeof(mat_float));
-      {
-        std::vector<mat_float> tmp(n_scalar, 0.0);
-        block_csr_spmv_t_add<N_BLOCK_SIZE>(A_, x_f, tmp.data());
-        for (std::size_t k = 0; k < n_scalar; ++k)
-          r_m[k] -= tmp[k];
-      }
+      std::memset(x_g, 0, n_scalar * sizeof(mat_float));
+      block_csr_spmv_t_add<N_BLOCK_SIZE>(A_, x_f, x_g);
+      for (std::size_t k = 0; k < n_scalar; ++k)
+        r_m[k] -= x_g[k];
 
       // Step 3: r_p = C^T r_m (pressure restriction).
       for (index_t i = 0; i < n_block_rows; ++i)
@@ -969,6 +1203,12 @@ namespace opendarts
       check_hypre(HYPRE_IJVectorGetValues(amg_T_x_ij_, n_block_rows,
                       row_indices_.data(), x_p),
           "IJVectorGetValues(amg_T_x)");
+      // The stored A_p carries the row sign normalisation D_m (see
+      // build_pressure_subsystem): A_p = D_m A_p_orig, so A_p^T = A_p_orig^T
+      // D_m and the true transpose solution is z = D_m y for the y computed
+      // above. Apply the +-1 multipliers to recover it.
+      for (index_t i = 0; i < n_block_rows; ++i)
+        x_p[i] *= rhs_mults_[i];
 
       // Step 5: X = R^T x_p + x_f. The transpose of the forward weighted
       // restriction R_i = w_i^T is a weighted prolongation: X[i,v] += w_i[v]

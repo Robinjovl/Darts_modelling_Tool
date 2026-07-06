@@ -258,7 +258,16 @@ namespace opendarts
     {
       A_ = A_input;
       if (prec_)
+      {
+        // Forward the engine's timer nodes so the preconditioner can hang
+        // its own sub-timers ("CPR AMG setup", "CPR BILU0", ...) under
+        // "linear solver setup"/"linear solver solve". Idempotent; a
+        // preconditioner that doesn't time itself ignores them.
+        if ((this->timer_setup || this->timer_solve)
+            && prec_->timer_setup == nullptr && prec_->timer_solve == nullptr)
+          prec_->init_timer_nodes(this->timer_setup, this->timer_solve);
         return prec_->setup(A_input);
+      }
       return 0;
     }
 

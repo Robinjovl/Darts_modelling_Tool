@@ -327,6 +327,18 @@ namespace opendarts
         auto solver = std::make_shared<opendarts::linear_solvers::linsolv_cpr<N_BLOCK_SIZE>>();
         solver->set_amg_max_iters(config.amg_max_iters);
         solver->set_ilu_fill_level(config.ilu_fill_level);
+        solver->set_pressure_amg_options(config.amg_coarsen_type,
+            config.amg_interp_type, config.amg_relax_type,
+            config.amg_relax_order, config.amg_num_sweeps,
+            config.amg_strong_threshold, config.amg_agg_num_levels,
+            config.amg_agg_interp_type, config.amg_agg_pmax_elmts,
+            config.amg_pmax_elmts, config.amg_trunc_factor,
+            config.amg_max_levels, config.amg_cycle_type,
+            config.amg_max_coarse_size, config.amg_coarse_relax_type,
+            config.amg_relax_wt);
+        solver->set_weight_scheme(config.weight_scheme);
+        solver->set_stage2_type(config.stage2_type);
+        solver->set_eager_adjoint(config.eager_adjoint);
         solver->set_reuse_amg_hierarchy(config.reuse_amg_hierarchy);
         solver->set_adaptive_amg_rebuild(config.adaptive_amg_rebuild,
             config.adaptive_iter_threshold, config.adaptive_consecutive_bad);

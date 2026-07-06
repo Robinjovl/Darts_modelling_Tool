@@ -20,10 +20,15 @@
 #ifdef WITH_GPU
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "linsolv_bicgstab.hpp"
+#include "linsolv_gmres_gpu.hpp"
 #include "linsolv_cusparse_ilu.hpp"
 #include "linsolv_cusolv.hpp"
 #ifdef WITH_CUDSS
 #include "linsolv_cudss.hpp"
+#endif
+#ifdef OPENDARTS_GPU_HAS_AMGX
+#include "linsolv_amgx.hpp"
+#include "linsolv_bos_cpr_gpu.hpp"
 #endif
 #else
 #include "linsolv_bicgstab.h"
@@ -341,15 +346,41 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     else if (params->linear_type == sim_params::GPU_BICGSTAB_CPR_AMGX
              || params->linear_type == sim_params::GPU_GMRES_CPR_AMGX_ILU)
     {
-      // TODO(MR280 follow-up): the in-tree AMGX-CPR stack (BiCGStab +
-      // linsolv_bos_cpr_gpu + linsolv_amgx) is built under WITH_AMGX but
-      // linsolv_bos_cpr_gpu::init still expects the legacy csr_matrix<N>
-      // device layout and segfaults on the open-source block_csr_matrix
-      // Jacobian (verified on 2ph_do). Until that port lands, serve AMGX-CPR
-      // requests with the proven BiCGStab + cuSPARSE-ILU(0) solver.
-      std::cout << "In-tree AMGX-CPR is not yet block_csr_matrix-ready; "
-                   "using the BiCGStab + cuSPARSE-ILU(0) GPU solver instead."
-                << std::endl;
+      // In-tree AMGX-CPR stack on the open-source block_csr_matrix Jacobian:
+      // GPU-resident GMRES (linsolv_gmres_gpu) around the two-stage CPR
+      // (linsolv_bos_cpr_gpu: True-IMPES pressure reduction on device, AMGX
+      // AMG on the scalar pressure system, cuSPARSE block-ILU(0) on the full
+      // system). Mirrors the proprietary GPU_GMRES_CPR_AMGX_ILU wiring.
+      if constexpr (N_VARS > 1)
+      {
+        auto *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+        cpr->p_solver_setup_gpu = 1;
+        cpr->p_solver_solve_gpu = 1;
+        cpr->p_solver_requires_diag_first = 0;
+        cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
+        cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>());
+        if (params->linear_type == sim_params::GPU_BICGSTAB_CPR_AMGX)
+        {
+          auto *bicgstab = new linsolv_bicgstab<N_VARS>();
+          bicgstab->set_prec(cpr);
+          linear_solver = bicgstab;
+          linear_solver_type_str = "GPU_BICGSTAB_CPR_AMGX_ILU";
+        }
+        else
+        {
+          auto *gmres = new linsolv_gmres_gpu<N_VARS>();
+          gmres->set_prec(cpr);
+          linear_solver = gmres;
+          linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
+        }
+      }
+      else
+      {
+        auto *gmres = new linsolv_gmres_gpu<1>();
+        gmres->set_prec(new linsolv_amgx<1>(device_num));
+        linear_solver = gmres;
+        linear_solver_type_str = "GPU_GMRES_AMGX";
+      }
     }
 #endif // OPENDARTS_GPU_HAS_AMGX
     if (!linear_solver)

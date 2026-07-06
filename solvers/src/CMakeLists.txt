@@ -164,6 +164,7 @@ if(CUDA)
   set(OD_GPU_SOLVERS_SRC_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/gpu_tools.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bicgstab.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_gmres_gpu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusparse_ilu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusolv.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_cpr_gpu.cu
@@ -171,6 +172,7 @@ if(CUDA)
   set(OD_GPU_SOLVERS_HEADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/gpu_tools.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bicgstab.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_gmres_gpu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cusparse_ilu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cusolv.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_cpr_gpu.hpp
@@ -179,6 +181,7 @@ if(CUDA)
   set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/csr_matrix.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bicgstab.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_gmres_gpu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusparse_ilu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusolv.cpp
     PROPERTIES LANGUAGE CUDA

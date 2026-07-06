@@ -438,20 +438,39 @@ class GMRESSolverSpec(LinearSolverSpec):
 class CPRSolverSpec(LinearSolverSpec):
     """Open-source CPR (Constrained Pressure Residual) two-stage preconditioner.
 
-    The in-tree replacement for the proprietary ``linsolv_bos_cpr``: HYPRE
-    BoomerAMG on the scalar pressure subsystem followed by HYPRE ILU(0) on the
-    full system. Intended as the inner preconditioner of an outer Krylov
-    solver, e.g.::
+    The in-tree replacement for the proprietary ``linsolv_bos_cpr``:
+    column-sum True-IMPES pressure decoupling, HYPRE BoomerAMG on the scalar
+    pressure subsystem (configured to mirror the proprietary BOS AMG by
+    default), followed by an in-tree block ILU(0) on the full block system.
+    Intended as the inner preconditioner of an outer Krylov solver, e.g.::
 
         GMRESSolverSpec(prec=CPRSolverSpec(), tolerance=1e-5)
 
     Transposed apply (CPRA, Han et al. 2013) is selected automatically when
-    the outer GMRES calls ``solve_transposed`` for the adjoint Newton step.
+    the outer GMRES calls ``solve_transposed`` for the adjoint Newton step;
+    its hierarchies are built lazily on the first transposed solve (see
+    ``eager_adjoint``).
 
-    :param amg_max_iters: AMG sweeps on the pressure subsystem per CPR apply.
-        BoomerAMG is configured with tol=0 (preconditioner stage); the sweep
-        budget is the only AMG knob -- the outer Krylov drives convergence.
-    :param ilu_fill_level: full-system ILU(k) fill level (currently 0).
+    :param amg_max_iters: AMG V-cycles on the pressure subsystem per CPR
+        apply. BoomerAMG is configured with tol=0 (preconditioner stage);
+        1 V-cycle matches the proprietary stack.
+    :param ilu_fill_level: scalar ILU(k) fill level (``stage2_type == 0``).
+    :param weight_scheme: pressure-decoupling weights -- 1 = column-sum
+        True-IMPES (BOS parity, default), 0 = diagonal-block only (previous
+        behaviour).
+    :param stage2_type: full-system smoothing stage -- 1 = in-tree block
+        ILU(0) with dense NxN block inverses (BOS ``csr_ilu_prec`` parity,
+        default), 0 = HYPRE scalar ILU(k) on the expanded system.
+    :param eager_adjoint: build the CPRA transpose hierarchies on every
+        setup from the start (previous behaviour) instead of lazily on the
+        first transposed solve. Forward-only simulations should keep this
+        off -- it roughly doubles the preconditioner setup cost.
+    :param amg_coarsen_type: pressure-AMG knobs (HYPRE integer codes;
+        negative keeps the HYPRE built-in default). Together the ``amg_*``
+        defaults mirror the proprietary BOS AMG: PMIS coarsening, standard
+        interpolation with no truncation, strong threshold 0.75, C/F-ordered
+        hybrid Gauss-Seidel, Gaussian-elimination coarse solve at <= 100
+        rows, no aggressive coarsening.
     :param reuse_amg_hierarchy: skip the BoomerAMG/ILU setup on subsequent
         Newton iterations (reuse the existing hierarchies on refreshed matrix
         values). OFF by default -- the per-Newton rebuild is the proven
@@ -465,8 +484,27 @@ class CPRSolverSpec(LinearSolverSpec):
 
     registry_name: ClassVar[str] = "cpr"
 
-    amg_max_iters: int = 2
+    amg_max_iters: int = 1
     ilu_fill_level: int = 0
+    weight_scheme: int = 1
+    stage2_type: int = 1
+    eager_adjoint: bool = False
+    amg_coarsen_type: int = 8
+    amg_interp_type: int = 8
+    amg_relax_type: int = 3
+    amg_relax_order: int = 1
+    amg_num_sweeps: int = 1
+    amg_strong_threshold: float = 0.75
+    amg_agg_num_levels: int = 0
+    amg_agg_interp_type: int = 6
+    amg_agg_pmax_elmts: int = 20
+    amg_pmax_elmts: int = 0
+    amg_trunc_factor: float = 0.0
+    amg_max_levels: int = -1
+    amg_cycle_type: int = -1
+    amg_max_coarse_size: int = 100
+    amg_coarse_relax_type: int = 9
+    amg_relax_wt: float = -1.0
     reuse_amg_hierarchy: bool = False
     adaptive_amg_rebuild: bool = False
     adaptive_iter_threshold: int = 15
@@ -478,6 +516,25 @@ class CPRSolverSpec(LinearSolverSpec):
         config.max_iterations = self.max_iterations
         config.amg_max_iters = self.amg_max_iters
         config.ilu_fill_level = self.ilu_fill_level
+        config.weight_scheme = self.weight_scheme
+        config.stage2_type = self.stage2_type
+        config.eager_adjoint = self.eager_adjoint
+        config.amg_coarsen_type = self.amg_coarsen_type
+        config.amg_interp_type = self.amg_interp_type
+        config.amg_relax_type = self.amg_relax_type
+        config.amg_relax_order = self.amg_relax_order
+        config.amg_num_sweeps = self.amg_num_sweeps
+        config.amg_strong_threshold = self.amg_strong_threshold
+        config.amg_agg_num_levels = self.amg_agg_num_levels
+        config.amg_agg_interp_type = self.amg_agg_interp_type
+        config.amg_agg_pmax_elmts = self.amg_agg_pmax_elmts
+        config.amg_pmax_elmts = self.amg_pmax_elmts
+        config.amg_trunc_factor = self.amg_trunc_factor
+        config.amg_max_levels = self.amg_max_levels
+        config.amg_cycle_type = self.amg_cycle_type
+        config.amg_max_coarse_size = self.amg_max_coarse_size
+        config.amg_coarse_relax_type = self.amg_coarse_relax_type
+        config.amg_relax_wt = self.amg_relax_wt
         config.reuse_amg_hierarchy = self.reuse_amg_hierarchy
         config.adaptive_amg_rebuild = self.adaptive_amg_rebuild
         config.adaptive_iter_threshold = self.adaptive_iter_threshold
