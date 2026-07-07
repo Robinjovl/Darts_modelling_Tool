@@ -37,10 +37,9 @@ namespace py = pybind11;
 template <typename interpolator_class, uint8_t N_DIMS, uint16_t N_OPS>
 py::tuple bulk_get_point_data_arrays(const interpolator_class &self)
 {
-  // point_data.size() is exact whenever there is no mmap'd arena
-  // With an arena attached, size() may over-count by the
-  // overlay∩arena overlap, so the exact deduped union count comes from one
-  // iterator pass (the iterator skips overlay-shadowed arena slots).
+  // point_data.size() is exact; with an arena attached, the iterator pass below
+  // is kept as an additional guard because it is the allocation size for the
+  // following export and the iterator skips overlay-shadowed arena slots.
   size_t n;
   if (self.point_data.has_arena())
   {

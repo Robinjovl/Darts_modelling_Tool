@@ -16,17 +16,15 @@
 //               base). Loaded in O(1) by mmap (no per-point rebuild) and used in
 //               place for lookups; its pages are file-backed / demand-paged, NOT
 //               anonymous RAM -> the ~150 GB resident-map OOM is structurally gone.
-//   * overlay_ — a small in-RAM std::unordered_map holding ONLY the points
-//               materialized THIS run (since the last compaction).
+//   * overlay_ — a small in-RAM std::unordered_map holding points materialized
+//               this run plus any mutable shadows of immutable arena entries.
 //
-// Lookups consult overlay_ first, then probe arena_. INSERTS ARE OVERLAY-ONLY
-// (emplace/operator[] never touch the arena): every insert site in the
-// interpolators is preceded by a full find() (overlay+arena) miss, so a key that
-// already lives in the arena is never re-inserted, and the overlay therefore
-// never shadows the arena with a duplicate on the normal paths. size() returns
-// overlay_.size()+arena_.count (an over-count only by |overlay∩arena|, which is 0
-// on the normal paths; every consumer tolerates the bound). The exact deduped
-// count is computed only at compaction (build_arena_file).
+// Lookups consult overlay_ first, then probe arena_. New supporting-point
+// materialization is find()-guarded by the interpolators, so normal inserts are
+// disjoint from the arena. The container still handles accidental or explicit
+// arena shadowing structurally: size() subtracts tracked overlay∩arena shadows,
+// emplace() treats arena-resident keys as already present, and operator[] first
+// copies an arena value into the mutable overlay instead of default-shadowing it.
 //
 // Concurrency: the only concurrent reader of point_data is the interpolator's
 // Phase-2c parallel hypercube assembly (point_data.at() under #pragma omp parallel
@@ -51,6 +49,7 @@
 
 #include <array>
 #include <unordered_map>
+#include <cassert>
 #include <cstdint>
 #include <cstddef>
 #include <cstdio>
@@ -390,6 +389,7 @@ public:
 private:
   void *map_base_ = nullptr;
   size_t map_len_ = 0;
+  size_t overlay_arena_shadow_count_ = 0;
 
   void release_mapping()
   {
@@ -404,35 +404,61 @@ private:
   {
     arena_ = o.arena_;
     overlay_ = std::move(o.overlay_);
+    overlay_arena_shadow_count_ = o.overlay_arena_shadow_count_;
     map_base_ = o.map_base_;
     map_len_ = o.map_len_;
     o.map_base_ = nullptr;
     o.map_len_ = 0;
     o.arena_ = arena_view{};
+    o.overlay_arena_shadow_count_ = 0;
   }
 
   static size_t align_up(size_t v, size_t a) { return (v + a - 1) / a * a; }
+  size_t arena_unshadowed_count() const
+  {
+    assert(overlay_arena_shadow_count_ <= overlay_.size());
+    assert(overlay_arena_shadow_count_ <= arena_.count);
+    return arena_.count - overlay_arena_shadow_count_;
+  }
+  void recount_overlay_arena_shadows()
+  {
+    overlay_arena_shadow_count_ = 0;
+    if (!arena_.C)
+      return;
+    for (const auto &kv : overlay_)
+      if (arena_.probe(kv.first) != NPOS)
+        ++overlay_arena_shadow_count_;
+  }
 
 public:
   // ---- map-like surface used by the interpolators ----
-  size_t size() const { return overlay_.size() + arena_.count; }
-  void reserve(size_t n) { overlay_.reserve(n > arena_.count ? n - arena_.count : 0); }
+  size_t size() const { return overlay_.size() + arena_unshadowed_count(); }
+  void reserve(size_t n)
+  {
+    const size_t base_count = arena_unshadowed_count();
+    overlay_.reserve(n > base_count ? n - base_count : 0);
+  }
   // Wipe overlay AND detach/unmap the arena: restores arena-less overlay-only
   // semantics (used by bulk_set_point_data_arrays = full overlay reload).
   void clear()
   {
     overlay_.clear();
     arena_ = arena_view{};
+    overlay_arena_shadow_count_ = 0;
     release_mapping();
   }
   void detach_arena()
   {
     arena_ = arena_view{};
+    overlay_arena_shadow_count_ = 0;
     release_mapping();
   }
   bool has_arena() const { return arena_.C != 0; }
 
   // ---- unified const iterator over (overlay ∪ unshadowed arena) ----
+  // Dereferencing materializes a lightweight proxy in iterator-owned storage.
+  // Keep references to that proxy only until the iterator is dereferenced again
+  // or destroyed; code that needs a stable record should copy it or use deref().
   class const_iterator
   {
   public:
@@ -567,10 +593,31 @@ public:
     throw std::out_of_range("point_data_store::at: key not found");
   }
 
-  // OVERLAY-ONLY insert (no arena probe). Callers always precede this with a full
-  // find() miss, so an arena-resident key is never duplicated here.
+  // Insert only if the key is absent from both overlay and arena. Normal
+  // interpolator materialization already does a full find() miss before calling
+  // this, but probing the arena here makes the no-duplicate invariant local.
   std::pair<const_iterator, bool> emplace(const key_t &k, const mapped_type &v)
   {
+    auto existing_overlay = overlay_.find(k);
+    if (existing_overlay != overlay_.end())
+    {
+      const_iterator it;
+      it.s_ = this;
+      it.stage_ = const_iterator::OVERLAY;
+      it.oit_ = existing_overlay;
+      return {it, false};
+    }
+
+    const size_t arena_slot = arena_.probe(k);
+    if (arena_slot != NPOS)
+    {
+      const_iterator it;
+      it.s_ = this;
+      it.stage_ = const_iterator::ARENA;
+      it.aslot_ = arena_slot;
+      return {it, false};
+    }
+
     auto r = overlay_.emplace(k, v);
     const_iterator it;
     it.s_ = this;
@@ -578,8 +625,25 @@ public:
     it.oit_ = r.first;
     return {it, r.second};
   }
-  // OVERLAY-ONLY (no arena probe).
-  mapped_type &operator[](const key_t &k) { return overlay_[k]; }
+  // Mutable map-like access. Arena data is immutable, so an arena hit is copied
+  // into the overlay and tracked as a shadow; size() remains the deduped union.
+  mapped_type &operator[](const key_t &k)
+  {
+    auto existing_overlay = overlay_.find(k);
+    if (existing_overlay != overlay_.end())
+      return existing_overlay->second;
+
+    const size_t arena_slot = arena_.probe(k);
+    if (arena_slot != NPOS)
+    {
+      auto inserted = overlay_.emplace(k, arena_.val_at(arena_slot));
+      ++overlay_arena_shadow_count_;
+      return inserted.first->second;
+    }
+
+    auto inserted = overlay_.emplace(k, mapped_type{});
+    return inserted.first->second;
+  }
 
   // Wire the arena_view at an externally-owned (mmap'd) region; the store takes
   // ownership of the mapping (munmap on destruct) when map_base != nullptr.
@@ -598,6 +662,7 @@ public:
     arena_.count = count;
     map_base_ = map_base;
     map_len_ = map_len;
+    recount_overlay_arena_shadows();
   }
 
   // ---- arena fingerprint: changes if the hash64 output, the slot-PLACEMENT algorithm,

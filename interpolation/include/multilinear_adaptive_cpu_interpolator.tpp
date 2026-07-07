@@ -249,7 +249,10 @@ void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::materialize_
     if (this->timer) this->timer->node["body generation"].node["point generation"].stop();
   }
 
-  // Phase 2c: assemble missing hypercube payloads in parallel from the now-complete point cache.
+  // Phase 2c: assemble missing hypercube payloads in parallel from the now-complete
+  // point cache. The serial Phase 2b insertion loop above is the last point_data
+  // mutation before this OpenMP region; keep Phase 2c read-only unless point_data
+  // synchronization is introduced.
   if (this->timer) this->timer->node["body generation"].node["hypercube generation"].start();
 
   std::vector<std::pair<key_t, hypercube_data_t>> new_hc_entries(missing_hc.size());

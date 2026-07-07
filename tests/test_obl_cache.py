@@ -119,6 +119,35 @@ def test_cache_write_reload_roundtrip(tmp_path):
     assert _pd(itor2) == expected
 
 
+def test_cache_duplicate_delta_shadow_keeps_exact_size(tmp_path):
+    cls = _itor_cls()
+    ev = _make_evaluator()
+    itor = _new_itor(cls, ev)
+    rng = np.random.default_rng(21)
+    _materialize(itor, rng, 80)
+    path = tmp_path / "obl_point_data_test.pkl"
+    p = _new_physics(itor, path)
+    p.write_cache()  # arena base
+    expected = _pd(itor)
+
+    itor2 = _new_itor(cls, ev)
+    n = p._load_cache(itor2, str(path))
+    assert itor2.has_arena()
+    assert n == len(expected)
+
+    duplicate_key = next(iter(expected))
+    replacement = np.arange(NO, dtype=np.float64) + 123.0
+    itor2.add_point_data_arrays(
+        np.array([duplicate_key], dtype=np.int32),
+        replacement.reshape(1, NO),
+    )
+
+    assert itor2.point_data_size() == len(expected)
+    shadowed = _pd(itor2)
+    assert len(shadowed) == len(expected)
+    assert shadowed[duplicate_key] == tuple(float(x) for x in replacement)
+
+
 def test_cache_epochs_roundtrip(tmp_path):
     cls = _itor_cls()
     ev = _make_evaluator()

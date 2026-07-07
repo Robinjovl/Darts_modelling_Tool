@@ -234,13 +234,29 @@ int main()
       assert(seen[kv.first][op] == kv.second[op]);
   }
 
-  // overlay shadows arena: overwrite a base key via operator[] -> overlay wins, no dup
+  // emplace treats arena-resident keys as already present, matching std::map-like
+  // semantics and keeping the overlay disjoint on insert-only paths.
   K shadow = ref.begin()->first;
+  size_t size_before_shadow = s2.size();
+  auto existing_insert = s2.emplace(shadow, mv(-999));
+  assert(!existing_insert.second);
+  assert(existing_insert.first != s2.end());
+  for (uint16_t op = 0; op < NO; ++op)
+    assert(existing_insert.first->second[op] == ref[shadow][op]);
+  assert(s2.size() == size_before_shadow);
+
+  // operator[] on an arena key copies the immutable arena value into a mutable
+  // overlay shadow first. The overlay wins after assignment, but size remains
+  // the exact deduped union count.
+  auto &shadow_slot = s2[shadow];
+  for (uint16_t op = 0; op < NO; ++op)
+    assert(shadow_slot[op] == ref[shadow][op]);
   V newv = mv(424242);
-  s2[shadow] = newv;
+  shadow_slot = newv;
   const auto &g = s2.at(shadow);
   for (uint16_t op = 0; op < NO; ++op)
     assert(g[op] == newv[op]);
+  assert(s2.size() == ref.size());
   size_t union_cnt = 0;
   for (auto it = s2.begin(); it != s2.end(); ++it)
     ++union_cnt;
