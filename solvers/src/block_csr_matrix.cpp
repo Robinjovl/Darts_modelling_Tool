@@ -245,6 +245,29 @@ namespace opendarts
       return gpu_spmv_->calc_lin_comb_d(alpha, beta, u, v, r);
     }
 
+    int block_csr_matrix::matrix_vector_product_t_d0(const double *v, double *r)
+    {
+      if (!gpu_spmv_)
+        gpu_spmv_ = std::make_unique<gpu_bsr_spmv>(*this);
+      return gpu_spmv_->matrix_vector_product_t_d0(v, r);
+    }
+
+    int block_csr_matrix::calc_lin_comb_t_d(const double alpha, const double beta,
+      double *u, double *v, double *r)
+    {
+      if (!gpu_spmv_)
+        gpu_spmv_ = std::make_unique<gpu_bsr_spmv>(*this);
+      return gpu_spmv_->calc_lin_comb_t_d(alpha, beta, u, v, r);
+    }
+
+    int block_csr_matrix::refresh_transpose_spmv_d()
+    {
+      // The transposed products run over the adapter's scalar-CSR view;
+      // rebuilding it (values-only for fixed sparsity) re-anchors them to the
+      // current matrix values.
+      return build_scalar_csr_device();
+    }
+
     int block_csr_matrix::copy_struct_to_device()
     {
       structure_->sync_structure_to_device();

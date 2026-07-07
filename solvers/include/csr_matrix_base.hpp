@@ -138,6 +138,18 @@ namespace opendarts
       virtual int copy_struct_to_device() = 0;
       virtual int copy_values_to_device() = 0;
 
+      // Transposed device SpMV -- the adjoint (CPRA) solve stack needs
+      // r = A^T v on the device. Defaulted to "unsupported" (-1) so only the
+      // matrix types that can serve it (block_csr_matrix, via its scalar-CSR
+      // device view + generic cuSPARSE SpMV) opt in; the legacy csr_matrix<N>
+      // and the matrix-free engine adapter are unaffected.
+      // Contract: call refresh_transpose_spmv_d() once after each value
+      // change (e.g. per solver setup) before using the _t_ products.
+      virtual int matrix_vector_product_t_d0(const double * /*v*/, double * /*r*/) { return -1; } // r = A^T * v
+      virtual int calc_lin_comb_t_d(const double /*alpha*/, const double /*beta*/, double * /*u*/,
+        double * /*v*/, double * /*r*/) { return -1; } // r = alpha * A^T * u + beta * v
+      virtual int refresh_transpose_spmv_d() { return -1; } // rebuild the cached transpose/scalar view
+
       // Direct device-pointer access to the block-CSR storage. Lets a
       // csr_matrix_base* be driven by the GPU engines/solvers (assembly
       // kernels, cuSPARSE SpMV) without knowing the concrete matrix type.

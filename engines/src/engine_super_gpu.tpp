@@ -10,6 +10,7 @@
 #include <assert.h>
 
 #include "engine_super_gpu.hpp"
+#include "engine_super_adjoint.hpp"
 
 
 /**
@@ -713,6 +714,19 @@ int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
                                             operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                             sim_params *params_, timer_node *timer_)
 {
+  // prepare dg_dx_n_temp for the adjoint method (mirrors engine_super_cpu::init;
+  // must exist before init_base runs init_adjoint_base under opt_history_matching)
+  if (opt_history_matching)
+  {
+    if (!dg_dx_n_temp)
+    {
+      dg_dx_n_temp = new csr_matrix<N_VARS>;
+      dg_dx_n_temp->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+    }
+
+    (static_cast<csr_matrix<N_VARS> *>(dg_dx_n_temp))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
+  }
+
   engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 
   allocate_device_data(RV, &RV_d);
@@ -809,5 +823,59 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_gpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
 {
-	return 0;
+  // The backward driver (engine_base::calc_adjoint_gradient_dirac_all) runs on
+  // the host: it re-evaluates the operators on the HOST for the historical
+  // state X (op_vals_arr / op_ders_arr) and then calls the virtual
+  // assemble_jacobian_array, which on this engine launches the device kernel
+  // against the DEVICE buffers -- still holding the final forward-run state.
+  // Re-anchor the device state to X, redo the device assembly, and mirror the
+  // Jacobian values back to the host, where the adjoint matrices and the
+  // adjoint linear solver operate.
+  copy_data_to_device(X, X_d);
+  copy_data_to_device(op_vals_arr, op_vals_arr_d);
+  copy_data_to_device(op_ders_arr, op_ders_arr_d);
+
+  assemble_jacobian_array(dt, X, jacobian, RHS);
+
+  copy_data_to_host(jac_values(), jac_values_d(), N_VARS_SQ * jac_rows_ptr()[mesh->n_blocks]);
+
+  // dg_dx_n / dg_dT / (optionally dg_dx_T) are assembled on the host from the
+  // host operator arrays -- shared verbatim with engine_super_cpu.
+  return super_engine_adjoint_assembly(*this, dt, X, jacobian, RHS);
+};
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+int engine_super_gpu<NC, NP, THERMAL>::set_adjoint_solver_cpra_gpu(int restart)
+{
+#if defined(OPENDARTS_LINEAR_SOLVERS) && defined(OPENDARTS_GPU_HAS_AMGX)
+  if constexpr (N_VARS > 1)
+  {
+    // Mirrors the forward GPU AMGX-CPR wiring (engine_base_gpu::init_base),
+    // plus the transposed entry points: a SECOND AMGX instance for the
+    // transposed pressure system (AMGX has no transpose-solve API) and the
+    // transposed cuSPARSE ILU(0) application on the shared factors.
+    auto *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+    cpr->p_solver_setup_gpu = 1;
+    cpr->p_solver_solve_gpu = 1;
+    cpr->p_solver_requires_diag_first = 0;
+    cpr->set_p_system_prec(new linsolv_amgx<1>(0));
+    cpr->set_p_system_prec_t(new linsolv_amgx<1>(0));
+    cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>());
+
+    auto gmres = std::make_shared<linsolv_gmres_gpu<N_VARS>>();
+    gmres->set_restart(restart);
+    gmres->set_prec(cpr); // owned by the GMRES
+
+    set_adjoint_linear_solver(gmres, /*use_jacobian_transpose=*/true);
+    return 0;
+  }
+  else
+  {
+    (void)restart;
+    return -1; // CPR needs a pressure/secondary split
+  }
+#else
+  (void)restart;
+  return -1; // AMGX not built into this configuration
+#endif
 };

@@ -764,6 +764,23 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   copy_data_to_device(mesh->tran, mesh_tran_d);
   copy_data_to_device(jac_well_head_idxs, jac_well_head_idxs_d);
 
+  // Adjoint gradients: the backward driver and all its matrices are
+  // host-resident -- reuse the engine_base allocation path (same blocks that
+  // engine_base::init_base runs on the CPU engines).
+  if (opt_history_matching)
+  {
+    init_adjoint_base();
+  }
+
+  // Customized operators are evaluated host-side too (post_newtonloop / the
+  // adjoint driver via customize_block_idxs).
+  if (customize_operator)
+  {
+    init_customized_operator_base();
+  }
+
+  well_control_arr.clear();
+
   print_header();
 
   sprintf(buffer, "\nSTART SIMULATION\n-------------------------------------------------------------------------------------------------------------\n");

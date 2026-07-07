@@ -74,6 +74,15 @@ namespace opendarts
 
       int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
 
+      /** Adjoint solve of A^T x = B: the forward algorithm with the
+       *  transposed SpMV (A->calc_lin_comb_t_d / matrix_vector_product_t_d0)
+       *  and prec->solve_transposed(). Unlike solve(), B and X are HOST
+       *  pointers -- the caller is the host-side adjoint backward driver
+       *  (engine_base::calc_adjoint_gradient_dirac_all); the vectors are
+       *  staged to a device scratch here. X is used as the initial guess. */
+      int solve_transposed(opendarts::config::mat_float *B,
+        opendarts::config::mat_float *X) override;
+
       int get_n_iters() override;
 
       opendarts::config::mat_float get_residual() override;
@@ -100,6 +109,11 @@ namespace opendarts
       // per-iteration Hessenberg column for the GEMV-based Gram-Schmidt).
       double *V_d;
       double *w_d, *z_d, *h_d;
+
+      // Host<->device staging for solve_transposed (B | X, 2n doubles);
+      // allocated lazily on the first transposed solve.
+      double *bx_t_d = nullptr;
+      int bx_t_n = 0;
 
       // Host-side Hessenberg / Givens data ((m+1) x m, column-wise).
       std::vector<double> hh, cs, sn, rs, y;

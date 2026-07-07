@@ -50,31 +50,58 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
-    linsolv_cusparse_ilu<N_BLOCK_SIZE>::~linsolv_cusparse_ilu()
+    void linsolv_cusparse_ilu<N_BLOCK_SIZE>::free_device_resources() noexcept
     {
+      if (!initialized_)
+        return;
       if (single_precision)
       {
         cudaFree(ilu_rhs);
         cudaFree(ilu_sol);
         cudaFree(d_z_sfp);
         cudaFree(values_d_ilu_sfp);
+        ilu_rhs = ilu_sol = d_z_sfp = values_d_ilu_sfp = nullptr;
       }
       else
       {
         cudaFree(d_z);
+        d_z = nullptr;
         if (!factorize_in_place)
           cudaFree(values_d_ilu);
+        values_d_ilu = nullptr;
       }
 
       cudaFree(pBuffer);
+      pBuffer = nullptr;
+      if (pBuffer_t)
+        cudaFree(pBuffer_t);
+      pBuffer_t = nullptr;
       cusparseDestroyMatDescr(descr_M);
       cusparseDestroyMatDescr(descr_L);
       cusparseDestroyMatDescr(descr_U);
+      descr_M = descr_L = descr_U = 0;
       cusparseDestroyBsrilu02Info(info_M);
       cusparseDestroyBsrsv2Info(info_L);
       cusparseDestroyBsrsv2Info(info_U);
+      info_M = 0;
+      info_L = info_U = 0;
+      if (info_Lt)
+        cusparseDestroyBsrsv2Info(info_Lt);
+      if (info_Ut)
+        cusparseDestroyBsrsv2Info(info_Ut);
+      info_Lt = info_Ut = 0;
+      transposed_analysis_done_ = false;
       if (owns_handle_ && handle)
         cusparseDestroy(handle);
+      handle = nullptr;
+      owns_handle_ = false;
+      initialized_ = false;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    linsolv_cusparse_ilu<N_BLOCK_SIZE>::~linsolv_cusparse_ilu()
+    {
+      free_device_resources();
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -83,6 +110,18 @@ namespace opendarts
       opendarts::config::mat_float /*tolerance*/)
     {
       cudaError_t cudaStat;
+
+      // Re-init guard: the adjoint backward driver re-inits its solver chain
+      // once per gradient evaluation, so a reused cusparse_ilu object must not
+      // leak the previous device state. Free the old resources and do a FULL
+      // fresh init (destroy-then-recreate, the same pattern as linsolv_amgx).
+      // NB: a "skip if the structure is unchanged" shortcut is NOT safe here --
+      // the cached device row/col pointers and the bsrsv2 analyses go stale
+      // across the forward run and re-fetching them is exactly what the fresh
+      // init does. These buffers are solver-internal (nothing external holds a
+      // reference), so freeing them dangles nothing.
+      if (initialized_)
+        free_device_resources();
 
       A_matrix = A_input;
       // Try to share the cuSPARSE handle the matrix already owns (legacy
@@ -242,6 +281,7 @@ namespace opendarts
         cusparseDbsrsv2_analysis(handle, dir, trans_U, mb, nnzb, descr_U, values_d_ilu,
           d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_U, policy_U, pBufferU);
       }
+      initialized_ = true;
       return 0;
     }
 
@@ -341,6 +381,65 @@ namespace opendarts
         cusparseDbsrsv2_solve(handle, dir, trans_U, mb, nnzb, &alpha, descr_U, values_d_ilu,
           d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_U, d_z, sol, policy_U, pBufferU);
       }
+
+      this->timer_solve->node["ILU(0)"].stop();
+      return 0;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_cusparse_ilu<N_BLOCK_SIZE>::solve_transposed(opendarts::config::mat_float *cur_rhs,
+      opendarts::config::mat_float *sol)
+    {
+      // (L U)^T = U^T L^T: apply U^{-T} first, then L^{-T}, with transposed
+      // bsrsv2 solves on the SAME factor values as the forward apply. The
+      // analysis is sparsity-only, so it is created once and reused across
+      // setups (the solves read the current values_d_ilu).
+      if (single_precision)
+      {
+        printf("linsolv_cusparse_ilu::solve_transposed: single-precision mode "
+               "is not supported on the adjoint path\n");
+        return -1;
+      }
+
+      this->timer_solve->node["ILU(0)"].start();
+
+      if (!transposed_analysis_done_)
+      {
+        cusparseCreateBsrsv2Info(&info_Lt);
+        cusparseCreateBsrsv2Info(&info_Ut);
+
+        int buf_Lt = 0, buf_Ut = 0;
+        cusparseDbsrsv2_bufferSize(handle, dir, CUSPARSE_OPERATION_TRANSPOSE, mb, nnzb,
+          descr_L, values_d_ilu, d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_Lt, &buf_Lt);
+        cusparseDbsrsv2_bufferSize(handle, dir, CUSPARSE_OPERATION_TRANSPOSE, mb, nnzb,
+          descr_U, values_d_ilu, d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_Ut, &buf_Ut);
+
+        if (cudaMalloc(&pBuffer_t, static_cast<std::size_t>(buf_Lt) + buf_Ut) != cudaSuccess)
+        {
+          printf("Error! Can't allocate device memory (linsolv_cusparse_ilu, transposed)\n");
+          this->timer_solve->node["ILU(0)"].stop();
+          return -1;
+        }
+        pBufferLt = pBuffer_t;
+        pBufferUt = (char *)pBufferLt + buf_Lt;
+
+        cusparseDbsrsv2_analysis(handle, dir, CUSPARSE_OPERATION_TRANSPOSE, mb, nnzb,
+          descr_L, values_d_ilu, d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_Lt, policy_L, pBufferLt);
+        cusparseDbsrsv2_analysis(handle, dir, CUSPARSE_OPERATION_TRANSPOSE, mb, nnzb,
+          descr_U, values_d_ilu, d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_Ut, policy_U, pBufferUt);
+
+        transposed_analysis_done_ = true;
+      }
+
+      // step 1: solve U^T * z = rhs.
+      cusparseDbsrsv2_solve(handle, dir, CUSPARSE_OPERATION_TRANSPOSE, mb, nnzb, &alpha,
+        descr_U, values_d_ilu, d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_Ut,
+        cur_rhs, d_z, policy_U, pBufferUt);
+
+      // step 2: solve L^T * x = z.
+      cusparseDbsrsv2_solve(handle, dir, CUSPARSE_OPERATION_TRANSPOSE, mb, nnzb, &alpha,
+        descr_L, values_d_ilu, d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_Lt,
+        d_z, sol, policy_L, pBufferLt);
 
       this->timer_solve->node["ILU(0)"].stop();
       return 0;

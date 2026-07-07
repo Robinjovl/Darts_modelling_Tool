@@ -100,8 +100,8 @@ class Model(CICDModel, OptModuleSettings):
         if adjoint_solver is None:
             return "mgr" if use_adjoint_mgr else "superlu"
         solver = str(adjoint_solver).lower()
-        if solver not in {"mgr", "superlu", "cpra"}:
-            raise ValueError("adjoint_solver must be 'mgr', 'superlu', or 'cpra'")
+        if solver not in {"mgr", "superlu", "cpra", "cpra-gpu"}:
+            raise ValueError("adjoint_solver must be 'mgr', 'superlu', 'cpra', or 'cpra-gpu'")
         return solver
 
     def _make_adjoint_mgr_options(self, profile="physical", **overrides):
@@ -423,7 +423,10 @@ class Model(CICDModel, OptModuleSettings):
         self.solver_label = "mgr (bcsr-cpr, forward)"
 
     def set_adjoint_solver(self):
-        if getattr(self, "adjoint_solver_mode", "mgr") == "superlu":
+        if getattr(self, "adjoint_solver_mode", "mgr") in {"superlu", "cpra-gpu"}:
+            # superlu: the engine's built-in default adjoint solver.
+            # cpra-gpu: the stack is built inside the engine by
+            # engine.set_adjoint_solver_cpra_gpu() at attach time.
             self.adjoint_solver = None
             self._adjoint_solver_spec = None
             return
@@ -603,6 +606,16 @@ class Model(CICDModel, OptModuleSettings):
                 forward_solver.set_n_reservoir_blocks(reservoir_blocks)
                 engine.set_linear_solver(forward_solver)
 
+        if getattr(self, "adjoint_solver_mode", "mgr") == "cpra-gpu":
+            rc = engine.set_adjoint_solver_cpra_gpu()
+            if rc != 0:
+                raise RuntimeError(
+                    "adjoint_solver='cpra-gpu' requires the GPU engine with AMGX "
+                    "(run init(platform='gpu') on an AMGX-enabled build); "
+                    "engine.set_adjoint_solver_cpra_gpu() returned %d" % rc
+                )
+            return
+
         if self.adjoint_solver is not None and hasattr(
             engine, "set_adjoint_linear_solver"
         ):
@@ -660,6 +673,10 @@ class Model(CICDModel, OptModuleSettings):
             customized_component_etor = customized_etor_specific_component()
             axes_min = self.physics.axes_min
             axes_max = self.physics.axes_max
+            # NB: stays on the CPU also for platform='gpu' runs -- the customized
+            # operator is only evaluated host-side (engine_base::post_newtonloop /
+            # the adjoint driver) via customize_block_idxs; its block_idxs entry is
+            # empty, so the GPU engine's device evaluation loop skips it.
             customized_component_itor, _ = self.physics.create_interpolator(customized_component_etor,
                                                                          axes_min=self.physics.axes_min,
                                                                          axes_max=self.physics.axes_max,

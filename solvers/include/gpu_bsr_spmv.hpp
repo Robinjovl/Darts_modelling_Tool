@@ -71,6 +71,18 @@ namespace opendarts
       int calc_lin_comb_d(double alpha, double beta, const double *u_d,
         const double *v_d, double *r_d) const;
 
+      /** r_d = A^T * v_d (transposed SpMV; result overwritten). Runs the
+       *  generic cuSPARSE SpMV (CUSPARSE_OPERATION_TRANSPOSE) over the
+       *  scalar-CSR device view; call build_scalar_csr_device() after each
+       *  matrix value change (the view is NOT refreshed implicitly).
+       *  Needed by the adjoint (CPRA) transpose-solve stack. */
+      int matrix_vector_product_t_d0(const double *v_d, double *r_d);
+
+      /** r_d = alpha * A^T * u_d + beta * v_d (transposed lin. comb). Same
+       *  scalar-view freshness contract as matrix_vector_product_t_d0. */
+      int calc_lin_comb_t_d(double alpha, double beta, const double *u_d,
+        const double *v_d, double *r_d);
+
       [[nodiscard]] cusparseHandle_t handle() const noexcept { return handle_; }
 
       /** Build a scalar-CSR (point CSR) device view of the bound block
@@ -92,6 +104,7 @@ namespace opendarts
 
     private:
       int bsrmv(double alpha, const double *x_d, double beta, double *y_d) const;
+      int spmv_t(double alpha, const double *x_d, double beta, double *y_d);
       void free_scalar_csr_device() noexcept;
 
       block_csr_matrix *matrix_;
@@ -107,6 +120,13 @@ namespace opendarts
       index_t scalar_csr_n_rows_ = 0;
       index_t scalar_csr_nnz_ = 0;
       int scalar_csr_block_size_ = 0;
+
+      // Generic-API state for the transposed SpMV over the scalar view:
+      // SpMat descriptor bound to the scalar-CSR buffers plus the algorithm
+      // work buffer. Created on the first spmv_t, freed with the view.
+      cusparseSpMatDescr_t scalar_spmat_ = nullptr;
+      void *spmv_t_buffer_ = nullptr;
+      std::size_t spmv_t_buffer_size_ = 0;
     };
   } // namespace linear_solvers
 } // namespace opendarts

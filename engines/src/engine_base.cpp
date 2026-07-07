@@ -158,6 +158,120 @@ int engine_base::init_jacobian_structure(csr_matrix_base *jacobian)
 
 
 
+// Extracted from engine_base::init_base<N_VARS> (the block ran under
+// opt_history_matching) so engine_base_gpu::init_base can reuse it: the
+// adjoint backward driver and all its matrices are host-resident on both
+// engine families. Uses only runtime members (n_vars, mesh, wells).
+void engine_base::init_adjoint_base()
+{
+	n_interfaces = mesh->n_conns / 2;
+
+	// prepare dg_dx_n_temp
+	init_adjoint_structure(dg_dx_n_temp);
+
+	// here we remove wells.size() transmissibility between well head and well body (i.e. well_transmissibility)
+	// because there is no need to optimize well_transmissibility, which is usually a large value of 100000
+	std::vector<int> Temp_1(n_interfaces - wells.size(), 0);
+	col_dT_du = Temp_1;
+
+
+	// initialization of linear solver
+	if (!linear_solver_ad)
+	{
+		if (0)
+		{
+			// so far these preconditioner and the linear solver can't be applied to adjoint for some reason
+			linear_solver_ad = new linsolv_bos_gmres<1>;
+			linear_solver_ad->set_prec(new linsolv_bos_bilu0<1>);
+
+		}
+		else
+			linear_solver_ad = new linsolv_superlu<1>;
+		linear_solver_ad_owned = true;
+		linear_solver_ad_uses_jacobian_transpose = false;
+	}
+	linear_solver_ad->init_timer_nodes(&timer->node["linear solver for adjoint method - setup"], &timer->node["linear solver for adjoint method - solve"]);
+
+	well_head_idx_collection.clear();
+	for (ms_well* w : wells)
+	{
+		well_head_idx_collection.push_back(w->well_head_idx);
+	}
+
+	// Guard the object allocation (create once) but re-init() unconditionally
+	// below, mirroring the dg_dx_n_temp / linear_solver_ad idiom: a repeated
+	// engine init() (now reachable on the GPU engine too) must not leak the
+	// previous matrices, while ->init() still resizes correctly if the mesh
+	// changed.
+	if (!dg_dx_T)
+	{
+		dg_dx_T = new csr_matrix<1>;
+		dg_dx_T->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+	}
+
+	if (!dg_dx_n)
+	{
+		dg_dx_n = new csr_matrix<1>;
+		dg_dx_n->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+	}
+
+	//dg_dT = new csr_matrix<1>;
+	//dg_dT->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+
+	if (!dg_dT_general)
+	{
+		dg_dT_general = new csr_matrix<1>;
+		dg_dT_general->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+	}
+
+	(static_cast<csr_matrix<1>*>(dg_dx_T))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, (mesh->n_conns + mesh->n_blocks) * n_vars * n_vars);
+	(static_cast<csr_matrix<1>*>(dg_dx_n))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, (mesh->n_conns + mesh->n_blocks) * n_vars * n_vars);
+	//(static_cast<csr_matrix<1>*>(dg_dT))->init(mesh->n_blocks * n_vars, n_interfaces - wells.size(), 1, ((mesh->n_blocks) * 2 - 2 * wells.size()) * n_vars);
+	(static_cast<csr_matrix<1>*>(dg_dT_general))->init(mesh->n_blocks * n_vars, n_interfaces, 1, (mesh->n_conns) * n_vars);
+	//init_adjoint_structure(dg_dT);
+	init_adjoint_structure(dg_dT_general);
+
+
+	if (!dT_du)
+	{
+		dT_du = new csr_matrix<1>;
+		dT_du->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+	}
+
+	//(static_cast<csr_matrix<1>*>(dT_du))->init(n_interfaces - wells.size(), n_control_vars, 1, n_interfaces - wells.size());
+	(static_cast<csr_matrix<1>*>(dT_du))->init(n_interfaces - wells.size(), n_interfaces - wells.size(), 1, n_interfaces - wells.size());
+
+}
+
+// Extracted from engine_base::init_base<N_VARS> for the same reason as
+// init_adjoint_base(): the customized-operator arrays are consumed by host
+// code (post_newtonloop, the adjoint driver) on the GPU engines too.
+void engine_base::init_customized_operator_base()
+{
+	time_data_report_customized.clear();
+	time_data_customized.clear();
+
+	// WARNING: this variable shadows a member variable of a different type
+	index_t n_ops = 1;  // here '1' is to distinguish the size of the customized operator with the ordinary operator
+
+	op_vals_arr_customized.resize(n_ops * mesh->n_blocks);   // [1 * n_blocks] array of values of operators
+	op_ders_arr_customized.resize(n_ops * n_vars * mesh->n_blocks);   // [1 * N_VARS * n_blocks] array of dedrivatives of operators
+
+	// create a block list for the customized operator
+	customize_block_idxs.resize(acc_flux_op_set_list.size());
+	for (auto op_region : customize_op_num)
+	{
+		customize_block_idxs[op_region].clear();
+	}
+
+	index_t idx = 0;
+	for (auto op_region : customize_op_num)
+	{
+		customize_block_idxs[op_region].emplace_back(idx++);
+	}
+}
+
+
 int
 engine_base::init_adjoint_structure(csr_matrix_base* init_adjoint)
 {

@@ -25,6 +25,7 @@ void pybind_engine_base (py::module &m)
 	   .def("solve_linear_equation", &engine_base::solve_linear_equation, py::call_guard<py::gil_scoped_release>())  \
 	   .def("set_linear_solver", &engine_base::set_linear_solver, "Set external linear solver (from Python)", py::arg("solver"), py::arg("name") = "")  \
 	   .def("set_adjoint_linear_solver", &engine_base::set_adjoint_linear_solver, "Set external adjoint linear solver (from Python)", py::arg("solver"), py::arg("use_jacobian_transpose") = false)  \
+	   .def("set_adjoint_solver_cpra_gpu", &engine_base::set_adjoint_solver_cpra_gpu, "Attach the native GPU CPRA adjoint stack (GPU engines with AMGX; returns -1 when unsupported)", py::arg("restart") = 150)  \
 	   .def_readwrite("X", &engine_base::X) \
 	   .def_readwrite("dX", &engine_base::dX) \
 	   .def_readwrite("Xn", &engine_base::Xn) \

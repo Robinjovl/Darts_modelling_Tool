@@ -13,9 +13,16 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--adjoint-solver",
-        choices=("mgr", "superlu", "cpra"),
+        choices=("mgr", "superlu", "cpra", "cpra-gpu"),
         default=None,
-        help="Override adjoint solver for this run. Omit to use adjoint_definition.use_adjoint_mgr_solver.",
+        help="Override adjoint solver for this run. Omit to use adjoint_definition.use_adjoint_mgr_solver. "
+        "'cpra-gpu' needs --platform gpu (native device CPRA: GMRES-GPU + AMGX on P/P^T + transposed bILU0).",
+    )
+    parser.add_argument(
+        "--platform",
+        choices=("cpu", "gpu"),
+        default="cpu",
+        help="Engine platform for the forward simulation (the adjoint backward driver is host-side).",
     )
     parser.add_argument(
         "--log",
@@ -33,6 +40,7 @@ def main():
     if args.adjoint_solver is not None:
         adjoint.adjoint_solver = args.adjoint_solver
         adjoint.use_adjoint_mgr_solver = args.adjoint_solver == "mgr"
+    adjoint.platform = args.platform
 
     log_path = Path(args.log)
     if not log_path.is_absolute():

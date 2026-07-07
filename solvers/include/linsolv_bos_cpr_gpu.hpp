@@ -98,6 +98,16 @@ namespace opendarts
         return 0;
       }
 
+      /** Pressure preconditioner for the TRANSPOSED apply (CPRA). AMGX has no
+       *  transpose-solve API, so the adjoint path binds a second instance to
+       *  the explicitly transposed pressure matrix P^T. Lazily initialised on
+       *  the first solve_transposed(); forward-only runs never pay for it. */
+      int set_p_system_prec_t(opendarts::linear_solvers::linsolv_iface *prec_input)
+      {
+        p_system_preconditioner_t = prec_input;
+        return 0;
+      }
+
       int set_prec(opendarts::linear_solvers::linsolv_iface *prec_input) override
       {
         full_system_preconditioner = prec_input;
@@ -117,6 +127,21 @@ namespace opendarts
 
       int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
 
+      /** Transposed CPR apply (CPRA, Han et al. 2013): each stage is the
+       *  transpose of the matching forward stage, in reverse order:
+       *    1. X   = ILU^{-T} B          (transposed full-system stage)
+       *    2. r_m = B - A^T X           (transposed block SpMV)
+       *    3. r_p = C^T r_m             (pressure-slot extraction)
+       *    4. y   = (P^T)^{-1} r_p      (second AMGX instance on P^T)
+       *    5. X  += W^T (D_m y)         (weights + sign mults on the
+       *                                  PROLONGATION side -- exact transpose
+       *                                  of the forward weighted reduction)
+       *  Device pointers, like solve(). The P^T chain (transpose value map,
+       *  P^T shell, the second pressure preconditioner) is built lazily on
+       *  the first call and refreshed after every setup(). */
+      int solve_transposed(opendarts::config::mat_float *B,
+        opendarts::config::mat_float *X) override;
+
       int get_n_iters() override
       {
         return 0;
@@ -132,14 +157,32 @@ namespace opendarts
       int p_solver_requires_diag_first = 0;
 
     private:
+      /// (Re)builds the transposed pressure chain after a setup(): gathers
+      /// P^T values through the transpose map and re-sets-up the second
+      /// pressure preconditioner. First call also builds the map/shell.
+      int refresh_transpose_chain();
+
       // Full block matrix.
       opendarts::linear_solvers::csr_matrix_base *A_base;
 
       opendarts::linear_solvers::linsolv_iface *p_system_preconditioner;
       opendarts::linear_solvers::linsolv_iface *full_system_preconditioner;
+      // Second pressure preconditioner bound to P^T (adjoint path; see
+      // set_p_system_prec_t). Not owned.
+      opendarts::linear_solvers::linsolv_iface *p_system_preconditioner_t = nullptr;
 
       // Reduced scalar pressure matrix.
       opendarts::linear_solvers::csr_matrix<1> *P;
+
+      // Transposed pressure matrix (adjoint path): same (structurally
+      // symmetric) pattern as P; values gathered per refresh through the
+      // device transpose map t_map (t_map[j] = position of the mirrored
+      // entry). Built lazily on the first solve_transposed().
+      opendarts::linear_solvers::csr_matrix<1> *P_T = nullptr; // owns the device P^T values
+      opendarts::config::index_t *t_map_d = nullptr;
+      long setup_generation_ = 0;     // bumped by every setup()
+      long transpose_generation_ = -1; // generation the P^T chain matches
+      bool p_prec_t_initialized_ = false;
 
       opendarts::config::mat_float *D_ps_ss;   // [n_rows * (nvar - 1)] D_ps * inv(D_ss)
       opendarts::config::index_t *block_p_jac_idx;     // per-connection Jacobian off-diagonal block index

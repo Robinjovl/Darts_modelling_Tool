@@ -6,6 +6,97 @@ transpose-capable preconditioned Krylov stack (CPRA) on the GPU so the adjoint s
 GPU speed. Everything below is grounded in the current code (branch `xiaoming/add-mgr`);
 citations are file:line.
 
+## Status (2026-07-07): Phases 0 and 2 IMPLEMENTED
+
+- **Phase 0 done + validated.** The CPU assembly body was extracted verbatim into the shared
+  header `engines/src/engine_super_adjoint.hpp` (`super_engine_adjoint_assembly<Engine>`; all
+  touched state lives on `engine_base`, both engines expose the identical operator-layout
+  constants); `engine_super_cpu::adjoint_gradient_assembly` delegates to it. The
+  opt-history-matching allocation blocks were extracted from `engine_base::init_base` into
+  `engine_base::init_adjoint_base()` / `init_customized_operator_base()` and are now also
+  called from `engine_base_gpu::init_base`. `engine_super_gpu::adjoint_gradient_assembly`
+  re-anchors the device state to the historical X (uploads X + the host-re-evaluated
+  op_vals/op_ders), re-runs the device Jacobian assembly, mirrors the values to the host and
+  delegates to the shared helper. Fix on the way: `engine_base_gpu::evaluate_operators_d` now
+  skips op sets with an empty block list (host-only customized operators would otherwise hit
+  the CPU evaluator's unimplemented device entry).
+  **Validation**: CPU superlu/mgr/cpra all reproduce angle 0.000614 after the refactor
+  (unchanged); GPU superlu/mgr/cpra all run end-to-end and the GPU adjoint gradient is
+  IDENTICAL to the CPU adjoint gradient (relative difference 3.9e-8, angle 0.00000 deg). The
+  0.0242 deg adjoint-vs-numerical angle on GPU is entirely the finite-difference reference
+  moving with the GPU forward solver (the FD gradients differ CPU-vs-GPU by 4.3e-4 while the
+  adjoint gradients coincide), i.e. Phase 0 meets its gate.
+- **Phase 2 implemented** (native CPRA-GPU stack): transposed device SpMV
+  (`csr_matrix_base::{matrix_vector_product_t_d0, calc_lin_comb_t_d, refresh_transpose_spmv_d}`
+  defaulted virtuals; `block_csr_matrix` serves them via `gpu_bsr_spmv`'s scalar-CSR view +
+  generic `cusparseSpMV(TRANSPOSE)`); `linsolv_cusparse_ilu::solve_transposed` (transposed
+  bsrsv2 pair on the shared factors, U^T then L^T, lazy analyses);
+  `linsolv_bos_cpr_gpu::solve_transposed` (CPRA order, weights + sign mults on the
+  prolongation side, P^T via a one-time host transpose map + device gather kernel, a SECOND
+  pressure-preconditioner instance bound to P^T (`set_p_system_prec_t`) with lazy activation +
+  per-setup refresh); `linsolv_gmres_gpu::solve_transposed` (forward algorithm with A^T SpMV
+  and prec->solve_transposed; host-pointer staging for the host-side backward driver).
+  Wiring: `engine_base::set_adjoint_solver_cpra_gpu()` virtual (implemented by
+  `engine_super_gpu` under AMGX, bound to Python), `Adjoint_super_engine` gains
+  `--adjoint-solver cpra-gpu` + `--platform gpu`.
+  **Validation**: the cpra-gpu adjoint gradient equals the CPU reference adjoint gradient to
+  3.8e-8 relative (angle 0.000001 deg) on the Adjoint model -- the native GPU transpose stack
+  is numerically exact; the adjoint-vs-FD angle (0.0106 deg) is again the FD reference moving
+  with the GPU forward.
+- Found & fixed on the way: `linsolv_amgx::init` leaked its AMGX matrix/vector handles on
+  repeated init (the adjoint backward driver re-inits its solver chain every gradient
+  evaluation); the leaked objects outlived `AMGX_finalize` and AMGX's atexit MemManager
+  aborted the process at exit. init() now destroys existing handles first, and the destructor
+  tolerates never-initialised instances (null handles).
+
+### Adversarial review round (2026-07-07) — repeated-init resource leaks fixed
+
+A multi-agent adversarial review of the Phase 0+2 diff confirmed a *class* of resource leaks
+that the single-evaluation validation could not surface: the adjoint backward driver calls
+`linear_solver_ad->init()` once per gradient evaluation (engine_base.cpp — attach-time init +
+one per `calc_adjoint_gradient_dirac_all`), so any solver in the CPRA-GPU chain that reallocates
+in `init()` without freeing the prior allocation leaks on every optimization step and OOMs a
+real (multi-evaluation) history-matching run. Fixed:
+- **`linsolv_cusparse_ilu::init`** (HIGH): never freed `values_d_ilu`/`d_z`/`pBuffer`/descr_M,L,U/
+  info_M,L,U before reallocating. Now factors the destructor into `free_device_resources()`
+  and, at the top of init(), **frees the old resources then does a full fresh init**
+  (destroy-then-recreate, the same pattern as `linsolv_amgx`). NB: an earlier attempt to *skip*
+  re-allocation when the structure looked unchanged was **wrong and crashed** — the cached device
+  row/col pointers and the bsrsv2 analyses go stale across the forward run; re-fetching them (a
+  full fresh init) is required. The buffers are solver-internal so freeing them dangles nothing.
+- **`linsolv_bos_cpr_gpu::init`** (HIGH): `P->init_device()` re-allocated the pressure-matrix
+  device buffers + a cuSPARSE handle with no re-init guard. The pressure structure is FIXED
+  across re-inits, so init now allocates the device mirror **once** (`if (P->gpu_mode != 1)`)
+  and reuses it — this avoids both the leak and a **dangling reference** (an earlier
+  `P->free_device()` fix freed buffers the pressure AMGX matrix still held, crashing the forward
+  solve). Also extended the free-before-realloc block to reclaim `inverse_fail_counter`, the
+  non-setup_gpu `p_vals`, and the host `P_B_h`/`P_X_h` buffers (LOW), and the destructor now
+  `delete[]`s `P_B_h`/`P_X_h`. Distinction that matters: `P` is cpr-owned with fixed structure
+  (skip-reuse is safe); the cusparse buffers alias `A`'s live device pointers (must re-fetch).
+- **`engine_base::init_adjoint_base`** (MEDIUM): the four adjoint host matrices
+  (`dg_dx_T`/`dg_dx_n`/`dg_dT_general`/`dT_du`) were `new`'d unconditionally, leaking on a
+  repeated engine `init()` (now reachable on the GPU engine). Guarded the allocation
+  (`if (!ptr) new`) while keeping `->init()` unconditional, matching the existing
+  `dg_dx_n_temp`/`linear_solver_ad` idiom (mesh-change-safe).
+
+Validation of the leak fixes: `models/Adjoint_super_engine/leak_probe.py` runs the forward once
+then loops the adjoint gradient 15× while sampling per-process GPU memory — **flat at 1206 MB
+(0 MB growth over 15 evaluations)** and the gradient is bit-stable (spread 4.2e-9), where before
+the fix GPU memory grew every evaluation. `cpra-gpu` still returns a valid gradient (angle 0.009,
+status 0, clean exit) and the leak fixes are all first-init-inert so the SPE10 forward stays
+bit-identical.
+
+Known minor, not changed (LOW, documented): the GPU backward pass assembles the device Jacobian
+twice per timestep — the shared driver's forward `assemble_jacobian_array` runs first (against a
+stale `X_d`, and its result is never mirrored to host on GPU), then
+`engine_super_gpu::adjoint_gradient_assembly` re-anchors `X_d`/op arrays and re-assembles
+correctly. Removing the redundant first assembly would require engine-specific dispatch in the
+shared CPU/GPU driver; the wasted work is one cheap kernel launch, negligible next to the adjoint
+solve, so it is left as-is to avoid risking the CPU path.
+
+- Phase 1 (device assembly of dg_dx_n / dg_dT) remains future work; Phase 0's host assembly
+  is the validated baseline it will be compared against.
+
 ## 1. How the CPU adjoint works today (what must be reproduced)
 
 Data flow per optimization gradient evaluation:

@@ -104,6 +104,15 @@ namespace opendarts
 
       int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
 
+      /** Apply the transpose of the ILU(0) preconditioner: X = (LU)^{-T} B =
+       *  L^{-T} U^{-T} B, on the SAME factors as the forward solve (transposed
+       *  bsrsv2 pair, U^T first then L^T). Device pointers, double precision
+       *  only (the adjoint stack runs in double); single_precision mode
+       *  returns -1. The transposed triangular-solve analyses are created
+       *  lazily on the first call (sparsity-fixed, reused across setups). */
+      int solve_transposed(opendarts::config::mat_float *B,
+        opendarts::config::mat_float *X) override;
+
       int get_n_iters() override
       {
         return 1;
@@ -115,6 +124,15 @@ namespace opendarts
       }
 
     private:
+      // Release all device buffers + cuSPARSE descriptor/info handles. Shared
+      // by the destructor and by init() (free-before-realloc), so a solver
+      // reused across repeated init() -- as the adjoint backward driver does,
+      // once per gradient evaluation -- does not leak the previous allocation.
+      void free_device_resources() noexcept;
+
+      // True once init() has allocated device state; gates the re-init guard.
+      bool initialized_ = false;
+
       // Factorise into the matrix values themselves rather than a copy.
       int factorize_in_place;
 
@@ -149,6 +167,13 @@ namespace opendarts
       bsrilu02Info_t info_M = 0;
       bsrsv2Info_t info_L = 0;
       bsrsv2Info_t info_U = 0;
+      // Transposed triangular-solve state (adjoint path); created lazily on
+      // the first solve_transposed() -- forward-only runs never pay for it.
+      bsrsv2Info_t info_Lt = 0;
+      bsrsv2Info_t info_Ut = 0;
+      void *pBuffer_t = 0;      // work buffer for both transposed solves
+      void *pBufferLt = 0, *pBufferUt = 0;
+      bool transposed_analysis_done_ = false;
       int mb;
       int nnzb;
       int *d_bsrRowPtr;

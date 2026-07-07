@@ -248,6 +248,12 @@ public:
 		}
 	}
 
+	/** Build and attach the native GPU CPRA adjoint stack (device GMRES +
+	 *  CPR with AMGX pressure solves on P and P^T + cuSPARSE block-ILU(0)),
+	 *  with use_jacobian_transpose = true. Overridden by the GPU super engine
+	 *  when AMGX is built; the base returns -1 ("unsupported"). */
+	virtual int set_adjoint_solver_cpra_gpu(int /*restart*/ = 150) { return -1; }
+
 	virtual int init_jacobian_structure(csr_matrix_base *jacobian);
 
 	// newton loop
@@ -562,6 +568,12 @@ public:
 
 	// initialize dg_dT_general, which is similar to the jacobian initialization
 	int init_adjoint_structure(csr_matrix_base* init_adjoint);
+	/// Allocates the adjoint matrices/solver (host side). Shared by the CPU
+	/// (engine_base::init_base) and GPU (engine_base_gpu::init_base) engines.
+	void init_adjoint_base();
+	/// Allocates the customized-operator arrays/block lists (host side).
+	/// Shared by the CPU and GPU init_base, like init_adjoint_base().
+	void init_customized_operator_base();
 
 	// assemble dg_dx_n, dg_dT, dj_dx. This is similar to "init_jacobian_structure" in the forward simulation
 	virtual int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) = 0;
@@ -1154,92 +1166,13 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	if (opt_history_matching)
 	{
-		n_interfaces = mesh->n_conns / 2;
-
-		// prepare dg_dx_n_temp
-		init_adjoint_structure(dg_dx_n_temp);
-
-		// here we remove wells.size() transmissibility between well head and well body (i.e. well_transmissibility)
-		// because there is no need to optimize well_transmissibility, which is usually a large value of 100000
-		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);
-		col_dT_du = Temp_1;
-
-
-		// initialization of linear solver
-		if (!linear_solver_ad)
-		{
-			if (0)
-			{
-				// so far these preconditioner and the linear solver can't be applied to adjoint for some reason
-				linear_solver_ad = new linsolv_bos_gmres<1>;
-				linear_solver_ad->set_prec(new linsolv_bos_bilu0<1>);
-
-			}
-			else
-				linear_solver_ad = new linsolv_superlu<1>;
-			linear_solver_ad_owned = true;
-			linear_solver_ad_uses_jacobian_transpose = false;
-		}
-		linear_solver_ad->init_timer_nodes(&timer->node["linear solver for adjoint method - setup"], &timer->node["linear solver for adjoint method - solve"]);
-
-		well_head_idx_collection.clear();
-		for (ms_well* w : wells)
-		{
-			well_head_idx_collection.push_back(w->well_head_idx);
-		}
-
-		dg_dx_T = new csr_matrix<1>;
-		dg_dx_T->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-
-		dg_dx_n = new csr_matrix<1>;
-		dg_dx_n->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-
-		//dg_dT = new csr_matrix<1>;
-		//dg_dT->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-
-		dg_dT_general = new csr_matrix<1>;
-		dg_dT_general->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-
-		(static_cast<csr_matrix<1>*>(dg_dx_T))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, (mesh->n_conns + mesh->n_blocks) * n_vars * n_vars);
-		(static_cast<csr_matrix<1>*>(dg_dx_n))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, (mesh->n_conns + mesh->n_blocks) * n_vars * n_vars);
-		//(static_cast<csr_matrix<1>*>(dg_dT))->init(mesh->n_blocks * n_vars, n_interfaces - wells.size(), 1, ((mesh->n_blocks) * 2 - 2 * wells.size()) * n_vars);
-		(static_cast<csr_matrix<1>*>(dg_dT_general))->init(mesh->n_blocks * n_vars, n_interfaces, 1, (mesh->n_conns) * n_vars);
-		//init_adjoint_structure(dg_dT);
-		init_adjoint_structure(dg_dT_general);
-
-
-		dT_du = new csr_matrix<1>;
-		dT_du->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-
-		//(static_cast<csr_matrix<1>*>(dT_du))->init(n_interfaces - wells.size(), n_control_vars, 1, n_interfaces - wells.size());
-		(static_cast<csr_matrix<1>*>(dT_du))->init(n_interfaces - wells.size(), n_interfaces - wells.size(), 1, n_interfaces - wells.size());
-
+		init_adjoint_base();
 	}
 
 
 	if (customize_operator)
 	{
-		time_data_report_customized.clear();
-		time_data_customized.clear();
-
-		// WARNING: this variable shadows a member variable of a different type
-        index_t n_ops = 1;  // here '1' is to distinguish the size of the customized operator with the ordinary operator
-
-		op_vals_arr_customized.resize(n_ops * mesh->n_blocks);   // [1 * n_blocks] array of values of operators
-		op_ders_arr_customized.resize(n_ops * n_vars * mesh->n_blocks);   // [1 * N_VARS * n_blocks] array of dedrivatives of operators
-
-		// create a block list for the customized operator
-		customize_block_idxs.resize(acc_flux_op_set_list.size());
-		for (auto op_region : customize_op_num)
-		{
-			customize_block_idxs[op_region].clear();
-		}
-
-		index_t idx = 0;
-		for (auto op_region : customize_op_num)
-		{
-			customize_block_idxs[op_region].emplace_back(idx++);
-		}
+		init_customized_operator_base();
 	}
 
 	well_control_arr.clear();

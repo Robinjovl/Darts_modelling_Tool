@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 #include <cuda_runtime.h>
 
@@ -589,6 +590,76 @@ namespace opendarts
       X[i * n_block_size] += P_X[i];
     }
 
+    // ---- CPRA (transposed apply) kernels -----------------------------------
+
+    // C^T restriction: the transpose of cpr_solve_prolongate_kernel's
+    // pressure-slot injection is a plain pressure-slot extraction (no weights,
+    // no sign mults -- those belong to the transposed reduction, below).
+    template <uint8_t n_block_size>
+    __global__ void cpr_solve_restrict_t_kernel(index_t n_rows, value_t *B, value_t *P_B)
+    {
+      index_t i = threadIdx.x + blockIdx.x * blockDim.x;
+
+      if (i >= n_rows)
+        return;
+
+      P_B[i] = B[i * n_block_size];
+    }
+
+    // W^T D_m prolongation: the transpose of cpr_solve_reduce_kernel's
+    // weighted reduction R = D_m W. The stored P carries the row sign
+    // normalisation D_m (setup kernel flips whole rows), so the true
+    // (P_orig^T)^{-1} solution is D_m y for the y computed on the stored P^T;
+    // the mults therefore multiply on the prolongation side. Mirrors the
+    // reduce kernel's slot/macro structure exactly.
+    template <uint8_t n_block_size>
+    __global__ void cpr_solve_prolongate_t_kernel(index_t n_rows, value_t *X, value_t *P_X,
+      value_t *D_ps_ss, value_t *rhs_mults)
+    {
+      index_t i = threadIdx.x + blockIdx.x * blockDim.x;
+
+      if (i >= n_rows)
+        return;
+
+      const value_t val = rhs_mults[i] * P_X[i];
+
+#if defined(SATURATION_EQUATIONS_START_FIRST) || defined(PRESSURE_EQUATION_SUM)
+      X[i * n_block_size + (n_block_size - 1)] += val;
+#else
+      X[i * n_block_size] += val;
+#endif
+
+#ifdef PRESSURE_EQUATION_SUM
+      for (int e = 0; e < n_block_size - 1; ++e)
+      {
+        X[i * n_block_size + e] += val;
+      }
+#endif
+
+      for (int e = 0; e < (n_block_size - 1); ++e)
+      {
+#ifdef SATURATION_EQUATIONS_START_FIRST
+        X[i * n_block_size + e] -= D_ps_ss[i * (n_block_size - 1) + e] * val;
+#else
+        X[i * n_block_size + e + 1] -= D_ps_ss[i * (n_block_size - 1) + e] * val;
+#endif
+      }
+    }
+
+    // Gather-transpose of the scalar pressure values: p_vals_t[j] =
+    // p_vals[t_map[j]], with t_map built once on the host (structurally
+    // symmetric pattern, so P^T shares P's rows/cols arrays).
+    __global__ void cpr_transpose_p_vals_kernel(index_t n_nnz, const value_t *p_vals,
+      const index_t *t_map, value_t *p_vals_t)
+    {
+      index_t j = threadIdx.x + blockIdx.x * blockDim.x;
+
+      if (j >= n_nnz)
+        return;
+
+      p_vals_t[j] = p_vals[t_map[j]];
+    }
+
     template <uint8_t n_block_size>
     linsolv_bos_cpr_gpu<n_block_size>::linsolv_bos_cpr_gpu()
     {
@@ -633,8 +704,18 @@ namespace opendarts
           cudaFree(p_vals);
         }
       }
+      // Host pressure buffers (new[]'d in init() when !p_solver_solve_gpu;
+      // nullptr otherwise -- delete[] nullptr is a no-op).
+      delete[] P_B_h;
+      delete[] P_X_h;
       if (p_system_preconditioner)
         delete (p_system_preconditioner);
+      // Transposed (CPRA) chain.
+      if (t_map_d)
+        cudaFree(t_map_d);
+      delete P_T;
+      if (p_system_preconditioner_t)
+        delete p_system_preconditioner_t;
     }
 
     template <uint8_t n_block_size>
@@ -669,12 +750,26 @@ namespace opendarts
       }
       std::memcpy(P->get_diag_ind(), A->get_diag_ind(), n_rows * sizeof(index_t));
 
-      if (p_solver_setup_gpu)
+      if (p_solver_setup_gpu && P->gpu_mode != 1)
       {
+        // Allocate the pressure-matrix device mirror ONCE. The pressure
+        // structure is fixed across re-inits (same Jacobian sparsity), so on a
+        // repeated init() -- the adjoint backward driver re-inits its solver
+        // chain once per gradient evaluation -- we reuse the existing device
+        // storage rather than re-allocating it. This avoids both the leak
+        // (csr_matrix::init_device has no re-init guard) and a dangling
+        // reference (freeing buffers the pressure preconditioner still holds).
+        // P->init() above only refreshes the HOST structure and leaves
+        // gpu_mode set, so this guard fires exactly once. Values are refreshed
+        // every setup() by the CPR setup kernel writing p_vals.
         P->init_device(n_rows, n_nnz);
         P->copy_struct_to_device();
       }
 
+      // Free-before-realloc for the device work buffers (D_ps_ss non-null ==
+      // this is a re-init). Includes inverse_fail_counter, the separately
+      // allocated non-setup_gpu p_vals, and the host pressure buffers -- all
+      // previously leaked on every re-init.
       if (D_ps_ss)
       {
         cudaFree(D_ps_ss);
@@ -683,6 +778,13 @@ namespace opendarts
         cudaFree(full_B);
         cudaFree(rhs_mults);
         cudaFree(block_p_jac_idx);
+        cudaFree(inverse_fail_counter);
+        if (!p_solver_setup_gpu)
+          cudaFree(p_vals); // setup_gpu p_vals aliases P->values_d (freed above)
+        delete[] P_B_h;
+        delete[] P_X_h;
+        P_B_h = nullptr;
+        P_X_h = nullptr;
       }
 
       cudaError_t cudaStat;
@@ -904,7 +1006,121 @@ namespace opendarts
       }
 
       lin_it = 0;
+      // Invalidate the transposed (CPRA) chain: P changed, so P^T and the
+      // second pressure hierarchy are refreshed lazily on the next
+      // solve_transposed().
+      ++setup_generation_;
       this->timer_setup->node["CPR"].stop();
+      return 0;
+    }
+
+    template <uint8_t n_block_size>
+    int linsolv_bos_cpr_gpu<n_block_size>::refresh_transpose_chain()
+    {
+      if (!A_base)
+        return -1;
+      if (!p_system_preconditioner_t)
+      {
+        printf("CPR GPU: solve_transposed requires a transposed pressure "
+               "preconditioner -- call set_p_system_prec_t()\n");
+        return -1;
+      }
+
+      const index_t n_rows = P->n_rows;
+      const index_t n_nnz = P->get_n_non_zeros();
+
+      if (!P_T)
+      {
+        // One-time: host transpose map over P's (structurally symmetric,
+        // column-sorted) pattern -- t_map[jj] = position of the mirrored
+        // entry (cols[jj], i) -- plus the P^T shell sharing that pattern.
+        index_t *rows = P->get_rows_ptr();
+        index_t *cols = P->get_cols_ind();
+        std::vector<index_t> t_map(n_nnz);
+        for (index_t i = 0; i < n_rows; ++i)
+        {
+          for (index_t jj = rows[i]; jj < rows[i + 1]; ++jj)
+          {
+            const index_t j = cols[jj];
+            index_t lo = rows[j], hi = rows[j + 1];
+            index_t pos = -1;
+            while (lo < hi)
+            {
+              const index_t mid = lo + (hi - lo) / 2;
+              if (cols[mid] < i)
+                lo = mid + 1;
+              else if (cols[mid] > i)
+                hi = mid;
+              else
+              {
+                pos = mid;
+                break;
+              }
+            }
+            if (pos < 0)
+            {
+              printf("CPR GPU: pressure pattern is not structurally symmetric "
+                     "(missing (%d,%d)) -- cannot build P^T\n", (int)j, (int)i);
+              return -1;
+            }
+            t_map[jj] = pos;
+          }
+        }
+
+        if (cudaMalloc((void **)&t_map_d, sizeof(index_t) * n_nnz) != cudaSuccess)
+        {
+          printf("CPR GPU: can't allocate the transpose map\n");
+          return -1;
+        }
+        cudaMemcpy(t_map_d, t_map.data(), sizeof(index_t) * n_nnz, cudaMemcpyHostToDevice);
+
+        P_T = new opendarts::linear_solvers::csr_matrix<1>;
+        P_T->init(n_rows, n_rows, 1, n_nnz);
+        P_T->type = opendarts::linear_solvers::MATRIX_TYPE_CSR;
+        P_T->is_square = 1;
+        std::memcpy(P_T->get_rows_ptr(), P->get_rows_ptr(), (n_rows + 1) * sizeof(index_t));
+        std::memcpy(P_T->get_cols_ind(), P->get_cols_ind(), n_nnz * sizeof(index_t));
+        std::memcpy(P_T->get_diag_ind(), P->get_diag_ind(), n_rows * sizeof(index_t));
+        P_T->init_device(n_rows, n_nnz);
+        P_T->copy_struct_to_device();
+      }
+
+      // Per-refresh: gather the transposed values from the current p_vals.
+      {
+        const int block = 256;
+        const int grid_gather = (n_nnz + block - 1) / block;
+        cpr_transpose_p_vals_kernel<<<grid_gather, block>>>(n_nnz, p_vals, t_map_d, P_T->values_d);
+      }
+      if (!p_solver_setup_gpu)
+      {
+        // Host-setup pressure preconditioners read the host values.
+        cudaMemcpy(P_T->get_values(), P_T->values_d, sizeof(value_t) * n_nnz, cudaMemcpyDeviceToHost);
+      }
+
+      // Keep the transposed block SpMV (scalar-CSR view of A) in step with
+      // the current matrix values as well -- solve_transposed() needs
+      // A^T products even when driven standalone (unit tests).
+      if (A_base->refresh_transpose_spmv_d())
+      {
+        printf("CPR GPU: the system matrix does not support transposed device SpMV\n");
+        return -1;
+      }
+
+      if (!p_prec_t_initialized_)
+      {
+        p_system_preconditioner_t->init(P_T, 1, 0);
+        if (this->timer_setup && this->timer_solve)
+          p_system_preconditioner_t->init_timer_nodes(&this->timer_setup->node["CPR"],
+            &this->timer_solve->node["CPR"]);
+        p_prec_t_initialized_ = true;
+      }
+      if (p_system_preconditioner_t->setup(P_T))
+      {
+        printf("CPR GPU: transposed pressure-system preconditioner setup failed\n");
+        return -1;
+      }
+
+      transpose_generation_ = setup_generation_;
       return 0;
     }
 
@@ -979,6 +1195,96 @@ namespace opendarts
       // Add up the two-stage solutions.
       grid_size = (n_rows + solve_sum_up_block_size - 1) / solve_sum_up_block_size;
       cpr_solve_sum_up_kernel<n_block_size><<<grid_size, solve_sum_up_block_size>>>(n_rows, X, P_X);
+
+      this->timer_solve->node["CPR"].stop();
+      lin_it++;
+
+      return 0;
+    }
+
+    template <uint8_t n_block_size>
+    int linsolv_bos_cpr_gpu<n_block_size>::solve_transposed(value_t *B, value_t *X)
+    {
+      // CPRA: M^{-T} = W^T D_m (P^T)^{-1} C^T + (I - W^T D_m (P^T)^{-1} C^T A^T) ILU^{-T}
+      // -- each forward stage transposed, applied in reverse order. All
+      // pointers are device pointers, like solve().
+      if (!A_base || !full_system_preconditioner)
+        return -1;
+
+      this->timer_solve->node["CPR"].start();
+
+      // Lazy CPRA: the P^T chain is built on the first transposed solve and
+      // refreshed after every setup() -- forward-only runs never pay for it.
+      if (transpose_generation_ != setup_generation_)
+      {
+        if (refresh_transpose_chain())
+        {
+          this->timer_solve->node["CPR"].stop();
+          return -1;
+        }
+      }
+
+      cudaError_t cudaStat;
+      index_t n_rows = A_base->n_rows;
+
+      // Step 1: X = ILU^{-T} B (transposed second stage first).
+      if (full_system_preconditioner->solve_transposed(B, X))
+      {
+        this->timer_solve->node["CPR"].stop();
+        return -1;
+      }
+
+      // Step 2: full_B = B - A^T X (transposed block SpMV, scalar-CSR view).
+      if (A_base->calc_lin_comb_t_d(-1.0, 1.0, X, B, full_B))
+      {
+        this->timer_solve->node["CPR"].stop();
+        return -1;
+      }
+
+      // Step 3: P_B = C^T full_B (pressure-slot extraction).
+      int grid = (n_rows + solve_reduce_block_size - 1) / solve_reduce_block_size;
+      cpr_solve_restrict_t_kernel<n_block_size><<<grid, solve_reduce_block_size>>>(n_rows, full_B, P_B);
+
+      // Step 4: P_X = (P^T)^{-1} P_B via the second pressure preconditioner.
+      if (!p_solver_solve_gpu)
+      {
+        cudaStat = cudaMemcpy(P_B_h, P_B, sizeof(value_t) * n_rows, cudaMemcpyDeviceToHost);
+        if (cudaStat != cudaSuccess)
+        {
+          printf("Error! Can't copy memory to host\n");
+          this->timer_solve->node["CPR"].stop();
+          return -1;
+        }
+        std::memset(P_X_h, 0, n_rows * sizeof(value_t));
+        if (p_system_preconditioner_t->solve(P_B_h, P_X_h))
+        {
+          this->timer_solve->node["CPR"].stop();
+          return -1;
+        }
+        cudaStat = cudaMemcpy(P_X, P_X_h, sizeof(value_t) * n_rows, cudaMemcpyHostToDevice);
+        if (cudaStat != cudaSuccess)
+        {
+          printf("Error! Can't copy memory to device\n");
+          this->timer_solve->node["CPR"].stop();
+          return -1;
+        }
+      }
+      else
+      {
+        cudaMemset(P_X, 0, sizeof(value_t) * n_rows);
+        if (p_system_preconditioner_t->solve(P_B, P_X))
+        {
+          this->timer_solve->node["CPR"].stop();
+          return -1;
+        }
+        cudaDeviceSynchronize();
+      }
+
+      // Step 5: X += W^T (D_m P_X) -- weights + sign mults on the
+      // prolongation side (exact transpose of the forward weighted reduction).
+      grid = (n_rows + solve_prolongate_block_size - 1) / solve_prolongate_block_size;
+      cpr_solve_prolongate_t_kernel<n_block_size><<<grid, solve_prolongate_block_size>>>(n_rows, X, P_X,
+        D_ps_ss, rhs_mults);
 
       this->timer_solve->node["CPR"].stop();
       lin_it++;

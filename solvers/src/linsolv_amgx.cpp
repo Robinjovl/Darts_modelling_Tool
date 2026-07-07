@@ -110,9 +110,15 @@ namespace opendarts
     template <uint8_t N_BLOCK_SIZE>
     linsolv_amgx<N_BLOCK_SIZE>::~linsolv_amgx()
     {
-      AMGX_matrix_destroy((AMGX_matrix_handle)A);
-      AMGX_vector_destroy((AMGX_vector_handle)x);
-      AMGX_vector_destroy((AMGX_vector_handle)b);
+      // A/x/b are created lazily in init(); an instance that was constructed
+      // but never initialised (e.g. a transposed pressure preconditioner on a
+      // forward-only run) has null handles.
+      if (A)
+        AMGX_matrix_destroy((AMGX_matrix_handle)A);
+      if (x)
+        AMGX_vector_destroy((AMGX_vector_handle)x);
+      if (b)
+        AMGX_vector_destroy((AMGX_vector_handle)b);
       AMGX_solver_destroy((AMGX_solver_handle)solver);
 
       AMGX_SAFE_CALL(AMGX_config_destroy((AMGX_config_handle)config));
@@ -138,6 +144,17 @@ namespace opendarts
       opendarts::config::index_t /*max_iters*/,
       opendarts::config::mat_float /*tolerance*/)
     {
+      // Repeated init() (the adjoint backward driver re-inits its solver
+      // chain on every gradient evaluation) must not leak the previous
+      // handles: leaked AMGX objects outlive AMGX_finalize and are torn down
+      // by AMGX's atexit MemManager after the CUDA context is gone, which
+      // aborts the process at exit.
+      if (A)
+        AMGX_matrix_destroy((AMGX_matrix_handle)A);
+      if (x)
+        AMGX_vector_destroy((AMGX_vector_handle)x);
+      if (b)
+        AMGX_vector_destroy((AMGX_vector_handle)b);
       AMGX_matrix_create((AMGX_matrix_handle_struct **)&A, (AMGX_resources_handle)rsrc, (AMGX_Mode)AMGX_mode);
       AMGX_vector_create((AMGX_vector_handle_struct **)&x, (AMGX_resources_handle)rsrc, (AMGX_Mode)AMGX_mode);
       AMGX_vector_create((AMGX_vector_handle_struct **)&b, (AMGX_resources_handle)rsrc, (AMGX_Mode)AMGX_mode);

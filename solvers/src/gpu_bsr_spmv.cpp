@@ -15,6 +15,7 @@
 
 #ifdef WITH_GPU
 
+#include <cstdint>
 #include <cstdio>
 #include <utility>
 
@@ -57,6 +58,17 @@ namespace opendarts
 
     void gpu_bsr_spmv::free_scalar_csr_device() noexcept
     {
+      if (scalar_spmat_ != nullptr)
+      {
+        cusparseDestroySpMat(scalar_spmat_);
+        scalar_spmat_ = nullptr;
+      }
+      if (spmv_t_buffer_ != nullptr)
+      {
+        cudaFree(spmv_t_buffer_);
+        spmv_t_buffer_ = nullptr;
+        spmv_t_buffer_size_ = 0;
+      }
       if (scalar_csr_row_ptr_d_ != nullptr)
       {
         cudaFree(scalar_csr_row_ptr_d_);
@@ -234,6 +246,86 @@ namespace opendarts
       if (r_d != v_d)
         cudaMemcpy(r_d, v_d, bytes, cudaMemcpyDeviceToDevice);
       return bsrmv(alpha, u_d, beta, r_d);
+    }
+
+    // y_d = alpha * A^T * x_d + beta * y_d via the generic cuSPARSE SpMV on the
+    // scalar-CSR view (the legacy bsrmv has no transpose mode). The view must
+    // be current -- callers refresh it with build_scalar_csr_device() after
+    // each matrix value change (once per solver setup, not per apply).
+    int gpu_bsr_spmv::spmv_t(double alpha, const double *x_d, double beta, double *y_d)
+    {
+      static_assert(sizeof(index_t) == sizeof(int32_t),
+        "generic SpMV descriptor below assumes 32-bit index_t");
+      if (scalar_csr_val_d_ == nullptr && build_scalar_csr_device() != 0)
+        return 1;
+
+      if (scalar_spmat_ == nullptr)
+      {
+        const cusparseStatus_t status = cusparseCreateCsr(&scalar_spmat_,
+          scalar_csr_n_rows_, scalar_csr_n_rows_, scalar_csr_nnz_,
+          scalar_csr_row_ptr_d_, scalar_csr_col_ind_d_, scalar_csr_val_d_,
+          CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO,
+          CUDA_R_64F);
+        if (status != CUSPARSE_STATUS_SUCCESS)
+        {
+          printf("gpu_bsr_spmv: cusparseCreateCsr failed (status %d)\n",
+            static_cast<int>(status));
+          return 1;
+        }
+      }
+
+      cusparseDnVecDescr_t x_descr = nullptr, y_descr = nullptr;
+      // The generic API takes non-const pointers; SpMV only reads x.
+      cusparseCreateDnVec(&x_descr, scalar_csr_n_rows_, const_cast<double *>(x_d), CUDA_R_64F);
+      cusparseCreateDnVec(&y_descr, scalar_csr_n_rows_, y_d, CUDA_R_64F);
+
+      std::size_t buffer_size = 0;
+      cusparseStatus_t status = cusparseSpMV_bufferSize(handle_,
+        CUSPARSE_OPERATION_TRANSPOSE, &alpha, scalar_spmat_, x_descr, &beta,
+        y_descr, CUDA_R_64F, CUSPARSE_SPMV_ALG_DEFAULT, &buffer_size);
+      if (status == CUSPARSE_STATUS_SUCCESS && buffer_size > spmv_t_buffer_size_)
+      {
+        if (spmv_t_buffer_ != nullptr)
+          cudaFree(spmv_t_buffer_);
+        spmv_t_buffer_ = nullptr;
+        spmv_t_buffer_size_ = 0;
+        if (cudaMalloc(&spmv_t_buffer_, buffer_size) != cudaSuccess)
+        {
+          printf("gpu_bsr_spmv: transposed-SpMV buffer allocation failed\n");
+          status = CUSPARSE_STATUS_ALLOC_FAILED;
+        }
+        else
+          spmv_t_buffer_size_ = buffer_size;
+      }
+      if (status == CUSPARSE_STATUS_SUCCESS)
+        status = cusparseSpMV(handle_, CUSPARSE_OPERATION_TRANSPOSE, &alpha,
+          scalar_spmat_, x_descr, &beta, y_descr, CUDA_R_64F,
+          CUSPARSE_SPMV_ALG_DEFAULT, spmv_t_buffer_);
+
+      cusparseDestroyDnVec(x_descr);
+      cusparseDestroyDnVec(y_descr);
+      if (status != CUSPARSE_STATUS_SUCCESS)
+      {
+        printf("gpu_bsr_spmv: transposed cusparseSpMV failed (status %d)\n",
+          static_cast<int>(status));
+        return 1;
+      }
+      return 0;
+    }
+
+    int gpu_bsr_spmv::matrix_vector_product_t_d0(const double *v_d, double *r_d)
+    {
+      return spmv_t(1.0, v_d, 0.0, r_d); // r = A^T * v
+    }
+
+    int gpu_bsr_spmv::calc_lin_comb_t_d(double alpha, double beta, const double *u_d,
+      const double *v_d, double *r_d)
+    {
+      // r = alpha * A^T * u + beta * v (same staging as the forward variant).
+      const std::size_t bytes = static_cast<std::size_t>(matrix_->scalar_n_rows()) * sizeof(double);
+      if (r_d != v_d)
+        cudaMemcpy(r_d, v_d, bytes, cudaMemcpyDeviceToDevice);
+      return spmv_t(alpha, u_d, beta, r_d);
     }
   } // namespace linear_solvers
 } // namespace opendarts

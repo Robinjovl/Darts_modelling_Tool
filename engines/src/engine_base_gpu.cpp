@@ -73,6 +73,13 @@ int engine_base_gpu::evaluate_operators_d()
     copy_data_to_device(Xop, Xop_d);
     for (int r = 0; r < acc_flux_op_set_list.size(); r++)
     {
+      // Zero-work op sets are skipped: an operator set with no assigned
+      // blocks (e.g. a host-only customized operator, evaluated through
+      // customize_block_idxs in engine_base) may be a CPU evaluator whose
+      // device entry point is unimplemented. The CPU engine's host loop is
+      // a natural no-op for an empty index list -- mirror that here.
+      if (block_idxs[r].empty())
+        continue;
       int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(
           block_idxs[r].size(), Xop_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_ext_d);
       if (result < 0)
@@ -87,6 +94,8 @@ int engine_base_gpu::evaluate_operators_d()
 
   for (int r = 0; r < acc_flux_op_set_list.size(); r++)
   {
+    if (block_idxs[r].empty())
+      continue; // see the history-loop note: host-only op sets have no blocks
     int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(
         block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
     if (result < 0)

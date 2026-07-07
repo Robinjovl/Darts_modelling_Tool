@@ -146,6 +146,14 @@ namespace opendarts
       int matrix_vector_product_d_ell(const double *v, double *r) override;
       int calc_lin_comb_d(const double alpha, const double beta, double *u, double *v,
         double *r) override;
+      // Transposed device SpMV (adjoint/CPRA solve stack) -- served through
+      // the adapter's scalar-CSR view + generic cuSPARSE SpMV(TRANSPOSE).
+      // Call refresh_transpose_spmv_d() once after each value change (per
+      // solver setup) before using the _t_ products.
+      int matrix_vector_product_t_d0(const double *v, double *r) override;
+      int calc_lin_comb_t_d(const double alpha, const double beta, double *u, double *v,
+        double *r) override;
+      int refresh_transpose_spmv_d() override;
       int copy_struct_to_device() override;
       int copy_values_to_device() override;
 

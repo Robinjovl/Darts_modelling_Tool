@@ -41,6 +41,7 @@ optimization = False  # switch off to compare the adjoint and numerical gradient
 apply_adjoint_method = True  # switch off to apply numerical method
 use_adjoint_mgr_solver = True  # False keeps the legacy adjoint SuperLU path
 adjoint_solver = None  # None follows use_adjoint_mgr_solver; or "mgr", "cpra", "superlu"
+platform = 'cpu'  # 'gpu' runs the forward simulation on the GPU engine (adjoint backward driver stays host-side)
 
 add_prod_rate_to_objfun = True
 add_inj_rate_to_objfun = True
@@ -73,10 +74,15 @@ def prepare_synthetic_observation_data():
     # --------------------------------------------------------------------------------------------------------------
 
     if generate_true_data:
+        # The true model is a plain forward run (no gradients) and always runs
+        # on the CPU here -- the GPU-only adjoint mode would fail its attach.
+        true_solver = current_adjoint_solver()
+        if true_solver == "cpra-gpu":
+            true_solver = "superlu"
         true_model = Model(T, report_step=report_step, perm=perm, poro=poro,
                            customize_new_operator=customize_new_operator,
                            use_adjoint_mgr=use_adjoint_mgr_solver,
-                           adjoint_solver=current_adjoint_solver())
+                           adjoint_solver=true_solver)
         true_model.init()
         true_model.set_output()
         true_model.run(export_to_vtk=False)
@@ -165,7 +171,7 @@ def process_adjoint(history_matching=False):
         redirect_darts_output('')
 
 
-    proxy_model.init()
+    proxy_model.init(platform=platform)
     proxy_model.set_output(output_folder= 'jaja', save_initial = False)
 
 

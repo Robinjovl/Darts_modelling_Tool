@@ -101,6 +101,11 @@ public:
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) override;
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) override;
 
+  // Native GPU CPRA adjoint stack (device GMRES + CPR with a second AMGX
+  // instance on P^T + transposed cuSPARSE block-ILU(0)); available when AMGX
+  // is built, otherwise returns -1 like the base.
+  int set_adjoint_solver_cpra_gpu(int restart = 150) override;
+
 public:
   value_t *RV_d;              // [n_blocks] rock volumes for each block
   value_t *mesh_tranD_d;      // [n_conns] transmissibility and diffusive transmissibility for each (duplicated) connection
