@@ -129,17 +129,31 @@ class PythonLinearSolver:
         raise NotImplementedError
 
     def solve(self, rows, cols, vals, block_size, rhs, sol):
-        """Refresh the matrix values and solve ``A x = rhs`` into ``sol``."""
+        """Refresh the matrix values and solve ``A x = rhs`` into ``sol``.
+
+        Return status contract (mirrors the C++ ``linsolv_iface::solve``):
+        ``0`` on success -- including a plain max-iterations / rtol miss, which
+        the outer inexact-Newton loop rides via its residual gate (bos parity,
+        cf. ``linsolv_gmres.cpp``); nonzero on a HARD failure (a non-finite
+        solution from breakdown / PC failure / NaN), so the Newton loop cuts
+        the timestep instead of applying a garbage update.
+        """
         raise NotImplementedError
 
     # -- entry point -------------------------------------------------------
     def solve_system(self, engine):
-        """Solve the engine's current Newton linear system."""
+        """Solve the engine's current Newton linear system.
+
+        :returns: ``0`` on success, nonzero on a hard linear-solver failure
+            (see :meth:`solve`). The engine mirrors this into
+            ``linear_solver_error_last_dt`` so the Newton loop / adaptive
+            fallback can react.
+        """
         rows, cols, vals, rhs, sol, block_size = _extract_block_csr(engine)
         if not self._is_set_up:
             self.setup(rows, cols, block_size)
             self._is_set_up = True
-        self.solve(rows, cols, vals, block_size, rhs, sol)
+        return self.solve(rows, cols, vals, block_size, rhs, sol)
 
 
 class PETScSolver(PythonLinearSolver):
@@ -324,6 +338,14 @@ class PETScSolver(PythonLinearSolver):
         petsc_rhs.destroy()
         petsc_sol.destroy()
 
+        # Report only a HARD failure (non-finite solution: breakdown / PC
+        # failure / NaN-or-Inf). A mere max-iters / rtol miss leaves a finite
+        # iterate and returns 0, matching the C++ inexact-Newton parity; the
+        # Newton residual gate then decides whether to accept or cut. Without
+        # this a diverged NaN solve would drive newton_residual to NaN, whose
+        # comparisons are all false, and be silently accepted as converged.
+        return 0 if np.isfinite(sol).all() else 2
+
 
 class PardisoSolver(PythonLinearSolver):
     """Pardiso (pypardiso / Intel MKL) sparse direct solver.
@@ -358,6 +380,10 @@ class PardisoSolver(PythonLinearSolver):
             copy=False,
         )
         # PyPardisoSolver reuses its symbolic analysis when the pattern is
-        # unchanged; only the numerical factorisation repeats.
+        # unchanged; only the numerical factorisation repeats. It raises on a
+        # singular/failed factorisation, so a returned solution is well-defined;
+        # still guard against a non-finite result (return nonzero so the Newton
+        # loop cuts the timestep) for parity with the C++ direct-solver checks.
         self._pardiso.factorize(mat)
         sol[:] = self._pardiso.solve(mat, rhs)
+        return 0 if np.isfinite(sol).all() else 2

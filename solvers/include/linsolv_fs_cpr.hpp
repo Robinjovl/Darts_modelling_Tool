@@ -113,6 +113,16 @@ namespace opendarts
         force_amg_asymmetric_ = b;
       }
 
+      // Per-stage BoomerAMG V-cycle budgets applied as the sub-preconditioners'
+      // max_iters (both stages are single-cycle preconditioners by default).
+      // Wired from FSCPRSolverSpec.{p,u}_amg_max_iters via the factory; the
+      // default (1, 1) reproduces the previous hard-coded behaviour exactly.
+      void set_amg_sweeps(int p_amg_max_iters, int u_amg_max_iters)
+      {
+        p_amg_max_iters_ = p_amg_max_iters;
+        u_amg_max_iters_ = u_amg_max_iters;
+      }
+
       // ----------------------------------------------------------------
       // Polymorphic csr_matrix_base entry points. These bypass the UB
       // static_cast in linsolv_iface_bos<N> when A is a block_csr_matrix.
@@ -228,6 +238,10 @@ namespace opendarts
       bool update_uu_ = true;
       bool force_amg_asymmetric_ = true;
       bool fs_cpr_debug_ = false;
+
+      // Per-stage BoomerAMG V-cycle budgets (default 1 == previous hard-coded).
+      int p_amg_max_iters_ = 1;
+      int u_amg_max_iters_ = 1;
       bool debug_printed_setup_ = false;
 
       // ----------------------------------------------------------------

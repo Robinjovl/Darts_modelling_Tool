@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <cstring>
+#include <cstdio>
 
 /// Shared host-side adjoint assembly for the super engines.
 ///
@@ -307,6 +308,28 @@ int super_engine_adjoint_finalize(Engine &e)
 {
   constexpr uint8_t N_VARS = Engine::N_VARS;
   constexpr uint16_t N_VARS_SQ = Engine::N_VARS_SQ;
+
+  // One-time warning: the THERMAL adjoint assembly (host reference AND its
+  // device port) is incomplete -- the energy-equation rows omit the rock- and
+  // potential-energy accumulation derivatives (dg/dx^n) and the potential-
+  // energy convective flux + fickian-enthalpy advection (dg/dT) that the
+  // forward Jacobian carries. Gradients for thermal history matching are
+  // therefore approximate. Emitted here (the single finalize choke-point) so
+  // it covers the CPU, GPU-device and GPU-host paths uniformly. Compiled out
+  // entirely for non-thermal engines (constexpr guard).
+  if constexpr (Engine::N_VARS > Engine::NC_)
+  {
+    static bool thermal_adjoint_warned = false;
+    if (!thermal_adjoint_warned)
+    {
+      std::fprintf(stderr,
+        "WARNING: THERMAL adjoint gradient assembly is incomplete -- the energy-"
+        "equation rock/potential-energy accumulation terms (dg/dx^n) and the "
+        "potential-energy convective + fickian-enthalpy flux terms (dg/dT) are "
+        "omitted; thermal history-matching gradients are approximate.\n");
+      thermal_adjoint_warned = true;
+    }
+  }
 
   auto &mesh = e.mesh;
   auto &Jacobian = e.Jacobian;

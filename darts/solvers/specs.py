@@ -638,8 +638,13 @@ class PythonLinearSolverSpec(LinearSolverSpec):
 class PETScSolverSpec(PythonLinearSolverSpec):
     """PETSc (``petsc4py``) Krylov solver.
 
-    Builds the system matrix as a PETSc ``BAIJ`` matrix directly from the
-    engine's block-CSR Jacobian -- no block->scalar expansion.
+    Builds the system matrix as a scalar PETSc ``AIJ`` matrix, expanded from the
+    engine's block-CSR Jacobian. The CPR / fixed-stress ``PCFIELDSPLIT``
+    preconditioners split *within* each cell block (pressure vs transport /
+    displacement), which a block ``BAIJ`` matrix cannot express; the structural
+    block->scalar expansion is computed once and each Newton iteration only
+    gathers the current block values into the scalar CSR (see
+    ``_ScalarCSRExpander`` in ``python_solvers.py``).
 
     :param variant: ``"cpr"`` -- CPR preconditioner for flow; ``"fs"`` --
         fixed-stress fieldsplit for poromechanics.

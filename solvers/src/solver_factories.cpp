@@ -373,13 +373,10 @@ namespace opendarts
         // Each is created with a single V-cycle budget (preconditioner mode
         // -- tolerance is irrelevant); linsolv_fs_cpr drives init/setup/solve
         // through its private p_/u_system_preconditioner_ handles.
-        // The per-stage V-cycle budgets (u_amg_max_iters / p_amg_max_iters)
-        // are honoured by linsolv_fs_cpr through the (max_iters, tolerance)
-        // it forwards into prec->init(); the spec values are stored on the
-        // config for future wiring and currently unused (linsolv_fs_cpr
-        // hard-codes 1 sweep for the U stage and forwards the outer
-        // max_iters for the P stage -- see build_subsystem_matrices_).
-        (void) config;
+        // The per-stage V-cycle budgets (p_amg_max_iters / u_amg_max_iters) from
+        // the spec are applied below via set_amg_sweeps -> the sub-preconditioner
+        // init(max_iters) calls in linsolv_fs_cpr::build_subsystem_matrices_.
+        // The default (1, 1) reproduces the previous hard-coded single sweep.
         // Default U/P sub-precs: BoomerAMG via the hypre_amg_adapter shim.
         // The bisection-diagnostic SuperLU-for-U swap that lived here while
         // we were tracking down the divergence has been reverted -- root
@@ -393,6 +390,7 @@ namespace opendarts
             P_VAR, Z_VAR, U_VAR, NC);
         solver->set_force_amg_asymmetric(config.force_amg_asymmetric);
         solver->set_block_sizes(config.n_res, config.n_fracs, config.n_wells);
+        solver->set_amg_sweeps(config.p_amg_max_iters, config.u_amg_max_iters);
         // 2-arg set_prec; G-prec is not used in the FS_UP path.
         solver->set_prec(p_prec, u_prec);
         return solver;

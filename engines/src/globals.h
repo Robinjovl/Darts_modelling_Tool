@@ -73,6 +73,10 @@ public:
     CPU_SAMG,
     CPU_GMRES_ILU0,
     CPU_SUPERLU,
+    CPU_GMRES_MGR, // keep ALL CPU methods before the GPU block: several engines
+                   // classify a solver as GPU via `linear_type >= GPU_GMRES_CPR_AMG`
+                   // (device Jacobian copies etc.), so a CPU method placed after the
+                   // boundary would be silently mis-bucketed as GPU.
     GPU_GMRES_CPR_AMG, // <<<---- Should be the first GPU method for correct Jacobian treatment
     GPU_GMRES_ILU0,
     GPU_GMRES_CPR_AIPS,
@@ -83,7 +87,6 @@ public:
     GPU_AMGX,
     GPU_BICGSTAB_CPR_AMGX,
     GPU_CUSOLVER,
-    CPU_GMRES_MGR,
     GPU_CUDSS // cuDSS sparse direct solver (GPU build with WITH_CUDSS)
   };
 

@@ -160,7 +160,18 @@ namespace opendarts
       // csr_matrix_base device-pointer accessors -- forward to the typed
       // device views above so a block_csr_matrix can be driven through a
       // csr_matrix_base* by the GPU engines/solvers.
-      mat_float *get_values_d() override { return values_device(); }
+      //
+      // Route through the CONST device view (like the sibling accessors below):
+      // the polymorphic get_values_d() is a read-only device-pointer handle for
+      // the SpMV / AMGX / cuSPARSE-ILU / CPR consumers, and the non-const
+      // values_device() would flip the dual_array device-modified flag on those
+      // reads -- tripping the lost-update assert on the next host assemble +
+      // sync_to_device (Debug/valgrind). Genuine device writers hold the
+      // concrete type and call the non-const values_device() explicitly.
+      mat_float *get_values_d() override
+      {
+        return const_cast<mat_float *>(static_cast<const block_csr_matrix *>(this)->values_device());
+      }
       index_t *get_rows_ptr_d() override { return const_cast<index_t *>(row_ptr_device()); }
       index_t *get_cols_ind_d() override { return const_cast<index_t *>(col_ind_device()); }
       index_t *get_diag_ind_d() override { return const_cast<index_t *>(diag_ind_device()); }

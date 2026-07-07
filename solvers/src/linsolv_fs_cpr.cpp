@@ -317,7 +317,7 @@ namespace opendarts
         (void) max_iters;
         (void) tolerance;
         p_system_preconditioner_->init(P_scalar_.get(),
-            static_cast<index_t>(1),
+            static_cast<index_t>(p_amg_max_iters_),
             static_cast<mat_float>(0.0));
       }
       else
@@ -403,7 +403,7 @@ namespace opendarts
             sv[sdiag[i]] = static_cast<mat_float>(1.0);
         }
         p_system_preconditioner_->init(P_scalar_ne_.get(),
-            static_cast<index_t>(1),
+            static_cast<index_t>(p_amg_max_iters_),
             static_cast<mat_float>(0.0));
       }
 
@@ -427,10 +427,10 @@ namespace opendarts
       U_->is_square = 1;
       init_rows_cols_to_unit_matrix(A, UU_, *U_);
       u_rhs_mults_.assign(static_cast<std::size_t>(u_scalar_rows), 0.0);
-      // Mech preconditioner: 1 V-cycle, tolerance irrelevant (preconditioner
-      // mode), matches the proprietary call at line 274.
+      // Mech preconditioner: u_amg_max_iters_ V-cycles (default 1), tolerance
+      // irrelevant (preconditioner mode), matches the proprietary call at line 274.
       u_system_preconditioner_->init(U_.get(),
-          static_cast<index_t>(1),
+          static_cast<index_t>(u_amg_max_iters_),
           static_cast<mat_float>(0.0));
       if (this->timer_setup && u_system_preconditioner_)
       {

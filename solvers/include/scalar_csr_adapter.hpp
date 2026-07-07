@@ -21,11 +21,12 @@
 // scalar_csr_adapter -- the backend adapter that presents a block_csr_matrix
 // as scalar (point) CSR (see SOLVER_REFACTORING_PLAN.md section 12.6).
 //
-// The block-native backends (bos, cuSPARSE, AMGX, PETSc BAIJ) consume a
-// block_csr_matrix directly -- no adapter object is needed. The scalar-CSR
-// backends (HYPRE, Pardiso) cannot, and this adapter bridges them: it owns
-// the expanded scalar values and exposes the (row_ptr, col_ind, values)
-// triple those libraries ingest.
+// The block-native backends (bos, cuSPARSE, AMGX) consume a block_csr_matrix
+// directly -- no adapter object is needed. The scalar-CSR backends (HYPRE,
+// Pardiso, and PETSc -- which builds a scalar AIJ, not a block BAIJ, so that
+// PCFIELDSPLIT can split within a cell block) cannot, and this adapter bridges
+// them: it owns the expanded scalar values and exposes the (row_ptr, col_ind,
+// values) triple those libraries ingest.
 //
 // The expanded *structure* is a pure function of the block sparsity pattern,
 // so it is computed once and cached on the sparsity_pattern (csr_expansion).

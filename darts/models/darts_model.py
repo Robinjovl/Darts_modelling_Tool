@@ -1996,15 +1996,24 @@ class DartsModel:
         Centralised here so the Newton loop -- and the live-plotting loop --
         carry a single call instead of duplicating the branch.
 
-        Returns the linear-solver return code: 0 on success (and always for the
-        Python-resident path, which raises on failure), or the C++ engine's
-        non-zero code so the Newton loop can abort a failed solve.
+        Returns the linear-solver return code: 0 on success, nonzero on a hard
+        linear-solver failure so the Newton loop can cut the timestep. For the
+        Python-resident path the solver's status is also mirrored into the
+        engine's ``linear_solver_error_last_dt`` so ``post_newtonloop`` and the
+        adaptive-solver fallback see the failure exactly as they do for the C++
+        path.
         """
         python_solver = getattr(self, "_python_solver", None)
         if python_solver is not None:
             # Python-resident solver (PETSc / Pardiso); stateful, it performs
-            # its one-time setup on the first call.
-            python_solver.solve_system(self.physics.engine)
-            return 0
+            # its one-time setup on the first call. A nonzero status means a
+            # hard failure (non-finite solution); mirror it into the engine
+            # flag consumed downstream, matching the C++ solve path.
+            rc = python_solver.solve_system(self.physics.engine) or 0
+            try:
+                self.physics.engine.linear_solver_error_last_dt = int(rc)
+            except AttributeError:
+                pass
+            return rc
         # C++ linear solver held by the engine
         return self.physics.engine.solve_linear_equation()
