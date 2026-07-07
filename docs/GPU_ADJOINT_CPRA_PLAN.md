@@ -94,8 +94,67 @@ correctly. Removing the redundant first assembly would require engine-specific d
 shared CPU/GPU driver; the wasted work is one cheap kernel launch, negligible next to the adjoint
 solve, so it is left as-is to avoid risking the CPU path.
 
-- Phase 1 (device assembly of dg_dx_n / dg_dT) remains future work; Phase 0's host assembly
-  is the validated baseline it will be compared against.
+### Phase 1 (2026-07-07) — device adjoint assembly IMPLEMENTED
+
+The per-cell/per-connection adjoint assembly was ported to CUDA and made Python-selectable:
+- `engine_super_adjoint.hpp` was split into `super_engine_adjoint_assembly_host_loops` (the
+  expensive A+B loops filling the block `dg_dx_n_temp` diagonal blocks + the scalar
+  `dg_dT_general` values) and `super_engine_adjoint_finalize` (well-head handling + the
+  `to_nb_1`/`build_transpose` scalar expansions). `super_engine_adjoint_assembly` runs both
+  (unchanged host path for the CPU engine and the GPU host path).
+- New `adjoint_gradient_assembly_kernel` (engine_super_gpu.tpp, thread per block row) reproduces
+  `super_engine_adjoint_assembly_host_loops` term-by-term: the diagonal `dg/dx^n` (acc +
+  kinetics), the convective `dg/dT` with sign-based upwinding, the diffusion `dg/dT` (mass vs
+  energy, GRAD read as `c*NP+p` **exactly as the host adjoint**, NOT the forward kernel's
+  `p*NE+c`), the rock-conduction `dg/dT`, the `count = N_VARS*(rows[i]-i)` /
+  `c*N_element*+temp_num` write layout, and the `-=` accumulation order. No atomics (each thread
+  owns a disjoint output region). The caller `cudaMemset`s both device buffers to 0 first (the
+  kernel only writes diagonal `dg/dx^n` blocks and accumulates `dg/dT`).
+- `engine_super_gpu::adjoint_gradient_assembly` branches on `engine.adjoint_assembly_on_gpu`
+  (default true, bound to Python): device path = memset + kernel + copy the value arrays back to
+  the host `csr_matrix` + shared `finalize`; host path = the reference loop. Buffers
+  (`dg_dx_n_temp_values_d`, `dg_dT_general_values_d`, `conn_index_to_one_way_d`) are allocated /
+  uploaded once in `init` under `opt_history_matching`.
+
+**Validation** (Adjoint_super_engine, cpra-gpu, device vs host on the identical history):
+
+| grid | cells | assembly device | assembly host | speedup | device-vs-host grad (rel) |
+|---|---|---|---|---|---|
+| 5x5x2 | 50 | 0.68 ms | 0.20 ms | 0.29x (overhead-bound) | 4.2e-14 |
+| 40x40x10 | 16 000 | 2.9 ms | 80 ms | **28x** | 9.9e-10 |
+| 80x80x20 | 128 000 | 20.6 ms | 732 ms | **35.6x** | 1.0e-9 |
+
+The device assembly is a faithful reproduction of the host reference (gradient match 4e-14 at the
+shipped 50-cell model, ~1e-9 at 128k cells -- the growth is FMA accumulation over more terms,
+well within adjoint tolerance and comparable to the forward GPU-vs-CPU spread). It is only slower
+than the host at trivial sizes (kernel-launch + copy-back overhead); by 16k cells it is ~28x
+faster and the host assembly (which grows linearly, 0.73 s/gradient at 128k) is a real
+optimization-loop cost the device path removes -- the whole backward pass drops from ~7.0 s to
+~5.1 s per gradient at 128k cells (the remainder is the on-device adjoint solve + the host OBL
+re-evaluation, the latter being the next target per Phase 3).
+
+Phase 0's host assembly remains the selectable reference (`adjoint_assembly_on_gpu = False`).
+
+**Adversarial review of the port (2026-07-07).** A multi-agent term-by-term review confirmed the
+non-thermal port is exact and surfaced:
+- **Device buffer leak (fixed):** `~engine_super_gpu` freed only `mesh_grav_coef_d`; the three new
+  adjoint buffers (and the sibling mesh `_d` arrays) leaked on engine destruction. The destructor
+  now frees all of them (the adjoint buffers are nullptr-initialised, so freeing is a safe no-op
+  when `opt_history_matching` is off).
+- **THERMAL adjoint is incomplete (pre-existing, NOT introduced by the port; documented).** For
+  `THERMAL=true` the energy-equation rows of both `dg/dx^n` and `dg/dT` omit terms the forward
+  Jacobian carries: the rock- and potential-energy accumulation derivatives on the `dg/dx^n`
+  diagonal, and the potential-energy convective flux + the fickian-enthalpy advection on `dg/dT`.
+  These omissions live in the **host reference** (`super_engine_adjoint_assembly_host_loops`) and
+  the device kernel reproduces them *identically* -- i.e. the port is faithful (device == host);
+  the gap is a property of the host adjoint, not the CUDA port. Separately, the reused forward
+  `assemble_jacobian_array_kernel` has a pre-existing store-vs-`atomicAdd` race on the energy row
+  (the `c==NC` thread's direct store can clobber the `c<NC` fickian-enthalpy `atomicAdd`s), which
+  corrupts the thermal forward Jacobian (and hence the thermal adjoint that consumes it). Fixing
+  the thermal adjoint requires completing BOTH the host reference and this kernel together (to keep
+  device == host) plus resolving the forward-kernel race -- tracked as follow-up, out of scope for
+  "port the existing host assembly to CUDA". The non-thermal path (the validated + benchmarked
+  configuration) is unaffected.
 
 ## 1. How the CPU adjoint works today (what must be reproduced)
 

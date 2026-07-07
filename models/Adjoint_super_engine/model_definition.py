@@ -229,9 +229,12 @@ class Model(CICDModel, OptModuleSettings):
         # ny = 10
         # nz = 2
 
-        nx = 5
-        ny = 5
-        nz = 2
+        # Default 5x5x2; overridable via env for benchmarking the device vs host
+        # adjoint assembly at scale (perm/poro are scalars, broadcast to the grid).
+        import os as _os
+        nx = int(_os.environ.get("ADJ_NX", 5))
+        ny = int(_os.environ.get("ADJ_NY", 5))
+        nz = int(_os.environ.get("ADJ_NZ", 2))
 
         # reservoir geometry： for realistic case, one just needs to load the data and input it
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=30, dy=30, dz=12,

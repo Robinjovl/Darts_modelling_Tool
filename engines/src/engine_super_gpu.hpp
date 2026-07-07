@@ -71,7 +71,20 @@ public:
   // for some reason destructor is not picked up by recursive instantiator when defined in cu file, so put it here
   ~engine_super_gpu()
   {
+    // Device arrays allocated in engine_super_gpu::init (always) ...
+    free_device_data(RV_d);
+    free_device_data(mesh_tranD_d);
+    free_device_data(mesh_hcap_d);
+    free_device_data(mesh_rcond_d);
+    free_device_data(mesh_poro_d);
+    free_device_data(mesh_kin_factor_d);
     free_device_data(mesh_grav_coef_d);
+    free_device_data(mesh_cell_spe_d);
+    // ... and the adjoint-assembly buffers (only under opt_history_matching;
+    // nullptr-initialised, so freeing when unused is a safe no-op).
+    free_device_data(dg_dx_n_temp_values_d);
+    free_device_data(dg_dT_general_values_d);
+    free_device_data(conn_index_to_one_way_d);
   }
 
   uint8_t get_n_vars() const override { return N_VARS; };
@@ -115,6 +128,12 @@ public:
   value_t *mesh_kin_factor_d; // [n_blocks] kin factor for each block
   value_t *mesh_grav_coef_d;  // [n_conns] porosity for each block
   value_t *mesh_cell_spe_d;   // [n_blocks] specific potential energy for each block
+
+  // Device-side adjoint assembly buffers (allocated under opt_history_matching,
+  // used by adjoint_gradient_assembly_kernel; see engine_super_gpu.tpp).
+  value_t *dg_dx_n_temp_values_d = nullptr; // [(n_conns+n_blocks)*N_VARS^2] block values of dg/dx^n
+  value_t *dg_dT_general_values_d = nullptr; // [n_conns*N_VARS] scalar values of dg/dT
+  index_t *conn_index_to_one_way_d = nullptr; // [n_conns] connection -> one-way (interface) index
 };
 
 #include "engine_super_gpu.tpp"

@@ -579,6 +579,12 @@ public:
 	virtual int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) = 0;
 
 	bool opt_history_matching = false;
+	/// Selects the adjoint-gradient assembly implementation on the GPU super
+	/// engine: true (default) = device kernel (adjoint_gradient_assembly_kernel);
+	/// false = the host reference loop (super_engine_adjoint_assembly). The CPU
+	/// engine ignores this and always assembles on the host. Exposed to Python
+	/// for testing/benchmarking the two implementations against each other.
+	bool adjoint_assembly_on_gpu = true;
 	bool optimize_component_rate = false;
 	bool optimize_phase_rate = false;
 

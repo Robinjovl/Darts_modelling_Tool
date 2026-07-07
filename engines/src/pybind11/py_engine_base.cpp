@@ -153,6 +153,7 @@ void pybind_engine_base (py::module &m)
 	   .def_readwrite("cov_mat_inv", &engine_base::cov_mat_inv) \
 	   .def_readwrite("phase_relative_density", &engine_base::phase_relative_density) \
 	   .def_readwrite("opt_history_matching", &engine_base::opt_history_matching) \
+	   .def_readwrite("adjoint_assembly_on_gpu", &engine_base::adjoint_assembly_on_gpu) \
 	   .def_readwrite("optimize_component_rate", &engine_base::optimize_component_rate) \
 	   .def_readwrite("objfun_prod_phase_rate", &engine_base::objfun_prod_phase_rate) \
 	   .def_readwrite("objfun_inj_phase_rate", &engine_base::objfun_inj_phase_rate) \
