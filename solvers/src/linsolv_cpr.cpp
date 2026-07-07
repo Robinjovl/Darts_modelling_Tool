@@ -36,6 +36,7 @@
 #include "_hypre_utilities.h"
 
 #include "linsolv_cpr.hpp"
+#include "solver_configs.hpp"
 
 extern "C" {
 HYPRE_Int HYPRE_Initialize(void);
@@ -710,12 +711,120 @@ namespace opendarts
     }
 
     template <uint8_t N_BLOCK_SIZE>
+    int linsolv_cpr<N_BLOCK_SIZE>::reconfigure(const solver_config &config)
+    {
+      const auto *cfg = dynamic_cast<const cpr_solver_config *>(&config);
+      if (cfg == nullptr)
+        return 1;
+
+      // Structural on a live solver: the HYPRE scalar-ILU chain and the
+      // block-ILU0 factor state are disjoint; swapping the stage identity
+      // needs a fresh solver (still no Jacobian impact -- the caller rebuilds
+      // and engine_base::set_linear_solver re-inits on the existing matrix).
+      if (!first_setup_ && cfg->stage2_type != stage2_type_)
+        return 1;
+
+      // Detect warm changes BEFORE overwriting the stored options.
+      const bool amg_profile_changed =
+          cfg->amg_coarsen_type != amg_coarsen_type_
+          || cfg->amg_interp_type != amg_interp_type_
+          || cfg->amg_relax_type != amg_relax_type_
+          || cfg->amg_relax_order != amg_relax_order_
+          || cfg->amg_num_sweeps != amg_num_sweeps_
+          || cfg->amg_strong_threshold != amg_strong_threshold_
+          || cfg->amg_agg_num_levels != amg_agg_num_levels_
+          || cfg->amg_agg_interp_type != amg_agg_interp_type_
+          || cfg->amg_agg_pmax_elmts != amg_agg_pmax_elmts_
+          || cfg->amg_pmax_elmts != amg_pmax_elmts_
+          || cfg->amg_trunc_factor != amg_trunc_factor_
+          || cfg->amg_max_levels != amg_max_levels_
+          || cfg->amg_cycle_type != amg_cycle_type_
+          || cfg->amg_max_coarse_size != amg_max_coarse_size_
+          || cfg->amg_coarse_relax_type != amg_coarse_relax_type_
+          || cfg->amg_relax_wt != amg_relax_wt_;
+      const bool ilu_fill_changed = cfg->ilu_fill_level != ilu_fill_level_;
+      const bool amg_budget_changed = cfg->amg_max_iters != amg_max_iters_;
+      const bool weights_changed = cfg->weight_scheme != weight_scheme_;
+
+      // Store everything (hot fields become effective at the next
+      // setup()/solve() through the stored members).
+      amg_max_iters_ = cfg->amg_max_iters;
+      ilu_fill_level_ = cfg->ilu_fill_level;
+      weight_scheme_ = cfg->weight_scheme;
+      stage2_type_ = cfg->stage2_type;
+      eager_adjoint_ = cfg->eager_adjoint;
+      set_pressure_amg_options(cfg->amg_coarsen_type, cfg->amg_interp_type,
+          cfg->amg_relax_type, cfg->amg_relax_order, cfg->amg_num_sweeps,
+          cfg->amg_strong_threshold, cfg->amg_agg_num_levels,
+          cfg->amg_agg_interp_type, cfg->amg_agg_pmax_elmts,
+          cfg->amg_pmax_elmts, cfg->amg_trunc_factor, cfg->amg_max_levels,
+          cfg->amg_cycle_type, cfg->amg_max_coarse_size,
+          cfg->amg_coarse_relax_type, cfg->amg_relax_wt);
+      set_reuse_amg_hierarchy(cfg->reuse_amg_hierarchy);
+      set_adaptive_amg_rebuild(cfg->adaptive_amg_rebuild,
+          cfg->adaptive_iter_threshold, cfg->adaptive_consecutive_bad);
+
+      if (first_setup_)
+        return 0; // not built yet -- everything applies at the first setup
+
+      // Warm path on a live solver: re-apply the options to the existing
+      // HYPRE handles (BoomerAMG reads them at Setup time) and force a
+      // hierarchy rebuild on the next setup(). The bound matrices, the
+      // scalar expansion and the workspace are untouched. A weights change
+      // reshapes A_p's VALUES only (same sparsity) -- the next setup()
+      // recomputes them anyway, but the AMG hierarchy should be rebuilt to
+      // match, hence the same force flag.
+      if (amg_profile_changed)
+      {
+        apply_pressure_amg_options(amg_, "");
+        if (amg_T_ != nullptr)
+          apply_pressure_amg_options(amg_T_, "(T)");
+        force_amg_rebuild_ = true;
+      }
+      else if (amg_budget_changed)
+      {
+        // Hot: the V-cycle budget is read per solve.
+        check_hypre(HYPRE_BoomerAMGSetMaxIter(amg_, amg_max_iters_),
+            "BoomerAMGSetMaxIter(reconfigure)");
+        if (amg_T_ != nullptr)
+          check_hypre(HYPRE_BoomerAMGSetMaxIter(amg_T_, amg_max_iters_),
+              "BoomerAMGSetMaxIter(T,reconfigure)");
+      }
+      if (weights_changed)
+        force_amg_rebuild_ = true;
+      if (ilu_fill_changed)
+      {
+        if (stage2_type_ == 0 && ilu_ != nullptr)
+        {
+          check_hypre(HYPRE_ILUSetLevelOfFill(ilu_, ilu_fill_level_),
+              "ILUSetLevelOfFill(reconfigure)");
+          force_amg_rebuild_ = true;
+        }
+        if (ilu_T_ != nullptr)
+        {
+          check_hypre(HYPRE_ILUSetLevelOfFill(ilu_T_, ilu_fill_level_),
+              "ILUSetLevelOfFill(T,reconfigure)");
+          force_amg_rebuild_ = true;
+        }
+      }
+      return 0;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
     void linsolv_cpr<N_BLOCK_SIZE>::create_pressure_amg(HYPRE_Solver &amg,
         const char *tag)
     {
       const std::string t(tag);
       check_hypre(HYPRE_BoomerAMGCreate(&amg),
           ("BoomerAMGCreate" + t).c_str());
+      apply_pressure_amg_options(amg, tag);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_cpr<N_BLOCK_SIZE>::apply_pressure_amg_options(HYPRE_Solver &amg,
+        const char *tag)
+    {
+      const std::string t(tag);
       check_hypre(HYPRE_BoomerAMGSetPrintLevel(amg, 0),
           ("BoomerAMGSetPrintLevel" + t).c_str());
       check_hypre(HYPRE_BoomerAMGSetLogging(amg, 0),

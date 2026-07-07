@@ -286,6 +286,18 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	ls->init(Jacobian, param.max_i_linear, param.tolerance_linear);
   }
 
+  // An externally injected solver (a LinearSolverSpec built through the
+  // darts.solvers registry and set via set_linear_solver before engine.init)
+  // must be initialised against the Jacobian too. Previously it was stored
+  // but never initialised nor selected here, so the open-source spec path
+  // silently ran the ls_params placeholder instead of the requested solver.
+  if (linear_solver_external)
+  {
+	linear_solver_external->init_timer_nodes(&timer->node["linear solver setup"],
+	                                         &timer->node["linear solver solve"]);
+	linear_solver_external->init(Jacobian, params->max_i_linear, params->tolerance_linear);
+  }
+
   RHS.resize(n_vars * mesh->n_blocks);
   dX.resize(n_vars * mesh->n_blocks);
 
@@ -1650,7 +1662,15 @@ int engine_pm_cpu::solve_linear_equation()
 	char buffer[1024];
 	linear_solver_error_last_dt = 0;
 
-	linear_solver = linear_solvers[active_linear_solver_id];
+	// Externally injected solver (spec path) takes precedence; the
+	// ls_params-built bank remains reachable through the legacy
+	// active_linear_solver_id switch (> 0), used by the proprietary
+	// dynamic-mode flow. On the spec path, mid-run changes go through
+	// DartsModel.update_solver (live reconfigure / re-injection).
+	if (linear_solver_external && active_linear_solver_id == 0)
+	  linear_solver = linear_solver_external.get();
+	else
+	  linear_solver = linear_solvers[active_linear_solver_id];
 
 	/*if (1) //changed this to write jacobian to file!
 	{

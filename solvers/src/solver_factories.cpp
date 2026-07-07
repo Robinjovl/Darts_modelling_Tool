@@ -80,141 +80,11 @@ namespace opendarts
       template <uint8_t N_BLOCK_SIZE>
       solver_handle build_mgr(const opendarts::linear_solvers::mgr_solver_config &config)
       {
+        // reconfigure() is the single source of config application (shared
+        // with live mid-run reconfiguration).
         auto solver = std::make_shared<opendarts::linear_solvers::linsolv_mgr<N_BLOCK_SIZE>>();
-
-        // Scalar parameters: the config defaults match linsolv_mgr's own
-        // defaults, so applying them unconditionally is safe.
-        solver->set_max_iterations(config.max_iterations);
-        solver->set_tolerance(config.tolerance);
-        solver->set_kdim(config.kdim);
-        solver->set_use_mgr(config.use_mgr);
-        solver->set_log_level(config.log_level);
-        solver->set_use_physics_scaling(config.use_physics_scaling);
-        solver->set_use_flex_gmres(config.use_flex_gmres);
-
-        // Composite-preconditioner / local-solver knobs. Applied only when set,
-        // in the same order the composite models build them by hand, so that a
-        // fully-populated mgr_solver_config reproduces the raw set_*-call build
-        // bit-for-bit (composite_mode / local_solver before use_bcsr_cpr, which
-        // auto-promotes the local solver to blockILU0 when none).
-        if (config.scaling_type.has_value())
-          solver->set_mgr_scaling_type(config.scaling_type.value());
-        if (config.composite_mode.has_value())
-          solver->set_mgr_composite_mode(config.composite_mode.value());
-        if (config.local_solver.has_value())
-          solver->set_mgr_local_solver(config.local_solver.value());
-        if (config.bilu0.has_value())
-        {
-          const opendarts::linear_solvers::mgr_bilu0_config &bilu0 = config.bilu0.value();
-          solver->set_mgr_bilu0_pivot_shift(bilu0.pivot_shift);
-          solver->set_mgr_bilu0_fallback_options(bilu0.fallback_strategy,
-                                                 bilu0.fallback_diagonal_tolerance,
-                                                 bilu0.fallback_shifted_max,
-                                                 bilu0.fallback_shifted_growth);
-        }
-        if (config.local_correction.has_value())
-        {
-          const opendarts::linear_solvers::mgr_local_correction_config &lc =
-              config.local_correction.value();
-          solver->set_mgr_local_correction_options(lc.alpha, lc.adaptive_fallback_threshold,
-                                                    lc.adaptive_alpha,
-                                                    lc.adaptive_fallback_threshold_high,
-                                                    lc.adaptive_alpha_high);
-          solver->set_mgr_local_correction_quality_options(lc.quality_enabled, lc.quality_min_alpha);
-        }
-        if (config.pressure_amg.has_value())
-        {
-          const opendarts::linear_solvers::mgr_pressure_amg_config &amg = config.pressure_amg.value();
-          solver->set_mgr_pressure_amg_options(amg.coarsen_type, amg.interp_type, amg.relax_type,
-                                               amg.agg_num_levels, amg.agg_interp_type,
-                                               amg.agg_pmax_elmts, amg.relax_order);
-          solver->set_mgr_pressure_amg_advanced_options(amg.strong_threshold, amg.trunc_factor,
-                                                        amg.pmax_elmts, amg.max_levels);
-          solver->set_mgr_pressure_amg_solve_options(amg.solve_max_iter, amg.solve_tolerance);
-        }
-        if (config.bcsr_cpr.has_value())
-        {
-          const opendarts::linear_solvers::mgr_bcsr_cpr_config &cpr = config.bcsr_cpr.value();
-          solver->set_use_bcsr_cpr(true);
-          solver->set_bcsr_cpr_options(cpr.reduction_type, cpr.pressure_variable, cpr.weight_max);
-          solver->set_bcsr_cpr_reuse_options(cpr.reuse_amg_hierarchy, cpr.amg_rebuild_interval);
-          solver->set_bcsr_cpr_adaptive_rebuild_options(cpr.adaptive_amg_rebuild,
-                                                        cpr.adaptive_li_threshold,
-                                                        cpr.adaptive_li_growth_factor,
-                                                        cpr.adaptive_min_reuse_setups,
-                                                        cpr.adaptive_max_reuse_setups);
-          solver->set_bcsr_cpr_adaptive_quality_options(cpr.adaptive_pressure_overshoot_threshold,
-                                                        cpr.adaptive_final_proxy_threshold,
-                                                        cpr.adaptive_fallback_threshold);
-          solver->set_bcsr_cpr_diagnostics_options(cpr.diagnostics, cpr.diagnostic_apply_interval,
-                                                   cpr.diagnostic_matrix_interval);
-          solver->set_bcsr_cpr_pressure_correction_options(cpr.pressure_correction_alpha,
-                                                           cpr.pressure_correction_guard_threshold,
-                                                           cpr.pressure_correction_guard_min_alpha);
-          // transpose_apply / forward_source: applied only when explicitly set,
-          // preserving linsolv_mgr's auto-derivation (the composite models leave
-          // them unset).
-          if (cpr.transpose_apply.has_value())
-            solver->set_bcsr_cpr_transpose_apply(cpr.transpose_apply.value());
-          if (cpr.forward_source.has_value())
-            solver->set_bcsr_cpr_forward_source(cpr.forward_source.value());
-        }
-        else if (config.use_bcsr_cpr.has_value())
-          solver->set_use_bcsr_cpr(config.use_bcsr_cpr.value());
-
-        solver->set_n_reservoir_blocks(config.n_reservoir_blocks);
-        solver->set_mgr_enable_well_level(config.enable_well_level);
-        solver->set_mgr_enable_composition_level(config.enable_composition_level);
-
-        if (!config.reservoir_variable_roles.empty())
-          solver->set_mgr_reservoir_variable_roles(config.reservoir_variable_roles);
-        if (!config.well_variable_roles.empty())
-          solver->set_mgr_well_variable_roles(config.well_variable_roles);
-        if (config.well_strategy.has_value())
-          solver->set_mgr_well_strategy(config.well_strategy.value());
-
-        // Level overrides: applied only when set, so linsolv_mgr's built-in
-        // level defaults are preserved otherwise.
-        if (config.well_level.has_value())
-        {
-          const opendarts::linear_solvers::mgr_level_config &level = config.well_level.value();
-          solver->set_mgr_well_level_options(level.frelax_type, level.frelax_iters,
-              level.interp_type, level.restrict_type, level.coarse_method,
-              level.smoother_type, level.smoother_iters);
-        }
-        if (config.composition_level.has_value())
-        {
-          const opendarts::linear_solvers::mgr_level_config &level =
-              config.composition_level.value();
-          solver->set_mgr_composition_level_options(level.frelax_type, level.frelax_iters,
-              level.interp_type, level.restrict_type, level.coarse_method,
-              level.smoother_type, level.smoother_iters);
-        }
-        if (config.pressure_level.has_value())
-        {
-          const opendarts::linear_solvers::mgr_level_config &level =
-              config.pressure_level.value();
-          solver->set_mgr_pressure_level_options(level.frelax_type, level.frelax_iters,
-              level.interp_type, level.restrict_type, level.coarse_method,
-              level.smoother_type, level.smoother_iters);
-        }
-
-        if (!config.custom_levels.empty())
-        {
-          solver->set_mgr_num_custom_levels(static_cast<int>(config.custom_levels.size()));
-          for (std::size_t level_index = 0; level_index < config.custom_levels.size();
-               ++level_index)
-          {
-            const opendarts::linear_solvers::mgr_level_config &level =
-                config.custom_levels[level_index];
-            solver->set_mgr_custom_level_options(static_cast<int>(level_index),
-                level.keep_labels, level.frelax_type, level.frelax_iters, level.interp_type,
-                level.restrict_type, level.coarse_method, level.smoother_type,
-                level.smoother_iters);
-          }
-        }
-
-        return solver;  // shared_ptr<linsolv_mgr<N>> -> shared_ptr<linsolv_iface>
+        solver->reconfigure(config);
+        return solver;
       }
 
       // Runtime block-size dispatch for MGR.
@@ -301,11 +171,10 @@ namespace opendarts
       template <uint8_t N_BLOCK_SIZE>
       solver_handle build_gmres(const opendarts::linear_solvers::gmres_solver_config &config)
       {
+        // reconfigure() is the single source of config application (shared
+        // with live mid-run reconfiguration).
         auto solver = std::make_shared<opendarts::linear_solvers::linsolv_gmres<N_BLOCK_SIZE>>();
-        solver->set_restart(config.restart);
-        // tolerance / max_iterations are honoured through init(); the engine
-        // calls linear_solver->init(matrix, max_iters, tol) which forwards
-        // them. We store nothing else here.
+        solver->reconfigure(config);
         return solver;
       }
 
@@ -348,24 +217,10 @@ namespace opendarts
       template <uint8_t N_BLOCK_SIZE>
       solver_handle build_cpr(const opendarts::linear_solvers::cpr_solver_config &config)
       {
+        // reconfigure() is the single source of config application (shared
+        // with live mid-run reconfiguration).
         auto solver = std::make_shared<opendarts::linear_solvers::linsolv_cpr<N_BLOCK_SIZE>>();
-        solver->set_amg_max_iters(config.amg_max_iters);
-        solver->set_ilu_fill_level(config.ilu_fill_level);
-        solver->set_pressure_amg_options(config.amg_coarsen_type,
-            config.amg_interp_type, config.amg_relax_type,
-            config.amg_relax_order, config.amg_num_sweeps,
-            config.amg_strong_threshold, config.amg_agg_num_levels,
-            config.amg_agg_interp_type, config.amg_agg_pmax_elmts,
-            config.amg_pmax_elmts, config.amg_trunc_factor,
-            config.amg_max_levels, config.amg_cycle_type,
-            config.amg_max_coarse_size, config.amg_coarse_relax_type,
-            config.amg_relax_wt);
-        solver->set_weight_scheme(config.weight_scheme);
-        solver->set_stage2_type(config.stage2_type);
-        solver->set_eager_adjoint(config.eager_adjoint);
-        solver->set_reuse_amg_hierarchy(config.reuse_amg_hierarchy);
-        solver->set_adaptive_amg_rebuild(config.adaptive_amg_rebuild,
-            config.adaptive_iter_threshold, config.adaptive_consecutive_bad);
+        solver->reconfigure(config);
         return solver;
       }
 

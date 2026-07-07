@@ -27,6 +27,18 @@ class SolverSwitchContext:
     :ivar newton_iterations: Newton iterations in the last timestep.
     :ivar consecutive_failures: running count of consecutive non-converged
         timesteps.
+    :ivar dt: size of the just-attempted timestep (days).
+    :ivar simulation_time: engine time after the attempt (days).
+    :ivar ls_setup_time: linear-solver SETUP seconds spent in this attempt
+        (delta of the engine timer).
+    :ivar ls_solve_time: linear-solver SOLVE seconds spent in this attempt.
+    :ivar phase: free-form model phase tag (``model.solver_phase``) for
+        phase-driven policies (e.g. 'static' / 'dynamic'); ``None`` if unset.
+
+    Together with :class:`SolverAction` this is a ready contextual-bandit
+    interface: the context is the observation, the action is a candidate
+    switch and/or a parameter update, and (ls_setup_time + ls_solve_time)
+    per converged dt is the natural reward signal.
     """
 
     current_index: int
@@ -35,6 +47,28 @@ class SolverSwitchContext:
     linear_iterations: int
     newton_iterations: int
     consecutive_failures: int
+    dt: float = 0.0
+    simulation_time: float = 0.0
+    ls_setup_time: float = 0.0
+    ls_solve_time: float = 0.0
+    phase: str | None = None
+
+
+@dataclass
+class SolverAction:
+    """What an adaptive policy wants done before the next timestep attempt.
+
+    :ivar index: candidate to switch to (``None`` = stay on the current one).
+    :ivar updates: field updates applied to the (possibly newly selected)
+        solver through :meth:`DartsModel.update_solver` -- hot/warm fields
+        reconfigure the live solver in place, with no Jacobian impact.
+
+    A policy may also simply return an ``int`` (the candidate index) --
+    the legacy contract.
+    """
+
+    index: int | None = None
+    updates: dict | None = None
 
 
 def fallback_on_failure(context: SolverSwitchContext) -> int:
@@ -54,12 +88,21 @@ class AdaptiveSolverSpec(LinearSolverSpec):
 
     :param candidates: ordered list of ``LinearSolverSpec``; index 0 is used
         first. Each is built on demand for the model's block size.
-    :param policy: ``callable(SolverSwitchContext) -> int`` returning the index
-        of the candidate to use next. Defaults to :func:`fallback_on_failure`.
+    :param policy: ``callable(SolverSwitchContext) -> int | SolverAction``
+        evaluated after every timestep. Defaults to
+        :func:`fallback_on_failure`.
+    :param on_timestep_failed: optional
+        ``callable(SolverSwitchContext) -> int | SolverAction | None``
+        evaluated when a timestep did NOT converge, BEFORE the engine retries
+        it with a cut dt -- so the retry itself runs on the fallback solver /
+        tightened parameters. Returning ``None`` defers to ``policy``.
     """
 
     candidates: list[LinearSolverSpec] = field(default_factory=list)
-    policy: Callable[[SolverSwitchContext], int] | None = None
+    policy: Callable[[SolverSwitchContext], int | SolverAction] | None = None
+    on_timestep_failed: (
+        Callable[[SolverSwitchContext], int | SolverAction | None] | None
+    ) = None
 
     def __post_init__(self):
         if not self.candidates:

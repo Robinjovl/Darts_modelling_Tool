@@ -63,6 +63,13 @@ namespace opendarts
       // Configuration methods for MGR solver
       void set_max_iterations(opendarts::config::index_t max_iters);
       void set_tolerance(opendarts::config::mat_float tolerance);
+
+      /** Live reconfiguration (see linear_solver::reconfigure): applies the
+       *  full mgr_solver_config through the option setters. The setters mark
+       *  first_solve, so a live solver rebuilds its strategy + hierarchy on
+       *  the next setup() against the SAME bound matrix (warm). Also the
+       *  single source of config application for the "mgr" factory. */
+      int reconfigure(const opendarts::linear_solvers::solver_config &config) override;
       void set_kdim(int kdim);
       void set_use_mgr(bool use_mgr);
       void set_log_level(int log_level);

@@ -83,7 +83,17 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
                 m.physics.engine.momentum_inertia = 2406.0
                 dt = 5.e-4 / 86400 # 500 microseconds
                 max_dt = 5.e-4 / 86400 # 500 microseconds
-                m.physics.engine.active_linear_solver_id = 1
+                m.solver_phase = 'dynamic'
+                if m.open_source_solvers_available():
+                    # Dynamic (inertial) stage: tighten the live GMRES+FS-CPR
+                    # stack in place -- the open-source equivalent of the
+                    # proprietary ls_params[1] switch (cpu_gmres_ilu0,
+                    # tol 1e-12, 500 iters). update_solver() reconfigures the
+                    # injected solver without touching the Jacobian.
+                    m.update_solver(tolerance=1.e-12, max_iterations=500)
+                else:
+                    # Proprietary build: legacy engine-side solver bank switch.
+                    m.physics.engine.active_linear_solver_id = 1
                 print("Fully dynamic mode enabled!!!")
 
             print("Cut timestep to %.5e" % dt)

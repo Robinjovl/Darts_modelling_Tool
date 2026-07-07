@@ -43,6 +43,13 @@ namespace opendarts
 
       ~linsolv_superlu();
 
+      /** SuperLU is a parameter-free direct solver: any configuration is
+       *  trivially "applied" (nothing to store, no rebuild needed). */
+      int reconfigure(const opendarts::linear_solvers::solver_config & /*config*/) override
+      {
+        return 0;
+      }
+
       // Keep the csr_matrix_base init()/setup() overloads visible: declaring
       // the csr_matrix<N>* overloads below otherwise hides them by name.
       using opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::init;

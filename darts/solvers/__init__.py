@@ -35,6 +35,7 @@ except ImportError:
 
 from .adaptive import (  # noqa: F401
     AdaptiveSolverSpec,
+    SolverAction,
     SolverSwitchContext,
     fallback_on_failure,
 )

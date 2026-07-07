@@ -105,6 +105,12 @@ namespace opendarts
       void set_restart(int m) { restart_m_ = m; }
       int get_restart() const { return restart_m_; }
 
+      /** Live reconfiguration: restart is hot (the workspace auto-grows at
+       *  the next solve); an unrecognised config type is forwarded to the
+       *  attached preconditioner, so a CPR config reconfigures the inner
+       *  stage of a GMRES+CPR stack through the outer handle. */
+      int reconfigure(const opendarts::linear_solvers::solver_config &config) override;
+
     private:
       // Shared implementation: forward (transpose=false) or adjoint (true).
       int solve_impl(opendarts::config::mat_float *B,

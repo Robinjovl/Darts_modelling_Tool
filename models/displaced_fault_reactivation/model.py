@@ -95,9 +95,12 @@ class Model(THMCModel):
         else:
             self.params.max_i_newton = 8
 
-        # Open-source FS-CPR by default (pm_discretizer / engine_pm_cpu). The spec
-        # drives _apply_solver in the open-source build; ls_params is the
-        # proprietary-build / factory path.
+        # Open-source FS-CPR by default (pm_discretizer / engine_pm_cpu). The
+        # spec-built solver is injected via set_linear_solver and now genuinely
+        # drives the open-source solve (engine_pm_cpu prefers the external
+        # solver over its ls_params bank); ls_params remains the
+        # proprietary-build / factory path. Mid-run changes (e.g. the dynamic
+        # rupture stage in main.py) go through model.update_solver().
         from darts.models.darts_model import DataTS
         from darts.solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         if not hasattr(self, 'data_ts') or self.data_ts is None:
@@ -113,6 +116,7 @@ class Model(THMCModel):
             n_wells=mesh.n_blocks - n_res_blks,
         )
         self.solver = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-8, max_iterations=200, restart=50)
+        self.solver_phase = 'static'  # main.py flips to 'dynamic' at rupture
 
         # Idempotent: ls_params is appended once even though set_solver() runs on every reset().
         if len(self.physics.engine.ls_params) == 0:

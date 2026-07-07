@@ -166,6 +166,15 @@ namespace opendarts
        *  solve_transposed() call. */
       void set_eager_adjoint(bool eager) { eager_adjoint_ = eager; }
 
+      /** Live reconfiguration (see linear_solver::reconfigure).
+       *  Hot: amg_max_iters, weight_scheme, eager_adjoint, reuse/adaptive
+       *  policy knobs. Warm: the pressure-AMG profile and ilu_fill_level --
+       *  re-applied to the existing HYPRE handles with a forced hierarchy
+       *  rebuild on the next setup() (same bound matrices). Structural
+       *  (returns 1, caller rebuilds): changing stage2_type on a live
+       *  solver. */
+      int reconfigure(const opendarts::linear_solvers::solver_config &config) override;
+
       /** Pressure-decoupling weight scheme: 0 = diagonal-block (quasi-IMPES
        *  with local f-elimination, historical behaviour), 1 = column-sum
        *  (True-IMPES, Wallis 1983 -- what the proprietary linsolv_bos_cpr
@@ -397,6 +406,11 @@ namespace opendarts
       // Create + configure a BoomerAMG solver handle for the pressure stage
       // (shared by the forward and transpose hierarchies).
       void create_pressure_amg(HYPRE_Solver &amg, const char *tag);
+      // (Re)apply the pressure-AMG options to an existing handle -- used at
+      // creation and by reconfigure() on live handles (BoomerAMG reads its
+      // parameters at Setup time, so Set* + a forced re-Setup is the
+      // supported way to retune a hierarchy in place).
+      void apply_pressure_amg_options(HYPRE_Solver &amg, const char *tag);
       // Create + configure a HYPRE_ILU handle for the full-system stage.
       void create_fullsystem_ilu(HYPRE_Solver &ilu, const char *tag);
       // Build the transpose matrices + hierarchies (first solve_transposed()

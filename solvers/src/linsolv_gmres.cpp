@@ -21,6 +21,7 @@
 
 #include "linsolv_gmres.hpp"
 #include "linsolv_cpr.hpp"
+#include "solver_configs.hpp"
 
 namespace opendarts
 {
@@ -251,6 +252,28 @@ namespace opendarts
       if (prec_)
         prec_->init(A, max_iters, tolerance);
       return 0;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_gmres<N_BLOCK_SIZE>::reconfigure(const solver_config &config)
+    {
+      if (const auto *cfg = dynamic_cast<const gmres_solver_config *>(&config))
+      {
+        // All hot: restart resizes the (lazily grown) workspace at the next
+        // solve; tolerance / max_iterations are read per solve. Note the
+        // engine's set_linear_solver()/init() overrides the latter two from
+        // params -- callers changing them mid-run should also sync params
+        // (darts_model.update_solver does).
+        restart_m_ = cfg->restart;
+        max_iters_ = cfg->max_iterations;
+        tolerance_ = cfg->tolerance;
+        return 0;
+      }
+      // Not a GMRES config: give the attached preconditioner a chance (e.g.
+      // a CPRSolverConfig aimed at the inner stage of GMRES+CPR).
+      if (prec_ != nullptr)
+        return prec_->reconfigure(config);
+      return 1;
     }
 
     template <uint8_t N_BLOCK_SIZE>

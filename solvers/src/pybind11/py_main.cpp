@@ -512,6 +512,13 @@ void bind_unified_solver_api(py::module &m)
         .def("set_prec", &linear_solver::set_prec,
              "Attach a preconditioner (kept alive by the outer solver).",
              py::arg("prec"), py::keep_alive<1, 2>())
+        .def("reconfigure", &linear_solver::reconfigure,
+             "Apply a new configuration to the live solver without rebinding "
+             "the matrix. Returns 0 when fully applied in place, > 0 when the "
+             "change is structural and the solver must be rebuilt (the caller "
+             "then builds a fresh solver and injects it via "
+             "engine.set_linear_solver -- still no Jacobian reallocation).",
+             py::arg("config"))
         .def("stats", &linear_solver::stats, "Outcome of the last solve.");
     // Legacy Python name for the same handle.
     m.attr("LinearSolverInterface") = m.attr("LinearSolver");

@@ -36,6 +36,7 @@ try:
         AdaptiveSolverSpec,
         LinearSolverSpec,
         PythonLinearSolverSpec,
+        SolverAction,
         SolverSwitchContext,
         default_linear_solver,
     )
@@ -553,13 +554,51 @@ class DartsModel:
         except Exception:
             return False
 
-    def _maybe_switch_linear_solver(self, timestep_converged: bool):
-        """Adaptive linear-solver switching, evaluated after each timestep.
+    def _linear_solver_timer_totals(self):
+        """Cumulative (setup, solve) seconds of the engine's linear-solver
+        timer nodes; (0, 0) when the tree is not available."""
+        try:
+            sim = self.timer.node["simulation"]
+            return (
+                sim.node["linear solver setup"].get_timer(),
+                sim.node["linear solver solve"].get_timer(),
+            )
+        except (AttributeError, KeyError):
+            return (0.0, 0.0)
 
-        When ``self.solver`` is an :class:`AdaptiveSolverSpec`, its policy is
-        evaluated; if the policy selects a different candidate the solver is rebuilt
-        and re-injected into the engine. A no-op for plain specs, in proprietary
-        builds, and on GPU.
+    def _build_switch_context(self, timestep_converged: bool, dt: float):
+        """Assemble the :class:`SolverSwitchContext` for the adaptive policy,
+        including per-attempt linear-solver timer deltas and the model's
+        ``solver_phase`` tag."""
+        engine = self.physics.engine
+        setup_total, solve_total = self._linear_solver_timer_totals()
+        d_setup = setup_total - getattr(self, "_ls_setup_time_prev", 0.0)
+        d_solve = solve_total - getattr(self, "_ls_solve_time_prev", 0.0)
+        self._ls_setup_time_prev = setup_total
+        self._ls_solve_time_prev = solve_total
+        return SolverSwitchContext(
+            current_index=getattr(self, "_adaptive_solver_index", 0),
+            timestep_converged=timestep_converged,
+            linear_solver_error=int(getattr(engine, "linear_solver_error_last_dt", 0)),
+            linear_iterations=int(getattr(engine, "n_linear_last_dt", 0)),
+            newton_iterations=int(getattr(engine, "n_newton_last_dt", 0)),
+            consecutive_failures=getattr(self, "_adaptive_failures", 0),
+            dt=float(dt),
+            simulation_time=float(getattr(engine, "t", 0.0)),
+            ls_setup_time=d_setup,
+            ls_solve_time=d_solve,
+            phase=getattr(self, "solver_phase", None),
+        )
+
+    def _maybe_switch_linear_solver(self, timestep_converged: bool, dt: float = 0.0):
+        """Adaptive linear-solver switching, evaluated after each timestep
+        attempt (converged or not -- a failed attempt is followed by a dt-cut
+        retry, so acting here lets the RETRY run on the fallback solver).
+
+        When ``self.solver`` is an :class:`AdaptiveSolverSpec` its policy is
+        evaluated; the policy may return a candidate index (legacy) or a
+        :class:`SolverAction` combining a switch with in-place parameter
+        updates. A no-op for plain specs, in proprietary builds, and on GPU.
         """
         if not _HAVE_SOLVER_REGISTRY:
             return
@@ -572,15 +611,24 @@ class DartsModel:
             self._adaptive_failures = getattr(self, "_adaptive_failures", 0) + 1
         else:
             self._adaptive_failures = 0
-        context = SolverSwitchContext(
-            current_index=current_index,
-            timestep_converged=timestep_converged,
-            linear_solver_error=int(getattr(engine, "linear_solver_error_last_dt", 0)),
-            linear_iterations=int(getattr(engine, "n_linear_last_dt", 0)),
-            newton_iterations=int(getattr(engine, "n_newton_last_dt", 0)),
-            consecutive_failures=self._adaptive_failures,
-        )
-        new_index = spec.choose(context)
+        context = self._build_switch_context(timestep_converged, dt)
+
+        # The failure hook fires BEFORE the dt-cut retry; None defers to the
+        # regular policy.
+        result = None
+        if not timestep_converged and spec.on_timestep_failed is not None:
+            result = spec.on_timestep_failed(context)
+        if result is None:
+            result = spec.policy(context)
+
+        if isinstance(result, SolverAction):
+            new_index = result.index if result.index is not None else current_index
+            updates = result.updates
+        else:
+            new_index = int(result)
+            updates = None
+        new_index = max(0, min(new_index, len(spec.candidates) - 1))
+
         if new_index != current_index:
             self._adaptive_solver_index = new_index
             self._linear_solver = spec.candidates[new_index].build(self._block_size())
@@ -591,6 +639,152 @@ class DartsModel:
                 f"[adaptive solver] switched to candidate {new_index}: "
                 f"{type(spec.candidates[new_index]).__name__}"
             )
+        if updates:
+            # In-place parameter updates on the (possibly just-selected)
+            # candidate -- reconfigures the live solver, no Jacobian impact.
+            self.update_solver(**updates)
+
+    def _apply_spec_field_updates(self, target, field_updates):
+        """Apply ``field_updates`` to ``target`` (a LinearSolverSpec) or, for
+        a GMRES+prec stack, to its ``prec`` spec -- with field-name
+        validation. Returns the list of spec objects actually modified."""
+        import dataclasses
+
+        top_fields = {f.name for f in dataclasses.fields(target)}
+        prec = getattr(target, "prec", None)
+        prec_fields = (
+            {f.name for f in dataclasses.fields(prec)}
+            if isinstance(prec, LinearSolverSpec)
+            else set()
+        )
+        touched = []
+        for name, value in field_updates.items():
+            if name in top_fields:
+                setattr(target, name, value)
+                if target not in touched:
+                    touched.append(target)
+            elif name in prec_fields:
+                setattr(prec, name, value)
+                if prec not in touched:
+                    touched.append(prec)
+            else:
+                known = sorted(top_fields | prec_fields)
+                raise AttributeError(
+                    f"update_solver: unknown solver field {name!r} for "
+                    f"{type(target).__name__}"
+                    + (f" / {type(prec).__name__}" if prec_fields else "")
+                    + f"; known fields: {known}"
+                )
+        return touched
+
+    def update_solver(self, spec=None, **field_updates):
+        """Change the linear solver or its parameters DURING a simulation.
+
+        Two modes (combinable):
+
+        * ``update_solver(spec=<LinearSolverSpec>)`` -- switch to a different
+          solver. The new solver is built and injected into the live engine;
+          ``engine_base::set_linear_solver`` re-inits it against the EXISTING
+          Jacobian, so **no matrix reallocation** takes place. Costs one full
+          preconditioner setup at the next Newton iteration.
+        * ``update_solver(field=value, ...)`` -- update parameters of the
+          current solver in place. Fields are resolved on the active spec
+          and, for a ``GMRESSolverSpec(prec=...)`` stack, on its ``prec``
+          spec. Hot fields (tolerances, iteration/cycle budgets, thresholds,
+          weight scheme) take effect at the next solve; warm fields (the CPR
+          pressure-AMG profile, ILU fill, the whole MGR configuration)
+          trigger an internal hierarchy rebuild on the next setup against the
+          same bound matrices. Structural changes (e.g. CPR ``stage2_type``)
+          transparently fall back to the switch path.
+
+        The spec on ``self.solver`` stays authoritative: a later ``reset()``
+        or solver rebuild reproduces the updated configuration.
+
+        :returns: ``"reconfigured"`` (applied in place) or ``"rebuilt"``
+            (fresh solver injected -- still no Jacobian reallocation).
+        """
+        if getattr(self, "platform", "cpu") == "gpu":
+            raise NotImplementedError(
+                "update_solver is not available on platform='gpu' yet: GPU "
+                "solvers are enum-selected by the engine factory and cannot "
+                "be reconfigured or re-injected mid-run."
+            )
+        if not _HAVE_SOLVER_REGISTRY:
+            raise RuntimeError(
+                "update_solver requires the open-source solver registry "
+                "(darts.solvers) -- unavailable in this build."
+            )
+
+        if spec is not None:
+            if not isinstance(spec, LinearSolverSpec):
+                raise TypeError(
+                    f"update_solver(spec=...) expects a LinearSolverSpec, "
+                    f"got {type(spec).__name__}"
+                )
+            if field_updates:
+                self._apply_spec_field_updates(spec, field_updates)
+            self.solver = spec
+            self._sync_linear_params(field_updates, spec)
+            self._apply_solver()
+            return "rebuilt"
+
+        cur = self._resolve_solver_spec()
+        if cur is None:
+            raise RuntimeError(
+                "update_solver: self.solver holds no LinearSolverSpec to "
+                "update (raw solver objects can only be replaced via "
+                "update_solver(spec=...))."
+            )
+        target = cur
+        if isinstance(cur, AdaptiveSolverSpec):
+            target = cur.candidates[getattr(self, "_adaptive_solver_index", 0)]
+
+        touched = self._apply_spec_field_updates(target, field_updates)
+        self._sync_linear_params(field_updates, target)
+
+        # Python-resident solvers (PETSc / Pardiso) are owned by the model;
+        # rebuilding them is cheap relative to their solves.
+        if isinstance(target, PythonLinearSolverSpec):
+            self._apply_solver()
+            return "rebuilt"
+
+        solver = getattr(self, "_linear_solver", None)
+        if solver is None or not touched:
+            return "reconfigured"  # not built yet -- the spec carries it all
+
+        # In-place reconfiguration through the live handle. The outer solver
+        # forwards configs it does not recognise to its preconditioner, so
+        # both the GMRES fields and the CPR fields of a GMRES+CPR stack are
+        # reachable through the single outer handle.
+        rc = 0
+        for touched_spec in touched:
+            try:
+                rc = max(rc, int(solver.reconfigure(touched_spec._make_config())))
+            except AttributeError:
+                rc = 1  # handle without reconfigure (e.g. Python-side stub)
+        if rc > 0:
+            # Structural change: rebuild + inject on the existing Jacobian.
+            self._apply_solver()
+            return "rebuilt"
+        return "reconfigured"
+
+    def _sync_linear_params(self, field_updates, spec):
+        """Keep the engine-side linear-solve knobs coherent with a spec
+        update: params.tolerance_linear / max_i_linear are what the engine
+        re-applies to any solver it (re-)inits."""
+        if "tolerance" in field_updates:
+            self.params.tolerance_linear = field_updates["tolerance"]
+            if getattr(self, "data_ts", None) is not None and hasattr(
+                self.data_ts, "linear_tol"
+            ):
+                self.data_ts.linear_tol = field_updates["tolerance"]
+        if "max_iterations" in field_updates:
+            self.params.max_i_linear = field_updates["max_iterations"]
+        # Note: a bare spec switch deliberately does NOT overwrite
+        # params.tolerance_linear / max_i_linear -- engine-resident solvers
+        # take those from the engine at (re-)init (the documented convention),
+        # and silently replacing e.g. tol_linear=1e-2 with a spec DEFAULT of
+        # 1e-5 would change every subsequent solve.
 
     def initialize_history_fields(self):
         """Seed ``engine.Xhistory`` with the per-field default value for every reservoir cell.
@@ -1059,7 +1253,7 @@ class DartsModel:
             # need to copy since Xn will be updated Xn = X
             xn = np.array(self.physics.engine.Xn, copy=True)[: nb * nc]
             converged = self.run_timestep(dt, t, verbose)
-            self._maybe_switch_linear_solver(converged)
+            self._maybe_switch_linear_solver(converged, dt=dt)
 
             if converged:
                 t += dt

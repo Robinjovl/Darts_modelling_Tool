@@ -15,6 +15,7 @@
 #include "mgr_linear_solver.hpp"
 #include "mgr_compositional_flow_strategy.hpp"
 #include "Types.hpp"
+#include "solver_configs.hpp"
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -1499,6 +1500,149 @@ namespace opendarts
     // Explicit template instantiations
     // Based on MAX_NC = 8 and THERMAL = 1, max N_VARS = 9
     // Instantiate up to 13 to match other solvers (linsolv_superlu)
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_mgr<N_BLOCK_SIZE>::reconfigure(
+        const opendarts::linear_solvers::solver_config &config)
+    {
+      const auto *cfg =
+          dynamic_cast<const opendarts::linear_solvers::mgr_solver_config *>(&config);
+      if (cfg == nullptr)
+        return 1;
+
+      // Scalar parameters: the config defaults match the solver's own
+      // defaults, so applying them unconditionally is safe. Each setter
+      // marks first_solve, so a live solver rebuilds strategy + hierarchy
+      // on the next setup() against the same bound matrix.
+      set_max_iterations(cfg->max_iterations);
+      set_tolerance(cfg->tolerance);
+      set_kdim(cfg->kdim);
+      set_use_mgr(cfg->use_mgr);
+      set_log_level(cfg->log_level);
+      set_use_physics_scaling(cfg->use_physics_scaling);
+      set_use_flex_gmres(cfg->use_flex_gmres);
+
+      // Composite-preconditioner / local-solver knobs. Applied only when
+      // set, in the same order the composite models build them by hand
+      // (composite_mode / local_solver before use_bcsr_cpr, which
+      // auto-promotes the local solver to blockILU0 when none).
+      if (cfg->scaling_type.has_value())
+        set_mgr_scaling_type(cfg->scaling_type.value());
+      if (cfg->composite_mode.has_value())
+        set_mgr_composite_mode(cfg->composite_mode.value());
+      if (cfg->local_solver.has_value())
+        set_mgr_local_solver(cfg->local_solver.value());
+      if (cfg->bilu0.has_value())
+      {
+        const opendarts::linear_solvers::mgr_bilu0_config &bilu0 = cfg->bilu0.value();
+        set_mgr_bilu0_pivot_shift(bilu0.pivot_shift);
+        set_mgr_bilu0_fallback_options(bilu0.fallback_strategy,
+                                       bilu0.fallback_diagonal_tolerance,
+                                       bilu0.fallback_shifted_max,
+                                       bilu0.fallback_shifted_growth);
+      }
+      if (cfg->local_correction.has_value())
+      {
+        const opendarts::linear_solvers::mgr_local_correction_config &lc =
+            cfg->local_correction.value();
+        set_mgr_local_correction_options(lc.alpha, lc.adaptive_fallback_threshold,
+                                         lc.adaptive_alpha,
+                                         lc.adaptive_fallback_threshold_high,
+                                         lc.adaptive_alpha_high);
+        set_mgr_local_correction_quality_options(lc.quality_enabled, lc.quality_min_alpha);
+      }
+      if (cfg->pressure_amg.has_value())
+      {
+        const opendarts::linear_solvers::mgr_pressure_amg_config &amg = cfg->pressure_amg.value();
+        set_mgr_pressure_amg_options(amg.coarsen_type, amg.interp_type, amg.relax_type,
+                                     amg.agg_num_levels, amg.agg_interp_type,
+                                     amg.agg_pmax_elmts, amg.relax_order);
+        set_mgr_pressure_amg_advanced_options(amg.strong_threshold, amg.trunc_factor,
+                                              amg.pmax_elmts, amg.max_levels);
+        set_mgr_pressure_amg_solve_options(amg.solve_max_iter, amg.solve_tolerance);
+      }
+      if (cfg->bcsr_cpr.has_value())
+      {
+        const opendarts::linear_solvers::mgr_bcsr_cpr_config &cpr = cfg->bcsr_cpr.value();
+        set_use_bcsr_cpr(true);
+        set_bcsr_cpr_options(cpr.reduction_type, cpr.pressure_variable, cpr.weight_max);
+        set_bcsr_cpr_reuse_options(cpr.reuse_amg_hierarchy, cpr.amg_rebuild_interval);
+        set_bcsr_cpr_adaptive_rebuild_options(cpr.adaptive_amg_rebuild,
+                                              cpr.adaptive_li_threshold,
+                                              cpr.adaptive_li_growth_factor,
+                                              cpr.adaptive_min_reuse_setups,
+                                              cpr.adaptive_max_reuse_setups);
+        set_bcsr_cpr_adaptive_quality_options(cpr.adaptive_pressure_overshoot_threshold,
+                                              cpr.adaptive_final_proxy_threshold,
+                                              cpr.adaptive_fallback_threshold);
+        set_bcsr_cpr_diagnostics_options(cpr.diagnostics, cpr.diagnostic_apply_interval,
+                                         cpr.diagnostic_matrix_interval);
+        set_bcsr_cpr_pressure_correction_options(cpr.pressure_correction_alpha,
+                                                 cpr.pressure_correction_guard_threshold,
+                                                 cpr.pressure_correction_guard_min_alpha);
+        // transpose_apply / forward_source: applied only when explicitly set,
+        // preserving the auto-derivation.
+        if (cpr.transpose_apply.has_value())
+          set_bcsr_cpr_transpose_apply(cpr.transpose_apply.value());
+        if (cpr.forward_source.has_value())
+          set_bcsr_cpr_forward_source(cpr.forward_source.value());
+      }
+      else if (cfg->use_bcsr_cpr.has_value())
+        set_use_bcsr_cpr(cfg->use_bcsr_cpr.value());
+
+      set_n_reservoir_blocks(cfg->n_reservoir_blocks);
+      set_mgr_enable_well_level(cfg->enable_well_level);
+      set_mgr_enable_composition_level(cfg->enable_composition_level);
+
+      if (!cfg->reservoir_variable_roles.empty())
+        set_mgr_reservoir_variable_roles(cfg->reservoir_variable_roles);
+      if (!cfg->well_variable_roles.empty())
+        set_mgr_well_variable_roles(cfg->well_variable_roles);
+      if (cfg->well_strategy.has_value())
+        set_mgr_well_strategy(cfg->well_strategy.value());
+      // Level overrides: applied only when set, so the built-in level
+      // defaults are preserved otherwise.
+      if (cfg->well_level.has_value())
+      {
+        const opendarts::linear_solvers::mgr_level_config &level = cfg->well_level.value();
+        set_mgr_well_level_options(level.frelax_type, level.frelax_iters,
+            level.interp_type, level.restrict_type, level.coarse_method,
+            level.smoother_type, level.smoother_iters);
+      }
+      if (cfg->composition_level.has_value())
+      {
+        const opendarts::linear_solvers::mgr_level_config &level =
+            cfg->composition_level.value();
+        set_mgr_composition_level_options(level.frelax_type, level.frelax_iters,
+            level.interp_type, level.restrict_type, level.coarse_method,
+            level.smoother_type, level.smoother_iters);
+      }
+      if (cfg->pressure_level.has_value())
+      {
+        const opendarts::linear_solvers::mgr_level_config &level =
+            cfg->pressure_level.value();
+        set_mgr_pressure_level_options(level.frelax_type, level.frelax_iters,
+            level.interp_type, level.restrict_type, level.coarse_method,
+            level.smoother_type, level.smoother_iters);
+      }
+
+      if (!cfg->custom_levels.empty())
+      {
+        set_mgr_num_custom_levels(static_cast<int>(cfg->custom_levels.size()));
+        for (std::size_t level_index = 0; level_index < cfg->custom_levels.size();
+             ++level_index)
+        {
+          const opendarts::linear_solvers::mgr_level_config &level =
+              cfg->custom_levels[level_index];
+          set_mgr_custom_level_options(static_cast<int>(level_index),
+              level.keep_labels, level.frelax_type, level.frelax_iters, level.interp_type,
+              level.restrict_type, level.coarse_method, level.smoother_type,
+              level.smoother_iters);
+        }
+      }
+
+      return 0;
+    }
+
     template class linsolv_mgr<1>;
     template class linsolv_mgr<2>;
     template class linsolv_mgr<3>;

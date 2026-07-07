@@ -110,6 +110,34 @@ namespace opendarts
       virtual int solve(opendarts::config::mat_float *B,
           opendarts::config::mat_float *X) = 0;
 
+      /** Apply a new configuration to a LIVE solver without rebinding the
+       *  matrix. The hard invariant: reconfigure() never reallocates or
+       *  touches the bound system matrix, the engine-owned vectors, or any
+       *  structure-derived cache (csr_expansion, scalar adapter, thread
+       *  partition) -- so it is always safe mid-run, between timesteps.
+       *
+       *  Field tiers (solver-specific):
+       *    hot   -- stored and effective at the next solve/setup at zero
+       *             extra cost (tolerances, iteration budgets, thresholds);
+       *    warm  -- stored and the internal hierarchies/factorisations are
+       *             rebuilt on the next setup() against the SAME bound
+       *             matrices;
+       *    structural -- cannot be applied in place; the call returns > 0
+       *             and the caller falls back to building a fresh solver
+       *             (engine_base::set_linear_solver re-inits it against the
+       *             existing Jacobian, still with no matrix reallocation).
+       *
+       *  The factories construct solvers as `new T` + reconfigure(config),
+       *  so this is also the single source of truth for config application.
+       *
+       *  @return 0 = fully applied; > 0 = unsupported in place, rebuild the
+       *          solver; < 0 = error. The default cannot know any derived
+       *          fields and conservatively requests a rebuild. */
+      virtual int reconfigure(const opendarts::linear_solvers::solver_config & /*config*/)
+      {
+        return 1;
+      }
+
       /** Outer-solver feedback: iteration count of the last outer Krylov
        *  solve. Preconditioners with reuse policies (CPR's adaptive AMG
        *  rebuild) override this; the default ignores it. Replaces the former
