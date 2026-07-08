@@ -231,9 +231,15 @@ class Model(CICDModel):
 
         output_property_container = MyOutputPropertyContainer(property_container)
 
+        axes_min_arr = np.asarray(self.axes_min, dtype=float)
+        axes_max_arr = np.asarray(self.axes_max, dtype=float)
+        n_points_arr = np.asarray(self.n_points, dtype=float)
+        axes_step = ((axes_max_arr - axes_min_arr) / np.maximum(n_points_arr - 1, 1)).tolist()
+        axes_origin = axes_min_arr.tolist()
+
         # Create instance of (own) physics class:
         self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=phase_name,
-                                                n_points=self.n_points, axes_min=self.axes_min, axes_max=self.axes_max,
+                                                axes_step=axes_step, axes_origin=axes_origin,
                                                 epsilon_z=property_container.eps_z, extrapolation_flag=False,
                                                 cache=False)
 

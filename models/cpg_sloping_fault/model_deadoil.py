@@ -153,12 +153,11 @@ class ModelDeadOil(Model_CPG):
                     wdata.add_prd_rate_control(time=0*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
                     wdata.add_prd_rate_control(time=1*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
 
-        self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-13
         self.idata.obl.epsilon_z = 1e-14
-        self.idata.obl.min_p = 0.
-        self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = 10.
-        self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = 0.
-        self.idata.obl.max_z = 1.
+        self.idata.obl.p_step = 2.5
+        self.idata.obl.p_origin = 0.0
+        self.idata.obl.z_step = 2.5e-3
+        self.idata.obl.z_origin = self.idata.obl.epsilon_z
+        self.idata.obl.t_step = 0.25
+        self.idata.obl.t_origin = 10.0

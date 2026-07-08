@@ -45,8 +45,10 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
               co2_injection=co2_injection, h2o_injection=h2o_injection, inj_rate=inj_rate,
               perm_poro=perm_poro, flash=flash, database=database)
 
+    m.verbose = m.VERBOSE_TIMERS
+
     # Initialize model
-    m.init(itor_type=interpolator, platform=platform, verbose=True, n_solid=len(minerals),
+    m.init(itor_type=interpolator, platform=platform, n_solid=len(minerals),
            parallel_evaluation=parallel_evaluation, n_workers=n_workers)
     m.set_output(output_folder=output_folder, sol_filename=f'nx{nx}.h5')
 
