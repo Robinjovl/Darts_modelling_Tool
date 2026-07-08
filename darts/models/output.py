@@ -21,6 +21,119 @@ from darts.physics.super.physics import Compositional
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.tools.vtk_io import write_lines_vtp, write_pvd
 
+# ── Picklable accessors for output-property dicts ─────────────────────────────
+# Replace the per-region lambdas used by set_phase_properties / filter_phase_props
+# with top-level callable classes so the resulting props dict can be shipped to a
+# multiprocessing worker (where it is rebuilt against the worker's own
+# property_container by OutputPropertyDescriptor.materialize).
+
+
+class _PhasePropAccessor:
+    """Zero-arg accessor returning ``container.phase_props[prop_label_idx][phase_idx]``."""
+
+    __slots__ = ('container', 'prop_label_idx', 'phase_idx')
+
+    def __init__(self, container, prop_label_idx: int, phase_idx: int):
+        self.container = container
+        self.prop_label_idx = prop_label_idx
+        self.phase_idx = phase_idx
+
+    def __call__(self):
+        return self.container.phase_props[self.prop_label_idx][self.phase_idx]
+
+
+class _MolarFractionAccessor:
+    """Zero-arg accessor returning ``container.x[phase_idx, comp_idx]``."""
+
+    __slots__ = ('container', 'phase_idx', 'comp_idx')
+
+    def __init__(self, container, phase_idx: int, comp_idx: int):
+        self.container = container
+        self.phase_idx = phase_idx
+        self.comp_idx = comp_idx
+
+    def __call__(self):
+        return self.container.x[self.phase_idx, self.comp_idx]
+
+
+class _TemperatureAccessor:
+    """Zero-arg accessor returning ``container.temperature``."""
+
+    __slots__ = ('container',)
+
+    def __init__(self, container):
+        self.container = container
+
+    def __call__(self):
+        return self.container.temperature
+
+
+class FilteredOutputPropertyDescriptor:
+    """
+    Picklable wrapper that restricts a base :class:`OutputPropertyDescriptor`'s
+    materialized dict to a fixed subset of keys. Used by
+    :meth:`OutputBase.filter_phase_props` so the worker-side evaluator produces
+    the same filtered key set as the parent.
+
+    :param base: the unfiltered :class:`OutputPropertyDescriptor`.
+    :param keep_keys: iterable of keys to retain (order preserved).
+    """
+
+    def __init__(self, base, keep_keys):
+        self.base = base
+        self.keep_keys = list(keep_keys)
+
+    def materialize(self, property_container) -> dict:
+        full = self.base.materialize(property_container)
+        return {k: full[k] for k in self.keep_keys if k in full}
+
+
+class OutputPropertyDescriptor:
+    """
+    Picklable specification of the output-property dict layout used by
+    :meth:`OutputBase.set_phase_properties` for ``Compositional`` / ``Geothermal``
+    physics. Stores only plain data (kind, labels, phase names); the actual
+    accessor instances are materialized fresh against a given property container
+    via :meth:`materialize`. This indirection lets the descriptor be shipped to
+    a multiprocessing worker which then materializes the dict against its own
+    reconstructed property container.
+
+    :param kind: ``'compositional'`` or ``'geothermal'``.
+    :param phase_props_labels: Ordered list of phase-property label prefixes
+        (e.g. ``['dens', 'densm', 'sat', 'mu', 'kr', 'pc', 'enthalpy', 'cond']``).
+    :param phases: Phase names (used to build keys like ``f'{label}_{phase}'``).
+    """
+
+    def __init__(self, kind: str, phase_props_labels, phases):
+        if kind not in ('compositional', 'geothermal'):
+            raise ValueError(f"unknown descriptor kind: {kind!r}")
+        self.kind = kind
+        self.phase_props_labels = list(phase_props_labels)
+        self.phases = list(phases)
+
+    def materialize(self, property_container) -> dict:
+        """Build the dict of zero-arg accessors against ``property_container``."""
+        d = {}
+        if self.kind == 'compositional':
+            for i, name in enumerate(self.phase_props_labels):
+                for j in range(len(property_container.phase_props[i])):
+                    d[f"{name}_{self.phases[j]}"] = _PhasePropAccessor(
+                        property_container, i, j
+                    )
+            for i in range(property_container.x.shape[1]):
+                for j in range(property_container.x.shape[0]):
+                    d[f"x_{self.phases[j]}_{property_container.components_name[i]}"] = (
+                        _MolarFractionAccessor(property_container, j, i)
+                    )
+        else:  # 'geothermal'
+            d['temperature'] = _TemperatureAccessor(property_container)
+            for i, name in enumerate(self.phase_props_labels):
+                for j in range(property_container.nph):
+                    d[f"{name}_{self.phases[j]}"] = _PhasePropAccessor(
+                        property_container, i, j
+                    )
+        return d
+
 
 class Output:
     """
@@ -166,161 +279,213 @@ class Output:
 
     def set_phase_properties(self):
         """
-        This function constructs a predefined set of property operators for the compositional/geothermal physics class.
+        Build a predefined set of *output-only* property operators / interpolators
+        for the Compositional / Geothermal physics. The result is written to
+        ``physics.output_property_operators[region]`` and
+        ``physics.output_property_itor[region]`` so the physics-managed
+        ``property_operators`` / ``property_itor`` (set by ``set_interpolators`` and
+        wrapped by ``ParallelEvaluator`` when ``parallel_evaluation=True``) are
+        left untouched.
 
         Notes
         -----
-        * The properties for the super engine class include phase properties (density, molar density, saturation, viscosity, relative permeability, capillary pressure, enthalpy and conductivity) and molar phase fractions.
-        * The properties for the geothermal engine class include phase properties (density, molar density, saturation, viscosity, relative permeability, capillary pressure, enthalpy) and temperature.
-        * The declared interpolator is adaptive multilinear.
+        * Compositional output: phase properties (density, molar density, saturation,
+          viscosity, relative permeability, capillary pressure, enthalpy, conductivity)
+          and molar phase fractions.
+        * Geothermal output: phase properties (density, molar density, saturation,
+          viscosity, relative permeability, capillary pressure, enthalpy) plus temperature.
+        * Interpolator: adaptive multilinear, double precision, CPU.
+        * If the physics was initialized with ``parallel_evaluation=True``, the
+          existing shared evaluator pool is extended in place with new keys
+          ``('output_property_operators', region)`` so the output interpolators
+          also benefit from parallel batch evaluation.
         """
 
         if isinstance(self.physics, Compositional):
-            phase_props_labels = [
-                "dens",
-                "densm",
-                "sat",
-                "mu",
-                "kr",
-                "pc",
-                "enthalpy",
-                "cond",
-            ]
-            self.physics.property_itor = {}
-
-            for (
-                region
-            ) in self.physics.regions:  # loop over the different sets of operators
-                pc = self.physics.property_containers[region]
-                temp_dict = {}  # output_properties dictionary
-
-                # Loop through each property label and phase name
-                for i, name in enumerate(phase_props_labels):
-                    for j in range(len(pc.phase_props[i])):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i,
-                            jj=j,
-                            rr=region: self.physics.property_containers[rr].phase_props[
-                                ii
-                            ][jj]
-                        )
-
-                # Add molar phase fractions
-                for i in range(pc.x.shape[1]):
-                    for j in range(pc.x.shape[0]):
-                        temp_dict[
-                            f"x_{self.physics.phases[j]}_{pc.components_name[i]}"
-                        ] = (
-                            lambda ii=i,
-                            jj=j,
-                            rr=region: self.physics.property_containers[rr].x[jj, ii]
-                        )
-
-                self.physics.property_operators[region] = PropertyOperators(
-                    property_container=pc,
-                    thermal=self.thermal,
-                    props=temp_dict,
-                    extrapolation_flag=self.physics.extrapolation_flag,
-                    dz=self.physics.dz,
-                )
-                # Match the reservoir/well interpolators: extended axes when the physics has
-                # history fields, primary axes otherwise. Output.output_properties(engine=True)
-                # feeds the full [X | Xhistory] state into this interpolator, so the axis layout
-                # must match that.
-                ax_min, ax_max, n_pts = (
-                    self.physics.get_interpolator_axes()
-                    if hasattr(self.physics, "get_interpolator_axes")
-                    else (self.physics.axes_min, self.physics.axes_max, None)
-                )
-                self.physics.property_itor[region], n_ops = (
-                    self.physics.create_interpolator(
-                        self.physics.property_operators[region],
-                        n_ops=self.physics.n_ops,
-                        axes_min=ax_min,
-                        axes_max=ax_max,
-                        n_axes_points=n_pts,
-                        platform='cpu',
-                        algorithm='multilinear',
-                        mode='adaptive',
-                        precision='d',
-                        timer_name=f'property {region:d} interpolation',
-                        region=str(region),
-                    )
-                )
-
-                # Assign the temporary dictionary to output_props for the region
-                self.physics.property_containers[region].output_props = temp_dict
-                self.n_ops = n_ops
-
+            descriptor = OutputPropertyDescriptor(
+                kind='compositional',
+                phase_props_labels=[
+                    'dens',
+                    'densm',
+                    'sat',
+                    'mu',
+                    'kr',
+                    'pc',
+                    'enthalpy',
+                    'cond',
+                ],
+                phases=self.physics.phases,
+            )
+            thermal = self.thermal
+            extrapolation_flag = self.physics.extrapolation_flag
+            dz = self.physics.dz
         elif isinstance(self.physics, Geothermal):
-            phase_props_labels = [
-                "dens",
-                "densm",
-                "sat",
-                "mu",
-                "kr",
-                "pc",
-                "enthalpy",
-            ]  # 'cond'
-            self.physics.property_itor = {}
+            descriptor = OutputPropertyDescriptor(
+                kind='geothermal',
+                phase_props_labels=[
+                    'dens',
+                    'densm',
+                    'sat',
+                    'mu',
+                    'kr',
+                    'pc',
+                    'enthalpy',
+                ],
+                phases=self.physics.phases,
+            )
+            thermal = False
+            extrapolation_flag = True
+            dz = None
+        else:
+            return
 
-            for (
-                region
-            ) in self.physics.regions:  # loop over the different sets of operators
-                pc = self.physics.property_containers[region]
-                temp_dict = {}
+        # Remember the descriptor (and its build args) so a parallel worker can
+        # reconstruct the same output PropertyOperators from a fresh model.
+        self.physics.output_property_descriptor = descriptor
+        self.physics.output_property_build_args = {
+            'thermal': thermal,
+            'extrapolation_flag': extrapolation_flag,
+            'dz': dz,
+        }
 
-                # add temperature
-                temp_dict['temperature'] = lambda container=pc: container.temperature
+        self.physics.output_property_operators = {}
+        self.physics.output_property_itor = {}
+        n_ops = self.physics.n_ops
+        for region in self.physics.regions:
+            pc = self.physics.property_containers[region]
+            temp_dict = descriptor.materialize(pc)
 
-                # Loop through each property label and phase name
-                for i, name in enumerate(phase_props_labels):
-                    for j in range(self.physics.property_containers[region].nph):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i,
-                            jj=j,
-                            rr=region: self.physics.property_containers[rr].phase_props[
-                                ii
-                            ][jj]
-                        )
+            op = PropertyOperators(
+                property_container=pc,
+                thermal=thermal,
+                props=temp_dict,
+                extrapolation_flag=extrapolation_flag,
+                dz=dz,
+            )
+            self.physics.output_property_operators[region] = op
+            # Mirror the materialized dict into container.output_props so callers
+            # that introspect container.output_props (e.g. variable_units, property
+            # index lookup at lines 1056/1723) see the expanded property set.
+            pc.output_props = temp_dict
 
-                self.physics.property_operators[region] = PropertyOperators(
-                    property_container=pc,
-                    thermal=False,
-                    props=temp_dict,
+        # Optionally extend the shared evaluator pool with the new output-property
+        # keys and replace each output_property_operators[region] with a
+        # ParallelEvaluator wrapper backed by the same pool.
+        if (
+            getattr(self.physics, '_shared_evaluator_pool', None) is not None
+            and self._can_wrap_output_property_parallel()
+        ):
+            self._wrap_output_property_evaluators_parallel(descriptor)
+
+        # Build interpolators (after any wrapping, so the interpolator binds to
+        # the parallel wrapper rather than the bare PropertyOperators).
+        for region in self.physics.regions:
+            kind_n_ops = (
+                self.physics.n_ops
+                if isinstance(self.physics, Compositional)
+                else self.physics.output_property_operators[region].n_ops
+            )
+            self.physics.output_property_itor[region], n_ops = (
+                self.physics.create_interpolator(
+                    self.physics.output_property_operators[region],
+                    n_ops=kind_n_ops,
+                    platform='cpu',
+                    algorithm='multilinear',
+                    mode='adaptive',
+                    precision='d',
+                    timer_name=f'output property {region:d} interpolation',
+                    region=str(region),
                 )
-                self.physics.property_itor[region], n_ops = (
-                    self.physics.create_interpolator(
-                        self.physics.property_operators[region],
-                        n_ops=self.physics.property_operators[region].n_ops,
-                        axes_min=self.physics.axes_min,
-                        axes_max=self.physics.axes_max,
-                        platform='cpu',
-                        algorithm='multilinear',
-                        mode='adaptive',
-                        precision='d',
-                        timer_name=f'property {region:d} interpolation',
-                        region=str(region),
-                    )
-                )
-
-                # Assign the temporary dictionary to output_props for the region
-                self.physics.property_containers[region].output_props = temp_dict
-                self.n_ops = n_ops
+            )
+        self.n_ops = n_ops
 
         # Update the properties list
         self.properties = list(self.physics.property_containers[0].output_props.keys())
 
         return
 
+    def _can_wrap_output_property_parallel(self) -> bool:
+        """
+        Return True if the model owning this Output exposes a picklable factory
+        for building output property operators in a worker. The default
+        :meth:`DartsModel.get_evaluator_factory` does, so the answer is True
+        whenever the physics has a live shared pool.
+        """
+        return True
+
+    def _wrap_output_property_evaluators_parallel(self, descriptor):
+        """
+        Extend ``physics._shared_evaluator_pool`` with new keys
+        ``('output_property_operators', region)`` and replace each
+        ``physics.output_property_operators[region]`` with a ParallelEvaluator
+        backed by the (rebuilt) shared pool.
+
+        The factory captures the model class + constructor args + descriptor;
+        on each worker call it reconstructs the model, runs ``set_operators``,
+        materializes the descriptor against the worker's own property container
+        and returns the resulting ``PropertyOperators``.
+
+        Model class and constructor args are sourced from an existing
+        :class:`ModelEvaluatorFactory` already registered in the shared pool
+        (set up by :meth:`PhysicsBase._wrap_evaluators_parallel`). If no such
+        factory is present, parallel wrapping is silently skipped.
+        """
+        from darts.physics.base.parallel_evaluator import (
+            ModelEvaluatorFactory,
+            OutputPropertyOperatorsFactory,
+        )
+
+        pool = self.physics._shared_evaluator_pool
+        # Find any existing ModelEvaluatorFactory to source model_cls/init args.
+        existing = next(
+            (
+                f
+                for f in pool._factories.values()
+                if isinstance(f, ModelEvaluatorFactory)
+            ),
+            None,
+        )
+        if existing is None:
+            return
+
+        build_args = self.physics.output_property_build_args
+
+        def factory_hook(attr, region):
+            return OutputPropertyOperatorsFactory(
+                model_cls=existing.model_cls,
+                init_args=existing.init_args,
+                init_kwargs=existing.init_kwargs,
+                region=region,
+                descriptor=descriptor,
+                thermal=build_args['thermal'],
+                extrapolation_flag=build_args['extrapolation_flag'],
+                dz=build_args['dz'],
+            )
+
+        targets = [
+            ('output_property_operators', region) for region in self.physics.regions
+        ]
+        self.physics._extend_parallel_wrap(targets, factory_hook)
+
     def filter_phase_props(self, new_prop_keys: list):
         """
-        Filter default list of properties to only evaluate desired properties listed in new_prop_keys.
+        Filter the output-property dict down to the listed keys. Like
+        :meth:`set_phase_properties`, this writes the resulting operators /
+        interpolators to ``physics.output_property_operators`` /
+        ``physics.output_property_itor`` so the physics-managed
+        ``property_operators`` / ``property_itor`` are not disturbed.
 
-        :param new_prop_keys: list of properties to keep
-        :type
-        :raises ValueError: If any key in `new_prop_keys` is not an available property.
+        :param new_prop_keys: list of property keys to keep
+        :raises ValueError: if any key in ``new_prop_keys`` is not an available property.
         """
+        # Ensure the source dict to filter from exists (populated either by a
+        # prior :meth:`set_phase_properties` call or by the physics class itself).
+        if not getattr(self.physics, 'output_property_operators', None):
+            # Defensive fallback: if set_phase_properties was never invoked,
+            # initialize the dicts so filtering still works against container.output_props.
+            self.physics.output_property_operators = {}
+            self.physics.output_property_itor = {}
+
         for region in self.physics.regions:
             output_dictionary = self.physics.property_containers[region].output_props
             prop_keys = list(output_dictionary.keys())
@@ -339,30 +504,38 @@ class Output:
 
             self.physics.property_containers[region].output_props = output_dictionary
 
-            self.physics.property_operators[region] = PropertyOperators(
+            self.physics.output_property_operators[region] = PropertyOperators(
                 property_container=self.physics.property_containers[region],
                 thermal=self.thermal,
                 props=output_dictionary,
                 extrapolation_flag=self.physics.extrapolation_flag,
                 dz=self.physics.dz,
             )
-            ax_min, ax_max, n_pts = (
-                self.physics.get_interpolator_axes()
-                if hasattr(self.physics, "get_interpolator_axes")
-                else (self.physics.axes_min, self.physics.axes_max, None)
-            )
-            self.physics.property_itor[region], n_ops = (
+
+        # If a base descriptor was stored by a prior :meth:`set_phase_properties`
+        # call and the physics has a live shared pool, re-wrap the output
+        # property operators with a filtered descriptor so the worker-side
+        # evaluators produce the same filtered key set as the parent.
+        base_desc = getattr(self.physics, 'output_property_descriptor', None)
+        if (
+            base_desc is not None
+            and getattr(self.physics, '_shared_evaluator_pool', None) is not None
+            and self._can_wrap_output_property_parallel()
+        ):
+            filtered_desc = FilteredOutputPropertyDescriptor(base_desc, new_prop_keys)
+            self.physics.output_property_descriptor = filtered_desc
+            self._wrap_output_property_evaluators_parallel(filtered_desc)
+
+        for region in self.physics.regions:
+            self.physics.output_property_itor[region], n_ops = (
                 self.physics.create_interpolator(
-                    self.physics.property_operators[region],
+                    self.physics.output_property_operators[region],
                     n_ops=self.physics.n_ops,
-                    axes_min=ax_min,
-                    axes_max=ax_max,
-                    n_axes_points=n_pts,
                     platform='cpu',
                     algorithm='multilinear',
                     mode='adaptive',
                     precision='d',
-                    timer_name=f'property {region:d} interpolation',
+                    timer_name=f'output property {region:d} interpolation',
                     region=str(region),
                 )
             )
@@ -612,14 +785,11 @@ class Output:
                 f.write("-- State specification:\n")
                 f.write(f"{self.physics.state_spec}\n")
 
-                f.write("-- OBL axes minimums:\n")
-                f.write(f"{self.physics.axes_min[:]}\n")
+                f.write("-- OBL axes origin (per axis):\n")
+                f.write(f"{list(self.physics.axes_origin)}\n")
 
-                f.write("-- OBL axes maximums:\n")
-                f.write(f"{self.physics.axes_max[:]}\n")
-
-                f.write("-- OBL axes maximums:\n")
-                f.write(f"{self.physics.n_axes_points[:]}\n")
+                f.write("-- OBL axes step (per axis):\n")
+                f.write(f"{list(self.physics.axes_step)}\n")
 
                 f.write("-- Regions:\n")
                 f.write(f"{self.physics.regions}\n")
@@ -1159,7 +1329,14 @@ class Output:
                 values_numpy = np.array(values, copy=False)
                 dvalues = value_vector(np.zeros(self.n_ops * nb * n_vars))
 
-                for region, prop_itor in self.physics.property_itor.items():
+                # Prefer the output-only property interpolators (built by
+                # set_phase_properties/filter_phase_props) when they exist.
+                prop_itor_dict = (
+                    self.physics.output_property_itor
+                    if getattr(self.physics, 'output_property_itor', None)
+                    else self.physics.property_itor
+                )
+                for region, prop_itor in prop_itor_dict.items():
                     block_idx = np.where(self.op_num == region)[0].astype(np.int32)
                     prop_itor.evaluate_with_derivatives(
                         state, index_vector(block_idx), values, dvalues
@@ -1837,7 +2014,14 @@ class Output:
             values_numpy = np.array(values, copy=False)
             dvalues = value_vector(np.zeros(self.n_ops * nb * n_vars))
 
-            for _region, prop_itor in self.physics.property_itor.items():
+            # Prefer the output-only property interpolators (built by
+            # set_phase_properties/filter_phase_props) when they exist.
+            prop_itor_dict = (
+                self.physics.output_property_itor
+                if getattr(self.physics, 'output_property_itor', None)
+                else self.physics.property_itor
+            )
+            for _region, prop_itor in prop_itor_dict.items():
                 block_idx = index_vector(np.arange(nb).astype(np.int32))
                 prop_itor.evaluate_with_derivatives(
                     state, index_vector(block_idx), values, dvalues
@@ -2322,23 +2506,36 @@ class Output:
         )
         n_reservoir_ops = physics.reservoir_operators[0].n_ops
         n_vars = physics.n_vars
+        # The reservoir / well-control interpolators consume the full OBL state
+        # [primary | history] (n_state axes), but the well H5 stores only the primary
+        # Newton state (n_vars-wide). Pad the missing history columns with each field's
+        # default so evaluated states match the interpolator dimensionality — feeding a
+        # primary-only state to a history-aware interpolator reads past the buffer and
+        # corrupts memory. Gravity (the only reservoir operator used here) depends on
+        # phase densities, not on the history axes, so the defaults do not bias rates.
+        n_state = getattr(physics, "n_state", n_vars)
+        history_defaults = np.array(
+            [h.default for h in getattr(physics, "history_fields", [])],
+            dtype=float,
+        )
         block_idx = index_vector(np.arange(batch_size).astype(np.int32))
 
         states_m = h5_well_data["dynamic"]["X"][time_idx, cell_m]
         states_p = h5_well_data["dynamic"]["X"][time_idx, cell_p]
 
-        if self.precision == "s":
-            axes_min = np.array(physics.axes_min)
-            axes_max = np.array(physics.axes_max)
-            states_m = np.clip(states_m, axes_min, axes_max)
-            states_p = np.clip(states_p, axes_min, axes_max)
+        # State clipping to the OBL window has been removed — adaptive interpolators
+        # cache cells on demand wherever the solver lands.
 
         states_m_2d = states_m.reshape(batch_size, n_vars)
         states_p_2d = states_p.reshape(batch_size, n_vars)
+        if n_state > n_vars:
+            history_pad = np.tile(history_defaults, (batch_size, 1))
+            states_m_2d = np.concatenate([states_m_2d, history_pad], axis=1)
+            states_p_2d = np.concatenate([states_p_2d, history_pad], axis=1)
 
         def evaluate_ops(states_2d, n_ops, evaluator):
             values = value_vector(np.zeros(batch_size * n_ops))
-            dvalues = value_vector(np.zeros((batch_size * n_ops) * n_vars))
+            dvalues = value_vector(np.zeros((batch_size * n_ops) * n_state))
             evaluator.evaluate_with_derivatives(
                 value_vector(states_2d.ravel()), block_idx, values, dvalues
             )
@@ -2454,20 +2651,11 @@ class Output:
                 well_ops_p[:, op_start : op_start + pc.nph],
             )
 
-            # Calculate dead operators
+            # Calculate dead operators at standard surface conditions
             p_dead = 1.01325  # Dead pressure (1 atm)
             T_dead = 273.15 + 15  # Dead temperature (15 deg C)
-
-            if not (
-                self.physics.PT_axes_min[p_idx]
-                <= p_dead
-                <= self.physics.PT_axes_max[p_idx]
-                and self.physics.PT_axes_min[t_idx]
-                <= T_dead
-                <= self.physics.PT_axes_max[t_idx]
-            ):
-                # Since the dead pressure or temperature for well advective heat rate calculation is outside the OBL bounds, leave it zero.
-                return np.zeros((n_ts, n_conns, pc.nph))
+            # The legacy PT-window bounds check was removed — adaptive interpolators
+            # cache the dead state on demand wherever it falls in state space.
 
             states_m_dead = states_m_2d.copy()
             states_p_dead = states_p_2d.copy()

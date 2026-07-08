@@ -10,27 +10,52 @@
 /**
  * @brief  Interpolator base for static/adaptive piecewise linear interpolator.
  *
- * @tparam index_t index type used for supporting point indexing
+ * Vertex enumeration is int32-native: a vertex is a per-axis array of int32 indices —
+ * the same element type as cell_key_t — so an adaptive vertex converts to a cache key
+ * by a plain element copy (no packing/decoding), unifying the linear family with the
+ * multilinear adaptive interpolators. The standard-triangulation (Kuhn) simplex
+ * identification is untouched: all simplices of a hypercube share its lower corner and
+ * are enumerated by the incremental +1 walk along the sorted fractional coordinates.
+ * Only the bounded/static dense-storage index (get_index_from_vertex / axes_mult) needs
+ * a wide integer and uses uint64_t.
+ *
  * @tparam N_DIMS The number of dimensions in paramter space
  * @tparam N_OPS The number of operators to be interpolated
  */
-template <typename index_t, int N_DIMS, int N_OPS>
+template <int N_DIMS, int N_OPS>
 class linear_cpu_interpolator_base : public interpolator_base
 {
 public:
+    /// Per-axis vertex index array; element type matches cell_key_t<N_DIMS>::idx.
+    typedef std::array<int32_t, N_DIMS> vertex_t;
     /**
-     * @brief Construct an interpolator with specified parametrization space
+     * @brief Construct an unbounded interpolator parametrized by (origin, step).
+     *        Used by adaptive linear storage; the grid has no upper bound.
      *
      * @param[in] supporting_point_evaluator      Object used to compute operators values at supporting points
-     * @param[in] axes_points                     Number of supporting points (minimum 2) along axes
-     * @param[in] axes_min                        Minimum value for each axis
-     * @param[in] axes_max                        Maximum for each axis
+     * @param[in] axes_origin                     Grid origin (lower corner) for each axis
+     * @param[in] axes_step                       Cell size for each axis
      * @param[in] _use_barycentric_interpolation  Flag to turn on barycentric interpolation on Delaunay triangulation
      */
     linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
+                                 const std::vector<double> &axes_origin,
+                                 const std::vector<double> &axes_step,
+                                 bool _use_barycentric_interpolation);
+
+    /**
+     * @brief Construct a bounded interpolator with a finite dense grid.
+     *        Used by static linear storage; builds the mixed-radix axes_mult.
+     *
+     * @param[in] supporting_point_evaluator      Object used to compute operators values at supporting points
+     * @param[in] axes_origin                     Grid origin (lower corner) for each axis
+     * @param[in] axes_step                       Cell size for each axis
+     * @param[in] axes_points                     Number of supporting points (minimum 2) along each axis
+     * @param[in] _use_barycentric_interpolation  Flag to turn on barycentric interpolation on Delaunay triangulation
+     */
+    linear_cpu_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
+                                 const std::vector<double> &axes_origin,
+                                 const std::vector<double> &axes_step,
                                  const std::vector<int> &axes_points,
-                                 const std::vector<double> &axes_min,
-                                 const std::vector<double> &axes_max,
                                  bool _use_barycentric_interpolation);
     /**
      * @brief Get the number of dimensions in interpolation space
@@ -78,10 +103,19 @@ public:
     };
 
     bool use_barycentric_interpolation; ///< flag that enables barycentric interpolation on Delaunay simplices
+    /**
+     * When true (adaptive), find_hypercube produces signed floor()-style per-axis int32
+     * indices — the grid is unbounded and indices may be negative — and the last-axis
+     * reflection pivots around the origin (there is no axes_max).
+     *
+     * Static interpolators leave this false — their dense point storage requires a
+     * non-negative vertex index and the reflection pivots around axes_max.
+     */
+    bool use_unbounded_axis_index = false;
 protected:
-    std::array<std::array<index_t, N_DIMS>, N_DIMS + 1> standard_simplex; ///< a standard simplex
-    std::array<index_t, N_DIMS> axes_mult;                            ///< multiplication factor used for transferring supporting point to point index
-    Delaunay tri_info;                                                ///< contains Delaunay triangulation and barycentric transformations
+    std::array<vertex_t, N_DIMS + 1> standard_simplex; ///< a standard simplex
+    std::array<uint64_t, N_DIMS> axes_mult;            ///< mixed-radix multiplier per axis for the dense (static) point index
+    Delaunay tri_info;                                 ///< contains Delaunay triangulation and barycentric transformations
 
     int transform_last_axis; ///< apply transformation z'=1-z for the last axis
 
@@ -95,7 +129,7 @@ protected:
      * @param[in] point_index Index of the point in the std::vector points
      *      The argument point_index is used only when std::vector points consists of multiple points.
      */
-    void find_hypercube(const std::vector<double> &points, std::array<index_t, N_DIMS> &hypercube,
+    void find_hypercube(const std::vector<double> &points, vertex_t &hypercube,
                         std::array<double, N_DIMS> &scaled_point, const int point_index = 0);
     /**
      * @brief Compute which simplex the given point is located in using standard triangulation
@@ -107,8 +141,8 @@ protected:
      *      2. computing weights of the barycentric interpolation
      * @param[out] simplex An array of vertices which forms simplex in N_DIMS-dimensional space
      */
-    void find_simplex(const std::array<index_t, N_DIMS> &hypercube, const std::array<double, N_DIMS> &scaled_point,
-                      std::array<int, N_DIMS> &tri_order, std::array<std::array<index_t, N_DIMS>, N_DIMS + 1> &simplex);
+    void find_simplex(const vertex_t &hypercube, const std::array<double, N_DIMS> &scaled_point,
+                      std::array<int, N_DIMS> &tri_order, std::array<vertex_t, N_DIMS + 1> &simplex);
     /**
      * @brief Get values of operators at the given supporting point
      * Implementation depends on underlying storage. If static storage is used, the function simply reads
@@ -120,23 +154,24 @@ protected:
      * @param[in] vertex The indexes of coordinates the given supporting point along axes
      * @param[out] values The operator values at the given point
      */
-    virtual void get_supporting_point(const std::array<index_t, N_DIMS> &vertex, std::array<double, N_OPS> &values) = 0;
+    virtual void get_supporting_point(const vertex_t &vertex, std::array<double, N_OPS> &values) = 0;
     /**
-     * @brief Given a supporting point, compute its index.
+     * @brief Given a supporting point, compute its dense (mixed-radix) index.
      *
-     * This function is used as a hash for std::array<int, N_DIMS>.
+     * Bounded/static storage only: vertices are non-negative there and the packed
+     * index addresses the dense point_data vector.
      *
      * @param[in] vertex The indexes of coordinates the given supporting point along axes
      * @return The index of point among all supporting point
      */
-    index_t get_index_from_vertex(const std::array<index_t, N_DIMS> &vertex);
+    uint64_t get_index_from_vertex(const vertex_t &vertex);
     /**
      * @brief Transfer a vertex to its coordinates.
      *
      * @param[in] vertex The indexes of the given supporting point along axes
      * @param[out] point The coordinates of the supporting point
      */
-    void get_point_from_vertex(const std::array<index_t, N_DIMS> &vertex, std::vector<double> &point);
+    void get_point_from_vertex(const vertex_t &vertex, std::vector<double> &point);
     /**
      * @brief Loads Delaunay triangulation and data for associated barycentric interpolation.
      *
@@ -147,6 +182,11 @@ protected:
      * @brief Calculate Delaunay triangulation and associated barycentric transformations.
      */
     void find_delaunay_and_barycentric();
+    /**
+     * @brief Shared constructor tail: builds the standard simplex, sets the last-axis
+     *        transform flag, and (optionally) the Delaunay/barycentric structures.
+     */
+    void init_simplex_and_barycentric();
 };
 
 #include "linear_cpu_interpolator_base.tpp"

@@ -112,11 +112,10 @@ def input_data_default():
     idata.initial.temperature_gradient = 30  # [K/km]
     idata.initial.temperature_at_ref_depth = 273.15 + 10 # [K]
 
-    idata.obl.n_points = 100
-    idata.obl.min_p = 0.5
-    idata.obl.max_p = 500.
-    idata.obl.min_e = 10.
-    idata.obl.max_e = 25000.
+    idata.obl.p_step = 5.0
+    idata.obl.p_origin = 0.5
+    idata.obl.e_step = 250.0
+    idata.obl.e_origin = 10.0
 
     return idata
 

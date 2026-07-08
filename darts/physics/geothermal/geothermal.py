@@ -15,11 +15,8 @@ class Geothermal(GeothermalBase):
     def __init__(self, idata: InputData, timer):
         super().__init__(
             timer,
-            idata.obl.n_points,
-            idata.obl.min_p,
-            idata.obl.max_p,
-            idata.obl.min_e,
-            idata.obl.max_e,
+            axes_step=[idata.obl.p_step, idata.obl.e_step],
+            axes_origin=[idata.obl.p_origin, idata.obl.e_origin],
         )
 
         property_container = GeothermalIAPWSProperties()
@@ -58,11 +55,8 @@ class GeothermalPH(GeothermalBase):
         # Call base class constructor
         super().__init__(
             timer,
-            idata.obl.n_points,
-            idata.obl.min_p,
-            idata.obl.max_p,
-            idata.obl.min_e,
-            idata.obl.max_e,
+            axes_step=[idata.obl.p_step, idata.obl.e_step],
+            axes_origin=[idata.obl.p_origin, idata.obl.e_origin],
         )
         self.idata = idata
         property_container = GeothermalPHProperties()

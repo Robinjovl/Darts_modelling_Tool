@@ -1,6 +1,33 @@
+import warnings
+
 import numpy as np
 
 from darts.physics.properties.flash_exceptions import FlashError
+
+# Default mapping from a kinetic mineral's chemical formula to the EXACT database
+# saturation-species NAME whose saturation ratio drives that mineral's kinetic rate.
+#
+# Why this is needed: Reaktoro's SpeciesList.findWithFormula() returns the FIRST
+# species matching a formula, which in supcrtbl resolves 'CaCO3' -> Aragonite (the
+# metastable polymorph, NOT Calcite) and 'CaMg(CO3)2' -> 'Dolomite,ordered'. The
+# kinetic rate constants (Palandri & Kharaka) are for calcite and sedimentary
+# dolomite, so throttling them with aragonite / ordered-dolomite saturation ratios
+# is thermodynamically inconsistent and silently mislabels the reported SR columns.
+#
+# For realistic natural carbonate rock we resolve by NAME to the stable, rock-forming
+# phases: Calcite (stable CaCO3 polymorph), stoichiometric Dolomite, and Magnesite.
+# Note on the dolomite polymorph (supcrtbl): 'Dolomite' (stoichiometric, log Ksp ~ -18.2
+# at 50 C) is the conventional rock-forming mineral and the default here. Alternatives,
+# which materially change the magnesite saturation floor at calcite+dolomite buffering
+# (SR_mag = Ksp_dol/(Ksp_cal*Ksp_mag)): 'Dolomite,ordered' (~-18.7 -> SR_mag ~ 0.02,
+# strong dolomitization drive) and 'Dolomite,disordered' (~-17.3 -> SR_mag ~ 0.7, the
+# self-consistent pair for the P&K *disordered* dolomite rate constants). Override per
+# run via the `mineral_sr_species` constructor argument.
+_DEFAULT_SR_SPECIES_BY_FORMULA = {
+    'CaCO3': 'Calcite',
+    'CaMg(CO3)2': 'Dolomite',
+    'MgCO3': 'Magnesite',
+}
 
 try:
     # Reaktoro v2 Python API
@@ -65,6 +92,7 @@ class Flash:
         gas_species: list[str] | tuple[str, ...] = ("CO2(g)", "H2O(g)"),
         tolerance: float = 1e-10,
         database_filename: str = "phreeqc.dat",
+        mineral_sr_species: dict[str, str] | None = None,
     ):
         """
         :param min_z: minimal composition value
@@ -81,6 +109,14 @@ class Flash:
         :type tolerance: float
         :param database_filename: path to database file (PHREEQC or supcrtbl) for primary engine
         :type database_filename: str
+        :param mineral_sr_species: optional mapping ``{mineral_formula: saturation_species_name}``
+            selecting, BY NAME, which database saturation species supplies the saturation ratio
+            that drives each mineral's kinetic rate. Overrides/extends the natural-rock default
+            (``CaCO3 -> Calcite``, ``CaMg(CO3)2 -> Dolomite``, ``MgCO3 -> Magnesite``). Use this to
+            pick a different dolomite polymorph (e.g. ``{'CaMg(CO3)2': 'Dolomite,disordered'}`` for
+            consistency with sedimentary-dolomite kinetic constants). Any formula not covered, or a
+            name absent from the database, falls back to first-formula-match with a warning.
+        :type mineral_sr_species: dict[str, str] | None
         """
         if _REAKTORO_IMPORT_ERROR is not None:  # pragma: no cover
             raise ImportError(
@@ -103,6 +139,14 @@ class Flash:
 
         # Keep human-friendly mineral names (remove 'Solid_' prefix)
         self.mineral_names = [item.split('_', 1)[1] for item in self.minerals]
+
+        # Saturation-species selection for the kinetic affinity term. Resolved BY NAME
+        # (not fragile first-formula-match) to the stable rock-forming carbonate phases.
+        self.sr_species_names = dict(_DEFAULT_SR_SPECIES_BY_FORMULA)
+        if mineral_sr_species:
+            self.sr_species_names.update(mineral_sr_species)
+        # Lazily resolved {mineral_name: saturation-species index}; built on first evaluate().
+        self._sr_species_idx = None
 
         # Thermal handling consistent with PHREEQC Flash
         if temperature is None:
@@ -166,8 +210,11 @@ class Flash:
         fluid_composition = self.get_fluid_composition(state)
         fluid_moles = self.total_moles * fluid_composition
 
-        # Build Reaktoro equilibrium conditions with element amounts
-        conds = EquilibriumConditions(self.system)
+        # Reuse the persistent EquilibriumConditions (built once in _build_reaktoro_system);
+        # only the per-point values change. The conserved element totals (c0) are reset every
+        # call, while the previously converged ChemicalState (self._state) is reused in place
+        # as the warm-start initial guess for the species distribution.
+        conds = self._conds
         conds.pressure(pressure_bar, "bar")
         conds.temperature(temperature_c, "celsius")
         # conds.pH(7.0)
@@ -179,8 +226,8 @@ class Flash:
         )
         conds.setInitialComponentAmounts(e_moles)
 
-        state = ChemicalState(self.system)
-
+        # Water-only cold initial guess, used on the first call and to recover after a failed
+        # warm solve (a stale neighbour guess can occasionally land in a bad basin).
         init_h_moles, init_o_moles = (
             fluid_moles[self.fc_idx['H']],
             fluid_moles[self.fc_idx['O']],
@@ -193,21 +240,32 @@ class Flash:
             water_moles = init_o_moles
             fluid_moles[self.fc_idx['H']] = init_h_moles - 2 * init_o_moles
             fluid_moles[self.fc_idx['O']] = 0
-        state.set("H2O" + self.aq_ending, water_moles, "mol")
 
-        solver = EquilibriumSolver(self.system)
-        op = EquilibriumOptions()
-        op.optima.convergence.tolerance = 1e-12
-        solver.setOptions(op)
+        def _cold_state():
+            s = ChemicalState(self.system)
+            s.set("H2O" + self.aq_ending, water_moles, "mol")
+            return s
+
+        if self._state is None:
+            self._state = _cold_state()
+
         try:
-            result = solver.solve(state, conds)
+            # solver.solve overwrites self._state in place with the converged result, so the
+            # next (neighbouring) OBL point automatically warm-starts from it.
+            result = self._solver.solve(self._state, conds)
             if hasattr(result, "succeeded") and not result.succeeded():
-                raise RuntimeError("Reaktoro equilibrium solver failed to converge")
-            props = state.props()
+                # Warm guess failed -> retry once from a clean water-only cold state.
+                self._state = _cold_state()
+                result = self._solver.solve(self._state, conds)
+                if hasattr(result, "succeeded") and not result.succeeded():
+                    raise RuntimeError("Reaktoro equilibrium solver failed to converge")
+            props = self._state.props()
         except Exception as exc:
+            # Drop the (possibly poisoned) warm state so the next point starts clean.
             # Do NOT return zeros: rho_aq=0 would feed divide-by-zero / NaN operators into
             # the OBL table silently. Raise a FlashError so the model's Newton loop treats
             # it as a non-convergence and cuts the timestep (keeping the simulation alive).
+            self._state = None
             raise ReaktoroFlashError(
                 f"Reaktoro equilibrium failed at p={pressure_bar:.6g} bar, "
                 f"T={temperature_c:.4g} C: {exc}"
@@ -263,7 +321,7 @@ class Flash:
             )
 
         # Kinetic state: saturation ratios and activities
-        aq_props = AqueousProps(state)
+        aq_props = AqueousProps(self._state)
         kin_state = {
             'Act(H+)': props.speciesActivity("H+").val(),
             'Act(CO2)': props.speciesActivity("CO2" + self.aq_ending).val(),
@@ -271,11 +329,14 @@ class Flash:
             #'pH': aq_props.pH().val(),
         }
 
-        n_saturation_species = aq_props.saturationSpecies().size()
+        # Saturation ratios that drive the kinetic affinity term, read from the
+        # explicitly-named (stable rock-forming) saturation species. See _resolve_sr_species.
+        if self._sr_species_idx is None:
+            self._sr_species_idx = self._resolve_sr_species(aq_props)
         for m in self.mineral_names:
-            id = aq_props.saturationSpecies().findWithFormula(m)
-            if id < n_saturation_species:
-                kin_state[f"SR_{m}"] = aq_props.saturationRatio(id).val()
+            idx = self._sr_species_idx.get(m)
+            if idx is not None:
+                kin_state[f"SR_{m}"] = aq_props.saturationRatio(idx).val()
             else:
                 kin_state[f"SR_{m}"] = 0.0
 
@@ -289,6 +350,58 @@ class Flash:
             species_aq_molar_fractions,
             species_gas_molar_fractions,
         )
+
+    def _resolve_sr_species(self, aq_props):
+        """Resolve each kinetic mineral to a saturation-species index BY NAME.
+
+        For each mineral formula in ``self.mineral_names`` the configured species name
+        (``self.sr_species_names``, defaulting to the stable rock-forming carbonate phases)
+        is looked up via ``saturationSpecies().findWithName``. If the requested name is not
+        in the database -- or no name is configured for that formula -- the method falls
+        back to the legacy ``findWithFormula`` first-match (emitting a warning), so that
+        databases without the named polymorph still work. Returns ``{mineral_name: index}``
+        with ``None`` where neither lookup succeeds. The saturation-species catalog is fixed
+        by the chemical system, so indices are stable across states and resolved only once.
+
+        :param aq_props: a valid :class:`reaktoro.AqueousProps` for this system
+        :return: mapping from mineral formula name to saturation-species index (or ``None``)
+        :rtype: dict[str, int | None]
+        """
+        ss = aq_props.saturationSpecies()
+        n = ss.size()
+        resolved = {}
+        chosen_log = {}
+        for m in self.mineral_names:
+            desired = self.sr_species_names.get(m)
+            idx = None
+            if desired is not None:
+                j = ss.findWithName(desired)
+                if j < n:
+                    idx = j
+                else:
+                    warnings.warn(
+                        f"Reaktoro: saturation species '{desired}' (requested for kinetic "
+                        f"mineral '{m}') not found in '{self.database_filename}'; falling back "
+                        f"to first formula match.",
+                        Warning,
+                        stacklevel=2,
+                    )
+            if idx is None:
+                j = ss.findWithFormula(m)
+                if j < n:
+                    idx = j
+                    if desired is not None and ss[j].name() != desired:
+                        warnings.warn(
+                            f"Reaktoro: kinetic mineral '{m}' SR resolved by formula to "
+                            f"'{ss[j].name()}' instead of requested '{desired}'.",
+                            Warning,
+                            stacklevel=2,
+                        )
+            resolved[m] = idx
+            chosen_log[m] = ss[idx].name() if idx is not None else None
+        # One-time transparency: which species actually drives each kinetic rate.
+        print(f"Reaktoro kinetic SR species: {chosen_log}")
+        return resolved
 
     def _build_reaktoro_system(self):
         try:
@@ -341,3 +454,17 @@ class Flash:
         self.gas_species = [
             sp.name() for sp in self.system.phases()[phase_idx].species()
         ]
+
+        # Persistent solver/options/conditions built ONCE and reused for every OBL point.
+        # Reusing the solver avoids per-call allocation of its internal workspace, and the
+        # paired persistent ChemicalState (self._state, created lazily in evaluate) carries
+        # the previous converged speciation forward as a warm-start guess across neighbouring
+        # supporting points. The C++ adaptive interpolator delivers points grid-sorted, so
+        # consecutive points within a batch are state-space neighbours -- an excellent guess.
+        # See evaluate().
+        self._solver = EquilibriumSolver(self.system)
+        op = EquilibriumOptions()
+        op.optima.convergence.tolerance = 1e-12
+        self._solver.setOptions(op)
+        self._conds = EquilibriumConditions(self.system)
+        self._state = None

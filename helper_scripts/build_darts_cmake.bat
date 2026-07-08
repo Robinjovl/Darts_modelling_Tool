@@ -4,6 +4,7 @@ setlocal enabledelayedexpansion
 REM Read input arguments ---------------------------------------------
 set clean_mode=false
 set testing=false
+set install_test_extra=false
 set wheel=false
 set bos_solvers_artifact=false
 set bos_solvers_dir=""
@@ -22,7 +23,7 @@ set option=%1
 shift
 if "%option%"=="-h" goto :help_info
 if "%option%"=="-c" set clean_mode=true & goto parse_args
-if "%option%"=="-t" set testing=true & goto parse_args
+if "%option%"=="-t" set testing=true & set install_test_extra=true & goto parse_args
 if "%option%"=="-w" set wheel=true & goto parse_args
 if "%option%"=="-m" set MT=true & goto parse_args
 if "%option%"=="-G" set GPU=true & goto parse_args
@@ -67,6 +68,7 @@ echo    fetch bos_solvers_artifact = %bos_solvers_artifact%
 echo    config = %config%
 echo    gpu = %GPU%
 echo    testing = %testing%
+echo    install test dependencies = %install_test_extra%
 echo    generate python wheel = %wheel%
 echo    Multi thread = %MT%
 echo    Phreeqc support = %phreeqc%
@@ -193,7 +195,11 @@ if %wheel%==true (
   python -m build --wheel >> make_wheel.log || goto :error
   echo -- Python wheel generated!
 )
-python -m pip install . >> make_wheel.log
+if %install_test_extra%==true (
+  python -m pip install ".[test]" >> make_wheel.log
+) else (
+  python -m pip install . >> make_wheel.log
+)
 
 if %phreeqc%==true (
   call :ensure_reaktoro_conda || goto :error
@@ -261,7 +267,7 @@ echo    Script to install opendarts on Windows.
 echo USAGE:
 echo    -h : displays this help menu.
 echo    -c : cleans up build to prepare a new fresh build. Default: don't clean
-echo    -t : Enable testing: ctest of solvers. Default: don't test
+echo    -t : Enable testing: ctest of solvers and install open-darts[test]. Default: don't test
 echo    -w : Enable generation of python wheel. Default: false
 echo    -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true
 echo    -r : Skip building thirdparty libraries (if you have them already compiled). Default: false

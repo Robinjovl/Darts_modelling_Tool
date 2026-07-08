@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from darts.engines import value_vector
+from darts.engines import value_vector, sim_params
 from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
 from darts.engines import well_control_iface
 
@@ -14,6 +14,14 @@ class ModelGeothermal(Model_CPG):
     def __init__(self, iapws_physics: bool = True):
         self.iapws_physics = iapws_physics
         super().__init__()
+        # The OBL grid is unbounded (no axes_max) in this branch, so a producer
+        # well-control switch can push the well-block enthalpy outside the IAPWS-valid
+        # range in a single Newton step -> singular CPR system -> NaN runaway -> crash.
+        # Enable the global Newton chop (caps the per-step relative change of all
+        # variables) to damp that transient. copy_data_ts_to_sim_params() does not
+        # touch newton_type/newton_params, so this setting reaches the engine.
+        self.params.newton_type = sim_params.newton_solver_t.newton_global_chop
+        self.params.newton_params = value_vector([0.2])
 
     def set_physics(self):
         # single component, two phase. Pressure and enthalpy are the main variables
@@ -21,12 +29,8 @@ class ModelGeothermal(Model_CPG):
             self.physics = Geothermal(self.idata, self.timer)  # IAPWS
         else:
             self.physics = GeothermalPH(self.idata, self.timer)  # Flash
-            self.physics.determine_obl_bounds(
-                min_p=self.idata.obl.min_p,
-                max_p=self.idata.obl.max_p,
-                min_t=250.,
-                max_t=575.,
-            )
+            # determine_obl_bounds() was removed; the GeothermalPH grid is defined
+            # entirely by (axes_origin, axes_step) via OBLParams now.
 
     def set_initial_conditions(self):
         if self.idata.initial.type == 'gradient':
@@ -162,8 +166,7 @@ class ModelGeothermal(Model_CPG):
         else:
             assert False, 'Unknown wctrl_type' +  case
 
-        self.idata.obl.n_points = 100
-        self.idata.obl.min_p = 50.
-        self.idata.obl.max_p = 400.
-        self.idata.obl.min_e = 1000.  # kJ/kmol, will be overwritten in PHFlash physics
-        self.idata.obl.max_e = 25000.  # kJ/kmol, will be overwritten in PHFlash physics
+        self.idata.obl.p_step = 3.5   # bar
+        self.idata.obl.p_origin = 50.0
+        self.idata.obl.e_step = 250.0  # kJ/kmol
+        self.idata.obl.e_origin = 1000.0

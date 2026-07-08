@@ -71,19 +71,25 @@ def compare_generated_well_time_series(
     :param overwrite: Flag to overwrite reference files with generated well time-series files.
     :param pkl_suffix: Solver/platform suffix used in the reference file name.
     """
-    # Single-thread CI jobs provide the reference check for well time-series.
-    # Multithread runs can produce small thread-count-dependent differences in
-    # well time-series, so they are not compared with reference results.
-    if skip_well_time_series_comparison():
+    overwrite_enabled = str(overwrite) == "1" or overwrite is True
+
+    # Single-thread CPU CI jobs provide the reference check for well time-series.
+    # GPU and multithread runs can produce platform- or thread-count-dependent
+    # differences in well time-series, so they are not compared with reference
+    # results during normal test runs. Keep UPLOAD_PKL=1 able to generate refs.
+    if not overwrite_enabled and skip_well_time_series_comparison():
         print(
             "SKIP well time-series comparison: "
+            f"TEST_GPU={os.environ.get('TEST_GPU')}, "
             f"OMP_NUM_THREADS={get_thread_count()}."
         )
         return 0, 0, True
 
     failed = 0
     n_processed = 0
-    for time_series_file in find_changed_well_time_series_files(root_dir, before_snapshot):
+    for time_series_file in find_changed_well_time_series_files(
+        root_dir, before_snapshot
+    ):
         n_processed += 1
         failed += compare_well_time_series(
             time_series_file, root_dir, overwrite, pkl_suffix
@@ -277,7 +283,7 @@ def skip_well_time_series_comparison():
     """
     Return whether generated well time-series comparisons should be skipped.
     """
-    return get_thread_count() > 1
+    return os.environ.get("TEST_GPU") == "1" or get_thread_count() > 1
 
 
 def get_thread_count():

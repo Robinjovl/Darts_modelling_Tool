@@ -104,6 +104,15 @@ class iapws_temperature_evaluator(property_evaluator_iface):
         hmin = _Region1(273.15, P)["h"]
         if h < hmin:
             h = hmin
+        # IAPWS97 region 2 is calibrated up to ~4160 kJ/kg in the 1273 K /
+        # 100 MPa corner. With the adaptive multi-index interpolator Newton
+        # iterations may stamp out supporting points beyond that envelope; we
+        # clamp to 4500 kJ/kg so `_Bound_Ph` still returns a defined region
+        # and the Newton step backs off naturally instead of the solve
+        # aborting with NotImplementedError.
+        h_max = 4500.0
+        if h > h_max:
+            h = h_max
 
         region = _Bound_Ph(P, h)
         if region == 1:
