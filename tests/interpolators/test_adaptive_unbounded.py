@@ -97,32 +97,29 @@ class LinearEvaluator(operator_set_evaluator_iface):
 
 @contextmanager
 def captured_stderr():
-    """Capture C-level stderr (printf via stdout/stderr is not seen by sys.stderr).
-    This is best-effort: we redirect fd 2 to a temp buffer and yield the path."""
-    saved = os.dup(2)
-    r, w = os.pipe()
-    os.dup2(w, 2)
-    os.close(w)
+    """Capture C-level stderr (printf/cerr via fd 2 is not seen by sys.stderr).
+
+    Cross-platform: redirect fd 2 to a temporary file, then read it back after the
+    block. This avoids the Unix-only ``fcntl``/non-blocking-pipe drain (which raised
+    ``ModuleNotFoundError: No module named 'fcntl'`` on Windows) and the 64 KiB
+    pipe-buffer deadlock. The yielded ``bytearray`` is filled on exit, so callers
+    decode it after the ``with`` block, exactly as before."""
+    import tempfile
+
     buf_bytes = bytearray()
+    saved = os.dup(2)
+    tmp = tempfile.TemporaryFile()
     try:
+        os.dup2(tmp.fileno(), 2)
         yield buf_bytes
     finally:
         os.dup2(saved, 2)
         os.close(saved)
-        # drain pipe (nonblocking)
-        import fcntl
-
-        fl = fcntl.fcntl(r, fcntl.F_GETFL)
-        fcntl.fcntl(r, fcntl.F_SETFL, fl | os.O_NONBLOCK)
         try:
-            while True:
-                chunk = os.read(r, 65536)
-                if not chunk:
-                    break
-                buf_bytes.extend(chunk)
-        except BlockingIOError:
-            pass
-        os.close(r)
+            tmp.seek(0)
+            buf_bytes.extend(tmp.read())
+        finally:
+            tmp.close()
 
 
 def build_itor(axes_min, axes_max, n_points, kind="multilinear"):
