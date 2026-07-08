@@ -6,12 +6,12 @@
 
 // exposer helper class for <N_DIMS, N_OPS> template: N_OPS = N_DIMS * N_OPS_A + N_OPS_B
 
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint8_t N_OPS_A, uint8_t N_OPS_B>
+template <template <uint8_t N_DIMS, uint16_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint16_t N_OPS_A, uint16_t N_OPS_B>
 struct recursive_exposer_ndims_nops
 {
   static void expose(pymodule_t &m)
   {
-    exposer_t<N_DIMS, N_DIMS * N_OPS_A + N_OPS_B> e;
+    exposer_t<N_DIMS, static_cast<uint16_t>(N_DIMS * N_OPS_A + N_OPS_B)> e;
 
     e.expose(m);
 
@@ -20,12 +20,12 @@ struct recursive_exposer_ndims_nops
 };
 
 // partial specialization to stop recursion at N_DIMS == 1
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_OPS_A, uint8_t N_OPS_B>
+template <template <uint8_t N_DIMS, uint16_t N_OPS> class exposer_t, typename pymodule_t, uint16_t N_OPS_A, uint16_t N_OPS_B>
 struct recursive_exposer_ndims_nops<exposer_t, pymodule_t, 1, N_OPS_A, N_OPS_B>
 {
   static void expose(pymodule_t &m)
   {
-    exposer_t<1, 1 * N_OPS_A + N_OPS_B> e;
+    exposer_t<1, static_cast<uint16_t>(1 * N_OPS_A + N_OPS_B)> e;
 
     e.expose(m);
   }
@@ -34,7 +34,7 @@ struct recursive_exposer_ndims_nops<exposer_t, pymodule_t, 1, N_OPS_A, N_OPS_B>
 // single-axis exposer: for a fixed N_DIMS, expose all N_OPS from N_OPS down to 1
 // Used to split the full (N_DIMS, N_OPS) grid across translation units by N_DIMS.
 
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <template <uint8_t N_DIMS, uint16_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint16_t N_OPS>
 struct recursive_exposer_nops
 {
     static void expose(pymodule_t& m)
@@ -45,7 +45,7 @@ struct recursive_exposer_nops
     }
 };
 
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS>
+template <template <uint8_t N_DIMS, uint16_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS>
 struct recursive_exposer_nops<exposer_t, pymodule_t, N_DIMS, 1>
 {
     static void expose(pymodule_t& m)
@@ -57,7 +57,7 @@ struct recursive_exposer_nops<exposer_t, pymodule_t, N_DIMS, 1>
 
 // double-recursive exposer for all (N_DIMS, N_OPS) combinations up to given maxima
 
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <template <uint8_t N_DIMS, uint16_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS, uint16_t N_OPS>
 struct recursive_exposer_ndims_nops2
 {
     static void expose(pymodule_t& m)
@@ -72,7 +72,7 @@ struct recursive_exposer_ndims_nops2
 };
 
 // partial specializations to stop recursion
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_OPS>
+template <template <uint8_t N_DIMS, uint16_t N_OPS> class exposer_t, typename pymodule_t, uint16_t N_OPS>
 struct recursive_exposer_ndims_nops2<exposer_t, pymodule_t, 1, N_OPS>
 {
     static void expose(pymodule_t& m)
@@ -83,7 +83,7 @@ struct recursive_exposer_ndims_nops2<exposer_t, pymodule_t, 1, N_OPS>
     }
 };
 
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS>
+template <template <uint8_t N_DIMS, uint16_t N_OPS> class exposer_t, typename pymodule_t, uint8_t N_DIMS>
 struct recursive_exposer_ndims_nops2<exposer_t, pymodule_t, N_DIMS, 1>
 {
     static void expose(pymodule_t& m)
@@ -94,7 +94,7 @@ struct recursive_exposer_ndims_nops2<exposer_t, pymodule_t, N_DIMS, 1>
     }
 };
 
-template <template <uint8_t N_DIMS, uint8_t N_OPS> class exposer_t, typename pymodule_t>
+template <template <uint8_t N_DIMS, uint16_t N_OPS> class exposer_t, typename pymodule_t>
 struct recursive_exposer_ndims_nops2<exposer_t, pymodule_t, 1, 1>
 {
     static void expose(pymodule_t& m)

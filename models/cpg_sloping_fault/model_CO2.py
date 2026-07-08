@@ -85,9 +85,12 @@ class ModelCCS(Model_CPG):
 
         state_spec = Compositional.StateSpecification.P
 
-        self.physics = Compositional(self.components, phases, timer=self.timer, n_points=self.idata.obl.n_points,
-                                     min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
-                                     min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
+        nz = len(self.components) - 1
+        ax_step = [self.idata.obl.p_step] + [self.idata.obl.z_step] * nz
+        ax_origin = [self.idata.obl.p_origin] + [self.idata.obl.z_origin] * nz
+        self.physics = Compositional(self.components, phases, timer=self.timer,
+                                     axes_step=ax_step, axes_origin=ax_origin,
+                                     epsilon_z=self.idata.obl.epsilon_z,
                                      state_spec=state_spec, cache=False)
         #self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
 
@@ -253,14 +256,14 @@ class ModelCCS(Model_CPG):
                         wdata.add_prd_rate_control(time=(2*y+1)*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
                                                    phase_name='gas', bhp_constraint=70)  # kmol/day | bars
 
-        self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-13
-        self.idata.obl.min_p = 0.
-        self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = 10.
-        self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = self.idata.obl.zero
-        self.idata.obl.max_z = 1 - self.idata.obl.zero
+        self.idata.obl.epsilon_z = self.idata.obl.zero
+        self.idata.obl.p_step = 2.5
+        self.idata.obl.p_origin = 0.0
+        self.idata.obl.z_step = 2.5e-3
+        self.idata.obl.z_origin = self.idata.obl.zero
+        self.idata.obl.t_step = 0.25
+        self.idata.obl.t_origin = 10.0
 
 
 class ModBrooksCorey:

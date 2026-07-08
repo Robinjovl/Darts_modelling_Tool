@@ -55,8 +55,9 @@ class Model(DartsModel):
         thermal = True
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=0, max_p=1000, min_z=0.0, max_z=1.0, epsilon_z=epsilon,
-                                     min_t=273.15 + 20, max_t=273.15 + 200)
+                                     axes_step=[2.5, 2.5e-3, 0.45],  # p [bar], z, T [K]
+                                     axes_origin=[0.0, epsilon, 273.15 + 20],
+                                     epsilon_z=epsilon)
         self.physics.add_property_region(property_container)
         self.set_sim_params(first_ts=1e-4, mult_ts=2, max_ts=1)
 

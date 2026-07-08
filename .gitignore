@@ -35,6 +35,7 @@ solution.pvd
 *.png
 *.xlsx
 *.pkl
+*.fastcache
 *.iobj
 *.ipdb
 *.lib
@@ -47,3 +48,6 @@ solution.pvd
 *.nc
 *.h5
 *.vim
+*.vtu
+*.txt
+*.vtk
