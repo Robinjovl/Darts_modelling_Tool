@@ -35,8 +35,14 @@
         - cd models
         # passing additional argument to trigger verbose check performance
         - darts run_test_suite2.py LOG
-        - cd ..
-        - python -m pytest tests\interpolators -v
+        # Run the interpolator tests from a scratch CWD outside the checkout so Python
+        # imports the installed wheel. From the repo root the in-source darts/ package
+        # (which has no compiled extensions on Windows) shadows the site-packages wheel,
+        # so `import darts.engines/interpolators` fails during collection. The tests
+        # write nothing to CWD, so a shared scratch dir is safe. Mirrors test-linux.yml.
+        - cd $env:TEMP
+        - python -m pytest "$env:CI_PROJECT_DIR\tests\interpolators" -v
+        - cd $env:CI_PROJECT_DIR
         # test discretizer
         - cd discretizer\tests\compare_discretizers
         - python main.py
