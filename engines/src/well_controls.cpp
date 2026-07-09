@@ -265,6 +265,7 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	// BHP ctrl always uses the pressure at the wellhead.
 	// Rate control uses the upstream state depending on whether the well is for injection or production.
 	const index_t ctrl_state_block_offset = is_bhp_ctrl ? 0 : well_state_offset;
+	const index_t ctrl_state_col_offset = ctrl_state_block_offset * n_block_size_sq;
 	state.assign(X.begin() + (well_head_idx + ctrl_state_block_offset) * n_block_size + P_VAR,
 	    X.begin() + (well_head_idx + ctrl_state_block_offset) * n_block_size + P_VAR + n_vars);
 
@@ -313,12 +314,10 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 			// RHS
 			RHS_well_head[0] = well_ctrl_ops[rate_ctrl_op_idx] * p_diff * well_transmissibility - this->target;
 
-			// Rate operator derivatives
-			// TODO: If well_state_offset is 1 (production well), state is state of the body block, so we instead have
-			// derivatives of well_ctrl_ops with respect to primary vars of the body block which are not included here.
+			// Rate operator derivatives belong to the block whose state was used for well_ctrl_ops.
 			for (int jj = 0; jj < n_vars; jj++)
 			{
-				jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_ctrl_ops_derivs[rate_ctrl_op_idx * n_vars + jj] * p_diff * well_transmissibility;
+				jacobian_row[n_block_size * P_VAR + P_VAR + ctrl_state_col_offset + jj] += well_ctrl_ops_derivs[rate_ctrl_op_idx * n_vars + jj] * p_diff * well_transmissibility;
 			}
 			// Product rule for pressure variable
 			jacobian_row[n_block_size * P_VAR + P_VAR] += well_ctrl_ops[rate_ctrl_op_idx] * well_transmissibility;
@@ -348,12 +347,10 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 
 				total_rate += well_ctrl_ops[rate_ctrl_op_idx] * p_diff * well_transmissibility;
 
-				// Rate ctrl operator derivatives
-				// TODO: If well_state_offset is 1 (production well), state is state of the body block, so we also have
-				// derivatives of well_ctrl_ops with respect to primary vars of the body block which are not included here.
+				// Rate ctrl operator derivatives belong to the block whose state was used for well_ctrl_ops.
 				for (int jj = 0; jj < n_vars; jj++)
 				{
-					jacobian_row[n_block_size * P_VAR + P_VAR + jj] += well_ctrl_ops_derivs[rate_ctrl_op_idx * n_vars + jj] * p_diff * well_transmissibility;
+					jacobian_row[n_block_size * P_VAR + P_VAR + ctrl_state_col_offset + jj] += well_ctrl_ops_derivs[rate_ctrl_op_idx * n_vars + jj] * p_diff * well_transmissibility;
 				}
 				// Product rule for pressure variable
 				jacobian_row[n_block_size * P_VAR + P_VAR] += well_ctrl_ops[rate_ctrl_op_idx] * well_transmissibility;
@@ -367,8 +364,8 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	{
 		// DFM rate ctrl: constrain the phase/total rate at the wellhead connection of DFM wells
 		// TODO: This state must be chosen based on the sign of phase velocity for each phase,
-		// not based on the type of the well. This matters because I have seen particularly at the beginning of simulation
-		// where there is a lot of instability, there is upward fluid flow for an injection well and using the upwind scheme is important for stability.
+		// not based on the injection/production type of the well. This matters because I have seen particularly at the beginning of simulation
+		// where there is a lot of instability and there is upward fluid flow for an injection well and using the upwind scheme is important for stability.
 		index_t n_conns = phases_vels.size() / n_phases;
 		index_t well_head_conn_idx_local = 0;
 
@@ -386,11 +383,10 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 			// RHS
 			RHS_well_head[0] = well_ctrl_ops[rate_ctrl_op_idx] * phase_vel * well_transmissibility - this->target;
 
-			// TODO: If well_state_offset is 1 (production well), state is state of the body block, so we also have
-			// derivatives of well_ctrl_ops with respect to primary vars of the body block which are not included here.
+			// Rate operator derivatives belong to the block whose state was used for well_ctrl_ops.
 			for (int jj = 0; jj < n_vars; jj++)
 			{
-				jacobian_row[n_block_size * P_VAR + P_VAR + jj] = well_ctrl_ops_derivs[rate_ctrl_op_idx * n_vars + jj] * phase_vel * well_transmissibility;
+				jacobian_row[n_block_size * P_VAR + P_VAR + ctrl_state_col_offset + jj] += well_ctrl_ops_derivs[rate_ctrl_op_idx * n_vars + jj] * phase_vel * well_transmissibility;
 
 				value_t vel_der_head = phases_vels_ders[phase_idx.value() * phase_stride + well_head_conn_idx_local * conn_stride + 0 * n_vars + jj];
 				jacobian_row[n_block_size * P_VAR + P_VAR + jj] += well_ctrl_ops[rate_ctrl_op_idx] * vel_der_head * well_transmissibility;
@@ -418,11 +414,10 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 
 				total_rate += well_ctrl_ops[rate_ctrl_op_idx] * phase_vel * well_transmissibility;
 
-				// TODO: If well_state_offset is 1 (production well), state is state of the body block, so we also have
-				// derivatives of well_ctrl_ops with respect to primary vars of the body block which are not included here.
+				// Rate operator derivatives belong to the block whose state was used for well_ctrl_ops.
 				for (int jj = 0; jj < n_vars; jj++)
 				{
-					jacobian_row[n_block_size * P_VAR + P_VAR + jj] += well_ctrl_ops_derivs[rate_ctrl_op_idx * n_vars + jj] * phase_vel * well_transmissibility;
+					jacobian_row[n_block_size * P_VAR + P_VAR + ctrl_state_col_offset + jj] += well_ctrl_ops_derivs[rate_ctrl_op_idx * n_vars + jj] * phase_vel * well_transmissibility;
 
 					value_t vel_der_head = phases_vels_ders[p * phase_stride + well_head_conn_idx_local * conn_stride + 0 * n_vars + jj];
 					jacobian_row[n_block_size * P_VAR + P_VAR + jj] += well_ctrl_ops[rate_ctrl_op_idx] * vel_der_head * well_transmissibility;
