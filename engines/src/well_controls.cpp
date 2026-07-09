@@ -257,7 +257,8 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 	value_t* X_well_body = X_well_head + n_block_size;
 	value_t* RHS_well_head = &RHS[n_block_size * well_head_idx + P_VAR];
 
-	// fill the jacobian
+	// Clear the two local column blocks of the wellhead equation row before replacing
+	// that row with control equations. This does not touch the body block's own conservation-equation rows.
 	const uint16_t n_block_size_sq = n_block_size * n_block_size;
 	memset(jacobian_row, 0, 2 * n_block_size_sq * sizeof(value_t));
 
@@ -335,12 +336,6 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 			// Total rate ctrl: constrain total phase rates.
 			value_t total_rate = 0.0;  // accumulate total well rate over all phases
 
-			// Reset derivatives of the rate ctrl equation
-			for (int jj = 0; jj < n_vars; jj++)
-			{
-				jacobian_row[n_block_size * P_VAR + P_VAR + jj] = 0.0;
-			}
-
 			for (index_t p = 0; p < n_phases; p++)
 			{
 				index_t rate_ctrl_op_idx = get_rate_ctrl_op_idx(this->control_type, p, false);
@@ -399,12 +394,6 @@ int well_control_iface::add_to_jacobian(value_t dt, index_t well_head_idx, value
 		{
 			// Total rate ctrl: constrain total phase rates.
 			value_t total_rate = 0.0;  // accumulate total well rate over all phases
-
-			// Reset derivatives of the rate ctrl equation
-			for (int jj = 0; jj < n_vars; jj++)
-			{
-				jacobian_row[n_block_size * P_VAR + P_VAR + jj] = 0.0;
-			}
 
 			for (index_t p = 0; p < n_phases; p++)
 			{
