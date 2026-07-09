@@ -1,9 +1,10 @@
 import gmsh
 import math
+import os
 
 
 def generate_3d_fault_mesh(
-    msh_filename="fault_2.msh",
+    msh_filename=os.path.join('meshes', 'case_5', "mesh.msh"),
     fault_dip_degrees=45.0,
     reservoir_block_offset=180.0,
     damage_width_left=100,
@@ -14,7 +15,8 @@ def generate_3d_fault_mesh(
     geo = gmsh.model.occ
 
     # ---- Parameters ----
-    W, H = 4500.0, 4500.0
+    #W, H = 4500.0, 4500.0
+    W = H = 10000.0  # [m]
     a, b = 30.0, 230.0
     Lplus = b + 150
     phi = math.radians(fault_dip_degrees)
@@ -376,7 +378,7 @@ def generate_3d_fault_mesh(
     y_min = y_new(-H / 2); y_max = y_new(H / 2)
 
     # Top box (shallower): z_old from 400 to 800
-    z_top0 = z_new(400.0); z_top1 = z_new(800.0)
+    z_top0 = z_new(400.0); z_top1 = 0.#z_new(800.0)
     zmin_top = min(z_top0, z_top1); zmax_top = max(z_top0, z_top1)
     top_box = geo.addBox(
         x_min, y_min, zmin_top,
@@ -384,7 +386,7 @@ def generate_3d_fault_mesh(
     )
 
     # Bottom box (deeper): z_old from -800 to -400
-    z_bot0 = z_new(-400.0); z_bot1 = z_new(-800.0)
+    z_bot0 = z_new(-400.0); z_bot1 = 5000. #z_new(-800.0)
     zmin_bot = min(z_bot0, z_bot1); zmax_bot = max(z_bot0, z_bot1)
     bottom_box = geo.addBox(
         x_min, y_min, zmin_bot,

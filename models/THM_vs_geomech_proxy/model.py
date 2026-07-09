@@ -126,7 +126,7 @@ class Model(THMCModel):
 
 
     def set_physics_dummy(self):
-        super.set_physics()
+        super().set_physics()
         if self.physics_type == 'single_phase':
             pass
         elif self.physics_type == 'single_phase_thermal':

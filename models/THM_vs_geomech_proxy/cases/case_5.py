@@ -11,19 +11,20 @@ def input_data_case_5():
     idata = input_data_base()
 
     # override permeability (default is 10 mD)
-    idata.rock.permx = idata.rock.permy = idata.rock.permz = 1000.0  # [mD]
+    #idata.rock.permx = idata.rock.permy = idata.rock.permz = 1000.0  # [mD]
 
     # reservoir geometry (overrides defaults: rsv_top=2000, rsv_bottom=2400, rsv_xy=1000)
     idata.other.rsv_top = 2830.0    # [m]
     idata.other.rsv_bottom = 3030.0  # [m]
-    idata.other.rsv_xy = 4500.0      # [m]
+    idata.other.rsv_xy = 10000. # 4500.0      # [m]
 
     # well placement (overrides defaults: doublet_shift=500, cell_shift=0)
-    idata.other.doublet_shift = 100.0  # [m]
-    idata.other.cell_shift = 500.0     # [m]
+    idata.other.doublet_shift = 500.0  # [m]
+    #idata.other.cell_shift = 500.0     # [m]
 
-    # mesh: three Gmsh physical tags (1=overburden, 2=reservoir, 3=underburden, 4=damage zone left,5=damage zone right 99991=fault)
-    idata.other.matrix_tags = (1, 2, 3,4,5, 99991)
+    # mesh: three Gmsh physical tags (1=overburden, 2=reservoir, 3=underburden, 4=damage zone left, 
+    # 5=damage zone right 99991=fault)
+    idata.other.matrix_tags = (1, 2, 3, 4, 5, 99991)
 
     # case_2 and case_3 inherit this, so all three cases share one mesh
     idata.other.mesh_dir = 'case_5'  # we don't
@@ -32,6 +33,12 @@ def input_data_case_5():
     _set_reservoir_bounds(idata)
     _set_wells(idata)
     _set_mesh_tags(idata)
+    
+    idata.other.prod_well_coords = [idata.other.rsv_xy/2., idata.other.rsv_xy/2. + idata.other.doublet_shift,
+            idata.other.rsv_top, idata.other.rsv_bottom]  # [X, Y, Z1, Z2]
+
+    idata.other.inj_well_coords = [idata.other.rsv_xy/2., idata.other.rsv_xy/2. - idata.other.doublet_shift,
+            idata.other.rsv_top, idata.other.rsv_bottom]  # [X, Y, Z1, Z2]
 
     idata.other.points_xy = []  # no black reference line for case_1
     idata.other.use_mesh_bounds_in_plot = True
