@@ -270,14 +270,13 @@ class Model(THMCModel):
         from darts.models.darts_model import DataTS
         self.idata.sim.DataTS = DataTS(n_vars=0)
 
-        self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
         self.idata.obl.epsilon_z = 1e-10
-        self.idata.obl.min_p = -5.
-        self.idata.obl.max_p = 500.
-        self.idata.obl.min_t = -10.
-        self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = 0.
-        self.idata.obl.max_z = 1.
+        self.idata.obl.p_step = 1.0
+        self.idata.obl.p_origin = -5.
+        self.idata.obl.z_step = 2e-3
+        self.idata.obl.z_origin = 0.
+        self.idata.obl.t_step = 0.25
+        self.idata.obl.t_origin = -10.
 
         super().set_input_data()  # check

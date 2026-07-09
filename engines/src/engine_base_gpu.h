@@ -54,8 +54,8 @@ public:
   // get the number of primary unknowns (per block)
   virtual uint8_t get_n_vars() const override = 0;
 
-  // get the number of operators (per block)
-  virtual uint8_t get_n_ops() const override = 0;
+  // get the number of operators (per block) — must match widened base signature.
+  virtual uint16_t get_n_ops() const override = 0;
 
   // get the number of components
   virtual uint8_t get_n_comps() const override = 0;
@@ -184,35 +184,38 @@ public:
   value_t *jac_values() { return Jacobian->get_values(); }
 
   // GPU-specific data (_d postfix means device data)
+  // All device pointers are default-initialized to nullptr so the destructor
+  // can safely free_device_data() even when init() didn't run (e.g. model
+  // construction raised). cudaFree(nullptr) is documented as a no-op.
 
   // linear system
-  value_t *X_d, *Xn_d, *dX_d, *RHS_d;      // [N_VARS * n_blocks] arrays for solution, previous timestep solution, update, and right hand side
-  value_t *Xop_d = nullptr;                // [(N_VARS + n_history) * n_blocks] extended OBL state for history-aware interpolation
-  value_t *RHS_wells_d;                    // [N_VARS * n_blocks] temporary device storage for RHS_wells copied async from host while main assembly is done
-  std::vector<value_t> jac_wells;          // [n_wells * 2 * N_VARS * N_VARS ] temporary host storage for well equations
-  value_t *jac_wells_d;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary device storage for well equations
-  std::vector<index_t> jac_well_head_idxs; // [n_wells] well head indexes in jacobian values array
-  index_t *jac_well_head_idxs_d;           // [n_wells] device storage for well head indexes in jacobian values array
+  value_t *X_d = nullptr, *Xn_d = nullptr, *dX_d = nullptr, *RHS_d = nullptr;      // [N_VARS * n_blocks] arrays for solution, previous timestep solution, update, and right hand side
+  value_t *Xop_d = nullptr;                          // [(N_VARS + n_history) * n_blocks] extended OBL state for history-aware interpolation
+  value_t *RHS_wells_d = nullptr;                    // [N_VARS * n_blocks] temporary device storage for RHS_wells copied async from host while main assembly is done
+  std::vector<value_t> jac_wells;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary host storage for well equations
+  value_t *jac_wells_d = nullptr;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary device storage for well equations
+  std::vector<index_t> jac_well_head_idxs;           // [n_wells] well head indexes in jacobian values array
+  index_t *jac_well_head_idxs_d = nullptr;           // [n_wells] device storage for well head indexes in jacobian values array
 
   // interpolation
-  value_t *op_vals_arr_d;          // [N_OPS * n_blocks] array of values of operators
-  value_t *op_ders_arr_d;          // [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
-  value_t *op_ders_arr_ext_d = nullptr; // [N_OPS * (N_VARS + n_history) * n_blocks] extended derivative scratch
-  value_t *op_vals_arr_n_d;        // [N_OPS * n_blocks] array of values of operators from the last timestep
+  value_t *op_vals_arr_d = nullptr;       // [N_OPS * n_blocks] array of values of operators
+  value_t *op_ders_arr_d = nullptr;       // [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
+  value_t *op_ders_arr_ext_d = nullptr;   // [N_OPS * (N_VARS + n_history) * n_blocks] extended derivative scratch
+  value_t *op_vals_arr_n_d = nullptr;     // [N_OPS * n_blocks] array of values of operators from the last timestep
 
   std::vector<index_t *> block_idxs_d; // [N_OP_NUM][?] vector of arrays of block indexes corresponding to given operator set
 
   // input data
-  value_t *RV_d, *PV_d;                // [n_blocks] rock and pore volumes for each block
-  value_t *mesh_tran_d, *mesh_tranD_d; // [n_conns] transmissibility and diffusive transmissibility for each (duplicated) connection
-  value_t *mesh_hcap_d;                // [n_blocks] rock heat capacity for each block
+  value_t *RV_d = nullptr, *PV_d = nullptr;                // [n_blocks] rock and pore volumes for each block
+  value_t *mesh_tran_d = nullptr, *mesh_tranD_d = nullptr; // [n_conns] transmissibility and diffusive transmissibility for each (duplicated) connection
+  value_t *mesh_hcap_d = nullptr;                          // [n_blocks] rock heat capacity for each block
 
-  value_t *molar_weights_d;            // [n_regions * NC] molar weights of components for reconstruction of Darcy velocities
-  value_t *darcy_velocities_d;         // [n_res_blocks * NP * ND] array of phase Darcy velocities for every reservoir cell
-  value_t *mesh_velocity_appr_d;       // coefficients of approximation of Darcy phase velocities over fluxes
-  index_t *mesh_velocity_offset_d;     // offsets in the approximation of Darcy phase velocities over fluxes
-  index_t *mesh_op_num_d;              // regions indices for every cell
-  value_t *dispersivity_d;             // [n_regions * NP * NC] dispersivity coefficients stored in device memory
+  value_t *molar_weights_d = nullptr;          // [n_regions * NC] molar weights of components for reconstruction of Darcy velocities
+  value_t *darcy_velocities_d = nullptr;       // [n_res_blocks * NP * ND] array of phase Darcy velocities for every reservoir cell
+  value_t *mesh_velocity_appr_d = nullptr;     // coefficients of approximation of Darcy phase velocities over fluxes
+  index_t *mesh_velocity_offset_d = nullptr;   // offsets in the approximation of Darcy phase velocities over fluxes
+  index_t *mesh_op_num_d = nullptr;            // regions indices for every cell
+  value_t *dispersivity_d = nullptr;           // [n_regions * NP * NC] dispersivity coefficients stored in device memory
 };
 
 template <uint8_t N_VARS>
@@ -596,17 +599,9 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   nc = get_n_comps();
   z_var_idx = get_z_var_idx();
 
-  if (params->log_transform == 0)
-  {
-    min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
-		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
-  }
-  else if (params->log_transform == 1)
-  {
-    min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
-		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
-
-  }
+  // Physical-simplex clipping; OBL window no longer constrains Newton — see engine_base.h
+  min_axis_z = 0.0;
+  max_axis_z = 1.0;
   min_sim_z = min_axis_z + params->sim_eps;
   max_sim_z = max_axis_z - params->sim_eps;
 
@@ -720,14 +715,8 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 
   for (int r = 0; r < acc_flux_op_set_list.size(); r++)
   {
+    // op_axis_min/op_axis_max left empty — disables apply_obl_axis_local_correction
     block_idxs[r].clear();
-    op_axis_min[r].resize(n_vars);
-    op_axis_max[r].resize(n_vars);
-    for (int j = 0; j < n_vars; j++)
-    {
-      op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-      op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-    }
   }
 
   // create a block list for every operator set

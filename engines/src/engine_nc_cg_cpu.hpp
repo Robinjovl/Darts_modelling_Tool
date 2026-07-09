@@ -54,7 +54,7 @@ public:
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   uint8_t get_n_vars() const override { return N_VARS; };
-  uint8_t get_n_ops() const override { return N_OPS; };
+  uint16_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_comps() const override { return NC; };
   uint8_t get_z_var_idx() const override { return Z_VAR; };
 

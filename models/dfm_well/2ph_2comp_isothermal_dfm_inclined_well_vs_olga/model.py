@@ -89,8 +89,7 @@ class Model(CICDModel):
         """ Define state specification and initialize physics object """
         state_spec = Compositional.StateSpecification.P
         self.physics = Compositional(components_names, phases_names, self.timer, state_spec=state_spec,
-                                     n_points=10000, min_p=1, max_p=500, min_z=0, max_z=1, epsilon_z=epsilon,
-                                     min_t=150, max_t=500)
+                                     axes_step=[0.05, 1e-4], axes_origin=[1., 0.], epsilon_z=epsilon)
 
         """ PropertyContainer object and correlations """
         system_temperature = 40 + 273.15

@@ -38,6 +38,7 @@ solution.pvd
 *.png
 *.xlsx
 *.pkl
+*.fastcache
 *.iobj
 *.ipdb
 *.lib

@@ -9,7 +9,7 @@ from darts.input.input_data import InputData
 
 
 class Model(CICDModel):
-    def __init__(self, n_points=128, iapws_physics: bool = True):
+    def __init__(self, iapws_physics: bool = True):
         # call base class constructor
         super().__init__()
 
@@ -18,7 +18,7 @@ class Model(CICDModel):
         self.set_reservoir()
 
         self.iapws_physics = iapws_physics
-        self.set_input_data(n_points)
+        self.set_input_data()
         self.set_physics()
 
         # solver configuration moved to set_solver() (called by base reset())
@@ -127,9 +127,12 @@ class Model(CICDModel):
                                                    'satAq': lambda: property_container.sat[0]}
 
                 from darts.physics.super.physics import Compositional
-                self.physics = Compositional(components, phases, self.timer, state_spec=Compositional.StateSpecification.PH,
-                                             n_points=1001, min_p=1, max_p=400, min_z=zero / 10, max_z=1 - zero / 10,
-                                             min_t=273.15, max_t=373.15, cache=False)
+                # PH state spec: pressure + (nc-1) compositions + enthalpy
+                ax_step = [0.399] + [1e-3] * (len(components) - 1) + [0.1]
+                ax_origin = [1.0] + [zero / 10] * (len(components) - 1) + [273.15]
+                self.physics = Compositional(components, phases, self.timer,
+                                             state_spec=Compositional.StateSpecification.PH,
+                                             axes_step=ax_step, axes_origin=ax_origin, cache=False)
                 self.physics.add_property_region(property_container)
 
             else:
@@ -159,7 +162,7 @@ class Model(CICDModel):
         temp = _Backward1_T_Ph_vec(X[0:2 * nb:2] / 10, X[1:2 * nb:2] / 18.015)
         return temp
 
-    def set_input_data(self, n_points):
+    def set_input_data(self):
         #init_type = 'uniform'
         init_type = 'gradient'
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
@@ -212,8 +215,7 @@ class Model(CICDModel):
         #     self.idata.wells.controls.prod_bhp_constraint = 70 # lower limit for bhp, bars
         # self.idata.wells.controls.inj_bht = 300  # K
 
-        self.idata.obl.n_points = n_points
-        self.idata.obl.min_p = 1.
-        self.idata.obl.max_p = 351.
-        self.idata.obl.min_e = 1000.  # kJ/kmol, will be overwritten in PHFlash physics
-        self.idata.obl.max_e = 10000.  # kJ/kmol, will be overwritten in PHFlash physics
+        self.idata.obl.p_step = 2.756  # bar
+        self.idata.obl.p_origin = 1.0
+        self.idata.obl.e_step = 70.87  # kJ/kmol
+        self.idata.obl.e_origin = 1000.0

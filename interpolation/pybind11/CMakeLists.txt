@@ -72,6 +72,15 @@ else()
   )
 endif()
 
+# Forward the interpolator profile + max-dims selection from the top-level
+# CMakeLists.txt to this target. These are private — only the interpolators
+# pybind TUs need to see them.
+target_compile_definitions(interpolators
+  PRIVATE
+    OD_INTERP_PROFILE_${OPENDARTS_INTERPOLATOR_PROFILE}
+    MAX_DIMS=${OPENDARTS_MAX_DIMS}
+)
+
 target_link_libraries(interpolators
   PUBLIC
     opendarts_compiler_flags

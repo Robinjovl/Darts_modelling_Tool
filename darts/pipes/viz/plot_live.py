@@ -20,6 +20,12 @@ class LivePlotConfig:
 
     # Flag to enable live plotting of the PH diagram
     enable_ph_diagram: bool = False
+    # Pressure bounds of the PH diagram
+    p_bounds: tuple = (None, None)
+    # Enthalpy bounds of the PH diagram
+    h_bounds: tuple = (None, None)
+    # Resolution of each property axis
+    n_points: int = 200
     # Index of the block which will be tracked on the PH diagram
     tracked_block_idx: int = 0
 
@@ -194,21 +200,12 @@ class DartsModelWithLivePlots(DartsModel):
 
             fig, axes = plt.subplots(figsize=(10, 6), constrained_layout=True)
 
-            p_idx = self.physics.vars.index("pressure")
-            h_idx = self.physics.vars.index("enthalpy")
-
-            # Get the bounds of the OBL domain
-            p_bounds = (
-                self.physics.PT_axes_min[p_idx],
-                self.physics.PT_axes_max[p_idx],
-            )
-            h_bounds = (self.physics.axes_min[h_idx], self.physics.axes_max[h_idx])
+            # Bounds of the PH diagram
+            p_bounds = self.live_plot_config.p_bounds
+            h_bounds = self.live_plot_config.h_bounds
 
             # Resolution of the PH diagram
-            n_p, n_h = (
-                self.physics.n_axes_points[p_idx],
-                self.physics.n_axes_points[h_idx],
-            )
+            n_p = n_h = self.live_plot_config.n_points
 
             p_range = np.linspace(p_bounds[0], p_bounds[1], n_p)
             h_range = np.linspace(h_bounds[0], h_bounds[1], n_h)

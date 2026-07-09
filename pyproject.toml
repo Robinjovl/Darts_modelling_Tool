@@ -44,6 +44,8 @@ documentation = "https://open-darts.readthedocs.io/en/docs"
 docs = ["myst-parser", "sphinx_rtd_theme", "sphinx", "sphinx-tabs", "sphinx_inline_tabs", "sphinxcontrib-matlabdomain", "sphinxcontrib-bibtex", "linkify-it-py", "sphinx-copybutton"]
 # code linting tools:
 dev = ["ruff", "pre-commit"]
+# running the test suite (pytest):
+test = ["pytest"]
 # linear solver packages using python interface:
 solvers = ["pypardiso"]
 # 3D vizualization

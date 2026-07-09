@@ -47,8 +47,8 @@
  * @param[in] molar_weights Array of molar weights for fluid components.
  * @param[in] dt Time step size.
  */
-template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t N_OPS, uint8_t FLUX_OP,
-          uint8_t GRAV_OP, uint8_t PC_OP, uint8_t MULT_OP, uint8_t LAMBDA_OP>
+template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint16_t N_OPS, uint16_t FLUX_OP,
+          uint16_t GRAV_OP, uint16_t PC_OP, uint16_t MULT_OP, uint16_t LAMBDA_OP>
 __global__ void
 reconstruct_velocities(const unsigned int n_res_blocks, const bool enable_permporo,
                       value_t *X, value_t *op_vals_arr, index_t *op_num, index_t *rows,
@@ -167,8 +167,8 @@ reconstruct_velocities(const unsigned int n_res_blocks, const bool enable_permpo
  * @param[in] op_num Array of region per block.
  * @param[in] dt Time step size.
  */
-template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t N_OPS, uint8_t FLUX_OP, uint8_t GRAD_OP,
-          uint8_t ENTH_OP, bool THERMAL>
+template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint16_t N_OPS, uint16_t FLUX_OP, uint16_t GRAD_OP,
+          uint16_t ENTH_OP, bool THERMAL>
 __global__ void
 assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, value_t *op_vals_arr,
                     value_t *op_ders_arr, index_t *rows, index_t *cols, value_t *Jac, index_t *diag_ind,
@@ -352,9 +352,9 @@ assemble_dispersion(const unsigned int n_res_blocks, value_t *X, value_t *RHS, v
  * @param[in] grav_coef Array of gravity coefficients.
  * @param[in] kin_fac Kinetic factor array.
  */
-template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t T_VAR, uint8_t N_OPS,
-          uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t DENS_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP, uint8_t GRAV_OP,
-          uint8_t PC_OP, uint8_t MULT_OP, uint8_t LAMBDA_OP, uint8_t SAT_OP, uint8_t ENTH_OP, uint8_t TEMP_OP, uint8_t PRES_OP,
+template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t T_VAR, uint16_t N_OPS,
+          uint16_t ACC_OP, uint16_t FLUX_OP, uint16_t DENS_OP, uint16_t UPSAT_OP, uint16_t GRAD_OP, uint16_t KIN_OP, uint16_t GRAV_OP,
+          uint16_t PC_OP, uint16_t MULT_OP, uint16_t LAMBDA_OP, uint16_t SAT_OP, uint16_t ENTH_OP, uint16_t TEMP_OP, uint16_t PRES_OP,
           bool THERMAL>
 __global__ void
 assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n_res_blocks, const bool enable_permporo,

@@ -65,7 +65,7 @@ public:
   }
 
   uint8_t get_n_vars() const { return N_VARS; };
-  uint8_t get_n_ops() const { return N_OPS; };
+  uint16_t get_n_ops() const { return N_OPS; };
   uint8_t get_n_comps() const { return NC; };
   uint8_t get_z_var_idx() const { return Z_VAR; };
 
@@ -88,11 +88,13 @@ public:
   double calc_well_residual_Linf();
 
 private:
-  value_t *RV_d;             // [n_blocks] rock volumes for each block
-  value_t *mesh_tranD_d;     // [n_conns] transmissibility and diffusive transmissibility for each (duplicated) connection
-  value_t *mesh_hcap_d;      // [n_blocks] rock heat capacity for each block
-  value_t *mesh_rcond_d;     // [n_blocks] rock heat conduction for each block
-  value_t *mesh_poro_d;      // [n_blocks] porosity for each block
-  value_t *mesh_grav_coef_d; // [n_conns] porosity for each block
+  // Default-initialized so the destructor can free_device_data() safely even
+  // when init() did not run. cudaFree(nullptr) is a documented no-op.
+  value_t *RV_d = nullptr;             // [n_blocks] rock volumes for each block
+  value_t *mesh_tranD_d = nullptr;     // [n_conns] transmissibility and diffusive transmissibility for each (duplicated) connection
+  value_t *mesh_hcap_d = nullptr;      // [n_blocks] rock heat capacity for each block
+  value_t *mesh_rcond_d = nullptr;     // [n_blocks] rock heat conduction for each block
+  value_t *mesh_poro_d = nullptr;      // [n_blocks] porosity for each block
+  value_t *mesh_grav_coef_d = nullptr; // [n_conns] porosity for each block
 };
 #endif /* F16383E3_34B5_44CE_A7BF_FB812B8C820C */

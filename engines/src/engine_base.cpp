@@ -1572,7 +1572,9 @@ int engine_base::print_stat()
 	index_t r_code = 0;
 	char buffer[10240];
 
-	const char n_ops = get_n_ops();
+	// Widened to uint16_t: at NC=30 / NP=3 thermal get_n_ops() returns up to 273,
+	// which overflows char (also printed via %d below).
+	const uint16_t n_ops = get_n_ops();
 
 	r_code += sprintf(buffer, "\n");
 	r_code += sprintf(buffer + r_code, "Total steps %d (%d) newton %d (%d) linear %d (%d)\n", stat.n_timesteps_total,
@@ -1581,9 +1583,23 @@ int engine_base::print_stat()
 	r_code += sprintf(buffer + r_code, "---OBL Statistics---\n");
 	r_code += sprintf(buffer + r_code, "Number of operators: %d\n", n_ops);
 
-	r_code += sprintf(buffer + r_code, "Number of points: %d\n", acc_flux_op_set_list[0]->get_axis_n_points(0));
-	r_code += sprintf(buffer + r_code, "Number of interpolations: %" PRIu64 " \n", acc_flux_op_set_list[0]->get_n_interpolations());
-	r_code += sprintf(buffer + r_code, "Number of points generated: %" PRIu64 " (%.3f%%)\n", acc_flux_op_set_list[0]->get_n_points_used(), (acc_flux_op_set_list[0]->get_n_points_used() * 100.0 / acc_flux_op_set_list[0]->get_n_points_total()));
+	// Unbounded (adaptive) grids report axis_n_points == 0 and n_points_total == 0
+	// (there is no finite supporting-point count). Guard the "% generated" division and
+	// print the absolute generated count instead.
+	{
+		const int n_pts_axis0 = acc_flux_op_set_list[0]->get_axis_n_points(0);
+		const uint64_t n_total = acc_flux_op_set_list[0]->get_n_points_total();
+		const uint64_t n_used = acc_flux_op_set_list[0]->get_n_points_used();
+		if (n_pts_axis0 > 0)
+			r_code += sprintf(buffer + r_code, "Number of points: %d\n", n_pts_axis0);
+		else
+			r_code += sprintf(buffer + r_code, "Number of points: unbounded (adaptive grid)\n");
+		r_code += sprintf(buffer + r_code, "Number of interpolations: %" PRIu64 " \n", acc_flux_op_set_list[0]->get_n_interpolations());
+		if (n_total > 0)
+			r_code += sprintf(buffer + r_code, "Number of points generated: %" PRIu64 " (%.3f%%)\n", n_used, (n_used * 100.0 / n_total));
+		else
+			r_code += sprintf(buffer + r_code, "Number of points generated: %" PRIu64 "\n", n_used);
+	}
 	//r_code += sprintf(buffer + r_code, "Number of hypercubes used: %lu (%.3f%%)\n", acc_flux_op_set_list[0]->get_n_hypercubes_used(), (acc_flux_op_set_list[0]->get_n_hypercubes_used() * 100.0 / acc_flux_op_set_list[0]->get_n_hypercubes_total()));
 	/*
 	r_code += sprintf (buffer + r_code, "OMIPS: %.4lf \n", acc_flux_op_set->get_n_interpolations() / interpolation_timer / 1000000);
@@ -2196,7 +2212,8 @@ void engine_base::project_xop_ders()
 	if (n_history == 0)
 		return;
 
-	const uint8_t n_ops_ = get_n_ops();
+	// n_ops_ widened to uint16_t: super-engine returns up to 273 at NC=30 / NP=3 thermal.
+	const uint16_t n_ops_ = get_n_ops();
 	const uint8_t n_vars_ = get_n_vars();
 	const uint8_t n_state = n_vars_ + n_history;
 	const index_t row_small = n_ops_ * n_vars_;

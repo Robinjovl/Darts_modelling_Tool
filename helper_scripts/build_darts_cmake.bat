@@ -4,6 +4,7 @@ setlocal enabledelayedexpansion
 REM Read input arguments ---------------------------------------------
 set clean_mode=false
 set testing=false
+set install_test_extra=false
 set wheel=false
 set bos_solvers_artifact=false
 set bos_solvers_dir=""
@@ -22,7 +23,7 @@ set option=%1
 shift
 if "%option%"=="-h" goto :help_info
 if "%option%"=="-c" set clean_mode=true & goto parse_args
-if "%option%"=="-t" set testing=true & goto parse_args
+if "%option%"=="-t" set testing=true & set install_test_extra=true & goto parse_args
 if "%option%"=="-w" set wheel=true & goto parse_args
 if "%option%"=="-m" set MT=true & goto parse_args
 if "%option%"=="-G" set GPU=true & goto parse_args
@@ -70,6 +71,7 @@ echo    fetch bos_solvers_artifact = %bos_solvers_artifact%
 echo    config = %config%
 echo    gpu = %GPU%
 echo    testing = %testing%
+echo    install test dependencies = %install_test_extra%
 echo    generate python wheel = %wheel%
 echo    Multi thread = %MT%
 echo    Phreeqc support = %phreeqc%
@@ -262,7 +264,11 @@ if %wheel%==true (
   python -m build --wheel >> make_wheel.log || goto :error
   echo -- Python wheel generated!
 )
-python -m pip install . >> make_wheel.log
+if %install_test_extra%==true (
+  python -m pip install ".[test]" >> make_wheel.log
+) else (
+  python -m pip install . >> make_wheel.log
+)
 
 if %phreeqc%==true (
   call :ensure_reaktoro_conda || goto :error
@@ -330,7 +336,7 @@ echo    Script to install opendarts on Windows with MGR support.
 echo USAGE:
 echo    -h               : displays this help menu.
 echo    -c               : clean rebuild of everything, including thirdparty (HYPRE/SuperLU). Default: reuse existing thirdparty build if present
-echo    -t               : Enable testing: ctest of solvers. Default: don't test
+echo    -t               : Enable testing: ctest of solvers and install open-darts[test]. Default: don't test
 echo    -w               : Enable generation of python wheel. Default: false
 echo    -m               : Enable Multi-thread MT (OpenMP) build. Engines, interpolators and the in-tree GMRES kernels run in parallel; HYPRE preconditioners (CPR/MGR) are sequential. Default: true
 echo    -G               : Enable GPU build. Uses the in-tree open-source solvers unless -b is given. Default: false

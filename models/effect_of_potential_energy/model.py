@@ -27,7 +27,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.reservoir.grav_acceleration_for_spe = 9.80665
         self.zero = 1e-10
-        self.set_physics(n_points=10001)
+        self.set_physics()
 
         # Solver configuration moved to set_solver() (called from DartsModel.reset()).
 
@@ -59,7 +59,7 @@ class Model(CICDModel):
 
         return
 
-    def set_physics(self, n_points):
+    def set_physics(self):
         """Physical properties"""
         from dartsflash.libflash import EoS
         from dartsflash.components import CompData
@@ -109,8 +109,12 @@ class Model(CICDModel):
                                            }
 
         state_spec = Compositional.StateSpecification.PT
-        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=600, min_z=0., max_z=1.,
-                                     epsilon_z=epsilon, min_t=220, max_t=500, state_spec=state_spec, cache=False,
+        # 1 p + (nc-1) z + 1 T
+        ax_step = [0.0599] + [1e-4] * (len(components) - 1) + [0.028]
+        ax_origin = [1.0] + [epsilon] * (len(components) - 1) + [220.0]
+        self.physics = Compositional(components, phases, self.timer,
+                                     axes_step=ax_step, axes_origin=ax_origin,
+                                     epsilon_z=epsilon, state_spec=state_spec, cache=False,
                                      extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 

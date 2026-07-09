@@ -30,7 +30,19 @@ typedef double interp_value_t;
 static const double LOWER_LIMIT = 1.0e-12;
 static const double UPPER_LIMIT = 1.0 - LOWER_LIMIT;
 static std::ofstream log_stream;
-#define MAX_NC 8
+
+// Max number of components for engine template instantiation (engine_nc_*,
+// engine_super_*). Recursive_instantiator_nc / nc_np loops cover NC ∈ [2, MAX_NC].
+// Driven by the OPENDARTS_MAX_DIMS cmake variable (-DMAX_NC=N) so it stays in
+// sync with MAX_DIMS in interpolation_config.h — for thermal physics the
+// interpolator parameter-space dim is NC+1, so MAX_DIMS must be ≥ MAX_NC.
+//
+// Fail loudly rather than silently defaulting: a TU compiled without -DMAX_NC
+// would land at a different value than the rest of the binary and produce
+// ODR-incoherent template instantiations with silent runtime corruption.
+#ifndef MAX_NC
+#error "MAX_NC must be defined (typically via the OPENDARTS_MAX_DIMS CMake variable, propagated as -DMAX_NC=N)."
+#endif
 
 #define GET_RAND_I(START, END) \
   START + rand() / (RAND_MAX / (END - START + 1) + 1)
@@ -47,10 +59,6 @@ static std::ofstream log_stream;
 #ifdef WITH_GPU
 extern int device_num;
 #endif
-
-// __uint128_t emulation (MSVC), numeric_limits, hash, and to_string
-// are now provided solely by interpolation_config.h (included
-// transitively via evaluator_iface.h → interpolation_config.h).
 
 /// Main simulation parameters including tolerances
 class sim_params

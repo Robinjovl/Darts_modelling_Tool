@@ -74,7 +74,7 @@ class Model(DartsModel):
         self.swc = 0.25
 
         zero = 1e-12
-        self.set_physics(zero, n_points=1001, temperature=None, ph=False, vl_phases=False)
+        self.set_physics(zero, temperature=None, ph=False, vl_phases=False)
         self.inj_stream = [0.001] if self.components[0] == "H2O" else [0.999]
 
         # Solver/time-stepping configuration moved to set_solver() (called from base reset()).
@@ -104,7 +104,7 @@ class Model(DartsModel):
 
         return
 
-    def set_physics(self,  zero, n_points, temperature: float = None, ph: bool = False, vl_phases: bool = False):
+    def set_physics(self, zero, temperature: float = None, ph: bool = False, vl_phases: bool = False):
         """Physical properties"""
         self.zero = zero
         epsilon = zero/10
@@ -175,8 +175,16 @@ class Model(DartsModel):
         else:
             state_spec = Compositional.StateSpecification.P
 
-        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=0., max_z=1.,
-                                     epsilon_z=epsilon, min_t=273.15, max_t=373.15, state_spec=state_spec, cache=False,
+        # [p, z_1, ..., z_{nc-1}, T?]
+        nz = len(components) - 1
+        ax_step = [0.399] + [1e-3] * nz
+        ax_origin = [1.0] + [epsilon] * nz
+        if state_spec >= Compositional.StateSpecification.PT:
+            ax_step.append(0.1)
+            ax_origin.append(273.15)
+        self.physics = Compositional(components, phases, self.timer,
+                                     axes_step=ax_step, axes_origin=ax_origin,
+                                     epsilon_z=epsilon, state_spec=state_spec, cache=False,
                                      extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 

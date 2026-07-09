@@ -308,16 +308,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	z_var_idx = get_z_var_idx();
 	if (NC_ > 1)
 	{
-		if (params->log_transform == 0)
-		{
-			min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
-			max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
-		}
-		else if (params->log_transform == 1)
-		{
-			min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
-			max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
-		}
+		// Physical-simplex clipping; OBL window no longer constrains Newton — see engine_base.h
+		min_axis_z = 0.0;
+		max_axis_z = 1.0;
 		min_sim_z = min_axis_z + params->sim_eps;
 		max_sim_z = max_axis_z - params->sim_eps;
 	}
@@ -439,14 +432,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	op_axis_max.resize(acc_flux_op_set_list.size());
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
+		// op_axis_min/op_axis_max left empty — disables apply_obl_axis_local_correction
 		block_idxs[r].clear();
-		op_axis_min[r].resize(nc + THERMAL);
-		op_axis_max[r].resize(nc + THERMAL);
-		for (int j = 0; j < nc + THERMAL; j++)
-		{
-			op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-			op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-		}
 	}
 
 	// create a block list for every operator set

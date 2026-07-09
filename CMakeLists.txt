@@ -311,6 +311,57 @@ add_feature_info(WITH_AMGX WITH_AMGX "Build the AMGX GPU solver")
 option(WITH_CUDSS "Build the cuDSS GPU direct solver (prebuilt NVIDIA library)" ON)
 add_feature_info(WITH_CUDSS WITH_CUDSS "Build the cuDSS GPU direct solver")
 
+# Interpolator compile profile -------------------------------------------------
+# Controls which (i_t, algorithm) interpolator variants are stamped per
+# (N_DIMS, N_OPS) pair. Reducing the variant count is the most effective lever
+# against the cc1plus OOM hit on heavy py_operator_set_interpolator_*_part*.cpp
+# translation units (~1.5–4 GB resident per TU at -O2/-O3 today).
+#   MINIMAL: multilinear_adaptive uint64 only. Drops linear; any model that
+#            explicitly sets itor_type='linear' must switch to 'multilinear'.
+#   FULL:    multilinear_adaptive uint64 + linear_adaptive uint64. No behaviour
+#            change vs. legacy other than removing the (compile-only) uint32
+#            multilinear specialisation; Python first-try at uint32 falls
+#            through to uint64 via the existing try/except (one-time cost at
+#            interpolator construction).
+set(OPENDARTS_INTERPOLATOR_PROFILE "FULL" CACHE STRING
+    "Interpolator compile profile: MINIMAL (multilinear uint64 only) or FULL (+linear uint64).")
+set_property(CACHE OPENDARTS_INTERPOLATOR_PROFILE PROPERTY STRINGS MINIMAL FULL)
+if(NOT OPENDARTS_INTERPOLATOR_PROFILE MATCHES "^(MINIMAL|FULL)$")
+    message(FATAL_ERROR "OPENDARTS_INTERPOLATOR_PROFILE must be MINIMAL or FULL (got '${OPENDARTS_INTERPOLATOR_PROFILE}').")
+endif()
+message(STATUS "  Interpolator profile: ${OPENDARTS_INTERPOLATOR_PROFILE}")
+
+# OPENDARTS_MAX_DIMS = N drives BOTH from one knob (kept equal):
+#   - MAX_DIMS (interpolation_config.h): OBL dimensions, N_DIMS in 1..N
+#   - MAX_NC   (engines/src/globals.h) : engine components, NC in 2..N
+# A model's OBL dimension is NC (isothermal) or NC+1 (thermal, +1 per history axis),
+# so MAX_NC = MAX_DIMS = N supports isothermal up to N components and thermal up to N-1.
+# Example (default N=8): isothermal up to 8 components, thermal up to 7; thermal at 8
+# components needs N_DIMS=9, which is not compiled and would fail -- bump N to 9 for that.
+# N is the dominant compile-time/RAM knob (interpolate_with_derivatives unrolls
+# O(2^N_DIMS) per instantiation), so raise it only when needed. Default 8 = historical value.
+set(OPENDARTS_MAX_DIMS "8" CACHE STRING
+    "Maximum number of OBL parameter-space dimensions and engine components (typical: 6–8). Drives both MAX_DIMS (interpolators) and MAX_NC (engines).")
+if(NOT OPENDARTS_MAX_DIMS MATCHES "^[1-9][0-9]*$")
+    message(FATAL_ERROR "OPENDARTS_MAX_DIMS must be a positive integer (got '${OPENDARTS_MAX_DIMS}').")
+endif()
+message(STATUS "  OBL max dimensions / engine max NC: ${OPENDARTS_MAX_DIMS}")
+
+# Engines library reads MAX_NC from globals.h (now #ifndef-guarded). Forward
+# the cmake variable globally so every engine TU and engine pybind exposer
+# sees a consistent value. Interpolators target picks up MAX_DIMS via its own
+# target_compile_definitions in interpolation/pybind11/CMakeLists.txt.
+add_compile_definitions(MAX_NC=${OPENDARTS_MAX_DIMS})
+# Cap the mechanical engines' compositional dimensionality independently of
+# OPENDARTS_MAX_DIMS. Super-elastic blocks reach N_VARS = NC + 1 + ND, which at
+# the global MAX_NC requires linsolv_bos_fs_cpr<N> template instantiations the
+# proprietary darts-linear-solvers archive doesn't carry. Fixing this at NC=3
+# keeps mech blocks within the existing fs_cpr<4..12> instantiation set (thermal
+# super-elastic at NC=3 → N_VARS=7) while still letting flow engines run at the
+# full OPENDARTS_MAX_DIMS.
+add_compile_definitions(MAX_NC_MECH=3)
+# ------------------------------------------------------------------------------
+
 
 # Report options for this build
 feature_summary(WHAT ENABLED_FEATURES DISABLED_FEATURES PACKAGES_FOUND)

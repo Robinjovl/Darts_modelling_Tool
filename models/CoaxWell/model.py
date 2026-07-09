@@ -11,7 +11,7 @@ from darts.physics.geothermal.property_container import PropertyContainer
 
 
 class Model(CICDModel):
-    def __init__(self, resolution=10, n_points=128):
+    def __init__(self, resolution=10):
         # call base class constructor
         super().__init__()
 
@@ -19,7 +19,7 @@ class Model(CICDModel):
 
         self.resolution = resolution
         self.set_reservoir(resolution)
-        self.set_physics(n_points)
+        self.set_physics()
 
         # solver configuration moved to set_solver() (called from base reset())
 
@@ -83,10 +83,11 @@ class Model(CICDModel):
             (self.reservoir.wells[0].name, self.reservoir.wells[1].name): [(perf_1, perf_2)]
         }
 
-    def set_physics(self, n_points):
+    def set_physics(self):
         # create pre-defined physics for geothermal
         property_container = PropertyContainer()
-        self.physics = Geothermal(self.timer, n_points=n_points, min_p=1, max_p=351, min_e=1000, max_e=50000, cache=False)
+        # Geothermal: p_step [bar], e_step [kJ/mol]
+        self.physics = Geothermal(self.timer, axes_step=[2.756, 385.8], axes_origin=[1.0, 1000.0], cache=False)
         self.physics.add_property_region(property_container)
 
         return

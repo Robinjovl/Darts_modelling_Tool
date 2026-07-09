@@ -8,13 +8,13 @@ using std::begin;
 using std::end;
 using std::copy_n;
 
-mech_operators::mech_operators() 
+mech_operators::mech_operators()
 {
 }
 mech_operators::~mech_operators()
 {}
 void mech_operators::init(conn_mesh* _mesh, pm_discretizer* _discr, uint8_t _P_VAR, uint8_t _Z_VAR, uint8_t _U_VAR,
-							uint8_t _N_VARS, uint8_t _N_OPS, uint8_t _NC, uint8_t _ACC_OP, uint8_t _FLUX_OP, uint8_t _GRAV_OP)
+							uint8_t _N_VARS, uint16_t _N_OPS, uint8_t _NC, uint16_t _ACC_OP, uint16_t _FLUX_OP, uint16_t _GRAV_OP)
 {
 	mesh = _mesh;
 	discr = _discr;
@@ -53,8 +53,8 @@ void mech_operators::init(conn_mesh* _mesh, pm_discretizer* _discr, uint8_t _P_V
 		pressures[i].resize(cur_faces.size(), 0.0);
 	}
 }
-void mech_operators::init(conn_mesh* _mesh, pm_discretizer* _discr, uint8_t _P_VAR, uint8_t _Z_VAR, uint8_t _U_VAR, uint8_t _P_VAR_T, uint8_t _U_VAR_T, 
-	uint8_t _N_VARS, uint8_t _N_OPS, uint8_t _NC, uint8_t _ACC_OP, uint8_t _FLUX_OP, uint8_t _GRAV_OP)
+void mech_operators::init(conn_mesh* _mesh, pm_discretizer* _discr, uint8_t _P_VAR, uint8_t _Z_VAR, uint8_t _U_VAR, uint8_t _P_VAR_T, uint8_t _U_VAR_T,
+	uint8_t _N_VARS, uint16_t _N_OPS, uint8_t _NC, uint16_t _ACC_OP, uint16_t _FLUX_OP, uint16_t _GRAV_OP)
 {
 	mesh = _mesh;
 	discr = _discr;

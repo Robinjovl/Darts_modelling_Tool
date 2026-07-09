@@ -146,15 +146,14 @@ class Model(THMCModel):
             self.idata.fluid.heat_capacity = 0.
         self.idata.fluid.thermal_conductivity = 0. # it is not used in the mech. engines
 
-        self.idata.obl.n_points = 500
         self.idata.obl.zero = 1e-9
         self.idata.obl.epsilon_z = 1e-10
-        self.idata.obl.min_p = -500.
-        self.idata.obl.max_p = 500.
-        self.idata.obl.min_t = -100.
-        self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = 0.
-        self.idata.obl.max_z = 1.
+        self.idata.obl.p_step = 2.0
+        self.idata.obl.p_origin = -500.0
+        self.idata.obl.z_step = 2e-3
+        self.idata.obl.z_origin = self.idata.obl.epsilon_z
+        self.idata.obl.t_step = 0.4
+        self.idata.obl.t_origin = -100.0
 
         super().set_input_data()
 
