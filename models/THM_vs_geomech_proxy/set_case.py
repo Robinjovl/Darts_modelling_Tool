@@ -1,4 +1,5 @@
 from cases.case_1 import input_data_case_1, input_data_case_2, input_data_case_3, input_data_case_4
+from cases.case_5 import input_data_case_5
 from cases.base import input_data_struct_like
 import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -20,6 +21,8 @@ def set_input_data(
             input_data = input_data_case_3()
         case "case_4": # case_3 but heterogeneous geomechanical props (E, nu, biot, th_expn) per tag
             input_data = input_data_case_4()
+        case "case_5":
+            input_data = input_data_case_5()
         case _:  # default
             model_folder = os.path.basename(model_folder)
             os.makedirs(os.path.join(BASE_DIR, "meshes", model_folder), exist_ok=True)

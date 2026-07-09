@@ -312,8 +312,9 @@ if __name__ == '__main__':
 
     #cases += ['case_1']
     #cases += ['case_2']
-    cases += ['case_3']
+    #cases += ['case_3']
     #cases += ['case_4']
+    cases += ['case_5']
 
     #thermal = False
     thermal = True
