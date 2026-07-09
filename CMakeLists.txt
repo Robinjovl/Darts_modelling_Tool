@@ -10,8 +10,19 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Configure runtime path for finding dynamic libraries
-set(CMAKE_INSTALL_RPATH $ORIGIN)  # shared libraries will be searched in darts folder
+# Configure runtime path for finding dynamic libraries.
+# $ORIGIN         -- a module resolves siblings in its own directory.
+# $ORIGIN/solvers -- the compiled solvers live in the darts/solvers/ subpackage,
+#                    and so do the shared libs bundled next to them (libcudss.so.0,
+#                    libopendarts_solvers.so). A darts/ top-level extension such as
+#                    engines links the solvers statically and thereby inherits a
+#                    direct NEEDED on the *shared* libcudss.so.0 (cuDSS is linked
+#                    PUBLIC); engines sits in darts/, so plain $ORIGIN cannot reach
+#                    darts/solvers/. Adding $ORIGIN/solvers lets it (WITH_CUDSS GPU
+#                    builds otherwise fail at `import darts.engines` with
+#                    "libcudss.so.0: cannot open shared object file"). Harmless for
+#                    non-GPU builds (the extra entry just points at darts/solvers/).
+set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/solvers")
 set(CMAKE_MACOSX_RPATH 1)
 
 # Set DARTS installation folder
