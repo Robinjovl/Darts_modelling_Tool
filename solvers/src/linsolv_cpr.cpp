@@ -409,7 +409,7 @@ namespace opendarts
           f_vars[a++] = v;
 
       // weight_scheme_ == 1 (default): column-sum True-IMPES (Wallis 1983;
-      // parity with the proprietary linsolv_bos_cpr). The decoupling block
+      // parity with the reference linsolv_bos_cpr). The decoupling block
       // for cell i is the sum of A(m,i) over ALL block-rows m holding a
       // block in column i (diagonal included) -- the IMPES mass-balance
       // lumping. weight_scheme_ == 0 keeps the previous diagonal-block-only
@@ -496,7 +496,7 @@ namespace opendarts
         }
       }
 
-      // Row sign normalisation (BOS rhs_mults parity): flip rows whose
+      // Row sign normalisation (default rhs_mults parity): flip rows whose
       // pressure diagonal is negative so the AMG's M-matrix-oriented
       // coarsening/smoothing heuristics see a positive diagonal. The same
       // +-1 multiplier is applied to the restricted residual on the forward
@@ -703,7 +703,7 @@ namespace opendarts
       else
       {
         // Legacy path -- engine is still feeding a csr_matrix<N> (tests,
-        // GPU, proprietary build). Use the polymorphic to_nb_1, which
+        // GPU, reference build). Use the polymorphic to_nb_1, which
         // performs both the structural rebuild and the value gather.
         scalar_adapter_.reset();
         As_->to_nb_1(A_input);
@@ -1020,7 +1020,7 @@ namespace opendarts
         if (stage2_type_ == 1)
         {
           // Full-system stage: in-tree block ILU(0) on the block-CSR matrix
-          // (BOS csr_ilu_prec equivalent) -- no scalar expansion involved.
+          // (default csr_ilu_prec equivalent) -- no scalar expansion involved.
           cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR BILU0 setup"));
           if (!bilu0_)
             bilu0_ = std::make_unique<

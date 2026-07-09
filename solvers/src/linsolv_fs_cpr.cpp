@@ -7,7 +7,7 @@
 // *************************************************************************
 
 // linsolv_fs_cpr -- implementation. See linsolv_fs_cpr.hpp for the design
-// rationale and the reference to the proprietary code this file ports.
+// rationale and the reference to the reference code this file ports.
 
 #include "linsolv_fs_cpr.hpp"
 
@@ -50,7 +50,7 @@ namespace opendarts
         NE_(static_cast<std::uint8_t>(N_BLOCK_SIZE - ND))
     {
       // The base linsolv_iface_bos<N> stores a linear_solver_base* pointer
-      // for legacy callers. The proprietary class sets it to `this`; this
+      // for legacy callers. The reference class sets it to `this`; this
       // class is not a linear_solver_base, so leave it as nullptr -- our
       // entry points come through the csr_matrix_base / csr_matrix<N>
       // overrides on linsolv_iface_bos<N>.
@@ -129,7 +129,7 @@ namespace opendarts
     int linsolv_fs_cpr<N_BLOCK_SIZE>::set_prec(
         opendarts::linear_solvers::linsolv_iface *prec_input)
     {
-      // Non-owning shared_ptr (no-op deleter) -- matches the proprietary
+      // Non-owning shared_ptr (no-op deleter) -- matches the reference
       // single-prec overload which stored a raw pointer.
       p_system_preconditioner_ = std::shared_ptr<opendarts::linear_solvers::linsolv_iface>(
           prec_input, [](opendarts::linear_solvers::linsolv_iface *) {});
@@ -200,7 +200,7 @@ namespace opendarts
 
       // Define local slicing for jacobian: displacements (U), pressures
       // (P), composition (S). The NE-1 sizes for the S row/col strides
-      // are kept verbatim from the proprietary code.
+      // are kept verbatim from the reference code.
       UU_.pos = static_cast<std::uint8_t>(U_VAR_ * N_VARS + U_VAR_);
       UP_.pos = static_cast<std::uint8_t>(U_VAR_ * N_VARS + P_VAR_);
       US_.pos = static_cast<std::uint8_t>(U_VAR_ * N_VARS + Z_VAR_);
@@ -310,7 +310,7 @@ namespace opendarts
         P_scalar_->is_square = 1;
         init_rows_cols_to_unit_matrix(A, PP_, *P_scalar_);
         // Pressure preconditioner: 1 V-cycle, tolerance irrelevant
-        // (preconditioner mode). Matches the U stage and the proprietary
+        // (preconditioner mode). Matches the U stage and the reference
         // FS-CPR convention -- using the outer max_iters (e.g. 5000) here
         // would configure BoomerAMG as a stand-alone solver and BoomerAMGSolve
         // can fail with HYPRE_ERROR_GENERIC on an indefinite Schur subsystem.
@@ -375,7 +375,7 @@ namespace opendarts
         }
 
         // Copy A's sparsity (row_ptr, col_ind, diag_ind) into P. Mirrors
-        // proprietary MEM_*_CPY at lines 260-262.
+        // reference MEM_*_CPY at lines 260-262.
         const index_t *a_rows = A.row_ptr();
         const index_t *a_cols = A.col_ind();
         const index_t *a_diag = A.diag_ind();
@@ -428,7 +428,7 @@ namespace opendarts
       init_rows_cols_to_unit_matrix(A, UU_, *U_);
       u_rhs_mults_.assign(static_cast<std::size_t>(u_scalar_rows), 0.0);
       // Mech preconditioner: u_amg_max_iters_ V-cycles (default 1), tolerance
-      // irrelevant (preconditioner mode), matches the proprietary call at line 274.
+      // irrelevant (preconditioner mode), matches the reference call at line 274.
       u_system_preconditioner_->init(U_.get(),
           static_cast<index_t>(u_amg_max_iters_),
           static_cast<mat_float>(0.0));

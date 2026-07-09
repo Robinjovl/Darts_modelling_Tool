@@ -203,18 +203,16 @@ if(CUDA)
 endif()
 # ------------------------------------------------------------------------------
 
-# Auto-generated explicit template instantiations (open-DARTS-native solvers only)
+# Auto-generated explicit template instantiations
 # ------------------------------------------------------------------------------
-# The open-DARTS-native solver classes parameterized by a single block size N
-# drive their `template class linsolv_X<N>;` instantiation set from CMake via
+# Every block-size-templated class in solvers/src drives its
+# `template class <CLASS><N>;` instantiation set from CMake via
 # od_emit_template_instantiations(), instead of hand-maintained walls in the .cpp.
 # The .cpp files #include the generated *_instantiations.inc from inside their
 # namespace. Edit the ranges here, not in the sources.
 #
-# NB: the solvers vendored from the darts-linear-solvers repository (csr_matrix,
-# linsolv_bos_{amg,bilu0,cpr,fs_cpr,gmres}, linsolv_hypre_{amg,ilu}, linsolv_superlu)
-# deliberately keep their upstream hardcoded instantiation lists and are NOT driven
-# from here — they are maintained in that repository, not in open-darts.
+# (The only linear solver NOT covered here is the external prebuilt package
+# consumed via -b / ENABLE_BOS_SOLVERS, which is not part of this repository.)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/od_emit_template_instantiations.cmake)
 
 # Shared block-size range for the per-N flow solvers. The +1 covers thermal
@@ -228,12 +226,15 @@ endif()
 set(_od_linsolv_gen_dir ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${_od_linsolv_gen_dir})
 
-# Flow solvers whose smallest meaningful block size is 1; max tracks
+# Solvers/containers whose smallest meaningful block size is 1; max tracks
 # max(OPENDARTS_MAX_DIMS+1, 13). Includes the CUDA-only solvers (their .inc is
-# generated unconditionally; it is only #included when the TU is compiled).
-foreach(_od_solver linsolv_gmres linsolv_cpr linsolv_mgr
+# generated unconditionally; it is only #included when the TU is compiled), the
+# in-tree SuperLU direct solver (thirdparty/superlu submodule, built by default),
+# the block-CSR matrix container, and the default block preconditioners/solvers.
+foreach(_od_solver linsolv_gmres linsolv_cpr linsolv_mgr linsolv_superlu
                    linsolv_bicgstab linsolv_gmres_gpu linsolv_cusolv
-                   linsolv_cusparse_ilu linsolv_cudss linsolv_amgx)
+                   linsolv_cusparse_ilu linsolv_cudss linsolv_amgx
+                   linsolv_bos_bilu0 linsolv_bos_gmres csr_matrix)
   od_emit_template_instantiations(
     CLASS ${_od_solver}
     MAX_N ${_od_linsolv_max_n}
@@ -241,14 +242,16 @@ foreach(_od_solver linsolv_gmres linsolv_cpr linsolv_mgr
   )
 endforeach()
 
-# GPU CPR starts at block size 2 — the constrained-pressure-residual split is
+# CPR solvers start at block size 2 — the constrained-pressure-residual split is
 # undefined for a 1x1 block (no non-pressure sub-block to decouple).
-od_emit_template_instantiations(
-  CLASS linsolv_bos_cpr_gpu
-  MIN_N 2
-  MAX_N ${_od_linsolv_max_n}
-  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_bos_cpr_gpu_instantiations.inc
-)
+foreach(_od_solver linsolv_bos_cpr linsolv_bos_cpr_gpu)
+  od_emit_template_instantiations(
+    CLASS ${_od_solver}
+    MIN_N 2
+    MAX_N ${_od_linsolv_max_n}
+    OUTPUT_FILE ${_od_linsolv_gen_dir}/${_od_solver}_instantiations.inc
+  )
+endforeach()
 
 # Full-system CPR (super-elastic mechanics) uses a fixed block-size window
 # N_VARS = NC + 1 + ND, i.e. 4..8 — deliberately NOT coupled to OPENDARTS_MAX_DIMS.
@@ -257,6 +260,29 @@ od_emit_template_instantiations(
   MIN_N 4
   MAX_N 8
   OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_fs_cpr_instantiations.inc
+)
+
+# Compatibility solvers with fixed, domain-specific block sizes (not coupled to
+# OPENDARTS_MAX_DIMS): the default full-system CPR (block size 4 only) and the
+# HYPRE scalar preconditioners (block size 1 — the reduced pressure system).
+od_emit_template_instantiations(
+  CLASS linsolv_bos_fs_cpr MIN_N 4 MAX_N 4
+  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_bos_fs_cpr_instantiations.inc
+)
+od_emit_template_instantiations(
+  CLASS linsolv_hypre_amg MIN_N 1 MAX_N 1
+  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_hypre_amg_instantiations.inc
+)
+od_emit_template_instantiations(
+  CLASS linsolv_hypre_ilu MIN_N 1 MAX_N 1
+  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_hypre_ilu_instantiations.inc
+)
+
+# Default AMG supports a non-contiguous block-size set {1, 3}; block size 2 is
+# intentionally absent (see the VALUES option of od_emit_template_instantiations).
+od_emit_template_instantiations(
+  CLASS linsolv_bos_amg VALUES "1;3"
+  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_bos_amg_instantiations.inc
 )
 # ------------------------------------------------------------------------------
 

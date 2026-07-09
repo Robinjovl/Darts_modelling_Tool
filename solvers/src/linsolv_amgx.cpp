@@ -41,7 +41,7 @@ namespace opendarts
     linsolv_amgx<N_BLOCK_SIZE>::linsolv_amgx(int device_num_input, int convert_to_bs1_input)
       : device_num(device_num_input), convert_to_bs1(convert_to_bs1_input)
     {
-      // Register as the linear_solver_base behind the BOS interface.
+      // Register as the linear_solver_base behind the block interface.
       opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::solver = this;
       n_rows = 0;
       A = x = b = nullptr;

@@ -28,7 +28,7 @@
 
 // Active code path: accurate block inversion. The PRESSURE_EQUATION_SUM and
 // SATURATION_EQUATIONS_START_FIRST variants are kept (via #ifdef) for parity
-// with the proprietary source but are not enabled.
+// with the reference source but are not enabled.
 #define ACCURATE_INVERSION
 
 namespace opendarts
@@ -38,7 +38,7 @@ namespace opendarts
     using opendarts::config::index_t;
     typedef opendarts::config::mat_float value_t;
 
-    // Linear-solve counter, kept for parity with the proprietary source.
+    // Linear-solve counter, kept for parity with the reference source.
     static int lin_it = 0;
 
     // In-place block inversion (ADGPRS routine): inverts the n_block_size x
@@ -262,7 +262,7 @@ namespace opendarts
 #endif
 
       // 2. Calculate pressure values A_pp -= A_sp * (D_ps * inv(D_ss)).
-      // The diagonal block must be placed first for the BOS AMG solver.
+      // The diagonal block must be placed first for the default AMG solver.
       j1 = rows[i];
       j2 = rows[i + 1];
       jd = diags[i];

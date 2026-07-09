@@ -85,7 +85,7 @@ namespace opendarts
         return -1;
       }
 
-      // Proprietary parity: restart length capped by the iteration budget.
+      // Reference parity: restart length capped by the iteration budget.
       m = restart_requested;
       if (m > max_iters)
         m = max_iters;
@@ -175,7 +175,7 @@ namespace opendarts
 
         if (total_iters == 0)
         {
-          // Proprietary parity: converge relative to ||b|| (falling back to
+          // Reference parity: converge relative to ||b|| (falling back to
           // ||r0|| for a vanishing RHS).
           const double den = (b_norm > 1e-16) ? b_norm : (beta > 1e-16 ? beta : 1.0);
           res_norm = beta;
@@ -293,7 +293,7 @@ namespace opendarts
         {
           // u = V(:,0:i) y  (into w_d), then X += M^{-1} u -- the single
           // preconditioner application on the combined update (standard
-          // right preconditioning; proprietary parity).
+          // right preconditioning; reference parity).
           cublasSetVector(i, sizeof(double), y.data(), 1, h_d, 1);
           cublasDgemv(cub_handle, CUBLAS_OP_N, n, i, &one, V_d, n, h_d, 1,
             &zero, w_d, 1);

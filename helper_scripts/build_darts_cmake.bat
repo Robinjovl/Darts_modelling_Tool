@@ -261,13 +261,27 @@ if %wheel%==true (
   rem copy "%%VCToolsRedistDir%%\x64\Microsoft.VC143.CRT\vcruntime140.dll" .\darts
   rem copy "%%VCToolsRedistDir%%\x64\Microsoft.VC143.OpenMP\vcomp140.dll" .\darts
   python -m pip install --upgrade build > make_wheel.log || goto :error
-  python -m build --wheel >> make_wheel.log || goto :error
+  rem Build the wheel WITHOUT PEP 517 build isolation (--no-isolation). The C++
+  rem extensions are already compiled by cmake above; this step is pure packaging
+  rem (setuptools.build_meta just zips the prebuilt .pyd/.dll files), so the build
+  rem backend (setuptools 70+ and wheel, pre-installed by the CI job and the line
+  rem above) is all that is needed. Isolation would spawn a nested "pip --python
+  rem ISOLATED_ENV" subprocess in which conda's DLL directory drops off PATH; that
+  rem breaks "import ctypes" (needs libffi), whereupon pip's vendored platformdirs
+  rem falls back to reading HKCU Explorer Shell Folders from the registry, which
+  rem does not exist for the CI runner's service account, so it raises
+  rem FileNotFoundError WinError 2. --no-isolation reuses the active env instead.
+  python -m build --wheel --no-isolation >> make_wheel.log || goto :error
   echo -- Python wheel generated!
 )
+rem --no-build-isolation for the same reason as --no-isolation above: installing a
+rem pyproject source tree otherwise creates an isolated build env via the same
+rem fragile nested-pip subprocess. setuptools 70+ and wheel are already present in
+rem the active env (installed by the CI job before this script runs).
 if %install_test_extra%==true (
-  python -m pip install ".[test]" >> make_wheel.log
+  python -m pip install --no-build-isolation ".[test]" >> make_wheel.log
 ) else (
-  python -m pip install . >> make_wheel.log
+  python -m pip install --no-build-isolation . >> make_wheel.log
 )
 
 if %phreeqc%==true (

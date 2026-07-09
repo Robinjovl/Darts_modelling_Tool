@@ -38,7 +38,7 @@ namespace opendarts
     linsolv_cusparse_ilu<N_BLOCK_SIZE>::linsolv_cusparse_ilu(int factorize_in_place_input, int single_precision_input)
       : factorize_in_place(factorize_in_place_input), single_precision(single_precision_input)
     {
-      // Register as the linear_solver_base behind the BOS interface.
+      // Register as the linear_solver_base behind the block interface.
       opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>::solver = this;
       values_d_ilu = nullptr;
       values_d_ilu_sfp = ilu_rhs = ilu_sol = d_z_sfp = nullptr;
@@ -292,7 +292,7 @@ namespace opendarts
 
       this->timer_setup->node["ILU(0)"].start();
 
-      // May still be uninitialised when invoked through the BOS interface.
+      // May still be uninitialised when invoked through the block interface.
       if (!A_matrix)
         init(matrix, 0, 1.0);
 

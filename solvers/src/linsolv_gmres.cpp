@@ -8,7 +8,7 @@
 
 // Open-source restarted GMRES with right preconditioning.
 // See linsolv_gmres.hpp for the design rationale; algorithm follows the
-// proven layout of the proprietary bos gmres_solver2.
+// proven layout of the reference default gmres_solver2.
 
 #include <algorithm>
 #include <cmath>
@@ -107,7 +107,7 @@ namespace opendarts
         }
       }
 
-      // r = alpha * A * u + beta * v  (matches bos mv_calc_lin_comb<N>).
+      // r = alpha * A * u + beta * v  (matches default mv_calc_lin_comb<N>).
       // When transpose=true, A^T is used in place of A.
       template <uint8_t N>
       inline void block_csr_lin_comb(csr_matrix_base *A,
@@ -494,7 +494,7 @@ namespace opendarts
           axpy(p, rs[j], p + static_cast<std::size_t>(j) * n, n);
       }
 
-      // iter + 1 is the legacy bos counting convention (the references and the
+      // iter + 1 is the legacy default counting convention (the references and the
       // engine's n_linear totals are calibrated to it; a single-step converged
       // solve reports 1 with iter still 0). Report 0 only when the entry
       // residual already met the tolerance and no Arnoldi step ran at all.
@@ -504,7 +504,7 @@ namespace opendarts
       // A non-finite residual means the update is garbage (NaN/Inf out of the
       // preconditioner or the matrix); report a hard failure so the engine
       // cuts the timestep instead of applying it. Plain non-convergence at
-      // max_iters keeps the legacy 0 return (bos parity) -- it is visible
+      // max_iters keeps the legacy 0 return (default parity) -- it is visible
       // through stats().converged for diagnostics and adaptive policies.
       if (!std::isfinite(r_norm))
         return -4;
