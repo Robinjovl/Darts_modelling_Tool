@@ -321,8 +321,8 @@ def add_numerical_well_lateral_heat_transfer(
     reservoir,
     well_wall_cells_idx: np.ndarray,
     well_wall_thickness: float,
-    verbose: bool = False,
     geometry_approximation: str = "linear",
+    verbose: bool = False,
 ):
     """
     This function adds lateral heat transfer between the wellbore the geometry of which is entered as the second
@@ -338,13 +338,13 @@ def add_numerical_well_lateral_heat_transfer(
     :type well_wall_cells_idx: np.ndarray of integers
     :param well_wall_thickness: Thickness of the well wall [meters]
     :type well_wall_thickness: float
-    :param verbose: Whether to display extra info about the function
-    :type verbose: boolean
     :param geometry_approximation: Approximation used for the well-to-wall-cell geometric coefficient.
                                    "linear" uses A / (wall_thickness / 2).
                                    "radial" uses the cylindrical logarithmic shape factor
                                    2*pi*segment_length / ln((r_w + wall_thickness / 2) / r_w).
     :type geometry_approximation: str
+    :param verbose: Whether to display extra info about the function
+    :type verbose: boolean
     """
     assert well_geometry.pipe_name == well_name, (
         "The names of the wells in PipeGeometry and add_numerical_lateral_heat_transfer are not identical!"
