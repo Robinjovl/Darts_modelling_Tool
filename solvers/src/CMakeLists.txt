@@ -203,6 +203,63 @@ if(CUDA)
 endif()
 # ------------------------------------------------------------------------------
 
+# Auto-generated explicit template instantiations (open-DARTS-native solvers only)
+# ------------------------------------------------------------------------------
+# The open-DARTS-native solver classes parameterized by a single block size N
+# drive their `template class linsolv_X<N>;` instantiation set from CMake via
+# od_emit_template_instantiations(), instead of hand-maintained walls in the .cpp.
+# The .cpp files #include the generated *_instantiations.inc from inside their
+# namespace. Edit the ranges here, not in the sources.
+#
+# NB: the solvers vendored from the darts-linear-solvers repository (csr_matrix,
+# linsolv_bos_{amg,bilu0,cpr,fs_cpr,gmres}, linsolv_hypre_{amg,ilu}, linsolv_superlu)
+# deliberately keep their upstream hardcoded instantiation lists and are NOT driven
+# from here — they are maintained in that repository, not in open-darts.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/od_emit_template_instantiations.cmake)
+
+# Shared block-size range for the per-N flow solvers. The +1 covers thermal
+# super-engine blocks (N_VARS = NC + 1); the floor of 13 keeps the range stable
+# (and satisfies the solver unit-test contract) regardless of OPENDARTS_MAX_DIMS
+# (default 8 would otherwise leave N=10..13 unbound).
+math(EXPR _od_linsolv_max_n "${OPENDARTS_MAX_DIMS} + 1")
+if(_od_linsolv_max_n LESS 13)
+  set(_od_linsolv_max_n 13)
+endif()
+set(_od_linsolv_gen_dir ${CMAKE_CURRENT_BINARY_DIR}/generated)
+file(MAKE_DIRECTORY ${_od_linsolv_gen_dir})
+
+# Flow solvers whose smallest meaningful block size is 1; max tracks
+# max(OPENDARTS_MAX_DIMS+1, 13). Includes the CUDA-only solvers (their .inc is
+# generated unconditionally; it is only #included when the TU is compiled).
+foreach(_od_solver linsolv_gmres linsolv_cpr linsolv_mgr
+                   linsolv_bicgstab linsolv_gmres_gpu linsolv_cusolv
+                   linsolv_cusparse_ilu linsolv_cudss linsolv_amgx)
+  od_emit_template_instantiations(
+    CLASS ${_od_solver}
+    MAX_N ${_od_linsolv_max_n}
+    OUTPUT_FILE ${_od_linsolv_gen_dir}/${_od_solver}_instantiations.inc
+  )
+endforeach()
+
+# GPU CPR starts at block size 2 — the constrained-pressure-residual split is
+# undefined for a 1x1 block (no non-pressure sub-block to decouple).
+od_emit_template_instantiations(
+  CLASS linsolv_bos_cpr_gpu
+  MIN_N 2
+  MAX_N ${_od_linsolv_max_n}
+  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_bos_cpr_gpu_instantiations.inc
+)
+
+# Full-system CPR (super-elastic mechanics) uses a fixed block-size window
+# N_VARS = NC + 1 + ND, i.e. 4..8 — deliberately NOT coupled to OPENDARTS_MAX_DIMS.
+od_emit_template_instantiations(
+  CLASS linsolv_fs_cpr
+  MIN_N 4
+  MAX_N 8
+  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_fs_cpr_instantiations.inc
+)
+# ------------------------------------------------------------------------------
+
 # Define the unified linear_solvers library (STATIC, will be linked into shared opendarts_solvers)
 add_library(linear_solvers STATIC "")
 
@@ -270,6 +327,9 @@ target_include_directories(linear_solvers
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/interpolation/include>
     $<INSTALL_INTERFACE:include>
+  PRIVATE
+    # Auto-generated *_instantiations.inc live here (od_emit_template_instantiations).
+    $<BUILD_INTERFACE:${_od_linsolv_gen_dir}>
 )
 
 # Platform-specific settings
