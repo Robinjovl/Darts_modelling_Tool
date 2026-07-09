@@ -10,6 +10,11 @@ set -e
 #   -b          (no path) falls back to the GSELINSOLVERSPATH environment
 #               variable, for backward compatibility with the old workflow
 #
+# The AMGX GPU solver is ALWAYS built (CMake WITH_AMGX defaults ON): it backs the
+# default GPU linear solver (GPU_GMRES_CPR_AMGX_ILU), so it is not optional and
+# this script exposes no flag to disable it. The thirdparty/AMGX submodule is
+# initialised automatically by build_darts_cmake.sh for GPU builds.
+#
 # The cuDSS GPU direct solver is ON by default (CMake WITH_CUDSS). cuDSS is a
 # prebuilt C++ dependency (cudss.h + libcudss.so) -- NOT a Python runtime
 # dependency; the nvidia-cudss-cu13 pip wheel is merely one way to deliver that
@@ -34,9 +39,8 @@ while (( "$#" )); do
     -p) PHREEQC_FLAG="-p"; shift ;;      # enable IPhreeqc/Reaktoro support
     -d) DEBUG_FLAG="-d Debug"; shift ;;  # enable Debug configuration
     -r) REQUIREMENTS_FLAG="-r"; shift ;; # clean previous cmake configuration for third parties
-    --amgx)
-      # Opt in to the AMGX GPU solver (thirdparty/AMGX submodule build).
-      export OD_CMAKE_ARGS="${OD_CMAKE_ARGS:-} -D WITH_AMGX=ON"; shift ;;
+    # NB: AMGX is always built (CMake WITH_AMGX defaults ON) -- there is
+    # deliberately no --amgx/--no-amgx flag; it is not user-optional.
     --cudss)
       # cuDSS GPU direct solver -- ON by default (CMake WITH_CUDSS); this flag
       # force-enables it explicitly (redundant, kept for clarity / back-compat).

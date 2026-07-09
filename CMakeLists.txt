@@ -291,9 +291,15 @@ option(ENABLE_TESTING "Build and copy testing stuff" OFF)  # by default tests ar
 add_feature_info(ENABLE_TESTING ENABLE_TESTING "Build and copy testing stuff")  # add option as feature for pretty display
 option(ONLY_SOLVERS "Build only solvers" OFF) # by default all project is built
 add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
-# AMGX is a heavy thirdparty build; the other GPU solvers only need the CUDA
-# toolkit, so AMGX support is opt-in. Enable with -D WITH_AMGX=ON for a GPU build.
-option(WITH_AMGX "Build the AMGX GPU solver (requires the thirdparty/AMGX submodule)" OFF)
+# AMGX is the production GPU preconditioner: the default GPU linear solver is
+# GPU_GMRES_CPR_AMGX_ILU (engine_base_gpu.h), so a GPU build WITHOUT AMGX
+# silently degrades to the far slower BiCGStab+cuSPARSE-ILU(0) fallback. AMGX is
+# therefore ON by default for GPU builds. It is compiled from the thirdparty/AMGX
+# submodule (open-source, statically linked -- no runtime .so is shipped); the
+# GPU build scripts init the submodule automatically. It IS a heavy compile, so
+# it can be disabled explicitly with -D WITH_AMGX=OFF (or --no-amgx to the GPU
+# build script) for a fast CUDA-toolkit-only build that forgoes the AMGX solver.
+option(WITH_AMGX "Build the AMGX GPU solver (thirdparty/AMGX submodule; ON by default for GPU builds)" ON)
 add_feature_info(WITH_AMGX WITH_AMGX "Build the AMGX GPU solver")
 # cuDSS (NVIDIA sparse direct solver) is a PREBUILT dependency (no source
 # build, unlike AMGX). ON by default -- it is only consumed inside the GPU
@@ -408,14 +414,18 @@ if(CUDA)
         unset(_cccl_system_header)
         add_compile_definitions(WITH_GPU)
 
-        # Optional AMGX GPU solver. AMGX brings its own (large) CMake build, so
-        # it is only pulled in on explicit request. The other GPU solvers
-        # (BiCGStab, cuSPARSE ILU, cuSOLVER, CPR) need only the CUDA toolkit.
+        # AMGX GPU solver -- ON by default (it backs the default GPU solver
+        # GPU_GMRES_CPR_AMGX_ILU). The GPU build scripts init the thirdparty/AMGX
+        # submodule automatically; a direct CMake configure without it fails
+        # loudly here (rather than silently degrading the default GPU solver).
         if(WITH_AMGX)
             set(_amgx_dir "${CMAKE_SOURCE_DIR}/thirdparty/AMGX")
             if(NOT EXISTS "${_amgx_dir}/CMakeLists.txt")
-                message(FATAL_ERROR "WITH_AMGX is ON but the AMGX submodule is missing; "
-                    "run: git submodule update --init thirdparty/AMGX")
+                message(FATAL_ERROR "WITH_AMGX is ON (default for GPU builds) but the AMGX "
+                    "submodule is missing. Init it with:\n"
+                    "    git submodule update --init --recursive thirdparty/AMGX\n"
+                    "or, to build the GPU stack WITHOUT the AMGX solver (slower default GPU "
+                    "solver), pass -D WITH_AMGX=OFF (or --no-amgx to build_install_darts_gpu.sh).")
             endif()
             message(STATUS "Building AMGX GPU solver support from ${_amgx_dir}")
             # AMGX is an MPI-optional library; openDARTS does not use its MPI path.

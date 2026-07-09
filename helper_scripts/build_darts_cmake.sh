@@ -231,6 +231,14 @@ if [[ "$skip_req" == false ]]; then
     if [[ $phreeqc == "true" ]]; then
         git submodule update --init --recursive thirdparty/iphreeqc
     fi
+
+    # AMGX backs the default GPU solver (GPU_GMRES_CPR_AMGX_ILU) and is ON by
+    # default for GPU builds, so its submodule must be present. Init it here for
+    # GPU builds (CI already checks out submodules recursively; this makes a
+    # non-recursive local clone work too). Disable with WITH_AMGX=OFF / --no-amgx.
+    if [[ "$GPU" == true && "$OD_CMAKE_ARGS" != *"WITH_AMGX=OFF"* ]]; then
+        git submodule update --init --recursive thirdparty/AMGX
+    fi
     # update submodules finished
     echo -e "\n- Update submodules: DONE! \n"
 
@@ -468,8 +476,22 @@ report_build_summary()
     local name="${entry%%:*}"
     local logfile="${entry##*:}"
     if [[ -f "$logfile" ]]; then
-      warn_counts[$name]=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
-      err_counts[$name]=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
+      if [[ "$name" == "open-DARTS" ]]; then
+        # make_darts.log also captures the thirdparty AMGX subdirectory build
+        # (add_subdirectory in the main CMake). AMGX's own deprecation warnings
+        # are NOT open-DARTS warnings and must not gate CI. Exclude them by two
+        # reliable markers: a 'thirdparty/' path (AMGX headers) and the amgx::
+        # namespace (AMGX compiles thrust/cub under THRUST_CUB_WRAPPED_NAMESPACE
+        # =amgx, so its template-instantiation warnings -- reported against nvcc
+        # intermediate stub files outside the source tree -- carry 'amgx::';
+        # open-DARTS uses plain thrust::, never amgx::).
+        local _amgx_re='thirdparty/|amgx::'
+        warn_counts[$name]=$(grep -E "$warn_pattern" "$logfile" 2>/dev/null | grep -Ecv "$_amgx_re" || true)
+        err_counts[$name]=$(grep -E "$err_pattern" "$logfile" 2>/dev/null | grep -Ecv "$_amgx_re" || true)
+      else
+        warn_counts[$name]=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
+        err_counts[$name]=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
+      fi
     fi
   done
 
@@ -495,7 +517,8 @@ report_build_summary()
     if [[ $darts_warnings -gt 0 ]]; then
       echo ""
       echo " open-DARTS unique warnings:"
-      grep -E "$warn_pattern" make_darts.log 2>/dev/null | sort -u | head -100
+      # Same AMGX exclusion as the count above (thirdparty/ paths + amgx:: stubs).
+      grep -E "$warn_pattern" make_darts.log 2>/dev/null | grep -Ev "thirdparty/|amgx::" | sort -u | head -100
     fi
 
     echo ""
