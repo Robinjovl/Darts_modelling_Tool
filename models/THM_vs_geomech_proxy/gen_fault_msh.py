@@ -588,8 +588,8 @@ def generate_3d_fault_mesh(
         FRONTBOUNDARY: [], BACKBOUNDARY: [],
         BOTTOMBOUNDARY: [], TOPBOUNDARY: [],
     }
-    z_domain_top = z_new(800.0)
-    z_domain_bottom = z_new(-800.0)
+    z_domain_top = zmin_top #z_new(800.0)
+    z_domain_bottom = zmin_bot #z_new(-800.0)
     bbox_tol = 1.0e-5
 
     for _, surface in gmsh.model.getEntities(2):
