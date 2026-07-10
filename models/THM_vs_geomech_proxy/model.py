@@ -104,7 +104,7 @@ class Model(THMCModel):
         self.params.tolerance_newton = 1e-6
         self.params.tolerance_linear = 1e-8
         self.params.max_i_newton = 20
-        self.params.max_i_linear  = 50
+        self.params.max_i_linear  = 100
 
     def set_reservoir(self):
         mesh_folder = self.idata.other.mesh_dir if self.idata.other.mesh_dir is not None else self.model_folder

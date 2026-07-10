@@ -346,6 +346,8 @@ if __name__ == '__main__':
         generate_3d_fault_mesh()
 
     for case in cases:
+        os.system("title thm_proxy: " + case + " PID=" + str(os.getpid())) # set the window title
+    
         run(model_folder=case, physics_type=physics_type, generate_mesh=generate_mesh,
             wells_type=wells_type, decouple_geomech=decouple_geomech,
             report_step=report_step, sim_time=sim_time,
