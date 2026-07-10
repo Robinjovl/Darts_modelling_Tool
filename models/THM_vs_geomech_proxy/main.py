@@ -341,6 +341,10 @@ if __name__ == '__main__':
     #sim_time = 30 # days
     #report_step = sim_time  # days
 
+    if 'case_5' in cases:
+        from gen_fault_msh import generate_3d_fault_mesh
+        generate_3d_fault_mesh()
+
     for case in cases:
         run(model_folder=case, physics_type=physics_type, generate_mesh=generate_mesh,
             wells_type=wells_type, decouple_geomech=decouple_geomech,
