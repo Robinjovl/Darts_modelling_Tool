@@ -46,7 +46,7 @@ class AquiferCO2InjectionConfig:
     well_depth: float = 2000.0
     well_segments: int = 40
     well_diameter: float = 0.1524
-    well_temp_grad: float = 0.0
+    well_temp_grad: float = 0.03
 
     injection_source_pressure: float = 60.5
     injection_source_temperature: float = 295.15
@@ -170,10 +170,10 @@ class Model(CICDModel):
                                                    perforated_segment_local: int) -> LinearAmbientTemperature:
         cfg = self.config
 
-        def make_initial_conditions(reference_pressure: float):
+        def make_initial_conditions(reference_pressure: float, reference_temperature: float):
             return LinearAmbientTemperature(
                 pipe_name="I1", pipe_geom=geometry, physics=self.physics, pipe_head_pressure=reference_pressure,
-                pipe_head_temperature=cfg.t_reservoir, temp_grad=cfg.well_temp_grad,
+                pipe_head_temperature=reference_temperature, temp_grad=cfg.well_temp_grad,
                 pipe_head_segment_index=geometry.num_segments - 1,
                 initial_conditions_dict={
                     "phases_names": ["G"],
@@ -183,16 +183,20 @@ class Model(CICDModel):
             )
 
         reference_pressure = cfg.p_init
-        initial_conditions = make_initial_conditions(reference_pressure)
+        reference_temperature = cfg.t_reservoir
+        initial_conditions = make_initial_conditions(reference_pressure, reference_temperature)
         for _ in range(8):
             states = np.asarray(initial_conditions.initial_conditions_vector, dtype=float).reshape(-1, self.physics.n_vars)
             pressure_error = states[perforated_segment_local, 0] - cfg.p_init
-            if abs(pressure_error) < 1e-10:
+            temperature_error = states[perforated_segment_local, 2] - cfg.t_reservoir
+            if abs(pressure_error) < 1e-10 and abs(temperature_error) < 1e-10:
                 break
             reference_pressure -= pressure_error
-            initial_conditions = make_initial_conditions(reference_pressure)
+            reference_temperature -= temperature_error
+            initial_conditions = make_initial_conditions(reference_pressure, reference_temperature)
 
         self.initial_well_reference_pressure = float(reference_pressure)
+        self.initial_well_reference_temperature = float(reference_temperature)
         return initial_conditions
 
     def set_initial_conditions(self):
