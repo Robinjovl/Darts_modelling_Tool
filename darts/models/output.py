@@ -647,8 +647,6 @@ class Output:
         if hasattr(self.reservoir, "discretizer"):
             if hasattr(self.reservoir.discretizer, "centroids_all_cells"):
                 centroids = self.reservoir.discretizer.centroids_all_cells
-            elif hasattr(self.reservoir.discretizer, "centroid_all_cells"):
-                centroids = self.reservoir.discretizer.centroid_all_cells
 
         if centroids is None and hasattr(self.reservoir, "centroids_all_cells"):
             centroids = self.reservoir.centroids_all_cells

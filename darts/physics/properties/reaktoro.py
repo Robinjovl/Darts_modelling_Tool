@@ -1,6 +1,6 @@
-import warnings
-
 import numpy as np
+
+from darts.physics.properties.flash_exceptions import FlashError
 
 try:
     # Reaktoro v2 Python API
@@ -31,6 +31,16 @@ except Exception as _exc:  # pragma: no cover - optional dependency
     _REAKTORO_IMPORT_ERROR = _exc
 else:
     _REAKTORO_IMPORT_ERROR = None
+
+
+class ReaktoroFlashError(FlashError):
+    """
+    Raised when the Reaktoro equilibrium solver fails or does not converge.
+
+    A :class:`FlashError` subclass so the model's Newton loop catches it the same way as a
+    PHREEQC failure and converts it into a timestep cut (keeping the simulation alive),
+    rather than silently returning non-physical zeros that would inject NaN/Inf operators.
+    """
 
 
 class Flash:
@@ -195,19 +205,13 @@ class Flash:
                 raise RuntimeError("Reaktoro equilibrium solver failed to converge")
             props = state.props()
         except Exception as exc:
-            warnings.warn(f"Reaktoro equilibrium failed: {exc}", Warning, stacklevel=2)
-            # Best-effort: return zeros to avoid crashing caller
-            nc = self.n_solid + self.n_fluid
-            return (
-                0.0,
-                np.zeros(nc),
-                np.zeros(nc),
-                {"aq": 0.0, "gas": 0.0},
-                {},
-                0.0,
-                np.zeros(len(self.aqueous_species), dtype=float),
-                np.zeros(len(self.gas_species), dtype=float),
-            )
+            # Do NOT return zeros: rho_aq=0 would feed divide-by-zero / NaN operators into
+            # the OBL table silently. Raise a FlashError so the model's Newton loop treats
+            # it as a non-convergence and cuts the timestep (keeping the simulation alive).
+            raise ReaktoroFlashError(
+                f"Reaktoro equilibrium failed at p={pressure_bar:.6g} bar, "
+                f"T={temperature_c:.4g} C: {exc}"
+            ) from exc
 
         volume_m3 = props.volume().val()  # m3
         elem_moles_aq = props.elementAmountsInPhase("AqueousPhase").asarray()

@@ -1,12 +1,12 @@
 """
-Differences between this script and the DFM velocity evaluator in the standalone well model:
+Differences between this script and the DFM velocity evaluator in DWell:
 - https://gitlab.com/open-darts/open-darts/-/commit/b0aa26cb9beb90a10bb1b4e3db5291399607f46d
 Revert the density averaging method here (now it is similar to DWell):
 - https://gitlab.com/open-darts/open-darts/-/commit/0c584d57e8cd20c270057763f3b6bc916cbc695e
 
 Notes:
-    - The kinetic energy is not added to the energy conservation equation of the coupled model yet, while it was in the
-    standalone wellbore model.
+    - The kinetic energy is not added to the energy conservation equation of the coupled well-reservoir model yet,
+    while it is in DWell.
 
     - When having a DFM pipe:
         - Use 'G' as the name of the gaseous phase
@@ -68,6 +68,12 @@ class Pipe:
     g = 9.80665 * meter() / second() ** 2  # Gravitational acceleration
 
     adjustment_func_params = AdjustmentFuncParams()
+    bhagwat_ghajar_drift_flux_models = ("bai_2023", "bhagwat_ghajar_2014")
+    supported_drift_flux_models = (
+        "shi_t2well",
+        "tang_2019",
+        *bhagwat_ghajar_drift_flux_models,
+    )
 
     def __init__(
         self,
@@ -90,6 +96,7 @@ class Pipe:
         eps_z: float = 0.00001,
         enable_profile_parameter: bool = True,
         enable_drift_velocity: bool = True,
+        exclude_top_control_block_from_velocity: bool = False,
         verbose: bool = False,
     ):
         """
@@ -110,12 +117,10 @@ class Pipe:
         :param drift_flux_model: Drift-flux closure to use:
                                  - "shi_t2well" retains the historical Holmes/Shi/T2Well style closure
                                  - "tang_2019" uses the unified all-inclination Tang et al. (2019) closure
-                                 - "bai_2023" uses the CO2-specific Bai, Lou, and Lu (2023) pipe-flow model, which adopts:
-                                   - the Bhagwat and Ghajar (2014) drift-flux correlation and
-                                   - the Wang et al. (2014) supercritical-CO2 friction-factor correlation
-                                 Important: in transient pipe/wellbore tests for liquid CO2 injection into an
-                                 initially gas-filled CO2 well, Wang friction alone is stable, but enabling the full
-                                 Bai drift-flux closure can destabilize the wellhead flashing/start-up state.
+                                 - "bai_2023" uses the CO2-specific Bai et al. (2023) pipe-flow model, which adopts
+                                   Bhagwat and Ghajar (2014) with Bai-specific Reynolds/friction and drift terms
+                                 - "bhagwat_ghajar_2014" uses the original Bhagwat and Ghajar (2014) drift-flux
+                                   correlation with its Colebrook-White friction term
         :type drift_flux_model: str
         :param tang_parameter_set: If tang_2019 is used as the drift-flux model, parameterization of the
                                    Tang et al. (2019) unified model. Allowed values are "olgas" and "tuffp".
@@ -163,6 +168,23 @@ class Pipe:
         :param enable_drift_velocity: Whether to calculate and use drift velocity for multiphase flow. If False,
                                       drift velocity is set to zero.
         :type enable_drift_velocity: bool
+        :param exclude_top_control_block_from_velocity: If True, interface 0 uses segment 1 for phase properties
+                                                        in the DFM velocity closure. The pressure gradient still
+                                                        uses segment 0 and 1, but the ghost wellhead/control
+                                                        block is not used for saturation, density, viscosity,
+                                                        composition, profile parameter, or drift velocity. Enable
+                                                        this for DFM production wells controlled by the C++
+                                                        wellhead rate-control block in PH formulation. In that
+                                                        setup, the C++ control equation keeps the wellhead/control
+                                                        block pressure as the rate-control unknown, while the
+                                                        remaining primary variables are constrained from the first
+                                                        physical segment. For PH formulation, this means the
+                                                        control block can have a different pressure but the same
+                                                        enthalpy as the first physical segment. Flashing that
+                                                        artificial pressure-enthalpy pair can produce nonphysical
+                                                        temperature/saturation, so those phase properties should
+                                                        not be used in the DFM velocity closure.
+        :type exclude_top_control_block_from_velocity: bool
         :type verbose: boolean
         """
         assert pipe_name == pipe_geometry.pipe_name, (
@@ -241,9 +263,10 @@ class Pipe:
             )
         self.source_sinks = source_sinks
 
-        if drift_flux_model not in ("shi_t2well", "tang_2019", "bai_2023"):
+        if drift_flux_model not in self.supported_drift_flux_models:
             raise ValueError(
-                "drift_flux_model must be either 'shi_t2well', 'tang_2019', or 'bai_2023'."
+                "drift_flux_model must be one of "
+                f"{', '.join(repr(model) for model in self.supported_drift_flux_models)}."
             )
         self.drift_flux_model = drift_flux_model
 
@@ -357,7 +380,7 @@ class Pipe:
             else:
                 self.tang_theta = pipe_geometry.inclination_angle_radian - math.pi / 2.0
 
-        elif self.drift_flux_model == "bai_2023":
+        elif self.drift_flux_model in self.bhagwat_ghajar_drift_flux_models:
             self.profile_A = None
             self.B = None
             self.a1 = None
@@ -365,11 +388,13 @@ class Pipe:
             self.m = np.ones(pipe_geometry.num_interfaces)
             self.tang_df_params = None
             if isinstance(pipe_geometry.inclination_angle_radian, float):
-                self.bai_theta = (
+                self.bhagwat_ghajar_theta = (
                     pipe_geometry.inclination_angle_radian - math.pi / 2.0
                 ) * np.ones(pipe_geometry.num_interfaces)
             else:
-                self.bai_theta = pipe_geometry.inclination_angle_radian - math.pi / 2.0
+                self.bhagwat_ghajar_theta = (
+                    pipe_geometry.inclination_angle_radian - math.pi / 2.0
+                )
 
         self.g_cos_theta = self.g * np.cos(pipe_geometry.inclination_angle_radian)
         if isinstance(self.g_cos_theta, float):
@@ -430,6 +455,9 @@ class Pipe:
 
         self.enable_profile_parameter = enable_profile_parameter
         self.enable_drift_velocity = enable_drift_velocity
+        self.exclude_top_control_block_from_velocity = (
+            exclude_top_control_block_from_velocity
+        )
 
         if verbose:
             print(f'** Model of the pipe "{self.geometry.pipe_name}" is created!')
@@ -525,8 +553,9 @@ class Pipe:
         """
         dt = dt * 24 * 60 * 60  # convert day to second
 
-        num_segments = self.geometry.num_segments
-        num_interfaces = self.geometry.num_interfaces
+        geom = self.geometry
+        num_segments = geom.num_segments
+        num_interfaces = geom.num_interfaces
         pc = self.physics.property_containers[0]
         Mw_fl = np.asarray(pc.Mw[: pc.nc_fl])
         n_vars = self.physics.n_vars
@@ -958,6 +987,16 @@ class Pipe:
                     muL0_face[i] = 0.0
                     xL_mass0_face[i] = 0.0
 
+            if self.exclude_top_control_block_from_velocity:
+                sG0_face[0] = sG0[1]
+                sL0_face[0] = sL0[1]
+                rhoG0_face[0] = rhoG0[1]
+                rhoL0_face[0] = rhoL0[1]
+                muG0_face[0] = muG0[1]
+                muL0_face[0] = muL0[1]
+                xG_mass0_face[0] = xG_mass0[1]
+                xL_mass0_face[0] = xL_mass0[1]
+
             self.iter_phases_props0_face = [
                 xG_mass0_face,
                 xL_mass0_face,
@@ -1020,6 +1059,17 @@ class Pipe:
                 if self.diff_method == "OBL":
                     rhoL_face_der[i, :] = (rhoL_der[i, :] + rhoL_der[i + 1, :]) / 2
 
+        if self.exclude_top_control_block_from_velocity:
+            sG_face[0] = sG[1]
+            sL_face[0] = sL[1]
+            rhoG_face[0] = rhoG[1]
+            rhoL_face[0] = rhoL[1]
+            if self.diff_method == "OBL":
+                sG_face_der[0, :] = sG_der[1, :]
+                sL_face_der[0, :] = sL_der[1, :]
+                rhoG_face_der[0, :] = rhoG_der[1, :]
+                rhoL_face_der[0, :] = rhoL_der[1, :]
+
         self.iter_phases_props_face = [sG_face, sL_face, rhoG_face, rhoL_face]
         if self.diff_method == "OBL":
             self.iter_phases_props_face_ders = [
@@ -1054,12 +1104,10 @@ class Pipe:
 
         self.calc_mixture_densities(iter_counter, flag)
 
-        pg = self.geometry
-
         if iter_counter == 0 and flag == 1:
             # To increase the numerical stability, you may need to use an upwind scheme for the momentum flux like
             # in the paper "A transient geothermal wellbore simulator (2023)"
-            delta_interface0 = pg.pipe_internal_A * (
+            delta_interface0 = geom.pipe_internal_A * (
                 rhoG0_face * sG0_face * vG0**2 + rhoL0_face * sL0_face * vL0**2
             )
 
@@ -1085,7 +1133,7 @@ class Pipe:
                     # Need to see how we can get the overall composition of the source block in kmol/kmol.
                     mass_rate = 0
 
-                pipe_internal_A = self.geometry.pipe_internal_A
+                pipe_internal_A = geom.pipe_internal_A
 
                 # If UpstreamRampUpRate is used, which calculates boundary momentum using the properties of the boundary itself:
                 if hasattr(sink_source, "get_boundary_momentum_flux"):
@@ -1164,24 +1212,26 @@ class Pipe:
             )
 
             delta_segment0 = (
-                pg.pipe_internal_A * delta_interface0[0:-1] / pg.D[0:-1]
-                + pg.pipe_internal_A * delta_interface0[1:] / pg.D[1:]
-            ) / (pg.pipe_internal_A / pg.D[0:-1] + pg.pipe_internal_A / pg.D[1:])
+                geom.pipe_internal_A * delta_interface0[0:-1] / geom.D[0:-1]
+                + geom.pipe_internal_A * delta_interface0[1:] / geom.D[1:]
+            ) / (
+                geom.pipe_internal_A / geom.D[0:-1] + geom.pipe_internal_A / geom.D[1:]
+            )
             self.delta_m0 = delta_segment0[0:-1]
             self.delta_p0 = delta_segment0[1:]
 
             ff0 = self.calc_Fanning_friction_factor()
             self.w0 = 1 / (
-                1 / dt + pg.perimeter * ff0 * abs(vM0) / (2 * pg.pipe_internal_A)
+                1 / dt + geom.perimeter * ff0 * abs(vM0) / (2 * geom.pipe_internal_A)
             )
 
         self.rhoM_vM = (
-            -self.w0 * (p_p - p_m) / (pg.z_p - pg.z_m)
+            -self.w0 * (p_p - p_m) / (geom.z_p - geom.z_m)
             + self.w0 * self.g_cos_theta * self.rhoM_face
             - self.w0
             * (
                 (self.delta_p0 - self.delta_m0)
-                / (pg.pipe_internal_A * (pg.z_p - pg.z_m))
+                / (geom.pipe_internal_A * (geom.z_p - geom.z_m))
                 - self.rhoM0_face * vM0 / dt
             )
         )
@@ -1190,7 +1240,7 @@ class Pipe:
             self.rhoM_vM_der = (
                 -self.w0[:, None]
                 * (p_p_der - p_m_der)
-                / (pg.z_p[:, None] - pg.z_m[:, None])
+                / (geom.z_p[:, None] - geom.z_m[:, None])
                 + self.w0[:, None] * self.g_cos_theta[:, None] * self.rhoM_face_der
             )
 
@@ -1357,7 +1407,7 @@ class Pipe:
             )
 
     def calc_Fanning_friction_factor(self):
-        pg = self.geometry
+        geom = self.geometry
 
         """ Start calculating the Reynolds number """
         _, _, sG0, sL0, _, _, _, _ = self.iter_phases_props0
@@ -1383,12 +1433,12 @@ class Pipe:
         # denominator_2 = np.nan_to_num(denominator_2, nan=0.0)
         # self.muM0 = 1 / (denominator_1 + denominator_2)
 
-        Re0 = self.calc_Reynolds_number(vM0, self.rhoM0_face, self.muM0, pg.pipe_ID)
+        Re0 = self.calc_Reynolds_number(vM0, self.rhoM0_face, self.muM0, geom.pipe_ID)
         """ End calculating the Reynolds number """
 
-        self.ff0 = np.zeros(pg.num_interfaces)
+        self.ff0 = np.zeros(geom.num_interfaces)
         if self.friction_model == "wang_2014":
-            relative_roughness = pg.wall_roughness / pg.pipe_ID
+            relative_roughness = geom.wall_roughness / geom.pipe_ID
             for i, Re in enumerate(Re0):
                 self.ff0[i] = (
                     self.wang_darcy_friction_factor(Re, relative_roughness) / 4.0
@@ -1403,7 +1453,7 @@ class Pipe:
         turb_idx = np.nonzero(Re0 > 2400.0)[0]
 
         initial_guess = 0.005
-        relative_roughness = pg.wall_roughness / pg.pipe_ID
+        relative_roughness = geom.wall_roughness / geom.pipe_ID
         for i in turb_idx:
             # Colebrook-White correlation (implicit method)
             self.ff0[i] = fsolve(
@@ -1453,7 +1503,7 @@ class Pipe:
 
         sqrt_f = math.sqrt(f)
         return 1.0 / sqrt_f + 4.0 * math.log10(
-            relative_roughness / 3.7065 + (1.2613 / (Re * sqrt_f))
+            relative_roughness / 3.7065 + 1.2613 / (Re * sqrt_f)
         )
 
     @staticmethod
@@ -1487,18 +1537,31 @@ class Pipe:
         return (-2.34 * math.log10(argument)) ** -2.0
 
     @staticmethod
-    def bai_gas_froude_number(j_g: float, pipe_ID: float) -> float:
+    def bhagwat_ghajar_gas_froude_number(
+        j_g: float, rhoG: float, rhoL: float, theta: float, pipe_ID: float
+    ) -> float:
         """
-        Calculate the gas superficial Froude number used by Bai et al. (2023).
+        Calculate the gas superficial Froude number used by Bhagwat and Ghajar.
 
         :param j_g: Gas superficial velocity [m/s].
+        :param rhoG: Gas density [kg/m3].
+        :param rhoL: Liquid density [kg/m3].
+        :param theta: Pipe inclination angle [rad], measured from horizontal.
         :param pipe_ID: Pipe internal diameter [m].
         :return: Gas superficial Froude number.
         """
-        return abs(j_g) / math.sqrt(Pipe.g * pipe_ID)
+        density_difference = rhoL - rhoG
+        cos_theta = math.cos(theta)
+        if density_difference <= 0.0 or cos_theta <= np.finfo(float).eps:
+            return math.inf
+        return (
+            math.sqrt(rhoG / density_difference)
+            * abs(j_g)
+            / math.sqrt(Pipe.g * pipe_ID * cos_theta)
+        )
 
     @staticmethod
-    def bai_gas_volumetric_fraction(j_g: float, j_l: float) -> float:
+    def bhagwat_ghajar_gas_volumetric_fraction(j_g: float, j_l: float) -> float:
         """
         Calculate gas volumetric flow fraction from superficial velocities.
 
@@ -1510,7 +1573,9 @@ class Pipe:
         return 0.0 if total <= 0.0 else abs(j_g) / total
 
     @staticmethod
-    def bai_gas_quality(j_g: float, j_l: float, rhoG: float, rhoL: float) -> float:
+    def bhagwat_ghajar_gas_quality(
+        j_g: float, j_l: float, rhoG: float, rhoL: float
+    ) -> float:
         """
         Calculate gas mass quality from superficial velocities and densities.
 
@@ -1525,7 +1590,38 @@ class Pipe:
         total = gas_mass_flux + liquid_mass_flux
         return 0.0 if total <= 0.0 else gas_mass_flux / total
 
-    def bai_profile_parameter(
+    def bhagwat_ghajar_c01_downward_low_froude_condition(
+        self, theta_deg: float, Fr_sg: float
+    ) -> bool:
+        """
+        Check the near-horizontal downward-flow condition used for C0,1.
+        """
+        return -50.0 <= theta_deg <= 0.0 and Fr_sg <= 0.1
+
+    def bhagwat_ghajar_c4_downward_low_froude_condition(
+        self, theta_deg: float, Fr_sg: float
+    ) -> bool:
+        """
+        Check the near-horizontal downward-flow condition used for C4.
+        """
+        if self.drift_flux_model == "bai_2023":
+            return -50.0 <= theta_deg <= 0.0 and Fr_sg <= 0.1
+        return -50.0 <= theta_deg < 0.0 and Fr_sg <= 0.1
+
+    def bhagwat_ghajar_profile_friction_factor(self, Re: float) -> float:
+        """
+        Calculate the Fanning friction factor used inside the B&G-family C0,1 term.
+        """
+        relative_roughness = self.geometry.wall_roughness / self.geometry.pipe_ID
+        if self.drift_flux_model == "bai_2023":
+            return self.wang_darcy_friction_factor(Re, relative_roughness) / 4.0
+        if Re <= 0.0:
+            return 0.0
+        if Re < 2400.0:
+            return 16.0 / Re
+        return float(fsolve(self.colebrook, 0.005, args=(Re, relative_roughness))[0])
+
+    def bhagwat_ghajar_profile_parameter(
         self,
         sG: float,
         sL: float,
@@ -1539,7 +1635,7 @@ class Pipe:
         theta: float,
     ) -> float:
         """
-        Calculate the Bai et al. (2023) distribution coefficient.
+        Calculate the B&G-family distribution coefficient.
 
         :param sG: Gas volume fraction.
         :param sL: Liquid volume fraction.
@@ -1550,27 +1646,35 @@ class Pipe:
         :param rhoL: Liquid density [kg/m3].
         :param muG: Gas viscosity [Pa.s].
         :param muL: Liquid viscosity [Pa.s].
-        :param theta: Bai pipe inclination angle [rad], measured from horizontal.
+        :param theta: Pipe inclination angle [rad], measured from horizontal.
         :return: Distribution coefficient C0.
         """
-        rho_m = (sG * rhoG + sL * rhoL) / (sG + sL)
-        mu_m = (sG * muG + sL * muL) / (sG + sL)
-        Re = (
-            rho_m
-            * abs(mixture_velocity)
-            * self.geometry.pipe_ID
-            / max(mu_m, np.finfo(float).eps)
+        if self.drift_flux_model == "bai_2023":
+            rho_m = (sG * rhoG + sL * rhoL) / (sG + sL)
+            mu_m = (sG * muG + sL * muL) / (sG + sL)
+            Re = (
+                rho_m
+                * abs(mixture_velocity)
+                * self.geometry.pipe_ID
+                / max(mu_m, np.finfo(float).eps)
+            )
+        else:
+            Re = (
+                rhoL
+                * abs(mixture_velocity)
+                * self.geometry.pipe_ID
+                / max(muL, np.finfo(float).eps)
+            )
+
+        fanning_f = self.bhagwat_ghajar_profile_friction_factor(Re)
+        beta = self.bhagwat_ghajar_gas_volumetric_fraction(j_g, j_l)
+        quality = self.bhagwat_ghajar_gas_quality(j_g, j_l, rhoG, rhoL)
+        Fr_sg = self.bhagwat_ghajar_gas_froude_number(
+            j_g, rhoG, rhoL, theta, self.geometry.pipe_ID
         )
-        darcy_f = self.wang_darcy_friction_factor(
-            Re, self.geometry.wall_roughness / self.geometry.pipe_ID
-        )
-        fanning_f = darcy_f / 4.0
-        beta = self.bai_gas_volumetric_fraction(j_g, j_l)
-        quality = self.bai_gas_quality(j_g, j_l, rhoG, rhoL)
-        Fr_sg = self.bai_gas_froude_number(j_g, self.geometry.pipe_ID)
         theta_deg = math.degrees(theta)
 
-        if -50.0 <= theta_deg <= 0.0 and Fr_sg <= 0.1:
+        if self.bhagwat_ghajar_c01_downward_low_froude_condition(theta_deg, Fr_sg):
             C01 = 0.0
         else:
             C01 = (
@@ -1589,6 +1693,10 @@ class Pipe:
                 np.finfo(float).eps,
             )
         )
+        # In Equation 10 of Bhagwat,and Ghajar (2014) paper, sL and 2/5 need to be multiplied, but
+        # in Equation 13 of Bai et al. (2023) paper, sL is powered by 2/5. I tried both for the
+        # two CI tests comparing isothermal two-phase flow in wellbore with OLGA. The results using
+        # power are much closer and make more sense.
         exponent = sL ** (2.0 / 5.0)
         low_re_term = (2.0 - density_ratio**2) / (1.0 + (Re / 1000.0) ** 2)
         high_re_term = (base**exponent + C01) / (
@@ -1596,7 +1704,7 @@ class Pipe:
         )
         return low_re_term + high_re_term
 
-    def bai_drift_velocity(
+    def bhagwat_ghajar_drift_velocity(
         self,
         sL: float,
         j_g: float,
@@ -1607,7 +1715,7 @@ class Pipe:
         theta: float,
     ) -> float:
         """
-        Calculate the Bai et al. (2023) drift velocity.
+        Calculate the B&G-family drift velocity.
 
         :param sL: Liquid volume fraction.
         :param j_g: Gas superficial velocity [m/s].
@@ -1620,27 +1728,38 @@ class Pipe:
         """
         viscosity_ratio = muL / 0.001
         if viscosity_ratio > 10.0:
-            C2 = (0.434 / math.log(viscosity_ratio)) ** 0.15
+            C2 = (0.434 / math.log10(viscosity_ratio)) ** 0.15
         else:
             C2 = 1.0
 
         La = math.sqrt(sigma / (self.g * (rhoL - rhoG))) / self.geometry.pipe_ID
-        C3 = (La / 0.025) ** 0.9 if La > 0.025 else 1.0
+        if self.drift_flux_model == "bai_2023":
+            C3 = (La / 0.025) ** 0.9 if La > 0.025 else 1.0
+            liquid_holdup_factor = sL
+        else:
+            C3 = (La / 0.025) ** 0.9 if La < 0.025 else 1.0
+            liquid_holdup_factor = math.sqrt(sL)
         theta_deg = math.degrees(theta)
-        Fr_sg = self.bai_gas_froude_number(j_g, self.geometry.pipe_ID)
-        C4 = -1.0 if -50.0 <= theta_deg <= 0.0 and Fr_sg <= 0.1 else 1.0
+        Fr_sg = self.bhagwat_ghajar_gas_froude_number(
+            j_g, rhoG, rhoL, theta, self.geometry.pipe_ID
+        )
+        C4 = (
+            -1.0
+            if self.bhagwat_ghajar_c4_downward_low_froude_condition(theta_deg, Fr_sg)
+            else 1.0
+        )
         return (
             (0.35 * math.sin(theta) + 0.45 * math.cos(theta))
             * math.sqrt(self.g * self.geometry.pipe_ID * (rhoL - rhoG) / rhoL)
-            * sL
+            * liquid_holdup_factor
             * C2
             * C3
             * C4
         )
 
     def update_profile_parameter(self):
-        pg = self.geometry
-        num_interfaces = self.geometry.num_interfaces
+        geom = self.geometry
+        num_interfaces = geom.num_interfaces
         [rhoM0_vM0, vM0_all, vG0, vL0] = self.velocities0
         [
             xG_mass0_face,
@@ -1683,14 +1802,18 @@ class Pipe:
 
             # Calculate C00 from the solution of the previous time step
             vM0 = rhoM0_vM0_filtered / rhoM0_face_filtered
-            NB0 = (pg.pipe_ID**2) * (
+            NB0 = (geom.pipe_ID**2) * (
                 self.g * (rhoL0_face_filtered - rhoG0_face_filtered) / IFT0_face
             )
-            self.Ku0_filtered = np.sqrt(
-                self.Cku
-                / np.sqrt(NB0)
-                * (np.sqrt(1 + NB0 / (self.Cku**2 * self.Cw)) - 1)
-            )
+            if self.drift_flux_model == "tang_2019":
+                Dhat0 = np.sqrt(NB0)
+                self.Ku0_filtered = np.clip(3.587 - 19.105 / (Dhat0 + 3.333), 0.0, 3.2)
+            else:
+                self.Ku0_filtered = np.sqrt(
+                    self.Cku
+                    / np.sqrt(NB0)
+                    * (np.sqrt(1 + NB0 / (self.Cku**2 * self.Cw)) - 1)
+                )
             self.vC0_filtered = (
                 self.g
                 * IFT0_face
@@ -1715,9 +1838,11 @@ class Pipe:
                 beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
                 beta0 = np.clip(beta0, 0, 1)  # T2Well imposes 0 <= beta0 <= 1
                 eta0 = (beta0 - self.B) / (1 - self.B)
-                eta0 = np.clip(eta0, 0, 1)  # Shi et al. impose 0 <= eta <= 1
-                C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
-            elif self.drift_flux_model == "bai_2023":
+                eta0_squared = np.minimum(eta0**2, 1.0)
+                C00_filtered = self.profile_A / (
+                    1 + (self.profile_A - 1) * eta0_squared
+                )
+            elif self.drift_flux_model in self.bhagwat_ghajar_drift_flux_models:
                 muG0_face = self.iter_phases_props0_face[6]
                 muL0_face = self.iter_phases_props0_face[7]
                 C00_filtered = np.zeros(len(indices))
@@ -1727,7 +1852,7 @@ class Pipe:
                     if jG0 == 0.0 and jL0 == 0.0:
                         jG0 = sG0_face[idx] * vM0_all[idx]
                         jL0 = sL0_face[idx] * vM0_all[idx]
-                    C00_filtered[i] = self.bai_profile_parameter(
+                    C00_filtered[i] = self.bhagwat_ghajar_profile_parameter(
                         sG0_face[idx],
                         sL0_face[idx],
                         jG0,
@@ -1737,7 +1862,7 @@ class Pipe:
                         rhoL0_face[idx],
                         muG0_face[idx],
                         muL0_face[idx],
-                        self.bai_theta[idx],
+                        self.bhagwat_ghajar_theta[idx],
                     )
 
             C00 = np.ones(num_interfaces)  # C00 all ones first
@@ -1757,7 +1882,8 @@ class Pipe:
             self.C00 = np.ones(num_interfaces)
 
     def update_drift_velocity(self):
-        num_interfaces = self.geometry.num_interfaces
+        geom = self.geometry
+        num_interfaces = geom.num_interfaces
         # if np.all(self.C00 == 1):
         #     vD0 = np.zeros(num_interfaces)
         # else:
@@ -1790,7 +1916,7 @@ class Pipe:
                 self.C00 = np.ones(num_interfaces)
                 self.C00_filtered = np.ones(len(indices))
 
-            if self.drift_flux_model == "bai_2023":
+            if self.drift_flux_model in self.bhagwat_ghajar_drift_flux_models:
                 vD0 = np.zeros(num_interfaces)
                 for index, value in enumerate(indices):
                     jG0 = sG0_face[value] * vG0[value]
@@ -1798,14 +1924,14 @@ class Pipe:
                     if jG0 == 0.0 and jL0 == 0.0:
                         jG0 = sG0_face[value] * vM0[value]
                         jL0 = sL0_face[value] * vM0[value]
-                    vD0[value] = self.bai_drift_velocity(
+                    vD0[value] = self.bhagwat_ghajar_drift_velocity(
                         sL0_face[value],
                         jG0,
                         rhoG0_face[value],
                         rhoL0_face[value],
                         muL0_face[value],
                         self.IFT_face_filtered[index],
-                        self.bai_theta[value],
+                        self.bhagwat_ghajar_theta[value],
                     )
                 self.vD0 = vD0
                 return
@@ -1859,18 +1985,18 @@ class Pipe:
 
                 N_l = safe_muL_face / np.maximum(
                     (safe_rhoL_face - safe_rhoG_face)
-                    * np.power(self.geometry.pipe_ID, 1.5)
+                    * np.power(geom.pipe_ID, 1.5)
                     * math.sqrt(self.g),
                     eps,
                 )
                 N_Eo = (
                     self.g
                     * (safe_rhoL_face - safe_rhoG_face)
-                    * (self.geometry.pipe_ID**2)
+                    * (geom.pipe_ID**2)
                     / np.maximum(self.IFT_face_filtered, eps)
                 )
                 vDh = (
-                    np.sqrt(self.g * self.geometry.pipe_ID)
+                    np.sqrt(self.g * geom.pipe_ID)
                     * (
                         tang_params.N1
                         - tang_params.N2
@@ -1884,17 +2010,15 @@ class Pipe:
                     * sL0_face_filtered
                 )
 
-                transition_argument = 50.0 * (
-                    np.sin(theta_filtered) + tang_params.m2 * vM0_filtered
+                transition_angle = theta_filtered + np.deg2rad(
+                    tang_params.m2 * vM0_filtered
                 )
+                transition_argument = 50.0 * np.sin(transition_angle)
                 transition = 1 - 2 / (
                     1 + np.exp(np.clip(transition_argument, -700.0, 700.0))
                 )
                 Re_L = (
-                    np.abs(vM0_filtered)
-                    * safe_rhoL_face
-                    * self.geometry.pipe_ID
-                    / safe_muL_face
+                    np.abs(vM0_filtered) * safe_rhoL_face * geom.pipe_ID / safe_muL_face
                 )
                 low_re_multiplier = (1 + 1000.0 / (Re_L + 1000.0)) ** tang_params.m3
 

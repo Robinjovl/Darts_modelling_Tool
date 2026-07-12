@@ -3,9 +3,12 @@
 - Output:
   - output which was using `vtk` module, has been changed to use `meshio` (struct reservoir, cpg reservoir) and darts/tools/vtk_io.py (writing vtp files with dynamic results along well trajectories)
 - Package:
-  - removed `vtk` dependency ([!314](https://gitlab.com/open-darts/open-darts/-/merge_requests/314))
-  - added "viz" option to install `vtk` and `pyvista`; added "all" option to install "viz" and "solvers" groups. Usage pip install open-darts[viz].
+  - remove `vtk` dependency ([!314](https://gitlab.com/open-darts/open-darts/-/merge_requests/314))
+  - add "viz" option to install `vtk` and `pyvista`; added "all" option to install "viz" and "solvers" groups. Usage pip install open-darts[viz].
 - Switched to Python 3.11 by default (CI/CD pipelines, ReadTheDocs build, `ruff` lint target, and the recommended developer environment); Python 3.10–3.13 remain supported and tested.
+- Add OLGA-style linear IPR support for controlling injectivity/productivity of DFM wells ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
+- Add `IdealGasDensity` to `darts/physics/properties/density.py` ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
+- Add `AirViscositySutherland` to `darts/physics/properties/viscosity.py` ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
 - Breaking changes:
   - Renamed the `rate_type` argument to `rate_ctrl_type` in `WellData.add_inj_rate_control()` and `WellData.add_prd_rate_control()` to make clear that it specifies the type of rate control:
   \

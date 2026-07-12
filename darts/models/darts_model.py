@@ -636,7 +636,7 @@ class DartsModel:
 
     def run_simple(self, physics, data_ts, days, restart_dt=0.0):
         """
-        Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
+        Run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
         :param physics:
         :param data_ts:
@@ -718,7 +718,7 @@ class DartsModel:
         verbose: bool = True,
     ):
         """
-        Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
+        Run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
         :param days: Time increment [days]
         :type days: float
@@ -883,6 +883,11 @@ class DartsModel:
         if save_reservoir_data:
             self.output.save_data_to_h5(kind="reservoir")
 
+        # If adaptive OBL-point caching is enabled, flush OBL cache at the end of each run/report interval
+        # to preserve newly evaluated points, so the cache progress survives SIGTERM/job cancel.
+        if getattr(self.physics, 'cache', False):
+            self.physics.write_cache()
+
         if verbose:
             print(
                 f"----- TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), "
@@ -894,7 +899,7 @@ class DartsModel:
 
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         """
-        Method to solve Newton loop for specified timestep
+        Solve Newton loop for specified timestep
 
         :param dt: Timestep size [days]
         :type dt: float
@@ -908,6 +913,7 @@ class DartsModel:
         max_newt = self.data_ts.newton_max_iter
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
+        self._linear_solver_rc_last = 0
         self.timer.node["simulation"].start()
 
         residual_history = []
@@ -1019,7 +1025,14 @@ class DartsModel:
                         )
                 else:
                     # compile-time C++ linear solvers
-                    self.physics.engine.solve_linear_equation()
+                    rc = self.physics.engine.solve_linear_equation()
+                    if rc != 0:
+                        # Abort the Newton loop on a failed linear solve so that
+                        # post_newtonloop sees linear_solver_error_last_dt != 0 and
+                        # returns converged=0 without burning the full max_newt
+                        # budget on stale dX updates.
+                        self._linear_solver_rc_last = rc
+                        break
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
@@ -1077,10 +1090,8 @@ class DartsModel:
 
     def apply_dfm_well_lateral_heat_flux(self, dt, t):
         for well in self.reservoir.wells:
-            if (
-                well.ms_type == ms_well.MS_Type.DFM
-                and self.wells[well.name].lateral_heat_rate_eval is not None
-            ):
+            lateral_heat_ev = self.wells[well.name].lateral_heat_rate_eval
+            if well.ms_type == ms_well.MS_Type.DFM and lateral_heat_ev is not None:
                 # Get temperatures of segments
                 if self.physics.state_spec == self.physics.StateSpecification.PT:
                     T_segments = self.physics.engine.X[
@@ -1104,13 +1115,8 @@ class DartsModel:
                         T_segments[i] = self.physics.property_containers[0].temperature
 
                 # Evaluate lateral heat rates and add them to the rhs
-                if isinstance(
-                    self.wells[well.name].lateral_heat_rate_eval,
-                    SemiAnalyticalWellLateralHeatTransfer,
-                ):
-                    well_lateral_heat_rate = self.wells[
-                        well.name
-                    ].lateral_heat_rate_eval.evaluate(T_segments, t + dt)
+                if isinstance(lateral_heat_ev, SemiAnalyticalWellLateralHeatTransfer):
+                    lateral_heat_rate = lateral_heat_ev.evaluate(T_segments, t + dt)
                     rhs = np.array(self.physics.engine.RHS, copy=False)
                     rhs[
                         well.well_head_idx * self.physics.n_vars
@@ -1119,7 +1125,7 @@ class DartsModel:
                         )
                         * self.physics.n_vars
                         + (self.physics.n_vars - 1) : self.physics.n_vars
-                    ] -= well_lateral_heat_rate * dt
+                    ] -= lateral_heat_rate * dt
                 else:
                     raise TypeError(
                         f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!"

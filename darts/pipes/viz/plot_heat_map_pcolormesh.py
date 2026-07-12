@@ -1230,3 +1230,76 @@ def plot_heat_map_pcolormesh(
             plt.show()
 
         plt.close(fig)
+
+    # %% Phase rate profiles
+
+    def plot_phase_rate_heatmaps(rate_type, rate_label, unit):
+        nonlocal figure_counter
+
+        for phase_name in pc.phases_name:
+            prop_name = f"phase_{rate_type}_rate_{phase_name}"
+            if prop_name not in data_frame.columns:
+                continue
+            if phase_name == "G":
+                phase_display = "Gas"
+            elif phase_name == "L":
+                phase_display = "Liquid"
+            else:
+                phase_display = phase_name
+
+            figure_counter += 1
+            rate_matrix = np.zeros((num_interfaces, num_selected_ts))
+
+            for ts_idx, ts_counter in enumerate(time_step_idx_range):
+                rate = data_frame[prop_name][
+                    ts_counter * num_segments : (ts_counter + 1) * num_segments
+                ].to_numpy(dtype=float)
+                rate_matrix[:, ts_idx] = rate[:-1] / (24 * 60 * 60)
+
+            rate_matrix_masked = np.ma.masked_invalid(rate_matrix)
+
+            fig, ax = plt.subplots(figsize=(12, 6))
+            cax = ax.pcolormesh(
+                x, y_interfaces, rate_matrix_masked, cmap=cmap_color, shading="auto"
+            )
+
+            if y_axis == "segment_index":
+                ax.yaxis.set_major_locator(MultipleLocator(1))
+
+            ax.set_xlabel(x_label, fontsize=font_size)
+            ax.set_ylabel(y_interfaces_label, fontsize=font_size)
+            ax.tick_params(axis="both", labelsize=font_size)
+            ax.invert_yaxis()
+
+            if with_title:
+                ax.set_title(
+                    f"{phase_display} {rate_label} rate profile along the wellbore over time",
+                    fontsize=font_size,
+                    fontweight="bold",
+                )
+
+            cbar = fig.colorbar(cax, ax=ax)
+            cbar.set_label(
+                f"{phase_display} {rate_label} rate [{unit}]",
+                fontsize=font_size,
+            )
+            cbar.ax.tick_params(labelsize=font_size)
+
+            plt.tight_layout()
+            file_address = os.path.join(
+                main_dir,
+                f"{figure_counter}- {phase_display} {rate_label} rate.{save_as}",
+            )
+            plt.savefig(file_address)
+            if show_plot:
+                plt.show()
+
+            plt.close(fig)
+
+    PHASE_RATE_PLOT_SPECS = (
+        ("molar", "molar", "kmol/s"),
+        ("mass", "mass", "kg/s"),
+        ("volumetric", "volumetric", "m$^3$/s"),
+    )
+    for rate_type, rate_label, unit in PHASE_RATE_PLOT_SPECS:
+        plot_phase_rate_heatmaps(rate_type, rate_label, unit)

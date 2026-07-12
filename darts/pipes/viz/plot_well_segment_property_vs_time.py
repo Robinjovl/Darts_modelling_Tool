@@ -1,172 +1,376 @@
-"""
-This script can be used to plot the desired property, which is stored in dfm_well_props_{well_name}.pkl,
-for the desired wellbore segment (e.g., 0 for the wellhead and num_segments -1 for the bottom-hole) in the desired well
-over time.
-The results of the scenarios must be saved in different output folders each of which containing the following two files:
-    - well_data.h5
-    - dfm_well_props_{well_name}.pkl
-
-As an example, you can use this script to plot BHP or BHT vs time for different scenarios.
-"""
+from __future__ import annotations
 
 import os
+from collections.abc import Sequence
+from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
-""" Input """
-well_name = "I1"
-min_time_step_idx = 10  # This can be used to avoid plotting very small time steps
-num_segments = 41
 
-scenarios_labels = ["110", "200", "500", "1000"]
-legend_labels = [
-    "OBL resolution = 110",
-    "OBL resolution = 200",
-    "OBL resolution = 500",
-    "OBL resolution = 1000",
-]
+@dataclass(frozen=True)
+class ScenarioProfile:
+    """
+    Input folder and legend label for one plotted scenario.
 
-property_key = "pressure"
-desired_well_segment_idx = (
-    num_segments - 1
-)  # For bottomhole = num_segments - 1, for wellhead = 0
-y_label = "BHP [bar]"
-y_min = 10
-y_max = 45
-y_tick_increment = 5
-output_name = "BHP_time_series_obl_resolution_sens_ana"
+    :param path: Path to the scenario output folder.
+    :param label: Legend label used for the scenario.
+    """
 
-# # Note that the temperature stored is in Kelvin
-# property_key = "temperature"
-# desired_well_segment_idx = (
-#     num_segments - 1
-# )  # For bottomhole = num_segments - 1, for wellhead = 0
-# y_min = -35
-# y_max = 80
-# y_tick_increment = 10
-# y_label = "BHT [\u00b0C]"
-# output_name = "BHT_time_series_obl_resolution_sens_ana"
+    path: str
+    label: str
 
 
-""" Main code """
-list_of_simulated_time = []
-list_of_property_time_series = []
+def plot_well_segment_property_vs_time(
+    scenarios: Sequence[ScenarioProfile | tuple[str, str]],
+    well_name: str,
+    property_key: str,
+    segment_index: int,
+    output_path: str,
+    *,
+    num_segments: int | None = None,
+    min_time_step_idx: int = 0,
+    well_data_filename: str = "well_data.h5",
+    well_props_filename_template: str = "dfm_well_props_{well_name}.pkl",
+    time_unit: str = "seconds",
+    property_offset: float = 0.0,
+    y_label: str | None = None,
+    y_min: float | None = None,
+    y_max: float | None = None,
+    y_tick_increment: float | None = None,
+    log_x: bool = True,
+    legend_loc: str = "best",
+    show_legend: bool = True,
+    show_plot: bool = True,
+    figure_size: tuple[float, float] = (8, 5),
+    marker_style: str | None = None,
+    line_style: str | None = None,
+    marker_color: str | None = None,
+    line_color: str | None = None,
+    marker_size: float = 5.0,
+    line_width: float = 2.0,
+) -> str:
+    """
+    Plot one well segment property over time for multiple output folders.
 
-for scenario in scenarios_labels:
-    output_folder = f"output_{scenario}"
+    Each scenario output folder must contain ``well_data_filename`` and the
+    pickle file resolved from ``well_props_filename_template``.
 
-    well_data_file_path = os.path.join(output_folder, "well_data.h5")
-    h5_well_data = load_hdf5_to_dict(well_data_file_path)
-    simulated_time = h5_well_data["dynamic"]["time"] * 24 * 60 * 60
+    :param scenarios: Output folders and legend labels.
+    :param well_name: Name used in the well property file template.
+    :param property_key: DataFrame column to plot on the y-axis.
+    :param segment_index: Zero-based segment index to plot. Negative values
+                          count from the bottom, so -1 plots the bottom segment.
+    :param output_path: Path for the saved figure.
+    :param num_segments: Number of well segments. If not available, it is
+                         inferred from the property rows and time steps.
+    :param min_time_step_idx: Number of leading time steps to skip.
+    :param well_data_filename: HDF5 filename inside each output folder.
+    :param well_props_filename_template: Pickle filename template. It may contain
+                                         {well_name}.
+    :param time_unit: One of "days", "hours", "minutes", or "seconds".
+    :param property_offset: Offset added to property values, for unit conversions.
+    :param y_label: Optional y-axis label. Defaults to property_key.
+    :param y_min: Optional y-axis minimum.
+    :param y_max: Optional y-axis maximum.
+    :param y_tick_increment: Optional y tick spacing.
+    :param log_x: If True, use a logarithmic x-axis.
+    :param legend_loc: Matplotlib legend location.
+    :param show_legend: If True, display the scenario legend.
+    :param show_plot: If True, display the figure.
+    :param figure_size: Matplotlib figure size.
+    :param marker_style: Optional Matplotlib marker style for a single scenario.
+                         Multi-scenario plots keep the default marker cycle.
+    :param line_style: Optional Matplotlib line style for a single scenario.
+                       Multi-scenario plots keep the default line style.
+    :param marker_color: Optional Matplotlib marker color for a single scenario.
+                         Multi-scenario plots keep the default color cycle.
+    :param line_color: Optional Matplotlib line color for a single scenario.
+                       Multi-scenario plots keep the default color cycle.
+    :param marker_size: Marker size.
+    :param line_width: Line width.
+    :return: Saved output path.
+    """
+    scenarios = _normalise_scenarios(scenarios)
+    _validate_scenarios(scenarios)
+    if min_time_step_idx < 0:
+        raise ValueError("min_time_step_idx must be non-negative.")
+    if num_segments is not None and num_segments <= 0:
+        raise ValueError("num_segments must be positive when specified.")
 
-    # Load primary vars and phase props
-    well_props_file_path = os.path.join(
-        output_folder, f"dfm_well_props_{well_name}.pkl"
+    _apply_plot_style()
+    fig, ax = plt.subplots(figsize=figure_size)
+
+    x_max = None
+    for idx, scenario in enumerate(scenarios):
+        output_folder = scenario.path
+        well_data_file_path = os.path.join(output_folder, well_data_filename)
+        h5_well_data = load_hdf5_to_dict(well_data_file_path)
+        simulated_time = _convert_time(
+            np.asarray(h5_well_data["dynamic"]["time"], dtype=float), time_unit
+        )
+
+        well_props_filename = well_props_filename_template.format(well_name=well_name)
+        well_props_file_path = os.path.join(output_folder, well_props_filename)
+        data_frame = pd.read_pickle(well_props_file_path)
+
+        scenario_num_segments = _infer_num_segments(
+            data_frame,
+            property_key,
+            simulated_time,
+            num_segments,
+        )
+        resolved_segment_index = _resolve_segment_index(
+            segment_index,
+            scenario_num_segments,
+        )
+        if (
+            resolved_segment_index < 0
+            or resolved_segment_index >= scenario_num_segments
+        ):
+            raise ValueError(
+                f"segment_index {segment_index} is outside the available "
+                f"{scenario_num_segments} segments for '{scenario.label}'."
+            )
+
+        property_time_series = _get_segment_time_series(
+            data_frame,
+            property_key,
+            scenario_num_segments,
+            resolved_segment_index,
+        )
+        if len(property_time_series) != len(simulated_time):
+            raise ValueError(
+                f"Scenario '{scenario.label}' has {len(property_time_series)} "
+                f"property time values and {len(simulated_time)} HDF5 time values."
+            )
+
+        x_values, y_values = _select_time_window(
+            simulated_time,
+            property_time_series + property_offset,
+            min_time_step_idx,
+            log_x,
+        )
+        if len(x_values) == 0:
+            raise ValueError(
+                f"Scenario '{scenario.label}' has no plottable time values after "
+                "applying min_time_step_idx and log-axis filtering."
+            )
+        x_max = max(x_max or x_values[0], float(np.max(x_values)))
+
+        plotter = ax.semilogx if log_x else ax.plot
+        plotter(
+            x_values,
+            y_values,
+            linestyle=_get_line_style(len(scenarios), line_style),
+            marker=_get_marker_style(idx, len(scenarios), marker_style),
+            linewidth=line_width,
+            markersize=marker_size,
+            label=scenario.label,
+            **_get_color_kwargs(len(scenarios), marker_color, line_color),
+        )
+
+    if y_min is not None or y_max is not None:
+        ax.set_ylim(y_min, y_max)
+    if y_tick_increment is not None:
+        lower, upper = ax.get_ylim()
+        tick_start = y_min if y_min is not None else lower
+        tick_stop = y_max if y_max is not None else upper
+        ax.set_yticks(
+            np.arange(tick_start, tick_stop + y_tick_increment, y_tick_increment)
+        )
+
+    ax.grid(True, which="major", axis="x", linestyle="--", alpha=0.3)
+    ax.grid(True, which="major", axis="y", linestyle="--", alpha=0.3)
+    ax.set_xlabel(_get_time_axis_label(time_unit), labelpad=6)
+    ax.set_ylabel(y_label or property_key, labelpad=6)
+    if show_legend:
+        _add_legend(ax, legend_loc)
+
+    if log_x and x_max is not None:
+        lower, _upper = ax.get_xlim()
+        ax.set_xlim(lower, x_max)
+
+    fig.tight_layout()
+    _save_figure(fig, output_path)
+    if show_plot:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return output_path
+
+
+_MARKERS = ("o", "s", "D", "^", "v", "None")
+_DEFAULT_LINE_STYLE = ""
+
+
+def _normalise_scenarios(
+    scenarios: Sequence[ScenarioProfile | tuple[str, str]],
+) -> list[ScenarioProfile]:
+    normalised = []
+    for scenario in scenarios:
+        if isinstance(scenario, ScenarioProfile):
+            normalised.append(scenario)
+        else:
+            path, label = scenario
+            normalised.append(ScenarioProfile(path, label))
+    return normalised
+
+
+def _validate_scenarios(scenarios: Sequence[ScenarioProfile]) -> None:
+    if len(scenarios) == 0:
+        raise ValueError("At least one scenario must be provided.")
+
+
+def _get_marker_style(
+    scenario_index: int,
+    num_scenarios: int,
+    marker_style: str | None,
+) -> str:
+    if num_scenarios == 1 and marker_style is not None:
+        return marker_style
+    return _MARKERS[scenario_index % len(_MARKERS)]
+
+
+def _get_line_style(
+    num_scenarios: int,
+    line_style: str | None,
+) -> str:
+    if num_scenarios == 1 and line_style is not None:
+        return line_style
+    return _DEFAULT_LINE_STYLE
+
+
+def _get_color_kwargs(
+    num_scenarios: int,
+    marker_color: str | None,
+    line_color: str | None,
+) -> dict[str, str]:
+    if num_scenarios != 1:
+        return {}
+
+    color_kwargs = {}
+    if line_color is not None:
+        color_kwargs["color"] = line_color
+    if marker_color is not None:
+        color_kwargs["markerfacecolor"] = marker_color
+        color_kwargs["markeredgecolor"] = marker_color
+    return color_kwargs
+
+
+def _apply_plot_style() -> None:
+    plt.rcParams.update(
+        {
+            "font.size": 12,
+            "axes.labelsize": 14,
+            "axes.titlesize": 16,
+            "legend.fontsize": 11,
+            "xtick.labelsize": 12,
+            "ytick.labelsize": 12,
+            "axes.linewidth": 1.0,
+            "xtick.major.size": 6,
+            "ytick.major.size": 6,
+            "xtick.minor.size": 3,
+            "ytick.minor.size": 3,
+            "xtick.direction": "out",
+            "ytick.direction": "out",
+            "pdf.fonttype": 42,
+            "ps.fonttype": 42,
+        }
     )
-    data_frame = pd.read_pickle(well_props_file_path)
-
-    property_time_series = data_frame[property_key][desired_well_segment_idx]
-
-    list_of_simulated_time += [simulated_time]
-    list_of_property_time_series += [property_time_series]
 
 
-# Global style for consistency
-plt.rcParams.update(
-    {
-        "font.size": 12,  # base font
-        "axes.labelsize": 14,
-        "axes.titlesize": 16,
-        "legend.fontsize": 11,
-        "xtick.labelsize": 12,
-        "ytick.labelsize": 12,
-        "axes.linewidth": 1.0,  # axis spine thickness
-        "xtick.major.size": 6,  # tick length
-        "ytick.major.size": 6,
-        "xtick.minor.size": 3,
-        "ytick.minor.size": 3,
-        "xtick.direction": "out",
-        "ytick.direction": "out",
-        "pdf.fonttype": 42,  # embed TrueType for Illustrator/Indesign
-        "ps.fonttype": 42,
+def _add_legend(ax: Axes, legend_loc: str) -> None:
+    leg = ax.legend(frameon=False, loc=legend_loc, handlelength=3)
+    if leg.get_title() is not None:
+        leg.get_title().set_fontsize(12)
+
+
+def _infer_num_segments(
+    data_frame: pd.DataFrame,
+    property_key: str,
+    simulated_time: np.ndarray,
+    num_segments: int | None,
+) -> int:
+    if property_key not in data_frame.columns:
+        raise ValueError(f"Column '{property_key}' was not found in input data.")
+    if num_segments is not None:
+        return num_segments
+
+    num_times = len(simulated_time)
+    num_values = len(data_frame[property_key])
+    if num_times == 0 or num_values % num_times != 0:
+        raise ValueError(
+            "Could not infer num_segments from property rows and HDF5 time values. "
+            "Pass num_segments explicitly."
+        )
+    return num_values // num_times
+
+
+def _get_segment_time_series(
+    data_frame: pd.DataFrame,
+    property_key: str,
+    num_segments: int,
+    segment_index: int,
+) -> np.ndarray:
+    values = data_frame[property_key].iloc[segment_index::num_segments]
+    return values.to_numpy(dtype=float)
+
+
+def _resolve_segment_index(segment_index: int, num_segments: int) -> int:
+    if segment_index < 0:
+        return num_segments + segment_index
+    return segment_index
+
+
+def _convert_time(time_days: np.ndarray, time_unit: str) -> np.ndarray:
+    scale_by_unit = {
+        "days": 1.0,
+        "hours": 24.0,
+        "minutes": 24.0 * 60.0,
+        "seconds": 24.0 * 60.0 * 60.0,
     }
-)
+    try:
+        return time_days * scale_by_unit[time_unit]
+    except KeyError as exc:
+        raise ValueError(
+            "time_unit must be one of 'days', 'hours', 'minutes', or 'seconds'."
+        ) from exc
 
-# Linestyle/marker combos for grayscale-friendly distinction
-linestyles = ["-", "--", "-.", ":", "-", "--"]
-markers = [
-    "o",
-    "s",
-    "D",
-    "^",
-    "v",
-    "None",
-]  # 'None' if you want one line without markers
 
-fig, ax = plt.subplots(figsize=(8, 5))
+def _get_time_axis_label(time_unit: str) -> str:
+    label_by_unit = {
+        "days": "Simulated time [day]",
+        "hours": "Simulated time [hour]",
+        "minutes": "Simulated time [minute]",
+        "seconds": "Simulated time [second]",
+    }
+    return label_by_unit[time_unit]
 
-for idx in range(len(scenarios_labels)):
-    ax.semilogx(
-        list_of_simulated_time[idx][min_time_step_idx:],
-        list_of_property_time_series[idx][min_time_step_idx:],
-        linestyle='',
-        # linestyle=linestyles[idx % len(linestyles)],
-        marker=markers[idx % len(markers)],
-        linewidth=2.0,
-        markersize=5,
-        label=legend_labels[idx],
-    )
 
-# X axis formatting
-x_min = list_of_simulated_time[0][min_time_step_idx]
-x_max = max(list_of_simulated_time[-1])
-ax.set_xlim(x_min, x_max)
+def _select_time_window(
+    x_values: np.ndarray,
+    y_values: np.ndarray,
+    min_time_step_idx: int,
+    log_x: bool,
+) -> tuple[np.ndarray, np.ndarray]:
+    selected_x = x_values[min_time_step_idx:]
+    selected_y = y_values[min_time_step_idx:]
+    if log_x:
+        positive_time = selected_x > 0.0
+        selected_x = selected_x[positive_time]
+        selected_y = selected_y[positive_time]
+    return selected_x, selected_y
 
-ax.set_ylim(y_min, y_max)
-ax.set_yticks(np.arange(y_min, y_max + y_tick_increment, y_tick_increment))
 
-# Subtle grid on x and y
-ax.grid(True, which="major", axis="x", linestyle="--", alpha=0.3)
-ax.grid(True, which="major", axis="y", linestyle="--", alpha=0.3)
-
-# Labels
-ax.set_xlabel("Simulated time [second]", labelpad=6)
-ax.set_ylabel(y_label, labelpad=6)
-
-# Legend: compact, outside or inside depending on space
-leg = ax.legend(frameon=False, loc="best", handlelength=3)
-if leg.get_title() is not None:
-    leg.get_title().set_fontsize(12)
-
-""" Add a zoomed inset, zoomed-in view or inset axis"""
-# from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
-#
-# # Create inset axis (smaller plot inside the main one)
-# axins = inset_axes(ax, width="30%", height="30%", loc="lower left",
-#                    bbox_to_anchor=(0.3, 0.35, 0.9, 0.9),  # position relative to main axis
-#                    bbox_transform=ax.transAxes)
-#
-# # Plot same curves inside inset
-# for idx in range(len(scenarios_labels)):
-#     axins.plot(list_of_simulated_time[idx], list_of_property_time_series[idx], linestyle=linestyles[idx % len(linestyles)], marker=markers[idx % len(markers)], linewidth=2.0, markersize=4)
-#
-# # Set zoomed-in region
-# axins.set_xlim(700, 900)
-# axins.set_ylim(28, 33)   # For pressure
-# # axins.set_ylim(-7, -2)   # For temperature
-#
-# # Optional: smaller tick labels
-# axins.tick_params(axis='both', which='major', labelsize=9)
-#
-# # Draw a box around zoom area on main plot
-# mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec="0.5")
-""" End the zoomed inset"""
-
-fig.tight_layout()
-fig.savefig(output_name + ".pdf")
-plt.show()
-plt.close()
+def _save_figure(fig: Figure, output_path: str) -> None:
+    output_dir = os.path.dirname(os.path.abspath(output_path))
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    fig.savefig(output_path)

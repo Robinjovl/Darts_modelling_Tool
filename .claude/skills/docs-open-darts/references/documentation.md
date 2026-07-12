@@ -100,20 +100,19 @@ The entry point is `docs/api.rst`.
 ### Docstring Style
 
 Put opening and closing triple quotation marks on separate lines. Document
-input and output arguments with `:param`, `:type`, `:return:`, and `:rtype:`
-fields. Example:
+argument and return types in the function signature. Use docstrings for
+behavior, units, constraints, and return meaning with `:param` and `:return:`
+fields only; do not duplicate signature types with `:type` or `:rtype:`.
+Example:
 
 ```python
-def compute_density(pressure, temperature):
+def compute_density(pressure: float, temperature: float) -> float:
     """
     Compute fluid density at given conditions.
 
     :param pressure: Pressure [bar]
-    :type pressure: float
     :param temperature: Temperature [K]
-    :type temperature: float
     :return: Fluid density [kg/m3]
-    :rtype: float
     """
 ```
 

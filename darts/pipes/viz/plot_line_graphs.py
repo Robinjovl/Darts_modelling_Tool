@@ -46,6 +46,7 @@ def plot_line_graphs(
     # Get well geometry info
     well_geom = coupled_model.wells[well_name].geometry
     num_segments = well_geom.num_segments
+    num_interfaces = well_geom.num_interfaces
 
     # Get physics info
     pc = coupled_model.physics.property_containers[0]
@@ -494,3 +495,72 @@ def plot_line_graphs(
         plt.show()
 
     plt.close()
+
+    def plot_interface_profile(prop_name, x_label, title, file_name):
+        nonlocal figure_counter
+        if prop_name not in data_frame.columns:
+            return
+
+        figure_counter += 1
+        plt.figure(figsize=(12, 6))
+
+        for ts_counter in list_of_time_steps:
+            profile = data_frame[prop_name][
+                ts_counter * num_segments : (ts_counter + 1) * num_segments
+            ].to_numpy(dtype=float)
+            profile = profile[:-1] / (24 * 60 * 60)
+            plt.plot(profile, list(range(num_interfaces)), color=colors[ts_counter])
+
+        plt.gca().invert_yaxis()
+        plt.ylim(num_interfaces - 1, 0)
+        plt.gca().yaxis.set_major_locator(MultipleLocator(1))
+
+        plt.xlabel(x_label, fontsize=14)
+        plt.ylabel("Interface index", fontsize=14)
+        plt.title(title, fontsize=14, fontweight="bold")
+
+        plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- {file_name}.png")
+        plt.savefig(file_address)
+        if show_plot:
+            plt.show()
+
+        plt.close()
+
+    # %% Phase velocity profiles
+
+    plot_interface_profile(
+        "vG",
+        "Gas velocity [m/s]",
+        "Gas velocity profile/profiles along the wellbore",
+        "Gas velocity",
+    )
+    plot_interface_profile(
+        "vL",
+        "Liquid velocity [m/s]",
+        "Liquid velocity profile/profiles along the wellbore",
+        "Liquid velocity",
+    )
+
+    # %% Phase rate profiles
+
+    PHASE_RATE_PLOT_SPECS = (
+        ("molar", "molar", "kmol/s"),
+        ("mass", "mass", "kg/s"),
+        ("volumetric", "volumetric", "m$^3$/s"),
+    )
+    for rate_type, rate_label, unit in PHASE_RATE_PLOT_SPECS:
+        for phase_name in pc.phases_name:
+            prop_name = f"phase_{rate_type}_rate_{phase_name}"
+            if phase_name == "G":
+                phase_display = "Gas"
+            elif phase_name == "L":
+                phase_display = "Liquid"
+            else:
+                phase_display = phase_name
+            plot_interface_profile(
+                prop_name,
+                f"{phase_display} {rate_label} rate [{unit}]",
+                f"{phase_display} {rate_label} rate profile/profiles along the wellbore",
+                f"{phase_display} {rate_label} rate",
+            )

@@ -37,6 +37,8 @@ void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::get_supporting_po
         }
         if (this->timer) this->timer->node["point generation"].stop();
         this->n_points_used++;
+        // Mark for append-only cache flush after this new point is materialized.
+        dirty_point_data.insert(index);
     }
     else
     {
@@ -137,6 +139,8 @@ void linear_adaptive_cpu_interpolator<index_t, N_DIMS, N_OPS>::materialize_missi
             }
         }
         this->n_points_used++;
+        // Mark for append-only cache flush after this new point is materialized.
+        dirty_point_data.insert(idx);
     }
 
     if (this->timer) this->timer->node["point generation"].stop();
