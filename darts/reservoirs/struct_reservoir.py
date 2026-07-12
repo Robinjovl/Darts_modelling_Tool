@@ -196,6 +196,65 @@ class StructReservoir(ReservoirBase):
 
         return mesh
 
+    def prepare_weno(self, params) -> None:
+        """
+        Build Cartesian hexahedral WENO2 geometry and attach its static data.
+
+        :param params: Simulation parameters containing WENO setup controls.
+        :type params: sim_params
+        """
+        if self.is_cpg:
+            raise ValueError(
+                "WENO2 with corner-point geometry requires CPG_Reservoir so the "
+                "native face geometry can be retained"
+            )
+
+        from darts.discretizer import (
+            Discretizer as WenoDiscretizer,
+        )
+        from darts.discretizer import (
+            Mesh as WenoMesh,
+        )
+        from darts.discretizer import (
+            index_vector as discretizer_index_vector,
+        )
+        from darts.discretizer import (
+            value_vector as discretizer_value_vector,
+        )
+
+        global_to_local = np.asarray(self.discretizer.global_to_local, dtype=np.int32)
+        centroids = np.asarray(
+            self.discretizer.centroids_all_cells, dtype=np.float64
+        ).reshape(-1)
+        sizes = np.column_stack(
+            (
+                np.asarray(self.discretizer.len_cell_xdir).flatten(order="F"),
+                np.asarray(self.discretizer.len_cell_ydir).flatten(order="F"),
+                np.asarray(self.discretizer.len_cell_zdir).flatten(order="F"),
+            )
+        ).reshape(-1)
+
+        self.weno_discr_mesh = WenoMesh()
+        self.weno_discr_mesh.build_structured_weno_geometry(
+            self.nx,
+            self.ny,
+            self.nz,
+            discretizer_index_vector(global_to_local),
+            discretizer_value_vector(centroids),
+            discretizer_value_vector(sizes),
+        )
+        self.weno_discretizer = WenoDiscretizer()
+        self.weno_discretizer.set_mesh(self.weno_discr_mesh)
+        self.weno_discretizer.prepare_weno_static(
+            discretizer_index_vector(np.arange(self.mesh.n_res_blocks, dtype=np.int32)),
+            self.mesh.n_res_blocks,
+            discretizer_index_vector(np.asarray(self.cell_m, dtype=np.int32)),
+            discretizer_index_vector(np.asarray(self.cell_p, dtype=np.int32)),
+            params.weno_condition_limit,
+            params.weno_max_candidates,
+        )
+        self._attach_weno_static(self.weno_discretizer.weno)
+
     def set_boundary_volume(self, boundary_volumes: dict):
         # apply changes
         volume = self.discretizer.volume

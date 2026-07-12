@@ -4,7 +4,14 @@ from math import pi
 
 import numpy as np
 
-from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node, value_vector
+from darts.engines import (
+    conn_mesh,
+    index_vector,
+    ms_well,
+    ms_well_vector,
+    timer_node,
+    value_vector,
+)
 from darts.pipes.define_pipe_geometry import PipeGeometry
 
 
@@ -76,6 +83,45 @@ class ReservoirBase:
         This function is empty by default, can be overloaded by child classes
         """
         pass
+
+    def prepare_weno(self, params) -> None:
+        """
+        Prepare immutable WENO2 geometry before wells are appended.
+
+        :param params: Simulation parameters containing WENO setup controls.
+        :type params: sim_params
+        """
+        raise NotImplementedError(
+            f"WENO2 geometry is not implemented for {type(self).__name__}"
+        )
+
+    def _attach_weno_static(self, weno) -> None:
+        """
+        Copy flattened discretizer data once into the engine connection mesh.
+
+        :param weno: Discretizer-owned immutable WENO vectors.
+        :type weno: WenoStaticData
+        """
+        as_index_vector = lambda values: index_vector(
+            np.asarray(values, dtype=np.int32)
+        )
+        as_value_vector = lambda values: value_vector(
+            np.asarray(values, dtype=np.float64)
+        )
+        self.mesh.init_weno_static(
+            as_index_vector(weno.cell_candidate_offset),
+            as_index_vector(weno.candidate_support_cell),
+            as_index_vector(weno.candidate_support_kind),
+            as_value_vector(weno.candidate_inverse),
+            as_value_vector(weno.candidate_gamma),
+            as_index_vector(weno.cell_dependency_offset),
+            as_index_vector(weno.cell_dependency_cell),
+            as_index_vector(weno.cell_status),
+            as_value_vector(weno.one_way_face_reference_m),
+            as_value_vector(weno.one_way_face_reference_p),
+            as_index_vector(weno.one_way_face_status_m),
+            as_index_vector(weno.one_way_face_status_p),
+        )
 
     @abc.abstractmethod
     def set_boundary_volume(self, boundary_volumes: dict):

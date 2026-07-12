@@ -25,6 +25,44 @@ namespace dis
 	  std::vector<value_t> b; ///< Neumann type boundary condition values.
 	};
 
+	enum WenoSupportKind : index_t
+	{
+		WENO_SUPPORT_CELL = 0,
+		WENO_SUPPORT_TARGET_COPY = 1,
+		WENO_SUPPORT_INVALID = 2
+	};
+
+	/**
+	 * Flattened, simulation-order static data for WENO2 reconstruction.
+	 *
+	 * All arrays are immutable after setup.  They deliberately contain only
+	 * geometry and integer lookup data; nonlinear weights and OBL-dependent
+	 * values are assembled by the engine.
+	 */
+	struct WenoStaticData
+	{
+		std::vector<index_t> cell_candidate_offset;
+		std::vector<index_t> candidate_support_cell;
+		std::vector<index_t> candidate_support_kind;
+		std::vector<value_t> candidate_inverse;
+		std::vector<value_t> candidate_gamma;
+		std::vector<value_t> candidate_condition;
+
+		std::vector<index_t> cell_dependency_offset;
+		std::vector<index_t> cell_dependency_cell;
+		std::vector<index_t> cell_status;
+
+		std::vector<value_t> one_way_face_reference_m;
+		std::vector<value_t> one_way_face_reference_p;
+		std::vector<index_t> one_way_face_status_m;
+		std::vector<index_t> one_way_face_status_p;
+
+		void clear()
+		{
+			*this = WenoStaticData();
+		}
+	};
+
 	/* Special class for 2nd rank 3x3 tensor */
 	class Matrix33 : public Matrix
 	{
@@ -45,7 +83,7 @@ namespace dis
 	};
 
 	/* Here is what we call linear approximation */
-	struct FlowHeatApproximation 
+	struct FlowHeatApproximation
 	{
 	  FlowHeatApproximation() {};
 	  FlowHeatApproximation(index_t stencil_size)
@@ -139,6 +177,9 @@ namespace dis
 		std::vector<index_t> cell_m;
 		std::vector<index_t> cell_p;
 
+		// Static WENO geometry, exported in engine assembly order.
+		WenoStaticData weno;
+
 		/* MPFA */
 		std::vector<LinearApproximation<Pvar>> p_grads;
 		std::vector<LinearApproximation<Tvar>> t_grads;
@@ -167,6 +208,18 @@ namespace dis
 		void reconstruct_pressure_temperature_gradients_per_cell(const BoundaryCondition& _bc_flow, const BoundaryCondition& _bc_heat);
 		// void reconstruct_pressure_gradients_per_face(const BoundaryCondition& bc);
 		void calc_mpfa_transmissibilities(const bool with_thermal = false);
+
+		/**
+		 * Precompute all mesh-only WENO2 data and align it with a one-way
+		 * engine connection list.
+		 */
+		void prepare_weno_static(
+			const std::vector<index_t>& discretizer_to_engine,
+			index_t n_engine_cells,
+			const std::vector<index_t>& engine_block_m,
+			const std::vector<index_t>& engine_block_p,
+			value_t condition_limit = 1.e8,
+			index_t max_candidates = 16);
 
 		void calcPermeabilitySimple(const double permx = 1, const double permy = 1, const double permz = 1);
 		void set_permeability(std::vector<value_t> &permx, std::vector<value_t> &permy, std::vector<value_t> &permz);

@@ -81,6 +81,7 @@ install(TARGETS discretizer_build_info
 # First the source files (private headers should also go here)
 set(DISCRETIZER_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/discretizer.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/weno.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/mech_discretizer.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/utils.cpp
 )

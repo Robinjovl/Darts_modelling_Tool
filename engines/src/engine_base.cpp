@@ -7,6 +7,7 @@
 #include <iostream>
 #include <functional>  // adjoint method -- function 'bind1st'
 #include <limits>
+#include <stdexcept>
 #ifdef __GNUC__
 #include <cxxabi.h>
 #endif
@@ -60,6 +61,30 @@ int engine_base::init_jacobian_structure(csr_matrix_base *jacobian)
 	index_t n_conns = mesh->n_conns;
 	std::vector<index_t> &block_m = mesh->block_m;
 	std::vector<index_t> &block_p = mesh->block_p;
+
+	if (mesh->weno_enabled)
+	{
+		if (!mesh->weno_finalized ||
+			mesh->weno_jacobian_row_offset.size() != static_cast<size_t>(n_blocks) + 1)
+			throw std::runtime_error("WENO Jacobian graph has not been finalized");
+		std::fill(diag_ind, diag_ind + n_blocks, static_cast<index_t>(-1));
+		for (index_t row = 0; row <= n_blocks; ++row)
+			rows_ptr[row] = mesh->weno_jacobian_row_offset[row];
+		for (index_t row = 0; row < n_blocks; ++row)
+		{
+			const auto& columns = mesh->cell_stencil[row];
+			const index_t row_start = rows_ptr[row];
+			for (index_t local = 0; local < static_cast<index_t>(columns.size()); ++local)
+			{
+				cols_ind[row_start + local] = columns[local];
+				if (columns[local] == row)
+					diag_ind[row] = row_start + local;
+			}
+			if (diag_ind[row] < 0)
+				throw std::runtime_error("WENO Jacobian graph is missing a diagonal entry");
+		}
+		return 0;
+	}
 
 #ifdef _OPENMP
 #pragma omp parallel

@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <array>
+#include <cstdint>
 #include <unordered_map>
 #include <fstream>
 #include <iostream>
@@ -90,6 +91,34 @@ public:
   // number of variables per jacobian matrix block
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
+  // WENO2 uses at most three scalar dependencies per candidate in addition to
+  // the target cell.  The setup-time cap is validated against these constants,
+  // keeping the assembly kernel allocation-free.
+  const static size_t WENO_MAX_CANDIDATES = 64;
+  const static size_t WENO_MAX_DEPENDENCIES = 1 + 3 * WENO_MAX_CANDIDATES;
+  const static uint8_t WENO_FIELDS_PER_PHASE = 1 + NE + (THERMAL ? 1 : 0);
+  const static uint8_t WENO_LAMBDA_FIELD = 0;
+  const static uint8_t WENO_FLUX_FIELD = 1;
+  const static uint8_t WENO_POTENTIAL_FIELD = 1 + NE;
+
+  struct WenoReconstruction
+  {
+    value_t value = 0.0;
+    index_t n_dependencies = 0;
+    std::array<value_t, WENO_MAX_DEPENDENCIES> derivative{};
+    bool bound_fallback = false;
+  };
+
+  // Cell-centred, state-dependent products formed from OBL values once per
+  // nonlinear assembly.  Geometry and scatter indices remain in conn_mesh.
+  std::vector<value_t> weno_field_values;
+  std::vector<value_t> weno_field_derivatives;
+
+  // Cumulative diagnostics.  Geometry fallback counts phase-face uses that
+  // intentionally retain SPU; bound fallback counts rejected reconstructions.
+  uint64_t weno_geometry_fallback_count = 0;
+  uint64_t weno_bound_fallback_count = 0;
+
   uint8_t get_n_vars() const override { return N_VARS; };
   uint16_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_comps() const override { return NC; };
@@ -117,6 +146,13 @@ public:
            sim_params *params_, timer_node *timer_);
 
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
+
+  void prepare_weno_fields();
+
+  bool reconstruct_weno_scalar(index_t target_cell, uint8_t phase, uint8_t field,
+                               const value_t *candidate_face_coefficient,
+                               bool require_nonnegative, bool need_derivatives,
+                               WenoReconstruction &result) const;
 
   //double calc_newton_residual();
 

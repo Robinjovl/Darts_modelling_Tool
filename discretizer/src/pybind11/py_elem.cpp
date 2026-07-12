@@ -6,8 +6,8 @@
 //    This file is part of the Delft Advanced Research Terra Simulator (DARTS)
 //
 //    DARTS is free software: you can redistribute it and/or modify
-//    it under the terms of the GNU Lesser General Public License as 
-//    published by the Free Software Foundation, either version 3 of the 
+//    it under the terms of the GNU Lesser General Public License as
+//    published by the Free Software Foundation, either version 3 of the
 //    License, or (at your option) any later version.
 //
 //    DARTS is distributed in the hope that it will be useful,
@@ -15,7 +15,7 @@
 //    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 //    GNU General Public License for more details.
 //
-//    You should have received a copy of the GNU Lesser General Public 
+//    You should have received a copy of the GNU Lesser General Public
 //    License along with DARTS. If not, see <http://www.gnu.org/licenses/>.
 // *************************************************************************
 
@@ -50,7 +50,7 @@ void pybind_elem(py::module &m)
 		.value("TETRA",		mesh::ElemType::TETRA)	\
 		.value("HEX",			mesh::ElemType::HEX)		\
 		.value("PRISM",		mesh::ElemType::PRISM)	\
-		.value("PYRAMID", mesh::ElemType::PYRAMID) 
+		.value("PYRAMID", mesh::ElemType::PYRAMID)
 		.export_values();
 	py::bind_vector<std::vector<mesh::ElemType>>(m, "elem_type_vector");
 
@@ -84,9 +84,10 @@ void pybind_elem(py::module &m)
 		.def_readwrite("elem_id1", &mesh::Connection::elem_id1)
 		.def_readwrite("elem_id2", &mesh::Connection::elem_id2)
 		.def_readwrite("pts_offset", &mesh::Connection::pts_offset)
-		.def_readwrite("n", &mesh::Connection::n)
-		.def_readwrite("c", &mesh::Connection::c)
-		.def_readwrite("area", &mesh::Connection::area);
+			.def_readwrite("n", &mesh::Connection::n)
+			.def_readwrite("c", &mesh::Connection::c)
+			.def_readwrite("c_2", &mesh::Connection::c_2)
+			.def_readwrite("area", &mesh::Connection::area);
 	py::bind_vector<std::vector<mesh::Connection>>(m, "conn_vector");
-  
+
 }

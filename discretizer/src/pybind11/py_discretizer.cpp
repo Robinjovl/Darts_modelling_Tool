@@ -5,6 +5,7 @@ using dis::Discretizer;
 using dis::BoundaryCondition;
 using dis::Matrix33;
 using dis::Matrix;
+using dis::WenoStaticData;
 
 PYBIND11_MAKE_OPAQUE(std::vector<Matrix>);
 PYBIND11_MAKE_OPAQUE(std::vector<Matrix33>);
@@ -90,11 +91,27 @@ void pybind_discretizer(py::module &m)
 		[](py::tuple t) { // __setstate__
 		  std::vector<Matrix33> p(t.size());
 
-		  for (size_t i = 0; i < p.size(); i++)
-			p[i] = t[i].cast<Matrix33>();
+			  for (size_t i = 0; i < p.size(); i++)
+				p[i] = t[i].cast<Matrix33>();
 
-		  return p;
-		}));
+			  return p;
+			  }));
+
+	py::class_<WenoStaticData>(m, "WenoStaticData", py::module_local())
+		.def(py::init<>())
+		.def_readonly("cell_candidate_offset", &WenoStaticData::cell_candidate_offset)
+		.def_readonly("candidate_support_cell", &WenoStaticData::candidate_support_cell)
+		.def_readonly("candidate_support_kind", &WenoStaticData::candidate_support_kind)
+		.def_readonly("candidate_inverse", &WenoStaticData::candidate_inverse)
+		.def_readonly("candidate_gamma", &WenoStaticData::candidate_gamma)
+		.def_readonly("candidate_condition", &WenoStaticData::candidate_condition)
+		.def_readonly("cell_dependency_offset", &WenoStaticData::cell_dependency_offset)
+		.def_readonly("cell_dependency_cell", &WenoStaticData::cell_dependency_cell)
+		.def_readonly("cell_status", &WenoStaticData::cell_status)
+		.def_readonly("one_way_face_reference_m", &WenoStaticData::one_way_face_reference_m)
+		.def_readonly("one_way_face_reference_p", &WenoStaticData::one_way_face_reference_p)
+		.def_readonly("one_way_face_status_m", &WenoStaticData::one_way_face_status_m)
+		.def_readonly("one_way_face_status_p", &WenoStaticData::one_way_face_status_p);
 
 	py::class_<Discretizer>(m, "Discretizer", py::module_local())
 		.def(py::init<>())
@@ -106,8 +123,9 @@ void pybind_discretizer(py::module &m)
 		.def_readwrite("permy", &Discretizer::permy)
 		.def_readwrite("permz", &Discretizer::permz)
 		.def_readwrite("poro", &Discretizer::poro)
-		.def_readwrite("cell_m", &Discretizer::cell_m)
-		.def_readwrite("cell_p", &Discretizer::cell_p)
+			.def_readwrite("cell_m", &Discretizer::cell_m)
+			.def_readwrite("cell_p", &Discretizer::cell_p)
+			.def_readonly("weno", &Discretizer::weno)
 		.def_readwrite("flux_vals", &Discretizer::flux_vals)
 		.def_readwrite("flux_vals_homo", &Discretizer::flux_vals_homo)
 		.def_readwrite("flux_vals_thermal", &Discretizer::flux_vals_thermal)
@@ -127,6 +145,10 @@ void pybind_discretizer(py::module &m)
 		.def("reconstruct_pressure_gradients_per_cell", &Discretizer::reconstruct_pressure_gradients_per_cell)
 		.def("reconstruct_pressure_temperature_gradients_per_cell", &Discretizer::reconstruct_pressure_temperature_gradients_per_cell)
 		.def("calc_mpfa_transmissibilities", &Discretizer::calc_mpfa_transmissibilities)
+		.def("prepare_weno_static", &Discretizer::prepare_weno_static,
+			py::arg("discretizer_to_engine"), py::arg("n_engine_cells"),
+			py::arg("engine_block_m"), py::arg("engine_block_p"),
+			py::arg("condition_limit") = 1.e8, py::arg("max_candidates") = 16)
 		.def("set_permeability", &Discretizer::set_permeability)
 		.def("set_porosity", &Discretizer::set_porosity)
 		.def("get_one_way_tpfa_transmissibilities", &Discretizer::get_one_way_tpfa_transmissibilities)

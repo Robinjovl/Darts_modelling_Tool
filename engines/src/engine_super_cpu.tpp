@@ -6,7 +6,9 @@
 #include <iomanip>
 #include <iostream>
 #include <iomanip>
+#include <limits>
 #include <math.h>
+#include <stdexcept>
 
 #include "engine_super_cpu.hpp"
 #include "conn_mesh.h"
@@ -31,11 +33,259 @@ using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_cpu<NC, NP, THERMAL>::prepare_weno_fields()
+{
+  const index_t n_res_blocks = mesh->n_res_blocks;
+  const size_t n_fields = static_cast<size_t>(n_res_blocks) * NP * WENO_FIELDS_PER_PHASE;
+  weno_field_values.resize(n_fields);
+  weno_field_derivatives.resize(n_fields * N_VARS);
+
+  for (index_t cell = 0; cell < n_res_blocks; ++cell)
+  {
+    for (uint8_t phase = 0; phase < NP; ++phase)
+    {
+      const size_t field_base = (static_cast<size_t>(cell) * NP + phase) * WENO_FIELDS_PER_PHASE;
+      const index_t lambda_op = cell * N_OPS + LAMBDA_OP + phase;
+      const value_t lambda = op_vals_arr[lambda_op];
+      weno_field_values[field_base + WENO_LAMBDA_FIELD] = lambda;
+      for (uint8_t variable = 0; variable < N_VARS; ++variable)
+        weno_field_derivatives[(field_base + WENO_LAMBDA_FIELD) * N_VARS + variable] =
+          op_ders_arr[lambda_op * N_VARS + variable];
+
+      for (uint8_t equation = 0; equation < NE; ++equation)
+      {
+        const index_t flux_op = cell * N_OPS + FLUX_OP + phase * NE + equation;
+        const value_t flux = op_vals_arr[flux_op];
+        const size_t field = field_base + WENO_FLUX_FIELD + equation;
+        weno_field_values[field] = lambda * flux;
+        for (uint8_t variable = 0; variable < N_VARS; ++variable)
+          weno_field_derivatives[field * N_VARS + variable] =
+            flux * op_ders_arr[lambda_op * N_VARS + variable] +
+            lambda * op_ders_arr[flux_op * N_VARS + variable];
+      }
+
+      if constexpr (THERMAL)
+      {
+        const index_t density_op = cell * N_OPS + GRAV_OP + phase;
+        const value_t density = op_vals_arr[density_op];
+        const size_t field = field_base + WENO_POTENTIAL_FIELD;
+        weno_field_values[field] = lambda * density;
+        for (uint8_t variable = 0; variable < N_VARS; ++variable)
+          weno_field_derivatives[field * N_VARS + variable] =
+            density * op_ders_arr[lambda_op * N_VARS + variable] +
+            lambda * op_ders_arr[density_op * N_VARS + variable];
+      }
+    }
+  }
+}
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+bool engine_super_cpu<NC, NP, THERMAL>::reconstruct_weno_scalar(
+  index_t target_cell, uint8_t phase, uint8_t field,
+  const value_t *candidate_face_coefficient, bool require_nonnegative,
+  bool need_derivatives, WenoReconstruction &result) const
+{
+  result.value = 0.0;
+  result.n_dependencies = 0;
+  result.bound_fallback = false;
+
+  if (target_cell < 0 || target_cell >= mesh->n_res_blocks || phase >= NP ||
+      field >= WENO_FIELDS_PER_PHASE || !mesh->weno_cell_status[target_cell])
+    return false;
+
+  const index_t candidate_begin = mesh->weno_cell_candidate_offset[target_cell];
+  const index_t candidate_end = mesh->weno_cell_candidate_offset[target_cell + 1];
+  const index_t dependency_begin = mesh->weno_cell_dependency_offset[target_cell];
+  const index_t dependency_end = mesh->weno_cell_dependency_offset[target_cell + 1];
+  const index_t n_candidates = candidate_end - candidate_begin;
+  const index_t n_dependencies = dependency_end - dependency_begin;
+  const index_t target_dependency = mesh->weno_cell_target_dependency[target_cell];
+  if (n_candidates <= 0 || n_candidates > static_cast<index_t>(WENO_MAX_CANDIDATES) ||
+      n_dependencies <= 0 || n_dependencies > static_cast<index_t>(WENO_MAX_DEPENDENCIES) ||
+      target_dependency < 0 || target_dependency >= n_dependencies)
+    return false;
+
+  const auto field_index = [phase, field](index_t cell)
+  {
+    return (static_cast<size_t>(cell) * NP + phase) * WENO_FIELDS_PER_PHASE + field;
+  };
+  const value_t target_value = weno_field_values[field_index(target_cell)];
+  result.n_dependencies = n_dependencies;
+
+  auto use_target_value = [&]()
+  {
+    result.value = target_value;
+    if (need_derivatives)
+    {
+      std::fill_n(result.derivative.begin(), n_dependencies, 0.0);
+      result.derivative[target_dependency] = 1.0;
+    }
+  };
+
+  // Only the used prefixes are written before they are read, so these fixed-size
+  // scratch arrays are intentionally left uninitialized (avoids a per-call
+  // memset of the full WENO_MAX_* capacity in the assembly hot loop).
+  std::array<value_t, WENO_MAX_CANDIDATES> candidate_value;
+  std::array<value_t, WENO_MAX_CANDIDATES> indicator;
+  std::array<value_t, WENO_MAX_CANDIDATES> weight;
+  std::array<value_t, 3 * WENO_MAX_CANDIDATES> sigma;
+  value_t alpha_sum = 0.0;
+
+  for (index_t local_candidate = 0; local_candidate < n_candidates; ++local_candidate)
+  {
+    const index_t candidate = candidate_begin + local_candidate;
+    value_t difference[3];
+    for (index_t support = 0; support < 3; ++support)
+    {
+      const index_t support_cell = mesh->weno_candidate_support_cell[3 * candidate + support];
+      difference[support] = weno_field_values[field_index(support_cell)] - target_value;
+    }
+
+    value_t smoothness = 0.0;
+    value_t face_value = target_value;
+    for (index_t direction = 0; direction < 3; ++direction)
+    {
+      value_t slope = 0.0;
+      for (index_t support = 0; support < 3; ++support)
+        slope += mesh->weno_candidate_inverse[9 * candidate + 3 * direction + support] * difference[support];
+      sigma[3 * local_candidate + direction] = slope;
+      smoothness += slope * slope;
+    }
+    for (index_t support = 0; support < 3; ++support)
+      face_value += candidate_face_coefficient[3 * local_candidate + support] *
+                    difference[support];
+    candidate_value[local_candidate] = face_value;
+    indicator[local_candidate] = smoothness;
+
+    const value_t denominator = params->weno_epsilon + smoothness;
+    value_t denominator_power = 1.0;
+    for (index_t exponent = 0; exponent < params->weno_power; ++exponent)
+      denominator_power *= denominator;
+    const value_t alpha = mesh->weno_candidate_gamma[candidate] / denominator_power;
+    weight[local_candidate] = alpha;
+    alpha_sum += alpha;
+  }
+
+  if (!(alpha_sum > 0.0) || !std::isfinite(alpha_sum))
+  {
+    use_target_value();
+    result.bound_fallback = true;
+    return false;
+  }
+
+  value_t face_value = 0.0;
+  for (index_t local_candidate = 0; local_candidate < n_candidates; ++local_candidate)
+  {
+    weight[local_candidate] /= alpha_sum;
+    face_value += weight[local_candidate] * candidate_value[local_candidate];
+  }
+
+  if (!std::isfinite(face_value) ||
+      (params->weno_bound_fallback && require_nonnegative && face_value < 0.0))
+  {
+    use_target_value();
+    result.bound_fallback = true;
+    return false;
+  }
+  result.value = face_value;
+
+  // The reconstructed value alone is needed for fields consumed only by output
+  // quantities (e.g. phase mobility for CFL/velocity), so skip the analytic
+  // sensitivities entirely when the caller does not scatter them.
+  if (!need_derivatives)
+    return true;
+
+  // d(sum_k w_k q_k) = sum_k w_k dq_k +
+  //                     sum_k w_k (q_k - q_face) r_k.
+  // Each candidate touches at most the target and its three supports, so merge
+  // those local coefficients instead of allocating a candidates-by-dependencies matrix.
+  std::fill_n(result.derivative.begin(), n_dependencies, 0.0);
+  for (index_t local_candidate = 0; local_candidate < n_candidates; ++local_candidate)
+  {
+    const index_t candidate = candidate_begin + local_candidate;
+    index_t local_dependency[4] = {target_dependency, -1, -1, -1};
+    value_t candidate_derivative[4] = {1.0, 0.0, 0.0, 0.0};
+    value_t indicator_derivative[4] = {0.0, 0.0, 0.0, 0.0};
+    index_t coefficient_count = 1;
+
+    auto accumulate_coefficient = [&](index_t dependency, value_t candidate_coefficient,
+                                      value_t indicator_coefficient)
+    {
+      for (index_t coefficient = 0; coefficient < coefficient_count; ++coefficient)
+      {
+        if (local_dependency[coefficient] == dependency)
+        {
+          candidate_derivative[coefficient] += candidate_coefficient;
+          indicator_derivative[coefficient] += indicator_coefficient;
+          return;
+        }
+      }
+      local_dependency[coefficient_count] = dependency;
+      candidate_derivative[coefficient_count] = candidate_coefficient;
+      indicator_derivative[coefficient_count] = indicator_coefficient;
+      ++coefficient_count;
+    };
+
+    for (index_t support = 0; support < 3; ++support)
+    {
+      const value_t face_coefficient =
+        candidate_face_coefficient[3 * local_candidate + support];
+      value_t smoothness_coefficient = 0.0;
+      for (index_t direction = 0; direction < 3; ++direction)
+      {
+        const value_t inverse = mesh->weno_candidate_inverse[9 * candidate + 3 * direction + support];
+        smoothness_coefficient += 2.0 * sigma[3 * local_candidate + direction] * inverse;
+      }
+      accumulate_coefficient(target_dependency, -face_coefficient, -smoothness_coefficient);
+      accumulate_coefficient(mesh->weno_candidate_support_dependency[3 * candidate + support],
+                             face_coefficient, smoothness_coefficient);
+    }
+
+    const value_t nonlinear_scale =
+      -static_cast<value_t>(params->weno_power) /
+      (params->weno_epsilon + indicator[local_candidate]);
+    for (index_t coefficient = 0; coefficient < coefficient_count; ++coefficient)
+    {
+      const index_t dependency = local_dependency[coefficient];
+      const value_t r = nonlinear_scale * indicator_derivative[coefficient];
+      result.derivative[dependency] += weight[local_candidate] *
+        (candidate_derivative[coefficient] +
+         (candidate_value[local_candidate] - face_value) * r);
+    }
+  }
+  return true;
+}
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
                                             operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                             sim_params *params_, timer_node *timer_)
 {
+  const bool use_weno = params_->transport_scheme == sim_params::WENO2;
+  if (use_weno)
+  {
+    if (!mesh_->weno_enabled || !mesh_->weno_finalized)
+      throw std::invalid_argument("WENO2 requires finalized static geometry on conn_mesh");
+    if (!(params_->weno_epsilon > 0.0) || !std::isfinite(params_->weno_epsilon) ||
+        params_->weno_power <= 0)
+      throw std::invalid_argument("WENO2 epsilon and nonlinear-weight power must be positive");
+    if (opt_history_matching)
+      throw std::invalid_argument("WENO2 adjoint/history-matching assembly is not implemented");
+    for (index_t cell = 0; cell < mesh_->n_res_blocks; ++cell)
+    {
+      const index_t candidate_count = mesh_->weno_cell_candidate_offset[cell + 1] -
+                                      mesh_->weno_cell_candidate_offset[cell];
+      const index_t dependency_count = mesh_->weno_cell_dependency_offset[cell + 1] -
+                                       mesh_->weno_cell_dependency_offset[cell];
+      if (candidate_count > static_cast<index_t>(WENO_MAX_CANDIDATES) ||
+          dependency_count > static_cast<index_t>(WENO_MAX_DEPENDENCIES))
+        throw std::invalid_argument("WENO2 setup exceeds the native fixed-size reconstruction limits");
+    }
+  }
+  else if (mesh_->weno_enabled)
+    throw std::invalid_argument("WENO geometry was attached while the transport scheme is SPU");
+
   // prepare dg_dx_n_temp for adjoint method
   if (opt_history_matching)
   {
@@ -109,11 +359,14 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     const std::vector<index_t>& velocity_offset = mesh->velocity_offset;
     const std::vector<index_t>& op_num = mesh->op_num;
     const std::vector<value_t>& cell_spe = mesh->cell_spe;
+    const bool use_weno = params->transport_scheme == sim_params::WENO2;
+
+    if (use_weno)
+        prepare_weno_fields();
 
     value_t* Jac = jacobian->get_values();
     index_t* diag_ind = jacobian->get_diag_ind();
     index_t* rows = jacobian->get_rows_ptr();
-    index_t* cols = jacobian->get_cols_ind();
     index_t* row_thread_starts = jacobian->get_row_thread_starts();
 
     // for reconstruction of phase velocities
@@ -173,6 +426,8 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     value_t phase_presence_mult;
     index_t cell_conn_idx = 0, cell_conn_num = 0;
     std::array<value_t, NP> phase_fluxes;
+    uint64_t weno_geometry_fallback_local = 0;
+    uint64_t weno_bound_fallback_local = 0;
 
     // fluxes for output
     value_t *cur_darcy_fluxes = 0, *cur_diffusion_fluxes = 0, *cur_dispersion_fluxes = 0;
@@ -240,27 +495,17 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
             }
         }
 
-        // index of first entry for block i in CSR cols array
-        index_t csr_idx_start = rows[i];
-        // index of last entry for block i in CSR cols array
-        index_t csr_idx_end = rows[i + 1];
-        // index of first entry for block i in connection array (has all entries of CSR except diagonals, ordering is identical)
-        index_t conn_idx = csr_idx_start - i;
-
-        jac_idx = N_VARS_SQ * csr_idx_start;
-
         // for velocity reconstruction
         if (!velocity_offset.empty() && i < n_res_blocks)
             cell_conn_num = velocity_offset[i + 1] - velocity_offset[i];
 
         cell_conn_idx = 0;
-        for (index_t csr_idx = csr_idx_start; csr_idx < csr_idx_end; csr_idx++, jac_idx += N_VARS_SQ)
-        { // fill offdiagonal part + contribute to diagonal
+        for (index_t conn_idx = mesh->physical_row_offset[i];
+             conn_idx < mesh->physical_row_offset[i + 1]; ++conn_idx)
+        { // loop over physical connections; WENO-only columns are not fluxes
 
-            j = cols[csr_idx];
-            // skip diagonal
-            if (i == j)
-                continue;
+            j = mesh->block_p[conn_idx];
+            jac_idx = N_VARS_SQ * mesh->connection_jacobian_slot[conn_idx];
 
             bool DFM_conn = mesh->is_dfm_conn[conn_idx];
 
@@ -336,6 +581,154 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
 
                 phase_fluxes[p] = 0.0;
+
+                // WENO2 changes only the upstream transport coefficients.  The
+                // existing two-point phase potential remains the sign selector
+                // and multiplier.  Wells, DFM links, and unsupported target
+                // sides continue through the bit-for-bit SPU branch below.
+                if (use_weno && !DFM_conn && i < n_res_blocks && j < n_res_blocks)
+                {
+                    const bool target_is_m = phase_p_diff < 0.0;
+                    const index_t target_cell = target_is_m ? i : j;
+                    const bool face_is_eligible = target_is_m ?
+                        mesh->weno_face_status_m[conn_idx] : mesh->weno_face_status_p[conn_idx];
+                    if (face_is_eligible)
+                    {
+                        const index_t coefficient_begin = target_is_m ?
+                            mesh->weno_connection_candidate_coefficient_offset_m[conn_idx] :
+                            mesh->weno_connection_candidate_coefficient_offset_p[conn_idx];
+                        const std::vector<value_t>& candidate_coefficients = target_is_m ?
+                            mesh->weno_connection_candidate_coefficient_m :
+                            mesh->weno_connection_candidate_coefficient_p;
+                        const value_t *candidate_face_coefficient =
+                            &candidate_coefficients[coefficient_begin];
+                        const index_t dependency_begin = mesh->weno_cell_dependency_offset[target_cell];
+                        const index_t slot_begin = target_is_m ?
+                            mesh->weno_connection_dependency_offset_m[conn_idx] :
+                            mesh->weno_connection_dependency_offset_p[conn_idx];
+                        const std::vector<index_t>& dependency_slots = target_is_m ?
+                            mesh->weno_connection_dependency_slot_m :
+                            mesh->weno_connection_dependency_slot_p;
+
+                        auto field_storage_index = [p](index_t cell, uint8_t field)
+                        {
+                            return (static_cast<size_t>(cell) * NP + p) *
+                                   WENO_FIELDS_PER_PHASE + field;
+                        };
+                        auto scatter_reconstruction = [&](const WenoReconstruction& reconstruction,
+                                                          uint8_t field, uint8_t equation,
+                                                          value_t multiplier)
+                        {
+                            for (index_t dependency = 0;
+                                 dependency < reconstruction.n_dependencies; ++dependency)
+                            {
+                                const index_t source_cell =
+                                    mesh->weno_cell_dependency_cell[dependency_begin + dependency];
+                                const index_t jacobian_slot = dependency_slots[slot_begin + dependency];
+                                const size_t field_index = field_storage_index(source_cell, field);
+                                const value_t scalar_sensitivity = reconstruction.derivative[dependency];
+                                for (uint8_t v = 0; v < N_VARS; ++v)
+                                    Jac[N_VARS_SQ * jacobian_slot + equation * N_VARS + v] -=
+                                        multiplier * scalar_sensitivity *
+                                        weno_field_derivatives[field_index * N_VARS + v];
+                            }
+                        };
+
+                        WenoReconstruction reconstruction;
+                        // Reconstructed phase mobility feeds only CFL/velocity output,
+                        // so its analytic sensitivities are not scattered.
+                        reconstruct_weno_scalar(target_cell, p, WENO_LAMBDA_FIELD,
+                                                candidate_face_coefficient, true, false,
+                                                reconstruction);
+                        if (reconstruction.bound_fallback)
+                            ++weno_bound_fallback_local;
+                        phase_fluxes[p] = -trans_mult * tran[conn_idx] *
+                                          phase_p_diff * reconstruction.value;
+
+                        const value_t advective_multiplier =
+                            dt * tran[conn_idx] * trans_mult * phase_p_diff;
+                        for (uint8_t c = 0; c < NE; ++c)
+                        {
+                            const uint8_t field = WENO_FLUX_FIELD + c;
+                            reconstruct_weno_scalar(target_cell, p, field,
+                                                    candidate_face_coefficient, c < NC,
+                                                    true, reconstruction);
+                            if (reconstruction.bound_fallback)
+                                ++weno_bound_fallback_local;
+
+                            const value_t flux = advective_multiplier * reconstruction.value;
+                            RHS[i * N_VARS + c] -= flux;
+                            scatter_reconstruction(reconstruction, field, c, advective_multiplier);
+
+                            if (c < NC)
+                            {
+                                if (target_is_m)
+                                    CFL_out[c] -= flux;
+                                else
+                                    CFL_in[c] += flux;
+                                if (enabled_flux_output)
+                                    cur_darcy_fluxes[p * NC + c] =
+                                        -tran[conn_idx] * trans_mult * phase_p_diff *
+                                        reconstruction.value;
+                            }
+                            else if (enabled_flux_output)
+                                cur_heat_darcy_advection_fluxes[p] =
+                                    -tran[conn_idx] * trans_mult * phase_p_diff *
+                                    reconstruction.value;
+
+                            for (uint8_t v = 0; v < N_VARS; ++v)
+                            {
+                                const value_t phase_p_diff_der_i = grav_pc_der_i[v] -
+                                    (v == P_VAR ? 1.0 : 0.0);
+                                const value_t phase_p_diff_der_j = grav_pc_der_j[v] +
+                                    (v == P_VAR ? 1.0 : 0.0);
+                                const value_t multiplier_der_i = dt * tran[conn_idx] *
+                                    (trans_mult_der_i[v] * phase_p_diff +
+                                     trans_mult * phase_p_diff_der_i);
+                                const value_t multiplier_der_j = dt * tran[conn_idx] *
+                                    (trans_mult_der_j[v] * phase_p_diff +
+                                     trans_mult * phase_p_diff_der_j);
+                                Jac[diag_idx + c * N_VARS + v] -=
+                                    multiplier_der_i * reconstruction.value;
+                                Jac[jac_idx + c * N_VARS + v] -=
+                                    multiplier_der_j * reconstruction.value;
+                            }
+
+                            if constexpr (THERMAL)
+                            {
+                                if (c == NE - 1)
+                                {
+                                    reconstruct_weno_scalar(target_cell, p, WENO_POTENTIAL_FIELD,
+                                                            candidate_face_coefficient, true,
+                                                            true, reconstruction);
+                                    if (reconstruction.bound_fallback)
+                                        ++weno_bound_fallback_local;
+                                    const value_t potential_multiplier =
+                                        dt * tran[conn_idx] * phase_p_diff * cell_spe[target_cell];
+                                    RHS[i * N_VARS + c] -=
+                                        potential_multiplier * reconstruction.value;
+                                    scatter_reconstruction(reconstruction, WENO_POTENTIAL_FIELD, c,
+                                                           potential_multiplier);
+                                    for (uint8_t v = 0; v < N_VARS; ++v)
+                                    {
+                                        const value_t phase_p_diff_der_i = grav_pc_der_i[v] -
+                                            (v == P_VAR ? 1.0 : 0.0);
+                                        const value_t phase_p_diff_der_j = grav_pc_der_j[v] +
+                                            (v == P_VAR ? 1.0 : 0.0);
+                                        Jac[diag_idx + c * N_VARS + v] -=
+                                            dt * tran[conn_idx] * cell_spe[target_cell] *
+                                            phase_p_diff_der_i * reconstruction.value;
+                                        Jac[jac_idx + c * N_VARS + v] -=
+                                            dt * tran[conn_idx] * cell_spe[target_cell] *
+                                            phase_p_diff_der_j * reconstruction.value;
+                                    }
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    ++weno_geometry_fallback_local;
+                }
 
                 if (phase_p_diff < 0)
                 {
@@ -669,9 +1062,6 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                     Jac[diag_idx + NC * N_VARS + v] += op_ders_arr[(i * N_OPS + TEMP_OP) * N_VARS + v] * (gamma_t_i + gamma_t_j) / 2;
                 }
             }
-
-
-            conn_idx++;
             if (j < n_res_blocks)
                 cell_conn_idx++;
         }
@@ -708,10 +1098,14 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     {
         if (CFL_max < CFL_max_local)
             CFL_max = CFL_max_local;
+        weno_geometry_fallback_count += weno_geometry_fallback_local;
+        weno_bound_fallback_count += weno_bound_fallback_local;
     }
   } // end of omp parallel
 #else
     CFL_max = CFL_max_local;
+    weno_geometry_fallback_count += weno_geometry_fallback_local;
+    weno_bound_fallback_count += weno_bound_fallback_local;
 #endif
 
     // dispersion
@@ -727,21 +1121,11 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 continue;
             // index of diagonal block entry for block i in CSR values array
             index_t diag_idx = N_VARS_SQ * diag_ind[i];
-            // index of first entry for block i in CSR cols array
-            index_t csr_idx_start = rows[i];
-            // index of last entry for block i in CSR cols array
-            index_t csr_idx_end = rows[i + 1];
-            // index of first entry for block i in connection array (has all entries of CSR except diagonals, ordering is identical)
-            index_t conn_idx = csr_idx_start - i;
-
-            index_t jac_idx = N_VARS_SQ * csr_idx_start;
-
-            for (index_t csr_idx = csr_idx_start; csr_idx < csr_idx_end; csr_idx++, jac_idx += N_VARS_SQ)
+            for (index_t conn_idx = mesh->physical_row_offset[i];
+                 conn_idx < mesh->physical_row_offset[i + 1]; ++conn_idx)
             {
-                index_t j = cols[csr_idx];
-
-                if (i == j)
-                  continue;
+                index_t j = mesh->block_p[conn_idx];
+                index_t jac_idx = N_VARS_SQ * mesh->connection_jacobian_slot[conn_idx];
 
                 if (enabled_flux_output)
                 {
@@ -818,7 +1202,6 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                         }
                     }
                 }
-                conn_idx++;
             }
         }
     }

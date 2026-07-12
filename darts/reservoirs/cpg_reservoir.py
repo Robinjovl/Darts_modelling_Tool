@@ -111,12 +111,14 @@ class CPG_Reservoir(ReservoirBase):
         mpfa_tran = np.array(self.discretizer.flux_vals, copy=False)
         mpfa_tranD = np.array(self.discretizer.flux_vals_thermal, copy=False)
         ids = np.array(self.discretizer.get_one_way_tpfa_transmissibilities())
-        cell_m = np.array(self.discretizer.cell_m)[ids]
-        cell_p = np.array(self.discretizer.cell_p)[ids]
+        self.cell_m = np.array(self.discretizer.cell_m)[ids]
+        self.cell_p = np.array(self.discretizer.cell_p)[ids]
 
         # self.discretizer.write_tran_cube('tran_cpg.grdecl', 'nnc_cpg.txt')
         if self.faultfile is not None:
-            self.apply_fault_mult(self.faultfile, cell_m, cell_p, mpfa_tran, ids)
+            self.apply_fault_mult(
+                self.faultfile, self.cell_m, self.cell_p, mpfa_tran, ids
+            )
             # self.discretizer.write_tran_cube('tran_faultmult.grdecl', 'nnc_faultmult.txt')
 
         tran = mpfa_tran[::2][ids]
@@ -129,8 +131,8 @@ class CPG_Reservoir(ReservoirBase):
 
         tran = np.fabs(tran)
         self.mesh.init(
-            darts.engines.index_vector(cell_m),
-            darts.engines.index_vector(cell_p),
+            darts.engines.index_vector(self.cell_m),
+            darts.engines.index_vector(self.cell_p),
             darts.engines.value_vector(tran),
             darts.engines.value_vector(tranD),
         )
@@ -163,6 +165,24 @@ class CPG_Reservoir(ReservoirBase):
             )
 
         return self.mesh
+
+    def prepare_weno(self, params) -> None:
+        """
+        Prepare WENO2 data from the retained native corner-point mesh.
+
+        :param params: Simulation parameters containing WENO setup controls.
+        :type params: sim_params
+        """
+        mapping = index_vector_discr(np.arange(self.mesh.n_res_blocks, dtype=np.int32))
+        self.discretizer.prepare_weno_static(
+            mapping,
+            self.mesh.n_res_blocks,
+            index_vector_discr(np.asarray(self.cell_m, dtype=np.int32)),
+            index_vector_discr(np.asarray(self.cell_p, dtype=np.int32)),
+            params.weno_condition_limit,
+            params.weno_max_candidates,
+        )
+        self._attach_weno_static(self.discretizer.weno)
 
     def discretize_cpg(self):
         """
