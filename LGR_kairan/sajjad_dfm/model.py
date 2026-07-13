@@ -42,6 +42,9 @@ class AquiferCO2InjectionConfig:
     injector_i: int | None = None
     injector_j: int | None = None
     injector_k: int = 1
+    producer_i: int | None = None
+    producer_j: int | None = None
+    producer_k: int = 1
 
     well_depth: float = 2000.0
     well_segments: int = 40
@@ -51,21 +54,28 @@ class AquiferCO2InjectionConfig:
     injection_source_pressure: float = 60.5
     injection_source_temperature: float = 295.15
     target_gas_mass_rate_kg_day: float = 1e6
+    target_production_mass_rate_kg_day: float = 1e6
     injection_ramp_up_period: float = 0.01 / (24.0 * 60.0)
+    production_ramp_up_period: float = 0.01 / (24.0 * 60.0)
 
     first_ts: float = 1e-7
     mult_ts: float = 2.0
-    max_ts: float = 1e-4
+    max_ts: float = 1e-5
     runtime: float = 0.05
     tol_newton: float = 1e-3
     tol_linear: float = 1e-4
     it_newton: int = 12
     it_linear: int = 60
 
-
+# from darts.pipes.viz.plot_live import DartsModelWithLivePlots
+# class Model(DartsModelWithLivePlots):
 class Model(CICDModel):
     def __init__(self, config: AquiferCO2InjectionConfig | None = None):
         super().__init__()
+
+        # self.live_plot_config.enable_well_res_profiles = True
+        # self.live_plot_config.plot_till_this_res_cell = 50
+
         self.config = config or AquiferCO2InjectionConfig()
         self.zero = 1e-8
         self.components = ["CO2", "H2O"]
@@ -104,6 +114,21 @@ class Model(CICDModel):
             ("injector_i", i, cfg.nx),
             ("injector_j", j, cfg.ny),
             ("injector_k", k, cfg.nz),
+        ):
+            if not 1 <= value <= upper:
+                raise ValueError(f"{name}={value} is outside the reservoir grid.")
+        return i, j, k
+
+    def producer_cell(self) -> tuple[int, int, int]:
+        cfg = self.config
+        i = cfg.producer_i or cfg.nx - cfg.nx // 4
+        j = cfg.producer_j or cfg.ny // 2 + 1
+        k = cfg.producer_k
+
+        for name, value, upper in (
+            ("producer_i", i, cfg.nx),
+            ("producer_j", j, cfg.ny),
+            ("producer_k", k, cfg.nz),
         ):
             if not 1 <= value <= upper:
                 raise ValueError(f"{name}={value} is outside the reservoir grid.")
@@ -151,28 +176,38 @@ class Model(CICDModel):
         cfg = self.config
         upper_segment_length = cfg.well_depth / cfg.well_segments
         segments_lengths = np.concatenate([upper_segment_length * np.ones(cfg.well_segments), np.array([cfg.dz])])
-        geometry = PipeGeometry("I1", segments_lengths, cfg.well_diameter, inclination_angle=0.0)
 
-        perforated_segment_local = geometry.num_segments - 2
-        initial_conditions = self._make_equilibrated_initial_well_conditions(geometry, perforated_segment_local)
+        injector_geometry = PipeGeometry("I1", segments_lengths, cfg.well_diameter, inclination_angle=0.0)
+        producer_geometry = PipeGeometry("P1", segments_lengths, cfg.well_diameter, inclination_angle=0.0)
+        injector_perforated_segment = injector_geometry.num_segments - 2
+        producer_perforated_segment = producer_geometry.num_segments - 2
+        injector_initial_conditions = self._make_equilibrated_initial_well_conditions("I1", injector_geometry, injector_perforated_segment)
+        producer_initial_conditions = self._make_equilibrated_initial_well_conditions("P1", producer_geometry, producer_perforated_segment)
 
         self.wells = {
-            "I1": Pipe("I1", geometry, self.physics, self.reservoir, initial_conditions,
-                       source_sinks=self._make_injection_source_sinks("I1", geometry, 0))
+            "I1": Pipe("I1", injector_geometry, self.physics, self.reservoir, injector_initial_conditions,
+                       source_sinks=self._make_injection_source_sinks("I1", injector_geometry, 0)),
+            "P1": Pipe("P1", producer_geometry, self.physics, self.reservoir, producer_initial_conditions),
         }
 
-        self.reservoir.add_well("I1", ms_well.MS_Type.DFM, well_geometry=geometry)
-        self.reservoir.add_perforation("I1", res_cell_idx=self.injector_cell(), well_seg_idx=geometry.num_segments,
-                                       well_diameter=geometry.pipe_ID, well_indexD=None,
+        self.reservoir.add_well("I1", ms_well.MS_Type.DFM, well_geometry=injector_geometry)
+        self.reservoir.add_perforation("I1", res_cell_idx=self.injector_cell(),
+                                       well_seg_idx=injector_geometry.num_segments,
+                                       well_diameter=injector_geometry.pipe_ID, well_indexD=None,
+                                       with_peaceman_for_dfm_well=True)
+        self.reservoir.add_well("P1", ms_well.MS_Type.DFM, well_geometry=producer_geometry)
+        self.reservoir.add_perforation("P1", res_cell_idx=self.producer_cell(),
+                                       well_seg_idx=producer_geometry.num_segments,
+                                       well_diameter=producer_geometry.pipe_ID, well_indexD=None,
                                        with_peaceman_for_dfm_well=True)
 
-    def _make_equilibrated_initial_well_conditions(self, geometry: PipeGeometry,
+    def _make_equilibrated_initial_well_conditions(self, well_name: str, geometry: PipeGeometry,
                                                    perforated_segment_local: int) -> LinearAmbientTemperature:
         cfg = self.config
 
         def make_initial_conditions(reference_pressure: float, reference_temperature: float):
             return LinearAmbientTemperature(
-                pipe_name="I1", pipe_geom=geometry, physics=self.physics, pipe_head_pressure=reference_pressure,
+                pipe_name=well_name, pipe_geom=geometry, physics=self.physics, pipe_head_pressure=reference_pressure,
                 pipe_head_temperature=reference_temperature, temp_grad=cfg.well_temp_grad,
                 pipe_head_segment_index=geometry.num_segments - 1,
                 initial_conditions_dict={
@@ -195,8 +230,8 @@ class Model(CICDModel):
             reference_temperature -= temperature_error
             initial_conditions = make_initial_conditions(reference_pressure, reference_temperature)
 
-        self.initial_well_reference_pressure = float(reference_pressure)
-        self.initial_well_reference_temperature = float(reference_temperature)
+        setattr(self, f"{well_name.lower()}_initial_well_reference_pressure", float(reference_pressure))
+        setattr(self, f"{well_name.lower()}_initial_well_reference_temperature", float(reference_temperature))
         return initial_conditions
 
     def set_initial_conditions(self):
@@ -220,6 +255,11 @@ class Model(CICDModel):
         mw_avg = float(np.dot(np.asarray(pc.Mw[: pc.nc_fl]), inj_comp[: pc.nc_fl]))
         return float(self.config.target_gas_mass_rate_kg_day / mw_avg)
 
+    def _target_production_molar_rate_kmol_day(self, composition: np.ndarray) -> float:
+        pc = self.physics.property_containers[0]
+        mw_avg = float(np.dot(np.asarray(pc.Mw[: pc.nc_fl]), composition[: pc.nc_fl]))
+        return -float(self.config.target_production_mass_rate_kg_day / mw_avg)
+
     def _make_injection_source_sinks(self, well_name: str, well_geometry: PipeGeometry,
                                      segment_idx: int) -> dict[str, RampUpRate]:
         cfg = self.config
@@ -234,6 +274,28 @@ class Model(CICDModel):
                                                int(segment_idx), "inflow", self._target_gas_molar_rate_kmol_day(),
                                                float(cfg.injection_ramp_up_period), inj_fluid_props)
         }
+
+    def _current_production_segment_state(self, global_segment_idx: int) -> np.ndarray:
+        if not hasattr(self.physics, "engine"):
+            return np.array([self.config.p_init, self.config.z_co2_init, self.config.t_reservoir], dtype=float)
+        states = np.asarray(self.physics.engine.X, dtype=float).reshape(-1, self.physics.n_vars)
+        return states[global_segment_idx].copy()
+
+    def _make_production_rhs(self, t: float | None, rhs_flux: np.ndarray) -> None:
+        well = self.reservoir.get_well("P1")
+        source_segment = 0
+        global_segment_idx = int(well.well_head_idx) + source_segment
+        state = self._current_production_segment_state(global_segment_idx)
+        pc = self.physics.property_containers[0]
+        _, _, composition = pc.get_state(state)
+        ramp_period = float(self.config.production_ramp_up_period)
+        ramp = min(float(t or 0.0) / ramp_period, 1.0) if ramp_period > 0 else 1.0
+        prod_rate = ramp * self._target_production_molar_rate_kmol_day(composition)
+        component_rate = prod_rate * composition[: pc.nc_fl]
+        mw_avg = np.sum(np.asarray(pc.Mw[: pc.nc_fl]) * composition[: pc.nc_fl])
+        prod_fluid_energy = pc.compute_total_enthalpy(state) + self.reservoir.mesh.cell_spe[global_segment_idx] * mw_avg
+        block_start = global_segment_idx * self.physics.n_vars
+        rhs_flux[block_start : block_start + self.physics.n_vars] += -np.append(component_rate, prod_rate * prod_fluid_energy)
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         source = self.wells["I1"].source_sinks["IsenthalpicInjection"]
@@ -253,16 +315,17 @@ class Model(CICDModel):
         rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
         block_start = global_segment_idx * self.physics.n_vars
         rhs_flux[block_start : block_start + self.physics.n_vars] = -np.append(component_rate, inj_energy_rate)
+        self._make_production_rhs(t, rhs_flux)
         return rhs_flux
 
-    def initial_well_state_table(self) -> list[dict[str, float]]:
-        pipe = self.wells["I1"]
+    def initial_well_state_table(self, well_name: str) -> list[dict[str, float]]:
+        pipe = self.wells[well_name]
         states = np.asarray(pipe.initial_conditions.initial_conditions_vector, dtype=float).reshape(-1, self.physics.n_vars)
         pc = self.physics.property_containers[0]
 
         rows = []
         for segment, state in enumerate(states):
             pc.evaluate(state)
-            rows.append({"segment": segment, "pressure_bar": float(state[0]), "z_co2": float(state[1]),
+            rows.append({"well": well_name, "segment": segment, "pressure_bar": float(state[0]), "z_co2": float(state[1]),
                          "temperature_K": float(pc.temperature), "sG": float(pc.sat[0]), "sL": float(pc.sat[1])})
         return rows

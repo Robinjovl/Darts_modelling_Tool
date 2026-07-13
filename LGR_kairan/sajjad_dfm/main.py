@@ -10,39 +10,45 @@ from model import AquiferCO2InjectionConfig, Model
 
 
 CASE_DIR = Path(__file__).resolve().parent
-OUTPUT_DIR = CASE_DIR / "output_injection_only"
-REPORT_STEPS = [0.001] * 200
+OUTPUT_DIR = CASE_DIR / "output_injection_production"
+REPORT_STEPS = [0.001] * 50
 
 
 def write_initial_equilibrium_check(model: Model) -> None:
     cfg = model.config
-    well = model.reservoir.get_well("I1")
-    perforated_segment_local = int(well.perforations[-1][0])
-    source_segment = int(model.wells["I1"].source_sinks["IsenthalpicInjection"].segment_idx)
-    well_states = model.initial_well_state_table()
-    bhp = well_states[perforated_segment_local]["pressure_bar"]
-    bht = well_states[perforated_segment_local]["temperature_K"]
-
-    rows = [{
-        "reservoir_pressure_bar": cfg.p_init,
-        "well_bhp_bar": bhp,
-        "pressure_difference_bar": bhp - cfg.p_init,
-        "reservoir_temperature_K": cfg.t_reservoir,
-        "well_bht_K": bht,
-        "temperature_difference_K": bht - cfg.t_reservoir,
-        "perforated_segment_local": perforated_segment_local,
-        "injection_source_segment_local": source_segment,
-        "injector_cell_i": model.injector_cell()[0],
-        "injector_cell_j": model.injector_cell()[1],
-        "injector_cell_k": model.injector_cell()[2],
-    }]
+    rows = []
+    all_well_states = []
+    for well_name, cell_func in (("I1", model.injector_cell), ("P1", model.producer_cell)):
+        well = model.reservoir.get_well(well_name)
+        perforated_segment_local = int(well.perforations[-1][0])
+        source_segment = int(model.wells["I1"].source_sinks["IsenthalpicInjection"].segment_idx) if well_name == "I1" else 0
+        well_states = model.initial_well_state_table(well_name)
+        all_well_states.extend(well_states)
+        bhp = well_states[perforated_segment_local]["pressure_bar"]
+        bht = well_states[perforated_segment_local]["temperature_K"]
+        well_cell = cell_func()
+        rows.append({
+            "well": well_name,
+            "reservoir_pressure_bar": cfg.p_init,
+            "well_bhp_bar": bhp,
+            "pressure_difference_bar": bhp - cfg.p_init,
+            "reservoir_temperature_K": cfg.t_reservoir,
+            "well_bht_K": bht,
+            "temperature_difference_K": bht - cfg.t_reservoir,
+            "perforated_segment_local": perforated_segment_local,
+            "source_segment_local": source_segment,
+            "well_cell_i": well_cell[0],
+            "well_cell_j": well_cell[1],
+            "well_cell_k": well_cell[2],
+        })
     pd.DataFrame(rows).to_csv(OUTPUT_DIR / "initial_equilibrium_check.csv", index=False)
-    pd.DataFrame(well_states).to_csv(OUTPUT_DIR / "initial_well_state.csv", index=False)
+    pd.DataFrame(all_well_states).to_csv(OUTPUT_DIR / "initial_well_state.csv", index=False)
 
-    if not np.isclose(bhp, cfg.p_init, atol=1e-8):
-        raise RuntimeError(f"Initial I1 BHP {bhp} bar does not match reservoir pressure {cfg.p_init} bar.")
-    if source_segment != 0:
-        raise RuntimeError(f"CO2 injection source must be placed in segment 0, got segment {source_segment}.")
+    for row in rows:
+        if not np.isclose(row["well_bhp_bar"], cfg.p_init, atol=1e-8):
+            raise RuntimeError(f"Initial {row['well']} BHP {row['well_bhp_bar']} bar does not match reservoir pressure {cfg.p_init} bar.")
+    if rows[0]["source_segment_local"] != 0:
+        raise RuntimeError(f"CO2 injection source must be placed in segment 0, got segment {rows[0]['source_segment_local']}.")
 
 
 def _cell_position(cell_ids, cell_id):
@@ -61,6 +67,20 @@ def _source_rate_series(model: Model, time):
     return molar_rate, molar_rate * composition[0], molar_rate * float(np.dot(mw, composition[: mw.size]))
 
 
+def _production_rate_series(model: Model, time, states, source_pos):
+    pc = model.physics.property_containers[0]
+    mw = np.asarray(pc.Mw[: pc.nc_fl])
+    ramp_period = float(model.config.production_ramp_up_period)
+    ramp = np.minimum(np.asarray(time, dtype=float) / ramp_period, 1.0) if ramp_period > 0 else 1.0
+    molar_rate = np.zeros_like(np.asarray(time, dtype=float))
+    co2_molar_rate = np.zeros_like(molar_rate)
+    for i, state in enumerate(states[:, source_pos, :]):
+        _, _, composition = pc.get_state(state)
+        molar_rate[i] = -ramp[i] * model.config.target_production_mass_rate_kg_day / float(np.dot(mw, composition[: mw.size]))
+        co2_molar_rate[i] = molar_rate[i] * composition[0]
+    return molar_rate, co2_molar_rate, -ramp * model.config.target_production_mass_rate_kg_day
+
+
 def save_dfm_well_time_data(model: Model, connection_time_data: dict) -> None:
     h5_data = load_hdf5_to_dict(model.well_filepath)
     dynamic = h5_data["dynamic"]
@@ -71,36 +91,36 @@ def save_dfm_well_time_data(model: Model, connection_time_data: dict) -> None:
     p_idx = variable_names.index("pressure")
     t_idx = variable_names.index("temperature")
 
-    well = model.reservoir.get_well("I1")
-    source = model.wells["I1"].source_sinks["IsenthalpicInjection"]
-    perforated_segment_local = int(well.perforations[-1][0])
-    source_segment_local = int(source.segment_idx)
-    wellhead_cell = int(well.well_head_idx)
-    source_cell = wellhead_cell + source_segment_local
-    perforated_cell = wellhead_cell + perforated_segment_local
-    wh_pos = _cell_position(cell_ids, wellhead_cell)
-    source_pos = _cell_position(cell_ids, source_cell)
-    perf_pos = _cell_position(cell_ids, perforated_cell)
-    source_molar_rate, source_co2_molar_rate, source_mass_rate = _source_rate_series(model, time)
-
-    data = {
-        "time": time,
-        "well_I1_WHP": states[:, wh_pos, p_idx],
-        "well_I1_WHT": states[:, wh_pos, t_idx],
-        "well_I1_true_BHP": states[:, perf_pos, p_idx],
-        "well_I1_true_BHT": states[:, perf_pos, t_idx],
-        "well_I1_source_segment_pressure": states[:, source_pos, p_idx],
-        "well_I1_source_segment_temperature": states[:, source_pos, t_idx],
-        "well_I1_source_total_molar_rate": source_molar_rate,
-        "well_I1_source_CO2_molar_rate": source_co2_molar_rate,
-        "well_I1_source_total_mass_rate": source_mass_rate,
-        "well_I1_perforated_segment_local": np.full(time.size, perforated_segment_local),
-        "well_I1_source_segment_local": np.full(time.size, source_segment_local),
-    }
-    for key in ("well_I1_mass_rate_CO2_by_sum_perfs", "well_I1_mass_rate_G_by_sum_perfs",
-                "well_I1_molar_rate_CO2_by_sum_perfs", "well_I1_molar_rate_G_by_sum_perfs"):
-        if key in connection_time_data:
-            data[key] = connection_time_data[key]
+    data = {"time": time}
+    for well_name in ("I1", "P1"):
+        well = model.reservoir.get_well(well_name)
+        source_segment_local = int(model.wells["I1"].source_sinks["IsenthalpicInjection"].segment_idx) if well_name == "I1" else 0
+        perforated_segment_local = int(well.perforations[-1][0])
+        wellhead_cell = int(well.well_head_idx)
+        source_cell = wellhead_cell + source_segment_local
+        perforated_cell = wellhead_cell + perforated_segment_local
+        wh_pos = _cell_position(cell_ids, wellhead_cell)
+        source_pos = _cell_position(cell_ids, source_cell)
+        perf_pos = _cell_position(cell_ids, perforated_cell)
+        if well_name == "I1":
+            source_molar_rate, source_co2_molar_rate, source_mass_rate = _source_rate_series(model, time)
+        else:
+            source_molar_rate, source_co2_molar_rate, source_mass_rate = _production_rate_series(model, time, states, source_pos)
+        data[f"well_{well_name}_WHP"] = states[:, wh_pos, p_idx]
+        data[f"well_{well_name}_WHT"] = states[:, wh_pos, t_idx]
+        data[f"well_{well_name}_true_BHP"] = states[:, perf_pos, p_idx]
+        data[f"well_{well_name}_true_BHT"] = states[:, perf_pos, t_idx]
+        data[f"well_{well_name}_source_segment_pressure"] = states[:, source_pos, p_idx]
+        data[f"well_{well_name}_source_segment_temperature"] = states[:, source_pos, t_idx]
+        data[f"well_{well_name}_source_total_molar_rate"] = source_molar_rate
+        data[f"well_{well_name}_source_CO2_molar_rate"] = source_co2_molar_rate
+        data[f"well_{well_name}_source_total_mass_rate"] = source_mass_rate
+        data[f"well_{well_name}_perforated_segment_local"] = np.full(time.size, perforated_segment_local)
+        data[f"well_{well_name}_source_segment_local"] = np.full(time.size, source_segment_local)
+        for key in (f"well_{well_name}_mass_rate_CO2_by_sum_perfs", f"well_{well_name}_mass_rate_G_by_sum_perfs",
+                    f"well_{well_name}_molar_rate_CO2_by_sum_perfs", f"well_{well_name}_molar_rate_G_by_sum_perfs"):
+            if key in connection_time_data:
+                data[key] = connection_time_data[key]
     pd.DataFrame(data).to_csv(OUTPUT_DIR / "dfm_well_time_data.csv", index=False)
 
 
@@ -127,6 +147,7 @@ def run() -> None:
     pd.DataFrame(connection_time_data).to_csv(OUTPUT_DIR / "well_connection_time_data.csv", index=False)
     save_dfm_well_time_data(model, connection_time_data)
     save_dfm_well_props("I1", model, include_phase_velocities=True)
+    save_dfm_well_props("P1", model, include_phase_velocities=True)
 
     model.print_timers()
     model.print_stat()
