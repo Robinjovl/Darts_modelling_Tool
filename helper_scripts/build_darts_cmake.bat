@@ -191,14 +191,35 @@ if %wheel%==true (
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
-  python -m pip install --upgrade build > make_wheel.log || goto :error
-  python -m build --wheel >> make_wheel.log || goto :error
+  rem The C++ extensions are already compiled and installed by cmake above, so
+  rem building the wheel is pure Python packaging. Build it with PEP 517 build
+  rem isolation DISABLED (--no-isolation): the isolated build spawns a nested
+  rem "pip --python <venv>" that, on the conda Windows CI runner, loses conda's
+  rem DLL directory from PATH -> ctypes fails to load libffi -> pip's vendored
+  rem platformdirs falls back to reading a HKCU registry key the service account
+  rem lacks -> FileNotFoundError [WinError 2]. The build backend (setuptools>=70,
+  rem wheel) is installed here in the active environment so the non-isolated
+  rem build can find it.
+  python -m pip install --upgrade build setuptools wheel > make_wheel.log || goto :error
+  python -m build --wheel --no-isolation >> make_wheel.log || goto :error
   echo -- Python wheel generated!
 )
-if %install_test_extra%==true (
-  python -m pip install ".[test]" >> make_wheel.log
+
+set "pkg_extras="
+if %install_test_extra%==true set "pkg_extras=[test]"
+if %wheel%==true (
+  rem Install open-DARTS FROM the wheel just built. This avoids rebuilding the
+  rem project from source (so no isolated-pip / platformdirs crash), while normal
+  rem build isolation stays enabled for dependency resolution, so any dependency
+  rem that must build from an sdist gets its own build backend as usual.
+  for %%f in (dist\*.whl) do set "wheel_file=%%f"
+  python -m pip install "!wheel_file!!pkg_extras!" >> make_wheel.log
 ) else (
-  python -m pip install . >> make_wheel.log
+  rem No wheel was built (e.g. a local run without -w): install from the source
+  rem tree with build isolation disabled, for the same platformdirs reason above.
+  rem setuptools>=70 and wheel must already be present in the active environment.
+  python -m pip install --upgrade setuptools wheel >> make_wheel.log
+  python -m pip install --no-build-isolation ".!pkg_extras!" >> make_wheel.log
 )
 
 if %phreeqc%==true (
