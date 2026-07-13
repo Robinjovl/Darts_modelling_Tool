@@ -278,14 +278,15 @@ if __name__ == '__main__':
     #cases += ['97_97_90'] # for thermal (doublet)
     #cases += ['71_1_66']  # 1 layer by Y; it is not correct to use this as it corresponds to plane-strain solution
 
-    #generate_mesh=True
+    #generate_mesh=True  # struct-like mesh generation
     generate_mesh=False  # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
 
     #cases += ['case_1']
     #cases += ['case_2']
     #cases += ['case_3']
     #cases += ['case_4']
-    cases += ['case_5']
+    #cases += ['case_5']
+    cases += ['no_damage_zone']
 
     #thermal = False
     thermal = True
@@ -303,7 +304,7 @@ if __name__ == '__main__':
     if not thermal:
         n_years = 1
     else:
-        n_years = 30
+        n_years = 1 #30
 
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
@@ -315,6 +316,10 @@ if __name__ == '__main__':
     if 'case_5' in cases:
         from gen_fault_msh import generate_3d_fault_mesh
         generate_3d_fault_mesh()
+
+    if 'no_damage_zone' in cases:
+        from gen_fault_msh_no_damage_zone import gen_fault_msh_no_damage_zone
+        gen_fault_msh_no_damage_zone()
 
     for case in cases:
         os.system("title thm_proxy: " + case + " PID=" + str(os.getpid())) # set the window title

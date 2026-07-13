@@ -1,18 +1,19 @@
 import gmsh
 import math
+import os
 
-def create_geo_with_api():
+def gen_fault_msh_no_damage_zone():
     gmsh.initialize()
     gmsh.model.add("geo_model")
     geo = gmsh.model.geo
     
     # Parameters
-    W = 4500.0
-    T = 1000.0          # Total thickness (3000 - 2000)
+    W = 15000.
+    T = 5000.0          # Total thickness (5000 - 0)
     a = 50.0
-    D = 2500.0          # Mid-depth (average of 2000 and 3000)
-    Z1 = D - T / 2      # Top = 2000
-    Z2 = D + T / 2      # Bottom = 3000
+    D = 2500.0          # Mid-depth (average of 0 and 5000)
+    Z1 = D - T / 2      # Top = 0
+    Z2 = D + T / 2      # Bottom = 5000
     b = 140.0
     Lplus = b + 200.0
     phi = -60 * math.pi / 180
@@ -87,7 +88,7 @@ def create_geo_with_api():
     
     for surf in surfaces_to_extrude:
         # Extrude in Y direction: {0, 4500, 0} with 15 layers
-        extruded = geo.extrude([(2, surf)], 0, 4500, 0, [15], recombine=True)
+        extruded = geo.extrude([(2, surf)], 0, W, 0, [15], recombine=True)
         all_extruded_entities.extend(extruded)
         surface_extrusion_map[surf] = extruded
         print(f"Surface {surf} extruded to: {extruded}")
@@ -227,11 +228,8 @@ def create_geo_with_api():
     occ = gmsh.model.occ
     xw, yw = 2250.0, 1800.0
     r_well = 0.10
-    Z_top, Z_bot = 2000.0, 3000.0
+    Z_top, Z_bot = Z1, Z2   # well spans the full mesh z-range
     lc_fine, lc_coarse = 50.0, 300.0
-
-    # --- create cylinder in OCC space ---
-    well_cyl = occ.addCylinder(xw, yw, Z_top, 0, 0, (Z_bot - Z_top), r_well)
 
     # retrieve the OCC surfaces explicitly before any merge
     occ_surfaces = gmsh.model.getEntities(2)
@@ -279,14 +277,6 @@ def create_geo_with_api():
         gmsh.model.mesh.field.setNumbers(204, "FieldsList", [202, 203])
         gmsh.model.mesh.field.setAsBackgroundMesh(204)
 
-    # physical tags (isolated, not touching your main model)
-    WELL_VOLUME  = 19001
-    WELL_SURFACE = 19002
-    gmsh.model.addPhysicalGroup(3, [well_cyl], WELL_VOLUME)
-    gmsh.model.setPhysicalName(3, WELL_VOLUME, "WELL_VOLUME")
-    if well_side_faces:
-        gmsh.model.addPhysicalGroup(2, well_side_faces, WELL_SURFACE)
-        gmsh.model.setPhysicalName(2, WELL_SURFACE, "WELL_SURFACE")
 
     print("Well and refinement successfully defined (geometry untouched).")
     # occ.synchronize()
@@ -294,6 +284,7 @@ def create_geo_with_api():
 
 
     # Generate mesh
+    gmsh.option.setNumber("Mesh.MshFileVersion", 2.1)
     gmsh.model.mesh.generate(3)
     gmsh.model.mesh.removeDuplicateNodes()
 
@@ -301,9 +292,11 @@ def create_geo_with_api():
     # Set MSH file version
     gmsh.option.setNumber("Mesh.MshFileVersion", 2.1)
     # Save mesh
-    gmsh.write("2d_to_3d_without_damage_zone.msh")
+    gmsh.write(os.path.join('meshes', 'no_damage_zone', "mesh.msh"))
     
     gmsh.finalize()
+    
+    print('meshing is finished')
 
 if __name__ == "__main__":
-    create_geo_with_api()
+    gen_fault_msh_no_damage_zone()
