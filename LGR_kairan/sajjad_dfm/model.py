@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
 import numpy as np
-from darts.engines import ms_well, sim_params, value_vector
-from darts.models.cicd_model import CICDModel
+from darts.engines import ms_well, sim_params, value_vector, well_control_iface
+from darts.models.darts_model import DartsModel
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.enthalpy import EnthalpyBasic
@@ -23,9 +23,9 @@ from dartsflash.mixtures import DARTSFlash, VLAq
 
 @dataclass
 class AquiferCO2InjectionConfig:
-    p_init: float = 200.0
+    p_init: float | None = None
     t_reservoir: float = 356.15
-    z_co2_init: float = 1e-8
+    z_co2_init: float = 1e-4
 
     nx: int = 20
     ny: int = 10
@@ -52,29 +52,23 @@ class AquiferCO2InjectionConfig:
     well_temp_grad: float = 0.03
 
     injection_source_pressure: float = 60.5
-    injection_source_temperature: float = 295.15
+    injection_source_temperature: float = 313.15
     target_gas_mass_rate_kg_day: float = 1e6
-    target_production_mass_rate_kg_day: float = 1e6
+    producer_whp_bar: float = 1.0
     injection_ramp_up_period: float = 0.01 / (24.0 * 60.0)
-    production_ramp_up_period: float = 0.01 / (24.0 * 60.0)
 
     first_ts: float = 1e-7
     mult_ts: float = 2.0
-    max_ts: float = 1e-5
+    max_ts: float = 1e-4
     runtime: float = 0.05
     tol_newton: float = 1e-3
     tol_linear: float = 1e-4
     it_newton: int = 12
     it_linear: int = 60
 
-# from darts.pipes.viz.plot_live import DartsModelWithLivePlots
-# class Model(DartsModelWithLivePlots):
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, config: AquiferCO2InjectionConfig | None = None):
         super().__init__()
-
-        # self.live_plot_config.enable_well_res_profiles = True
-        # self.live_plot_config.plot_till_this_res_cell = 50
 
         self.config = config or AquiferCO2InjectionConfig()
         self.zero = 1e-8
@@ -167,7 +161,7 @@ class Model(CICDModel):
                 pc.output_props[f"x{comp}_in_{phase}_mass"] = lambda ph=phase_idx, comp_i=comp_idx: pc.x_mass[ph, comp_i]
 
         self.physics = Compositional(self.components, self.phases, self.timer,
-                                     state_spec=Compositional.StateSpecification.PT, n_points=200, min_p=1.0,
+                                     state_spec=Compositional.StateSpecification.PT, n_points=2000, min_p=0.1,
                                      max_p=400.0, min_z=0.0, max_z=1.0, epsilon_z=epsilon, min_t=273.15,
                                      max_t=473.15, extrapolation_flag=True)
         self.physics.add_property_region(pc)
@@ -181,8 +175,10 @@ class Model(CICDModel):
         producer_geometry = PipeGeometry("P1", segments_lengths, cfg.well_diameter, inclination_angle=0.0)
         injector_perforated_segment = injector_geometry.num_segments - 2
         producer_perforated_segment = producer_geometry.num_segments - 2
+        self._set_initial_pressure_from_producer_whp(producer_geometry, producer_perforated_segment)
         injector_initial_conditions = self._make_equilibrated_initial_well_conditions("I1", injector_geometry, injector_perforated_segment)
-        producer_initial_conditions = self._make_equilibrated_initial_well_conditions("P1", producer_geometry, producer_perforated_segment)
+        producer_initial_conditions = self._make_equilibrated_initial_well_conditions("P1", producer_geometry, producer_perforated_segment,
+                                                                                     "L", np.array([cfg.z_co2_init, 1.0 - cfg.z_co2_init]))
 
         self.wells = {
             "I1": Pipe("I1", injector_geometry, self.physics, self.reservoir, injector_initial_conditions,
@@ -201,9 +197,31 @@ class Model(CICDModel):
                                        well_diameter=producer_geometry.pipe_ID, well_indexD=None,
                                        with_peaceman_for_dfm_well=True)
 
-    def _make_equilibrated_initial_well_conditions(self, well_name: str, geometry: PipeGeometry,
-                                                   perforated_segment_local: int) -> LinearAmbientTemperature:
+    def _producer_wellhead_temperature(self, geometry: PipeGeometry, perforated_segment_local: int) -> float:
+        perforation_depth = geometry.TVD_segments[perforated_segment_local] - geometry.TVD_segments[0]
+        return float(self.config.t_reservoir - self.config.well_temp_grad * perforation_depth)
+
+    def _set_initial_pressure_from_producer_whp(self, geometry: PipeGeometry, perforated_segment_local: int) -> None:
         cfg = self.config
+        initial_conditions = LinearAmbientTemperature(
+            pipe_name="P1", pipe_geom=geometry, physics=self.physics, pipe_head_pressure=cfg.producer_whp_bar,
+            pipe_head_temperature=self._producer_wellhead_temperature(geometry, perforated_segment_local),
+            temp_grad=cfg.well_temp_grad, pipe_head_segment_index=0,
+            initial_conditions_dict={
+                "phases_names": ["L"],
+                "phases_compositions": [[cfg.z_co2_init, 1.0 - cfg.z_co2_init]],
+                "pipe_intervals": [[0.0, geometry.pipe_length]],
+            }
+        )
+        states = np.asarray(initial_conditions.initial_conditions_vector, dtype=float).reshape(-1, self.physics.n_vars)
+        cfg.p_init = float(states[perforated_segment_local, 0])
+        self.producer_initial_target_whp = float(cfg.producer_whp_bar)
+        self.derived_initial_reservoir_pressure = float(cfg.p_init)
+
+    def _make_equilibrated_initial_well_conditions(self, well_name: str, geometry: PipeGeometry, perforated_segment_local: int,
+                                                   phase_name: str = "G", phase_composition: np.ndarray | None = None) -> LinearAmbientTemperature:
+        cfg = self.config
+        initial_phase_composition = np.array([1.0 - self.zero, self.zero]) if phase_composition is None else np.asarray(phase_composition)
 
         def make_initial_conditions(reference_pressure: float, reference_temperature: float):
             return LinearAmbientTemperature(
@@ -211,8 +229,8 @@ class Model(CICDModel):
                 pipe_head_temperature=reference_temperature, temp_grad=cfg.well_temp_grad,
                 pipe_head_segment_index=geometry.num_segments - 1,
                 initial_conditions_dict={
-                    "phases_names": ["G"],
-                    "phases_compositions": [[1.0 - self.zero, self.zero]],
+                    "phases_names": [phase_name],
+                    "phases_compositions": [initial_phase_composition.tolist()],
                     "pipe_intervals": [[0.0, geometry.pipe_length]],
                 }
             )
@@ -244,7 +262,12 @@ class Model(CICDModel):
             well.init_state = value_vector(self.wells[well.name].initial_conditions.initial_conditions_vector)
 
     def set_well_controls(self):
-        return
+        self.set_producer_whp_control(self.config.producer_whp_bar)
+
+    def set_producer_whp_control(self, target_whp_bar: float):
+        producer = self.reservoir.get_well("P1")
+        self.physics.set_well_controls(wctrl=producer.control, control_type=well_control_iface.BHP,
+                                       is_inj=False, target=float(target_whp_bar))
 
     def _injection_source_composition(self) -> np.ndarray:
         return np.array([1.0 - self.zero, self.zero], dtype=float)
@@ -254,11 +277,6 @@ class Model(CICDModel):
         inj_comp = self._injection_source_composition()
         mw_avg = float(np.dot(np.asarray(pc.Mw[: pc.nc_fl]), inj_comp[: pc.nc_fl]))
         return float(self.config.target_gas_mass_rate_kg_day / mw_avg)
-
-    def _target_production_molar_rate_kmol_day(self, composition: np.ndarray) -> float:
-        pc = self.physics.property_containers[0]
-        mw_avg = float(np.dot(np.asarray(pc.Mw[: pc.nc_fl]), composition[: pc.nc_fl]))
-        return -float(self.config.target_production_mass_rate_kg_day / mw_avg)
 
     def _make_injection_source_sinks(self, well_name: str, well_geometry: PipeGeometry,
                                      segment_idx: int) -> dict[str, RampUpRate]:
@@ -274,28 +292,6 @@ class Model(CICDModel):
                                                int(segment_idx), "inflow", self._target_gas_molar_rate_kmol_day(),
                                                float(cfg.injection_ramp_up_period), inj_fluid_props)
         }
-
-    def _current_production_segment_state(self, global_segment_idx: int) -> np.ndarray:
-        if not hasattr(self.physics, "engine"):
-            return np.array([self.config.p_init, self.config.z_co2_init, self.config.t_reservoir], dtype=float)
-        states = np.asarray(self.physics.engine.X, dtype=float).reshape(-1, self.physics.n_vars)
-        return states[global_segment_idx].copy()
-
-    def _make_production_rhs(self, t: float | None, rhs_flux: np.ndarray) -> None:
-        well = self.reservoir.get_well("P1")
-        source_segment = 0
-        global_segment_idx = int(well.well_head_idx) + source_segment
-        state = self._current_production_segment_state(global_segment_idx)
-        pc = self.physics.property_containers[0]
-        _, _, composition = pc.get_state(state)
-        ramp_period = float(self.config.production_ramp_up_period)
-        ramp = min(float(t or 0.0) / ramp_period, 1.0) if ramp_period > 0 else 1.0
-        prod_rate = ramp * self._target_production_molar_rate_kmol_day(composition)
-        component_rate = prod_rate * composition[: pc.nc_fl]
-        mw_avg = np.sum(np.asarray(pc.Mw[: pc.nc_fl]) * composition[: pc.nc_fl])
-        prod_fluid_energy = pc.compute_total_enthalpy(state) + self.reservoir.mesh.cell_spe[global_segment_idx] * mw_avg
-        block_start = global_segment_idx * self.physics.n_vars
-        rhs_flux[block_start : block_start + self.physics.n_vars] += -np.append(component_rate, prod_rate * prod_fluid_energy)
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         source = self.wells["I1"].source_sinks["IsenthalpicInjection"]
@@ -315,7 +311,6 @@ class Model(CICDModel):
         rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
         block_start = global_segment_idx * self.physics.n_vars
         rhs_flux[block_start : block_start + self.physics.n_vars] = -np.append(component_rate, inj_energy_rate)
-        self._make_production_rhs(t, rhs_flux)
         return rhs_flux
 
     def initial_well_state_table(self, well_name: str) -> list[dict[str, float]]:
