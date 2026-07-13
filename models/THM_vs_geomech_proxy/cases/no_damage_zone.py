@@ -14,8 +14,8 @@ def input_data_no_damage_zone():
     #idata.rock.permx = idata.rock.permy = idata.rock.permz = 1000.0  # [mD]
 
     # reservoir geometry (overrides defaults: rsv_top=2000, rsv_bottom=2400, rsv_xy=1000)
-    idata.other.rsv_top = 2000.0    # [m]
-    idata.other.rsv_bottom = 2400.0  # [m]
+    idata.other.rsv_top = 2550.0    # [m]
+    idata.other.rsv_bottom = 2600.0  # [m]
     idata.other.rsv_xy = 10000. # [m]
 
     # well placement (overrides defaults: doublet_shift=500, cell_shift=0)
@@ -35,10 +35,10 @@ def input_data_no_damage_zone():
     _set_wells(idata)
     _set_mesh_tags(idata)
     
-    idata.other.prod_well_coords = [idata.other.rsv_xy/2., idata.other.rsv_xy/2. + idata.other.doublet_shift,
+    idata.other.prod_well_coords = [idata.other.rsv_xy/2. - 1000., idata.other.rsv_xy/2. + idata.other.doublet_shift,
             idata.other.rsv_top, idata.other.rsv_bottom]  # [X, Y, Z1, Z2]
 
-    idata.other.inj_well_coords = [idata.other.rsv_xy/2., idata.other.rsv_xy/2. - idata.other.doublet_shift,
+    idata.other.inj_well_coords = [idata.other.rsv_xy/2. - 1000., idata.other.rsv_xy/2. - idata.other.doublet_shift,
             idata.other.rsv_top, idata.other.rsv_bottom]  # [X, Y, Z1, Z2]
 
     idata.other.points_xy = []  # no black reference line for case_1

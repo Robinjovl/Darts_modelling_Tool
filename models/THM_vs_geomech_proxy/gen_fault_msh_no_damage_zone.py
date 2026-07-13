@@ -3,7 +3,7 @@ import math
 import os
 
 
-def gen_fault_msh_no_damage_zone():
+def gen_fault_msh_no_damage_zone(fault=False):
     gmsh.initialize()
     gmsh.model.add("test_3D_fault")
     geo = gmsh.model.geo
@@ -102,7 +102,7 @@ def gen_fault_msh_no_damage_zone():
     TOP = 995      # z = Z1 (shallowest)
     BOT = 996      # z = Z2 (deepest)
 
-    #FAULT = 9991  # is not used for now
+    FAULT = 9991  
     
     RESERVOIR = 99991
     OVERBURDEN = 99992
@@ -156,8 +156,8 @@ def gen_fault_msh_no_damage_zone():
     # Fault surfaces = internal, non-boundary, non-horizontal-reservoir surfaces.
     fault_surfaces = [tag for dim, tag in all_surfaces
                       if tag not in boundary_surfaces and tag not in reservoir_hz_surfaces]
-    if fault_surfaces:
-        pass #gmsh.model.addPhysicalGroup(2, fault_surfaces, tag=FAULT, name="FAULT")
+    if fault and fault_surfaces:
+        gmsh.model.addPhysicalGroup(2, fault_surfaces, tag=FAULT, name="FAULT")
 
     # ------------------------------------------------------------
     # Volume physical groups (robust: read volumes from the extrusion map).
@@ -231,14 +231,24 @@ def gen_fault_msh_no_damage_zone():
 
     # ------------------------------------------------------------
     gmsh.option.setNumber("Mesh.MshFileVersion", 2.1)
-    gmsh.write("test_3d_fault_shifted.geo_unrolled")
+    #gmsh.write("test_3d_fault_shifted.geo_unrolled")
     gmsh.model.mesh.generate(3)
     gmsh.model.mesh.removeDuplicateNodes()
 
-    gmsh.write(os.path.join('meshes', 'no_damage_zone', "mesh.msh"))
+    mesh_filename = "mesh.msh"
+    if fault:
+        mesh_filename = "mesh_fault.msh"
+    mesh_filename = os.path.join('meshes', 'no_damage_zone', mesh_filename)
+
+    gmsh.write(mesh_filename)
     gmsh.finalize()
     print('mesh generation is completed')
 
 
 if __name__ == '__main__':
-    gen_fault_msh_no_damage_zone()
+    # mesh.msh        : simulation mesh (no fault physical group)
+    # mesh_fault.msh  : same geometry with the fault surfaces tagged FAULT,
+    #                   used for post-processing (see fault.py)
+    gen_fault_msh_no_damage_zone(fault=False)
+    gen_fault_msh_no_damage_zone(fault=True)
+    gen_fault_msh_no_damage_zone(fault=True)
