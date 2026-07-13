@@ -10,9 +10,31 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 
 class Model(CICDModel):
-    def __init__(self):
+    def __init__(
+        self,
+        nx: int = 100,
+        inj_rate: float = 200.0,
+        prd_bhp: float = 350.0,
+        inj_bhp_limit: float = 450.0,
+        max_ts: float = 5.0,
+        permx=300,
+        poro=0.2,
+        initial_pressure: float = 400.0,
+        initial_water: float = 1e-8,
+        injection_water: float = 1.0 - 1e-8,
+    ):
         # call base class constructor
         super().__init__()
+        self.nx = int(nx)
+        self.inj_rate = float(inj_rate)
+        self.prd_bhp = float(prd_bhp)
+        self.inj_bhp_limit = float(inj_bhp_limit)
+        self.max_ts = float(max_ts)
+        self.permx = permx
+        self.poro = poro
+        self.initial_pressure = float(initial_pressure)
+        self.initial_water = float(initial_water)
+        self.injection_water = float(injection_water)
 
         # measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -20,14 +42,14 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=5, runtime=300, tol_newton=1e-3, tol_linear=1e-6)
+        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=self.max_ts, runtime=300, tol_newton=1e-3, tol_linear=1e-6)
 
         self.timer.node["initialization"].stop()
 
     def set_reservoir(self):
-        nx = 100
-        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=10.0, dy=10.0, dz=1,
-                                         permx=300, permy=300, permz=300, poro=0.2, hcap=0, rcond=0, depth=100)
+        self.reservoir = StructReservoir(self.timer, nx=self.nx, ny=1, nz=1, dx=10.0, dy=10.0, dz=1,
+                                         permx=self.permx, permy=self.permx, permz=self.permx, poro=self.poro,
+                                         hcap=0, rcond=0, depth=100)
         return
 
     def set_wells(self):
@@ -43,8 +65,8 @@ class Model(CICDModel):
         components = ["w", "o"]
         phases = ["wat", "oil"]
 
-        self.inj = value_vector([zero])
-        self.ini = value_vector([1 - zero])
+        self.inj = value_vector([self.injection_water])
+        self.ini = value_vector([self.initial_water])
 
         property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon)
 
@@ -67,7 +89,7 @@ class Model(CICDModel):
         return
 
     def set_initial_conditions(self):
-        input_distribution = {self.physics.vars[0]: 400.,
+        input_distribution = {self.physics.vars[0]: self.initial_pressure,
                               self.physics.vars[1]: self.ini[0],
                               }
         return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
@@ -78,12 +100,12 @@ class Model(CICDModel):
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
-                                               is_inj=True, target=200., phase_name='oil', inj_composition=self.inj)
+                                               is_inj=True, target=self.inj_rate, phase_name='wat', inj_composition=self.inj)
                 self.physics.set_well_controls(wctrl=w.constraint, control_type=well_control_iface.BHP,
-                                               is_inj=True, target=450., inj_composition=self.inj)
+                                               is_inj=True, target=self.inj_bhp_limit, inj_composition=self.inj)
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=False, target=350.)
+                                               is_inj=False, target=self.prd_bhp)
 
 
 class ModelProperties(PropertyContainer):
