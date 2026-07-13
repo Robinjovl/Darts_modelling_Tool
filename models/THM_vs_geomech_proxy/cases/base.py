@@ -187,12 +187,12 @@ def _set_wells(idata):
 def _set_mesh_tags(idata):
     idata.mesh.bnd_tags = {}
     tags = idata.mesh.bnd_tags
-    tags["BND_X-"] = 991
+    tags["BND_X-"] = 991 
     tags["BND_X+"] = 992
     tags["BND_Y-"] = 993
     tags["BND_Y+"] = 994
-    tags["BND_Z-"] = 995
-    tags["BND_Z+"] = 996
+    tags["BND_Z-"] = 995   # TOP
+    tags["BND_Z+"] = 996   # BOTTOM
 
     idata.mesh.matrix_tags = list(idata.other.matrix_tags)
     idata.mesh.tags = idata.mesh.bnd_tags.copy()

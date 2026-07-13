@@ -22,8 +22,10 @@ def input_data_no_damage_zone():
     idata.other.doublet_shift = 500.0  # [m]
     #idata.other.cell_shift = 500.0     # [m]
 
-    # mesh: Gmsh physical tags: matrix, outer
-    idata.other.matrix_tags = (99991, 99992)
+    # mesh: Gmsh physical tags: rsv, overburden, underburden
+    idata.other.matrix_tags = (99991, 99992, 99993)
+
+    #idata.other.fault = (9991)
 
     # case_2 and case_3 inherit this, so all three cases share one mesh
     idata.other.mesh_dir = 'no_damage_zone'
@@ -50,17 +52,17 @@ def input_data_no_damage_zone():
     non_rsv_poro = 0.001
     non_rsv_perm = 0.001  # [mD]
 
-    idata.rock.porosity = np.array([rsv_poro, non_rsv_poro])
+    idata.rock.porosity = np.array([rsv_poro, non_rsv_poro, non_rsv_poro])
 
-    perm = np.array([rsv_perm,non_rsv_perm,  non_rsv_perm])  # isotropic perm per tag
+    perm = np.array([rsv_perm, non_rsv_perm,  non_rsv_perm])  # isotropic perm per tag
     idata.rock.permx = idata.rock.permy = perm
     idata.rock.permz = perm * 0.1  # vertical perm is 10x lower
 
     hcap_sand  = 2450.0  # [kJ/m3/K]
     hcap_shale = 2300.0  # [kJ/m3/K]
-    idata.rock.heat_capacity = np.array([hcap_sand, hcap_shale,  hcap_shale, hcap_sand, hcap_sand, hcap_sand])
+    idata.rock.heat_capacity = np.array([hcap_sand, hcap_shale, hcap_shale])
 
     rcond_sand  = 3.0 * 86.4  # [kJ/m/day/K]
     rcond_shale = 2.2 * 86.4  # [kJ/m/day/K]
-    idata.rock.thermal_conductivity = np.array([rcond_sand, rcond_shale, rcond_shale, rcond_sand,rcond_sand, rcond_sand])
+    idata.rock.thermal_conductivity = np.array([rcond_sand, rcond_shale, rcond_shale])
     return idata
