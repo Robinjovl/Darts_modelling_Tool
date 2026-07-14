@@ -154,7 +154,7 @@ if %errorlevel%==0 (
 
 where conda >nul 2>&1
 if errorlevel 1 (
-  echo Warning: 'conda' command not found; please install Reaktoro manually \(conda install -c conda-forge reaktoro\).
+  echo Warning: 'conda' command not found; please install Reaktoro manually via 'conda install -c conda-forge reaktoro'.
   exit /b 0
 )
 
