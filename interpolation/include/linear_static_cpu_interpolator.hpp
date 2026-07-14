@@ -8,27 +8,30 @@
 /**
  * Static piecewise linear interpolator
  *
- * @tparam index_t index type used for supporting point indexing
+ * Vertices are int32-native (base vertex_t); the dense point storage is addressed by a
+ * uint64 mixed-radix index (get_index_from_vertex).
+ *
  * @tparam N_DIMS The number of dimensions in paramter space
  * @tparam N_OPS The number of operators to be interpolated
  */
-template <typename index_t, int N_DIMS, int N_OPS>
-class linear_static_cpu_interpolator : public linear_cpu_interpolator_base<index_t, N_DIMS, N_OPS>
+template <int N_DIMS, int N_OPS>
+class linear_static_cpu_interpolator : public linear_cpu_interpolator_base<N_DIMS, N_OPS>
 {
 public:
+    using typename linear_cpu_interpolator_base<N_DIMS, N_OPS>::vertex_t;
     /**
-     * @brief Construct the interpolator with specified parametrization space
+     * @brief Construct the interpolator with a finite dense grid (origin, step, points).
      *
      * @param[in] supporting_point_evaluator      Object used to compute operators values at supporting points
-     * @param[in] axes_points                     Number of supporting points (minimum 2) along axes
-     * @param[in] axes_min                        Minimum value for each axis
-     * @param[in] axes_max                        Maximum for each axis
+     * @param[in] axes_origin                     Grid origin (lower corner) for each axis
+     * @param[in] axes_step                       Cell size for each axis
+     * @param[in] axes_points                     Number of supporting points (minimum 2) along each axis
      * @param[in] _use_barycentric_interpolation  Flag to turn on barycentric interpolation on Delaunay triangulation
      */
     linear_static_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
+                                   const std::vector<double> &axes_origin,
+                                   const std::vector<double> &axes_step,
                                    const std::vector<int> &axes_points,
-                                   const std::vector<double> &axes_min,
-                                   const std::vector<double> &axes_max,
                                    bool _use_barycentric_interpolation);
 
     /**
@@ -52,14 +55,14 @@ private:
      * @param[in] index Index of the supporting point in the storage
      * @param[out] vertex The supporting point's index along each axis
      */
-    void get_vertex_from_index(index_t index, std::array<int, N_DIMS> &vertex);
+    void get_vertex_from_index(uint64_t index, vertex_t &vertex);
     /**
      * @brief Get the operator values at the given supporting point using static storage
      *
      * @param[in] vertex The indexes of coordinates the given supporting point along axes
      * @param[out] values The values of operators at a given point
      */
-    void get_supporting_point(const std::array<int, N_DIMS> &vertex, std::array<double, N_OPS> &values) override;
+    void get_supporting_point(const vertex_t &vertex, std::array<double, N_OPS> &values) override;
 };
 
 #include "linear_static_cpu_interpolator.tpp"

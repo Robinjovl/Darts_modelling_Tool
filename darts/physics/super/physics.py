@@ -1,4 +1,5 @@
 import warnings
+from collections.abc import Iterable
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -9,19 +10,23 @@ from darts.physics.base.operators_base import (
     ThermalVarOperator,
     WellCtrlOperators,
 )
-from darts.physics.base.physics_base import PhysicsBase
+from darts.physics.base.physics_base import HistoryField, PhysicsBase
 from darts.physics.super.operator_evaluator import ReservoirOperators, WellOperators
 
 
 class Compositional(PhysicsBase):
     """
-    This is the Physics class for Compositional simulation.
+    Physics class for compositional simulation.
 
-    It includes:
-    - Creating Reservoir, Well, Rate and Property operators and interpolators for P-z or P-T-z compositional simulation
-    - Initializing the :class:`super_engine`
-    - Setting well controls (rate, bhp)
-    - Defining initial and boundary conditions
+    Creates reservoir, well, rate and property operators and interpolators for
+    P-z or P-T-z compositional simulation; initializes the :class:`super_engine`;
+    sets well controls; and defines initial / boundary conditions.
+
+    The OBL grid is defined by ``axes_step`` (per-axis cell size) and an optional
+    ``axes_origin``. Defaults are pressure = 1 bar, composition axes = ``epsilon_z``,
+    and thermal axis = 273.15 K for P-T or 0 for P-H.
+    The adaptive multi-index-keyed interpolator caches cells on demand wherever
+    the solver lands; there is no fixed grid window.
     """
 
     def __init__(
@@ -29,66 +34,41 @@ class Compositional(PhysicsBase):
         components: list,
         phases: list,
         timer: timer_node,
-        n_points: int,
-        min_p: float,
-        max_p: float,
-        min_z: float,
-        max_z: float,
-        epsilon_z: float,
+        axes_step: list[float],
+        axes_origin: list[float] = None,
+        epsilon_z: float = 1e-9,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
-        min_t: float = None,
-        max_t: float = None,
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
-        axes_min=None,
-        axes_max=None,
-        n_axes_points=None,
+        history_fields: Iterable[HistoryField] | None = None,
     ):
         """
-        This is the constructor of the Compositional Physics class.
-
-        It defines the OBL grid for P-z or P-T-z compositional simulation.
-        Use axes_min, axes_max, n_axes_points to define non-uniform OBL properties for different compositions.
-
-        :param components: List of components
-        :type components: list
-        :param phases: List of phases
-        :type phases: list
-        :param timer: Timer object
-        :type timer: :class:`darts.engines.timer_node`
-        :param n_points: Number of OBL points along axes
-        :type n_points: int
-        :param min_p, max_p: Minimum, maximum pressure
-        :type min_p, max_p: float
-        :param min_z, max_z: Minimum, maximum composition
-        :type min_z, max_z: float
-        :param epsilon_z: Epsilon value for composition OBL axes (min_axis_z, max_axis_z)
-        :type epsilon_z: float
-        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps (minimum offset of solution state from
-                                    OBL bounds, calculated as min_sim_z/max_sim_z in engine), default is 10
-        :type sim_eps_multiplier: float
-        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
-        :type extrapolation_flag: bool
-        :param min_t, max_t: Minimum, maximum temperature, default is None
-        :type min_t, max_t: float
-        :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
-        :type state_spec: StateSpecification
-        :param cache: Switch to cache operator values
-        :type cache: bool
-        :param axes_min: (optional) Minimum bounds of OBL axes
-        :type axes_min: (optional) list or np.ndarray
-        :param axes_max: (optional) Maximum bounds of OBL axes
-        :type axes_max: (optional) list or np.ndarray
-        :param n_axes_points: (optional) Number of points over OBL axes
-        :type n_axes_points: (optional) list or np.ndarray
+        :param components: List of components.
+        :param phases: List of phases.
+        :param timer: Timer object.
+        :param axes_step: Per-axis cell size [p_step, z_step_1, ..., z_step_{nc-1}, t_step?].
+            For ``extrapolation_flag=True`` the composition steps must all be equal.
+        :param axes_origin: Per-axis grid origin. Defaults match the open-DARTS unit
+            conventions: pressure = 1 bar, compositions = ``epsilon_z`` (composition
+            floor, avoids the simplex boundary), thermal axis = 273.15 K for
+            ``state_spec=PT`` or 0 for ``state_spec=PH`` (enthalpy reference depends on
+            the EOS — pass an explicit ``axes_origin`` to override).
+        :param epsilon_z: Composition-axis offset (default 1e-9).
+        :param sim_eps_multiplier: Multiplier on ``epsilon_z`` to obtain ``sim_eps``.
+        :param extrapolation_flag: Enable extrapolation logic (z[last] < 0 if nc >= 3).
+        :param state_spec: P (default), PT, or PH.
+        :param cache: Cache supporting points to disk between runs.
+        :param history_fields: (optional) List of :class:`HistoryField` descriptors declaring
+                               auxiliary OBL axes (e.g. ``sg_max`` for Killough hysteresis).
+                               Pass ``None`` or an empty list for standard drainage-only
+                               behaviour.
         """
-        # Define nc, nph and (iso)thermal
         nc = len(components)
         nph = len(phases)
         self.thermal = state_spec > PhysicsBase.StateSpecification.P
 
-        # Define state variables and OBL axes: pressure, nc-1 components and possibly temperature/enthalpy
+        # State variables: pressure, nc-1 components, optional thermal var.
         variables = ["pressure"] + components[:-1]
         if self.thermal:
             variables += (
@@ -98,88 +78,62 @@ class Compositional(PhysicsBase):
             )
 
         n_vars = len(variables)
-        # Number of operators = NE /*acc*/ + NE * NP /*flux*/ + NP * /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ + NE /*kinetic*/
-        # + 2 * NP /*gravpc*/ + 1 /*poro*/ + NP /*LAMBDA*/ + NP /*SAT*/ + NP /*enthalpy*/
-        # + 2 /*temperature and pressure*/
-        # = NE * (2 * nph + 2) + 6 * nph + 3
-
+        # NE * (2 * nph + 2) + 7 * nph + 3
         n_ops = n_vars * (2 * nph + 2) + 7 * nph + 3
 
-        # axes_min
-        if axes_min is None:
-            axz_min = (
-                [min_z + epsilon_z for i in range(nc - 1)]
-                if np.isscalar(min_z)
-                else [min_z[i] + epsilon_z for i in range(nc - 1)]
-            )
-            if self.thermal:
-                axes_min = [min_p] + axz_min + [min_t]
-            else:
-                axes_min = [min_p] + axz_min
+        assert len(axes_step) == n_vars, (
+            f"axes_step must have {n_vars} entries, got {len(axes_step)}"
+        )
+        assert sim_eps_multiplier > 1, (
+            "sim_eps_multiplier must be > 1 for consistent OBL axes / solution clipping"
+        )
 
-        # axes_max
-        if axes_max is None:
-            axz_max = (
-                [max_z - (nc - 1) * epsilon_z for i in range(nc - 1)]
-                if np.isscalar(min_z)
-                else [max_z[i] - (nc - 1) * epsilon_z for i in range(nc - 1)]
-            )
+        if axes_origin is None:
+            # Sensible defaults matching open-DARTS unit conventions:
+            #   pressure        → 1 bar
+            #   compositions    → epsilon_z (composition-axis floor)
+            #   thermal axis (when state_spec > P):
+            #     PT → 273.15 K (0 °C, conventional standard temperature)
+            #     PH → 0        (enthalpy reference is EOS-specific; override per case)
+            axes_origin = [1.0] + [epsilon_z] * (nc - 1)
             if self.thermal:
-                axes_max = [max_p] + axz_max + [max_t]
-            else:
-                axes_max = [max_p] + axz_max
-
-        # n_axes_points
-        if n_axes_points is None:
-            n_axes_points = index_vector([n_points] * n_vars)
-        else:
-            n_axes_points = index_vector(n_axes_points)
+                if state_spec == PhysicsBase.StateSpecification.PT:
+                    axes_origin.append(273.15)
+                else:
+                    axes_origin.append(0.0)
+        assert len(axes_origin) == n_vars
 
         self.extrapolation_flag = extrapolation_flag
-        self.dz = (
-            (axes_max[1] - axes_min[1]) / (n_axes_points[1] - 1) if nc > 1 else None
-        )
-        if self.extrapolation_flag:
-            # ASSERT EQUAL DZ FOR EACH COMPOSITION AXIS
+        self.dz = axes_step[1] if nc > 1 else None
+        if extrapolation_flag and nc > 1:
             for i in range(nc - 1):
-                assert (
-                    np.abs(
-                        (axes_max[i + 1] - axes_min[i + 1]) / (n_axes_points[i + 1] - 1)
-                        - self.dz
-                    )
-                    < 1e-15
-                ), (
-                    "To use extrapolation logic, dz should be equal along all compositional axes"
+                assert abs(axes_step[1 + i] - self.dz) < 1e-15, (
+                    "extrapolation requires equal dz across all composition axes"
                 )
 
-        assert sim_eps_multiplier > 1, (
-            "Multiplier for epsilon must be greater than 1 to have consistent "
-            "OBL axes/solution vector in engine"
-        )
-
-        # Call PhysicsBase constructor
+        # HistoryField descriptors are appended to reservoir / well interpolator axes by
+        # PhysicsBase while remaining outside the Newton unknown vector.
+        resolved_history_fields = list(history_fields or [])
         super().__init__(
             state_spec=state_spec,
             variables=variables,
             components=components,
             phases=phases,
             n_ops=n_ops,
-            axes_min=axes_min,
-            axes_max=axes_max,
-            sim_eps=epsilon_z * sim_eps_multiplier,
-            n_axes_points=n_axes_points,
             timer=timer,
+            axes_step=list(axes_step),
+            axes_origin=list(axes_origin),
+            sim_eps=epsilon_z * sim_eps_multiplier,
             cache=cache,
+            history_fields=resolved_history_fields,
         )
 
     def set_engine(self, discr_type: str = "tpfa", platform: str = "cpu"):
         """
-        Function to set :class:`engine_super` object.
+        :class:`engine_super` factory.
 
-        :param discr_type: Type of discretization, 'tpfa' (default) or 'mpfa'
-        :type discr_type: str
-        :param platform: Switch for CPU/GPU engine, 'cpu' (default) or 'gpu'
-        :type platform: str
+        :param discr_type: 'tpfa' (default) or 'mpfa'.
+        :param platform: 'cpu' (default) or 'gpu'.
         """
         if discr_type == "mpfa":
             if self.thermal:
@@ -194,9 +148,9 @@ class Compositional(PhysicsBase):
 
     def set_operators(self):
         """
-        Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
-        and a :class:`PropertyOperator` for the evaluation of properties.
+        Set operator objects: :class:`ReservoirOperators` per region, :class:`WellOperators`
+        for well segments, :class:`WellCtrlOperators` for well controls, and a
+        :class:`PropertyOperator` for property evaluation.
         """
         for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(
@@ -334,6 +288,8 @@ class Compositional(PhysicsBase):
             values = np.resize(np.asarray(values), mesh.n_res_blocks)
             np.asarray(mesh.initial_state)[ith_var :: self.n_vars] = values
 
+        self.populate_mesh_history_defaults(mesh)
+
     def set_initial_conditions_from_array(
         self, mesh: conn_mesh, input_distribution: dict
     ):
@@ -432,6 +388,11 @@ class Compositional(PhysicsBase):
                 else input_distribution[self.vars[c + 1]][:]
             )
 
+        # Broadcast HistoryField.default values into mesh.Xhistory_bounds so boundary cells
+        # (MPFA / mech engines with n_bounds > 0) start from the configured default instead
+        # of the engine's zero fallback in build_Xop.
+        self.populate_mesh_history_defaults(mesh)
+
     def evaluate_flash(
         self,
         state_spec: dict = None,
@@ -461,6 +422,12 @@ class Compositional(PhysicsBase):
             "Flash evaluator should be DARTSFlash object to utilize this feature"
         )
 
+        # Number of base sampling points per axis for the flash pre-evaluation sweep.
+        # This only controls how finely the flash is pre-tabulated over the OBL axes; it
+        # is independent of the (now unbounded) OBL grid. obl_interval_multiplier coarsens
+        # the sweep to match the user's OBL step multiplier.
+        flash_sweep_n = 1024
+
         # Set ranges of state specification
         state_vars = [self.vars[0], self.vars[-1]] if self.thermal else [self.vars[0]]
         state_spec = state_spec if state_spec is not None else {}
@@ -473,11 +440,9 @@ class Compositional(PhysicsBase):
                 state_spec[spec]
                 if state_spec[spec] is not None
                 else (
-                    np.linspace(
-                        self.axes_min[spec_idx],
-                        self.axes_max[spec_idx],
-                        int(self.n_axes_points[spec_idx] / obl_interval_multiplier),
-                    )
+                    np.arange(flash_sweep_n // obl_interval_multiplier)
+                    * (self.axes_step[spec_idx] * obl_interval_multiplier)
+                    + self.axes_origin[spec_idx]
                 )
             )
 
@@ -504,11 +469,9 @@ class Compositional(PhysicsBase):
                 compositions[comp]
                 if compositions[comp] is not None
                 else (
-                    np.linspace(
-                        self.axes_min[i + 1],
-                        self.axes_max[i + 1],
-                        int(self.n_axes_points[i + 1] / obl_interval_multiplier),
-                    )
+                    np.arange(flash_sweep_n // obl_interval_multiplier)
+                    * (self.axes_step[i + 1] * obl_interval_multiplier)
+                    + self.axes_origin[i + 1]
                 )
             )
 

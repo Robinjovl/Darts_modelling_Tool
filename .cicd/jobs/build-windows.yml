@@ -7,6 +7,11 @@
     variables:
         CONDA_ENV: "darts-win"
         CONDA_BIN_PATH: 'D:\miniconda3\condabin'
+        # MINIMAL drops the linear adaptive interpolator from the compile set,
+        # cutting cc1plus / cl.exe memory enough that the windows CI runners do
+        # not OOM on the heavy py_operator_set_interpolator_*_part*.cpp TUs.
+        # build_darts_cmake.bat forwards OD_CMAKE_ARGS to cmake.
+        OD_CMAKE_ARGS: "-D OPENDARTS_INTERPOLATOR_PROFILE=MINIMAL"
     script:
         # Load MS Build Tools environment to the powershell
         - D:\BuildTools\build_vars.ps1

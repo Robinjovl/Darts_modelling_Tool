@@ -4,6 +4,7 @@ setlocal enabledelayedexpansion
 REM Read input arguments ---------------------------------------------
 set clean_mode=false
 set testing=false
+set install_test_extra=false
 set wheel=false
 set bos_solvers_artifact=false
 set bos_solvers_dir=""
@@ -22,7 +23,7 @@ set option=%1
 shift
 if "%option%"=="-h" goto :help_info
 if "%option%"=="-c" set clean_mode=true & goto parse_args
-if "%option%"=="-t" set testing=true & goto parse_args
+if "%option%"=="-t" set testing=true & set install_test_extra=true & goto parse_args
 if "%option%"=="-w" set wheel=true & goto parse_args
 if "%option%"=="-m" set MT=true & goto parse_args
 if "%option%"=="-G" set GPU=true & goto parse_args
@@ -44,6 +45,11 @@ if %bos_solvers_artifact%==true (
     set testing=false
   )
 )
+if not %config%==Release if not %config%==Debug if not %config%==RelWithDebInfo (
+  echo Error: Invalid build configuration "%config%". Valid options: Release, Debug, RelWithDebInfo.
+  exit /b 1
+)
+
 REM ODLS version does not support OpenMP yet
 if %iter_solvers%==false (
   if %GPU%==true (
@@ -62,6 +68,7 @@ echo    fetch bos_solvers_artifact = %bos_solvers_artifact%
 echo    config = %config%
 echo    gpu = %GPU%
 echo    testing = %testing%
+echo    install test dependencies = %install_test_extra%
 echo    generate python wheel = %wheel%
 echo    Multi thread = %MT%
 echo    Phreeqc support = %phreeqc%
@@ -184,11 +191,36 @@ if %wheel%==true (
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
-  python -m pip install --upgrade build > make_wheel.log || goto :error
-  python -m build --wheel >> make_wheel.log || goto :error
+  rem The C++ extensions are already compiled and installed by cmake above, so
+  rem building the wheel is pure Python packaging. Build it with PEP 517 build
+  rem isolation DISABLED (--no-isolation): the isolated build spawns a nested
+  rem "pip --python <venv>" that, on the conda Windows CI runner, loses conda's
+  rem DLL directory from PATH -> ctypes fails to load libffi -> pip's vendored
+  rem platformdirs falls back to reading a HKCU registry key the service account
+  rem lacks -> FileNotFoundError [WinError 2]. The build backend (setuptools>=70,
+  rem wheel) is installed here in the active environment so the non-isolated
+  rem build can find it.
+  python -m pip install --upgrade build setuptools wheel > make_wheel.log || goto :error
+  python -m build --wheel --no-isolation >> make_wheel.log || goto :error
   echo -- Python wheel generated!
 )
-python -m pip install . >> make_wheel.log
+
+set "pkg_extras="
+if %install_test_extra%==true set "pkg_extras=[test]"
+if %wheel%==true (
+  rem Install open-DARTS FROM the wheel just built. This avoids rebuilding the
+  rem project from source (so no isolated-pip / platformdirs crash), while normal
+  rem build isolation stays enabled for dependency resolution, so any dependency
+  rem that must build from an sdist gets its own build backend as usual.
+  for %%f in (dist\*.whl) do set "wheel_file=%%f"
+  python -m pip install "!wheel_file!!pkg_extras!" >> make_wheel.log
+) else (
+  rem No wheel was built (e.g. a local run without -w): install from the source
+  rem tree with build isolation disabled, for the same platformdirs reason above.
+  rem setuptools>=70 and wheel must already be present in the active environment.
+  python -m pip install --upgrade setuptools wheel >> make_wheel.log
+  python -m pip install --no-build-isolation ".!pkg_extras!" >> make_wheel.log
+)
 
 if %phreeqc%==true (
   call :ensure_reaktoro_conda || goto :error
@@ -256,13 +288,13 @@ echo    Script to install opendarts on Windows.
 echo USAGE:
 echo    -h : displays this help menu.
 echo    -c : cleans up build to prepare a new fresh build. Default: don't clean
-echo    -t : Enable testing: ctest of solvers. Default: don't test
+echo    -t : Enable testing: ctest of solvers and install open-darts[test]. Default: don't test
 echo    -w : Enable generation of python wheel. Default: false
 echo    -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true
 echo    -r : Skip building thirdparty libraries (if you have them already compiled). Default: false
 echo    -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false
 echo    -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).
-echo    -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug
+echo    -d MODE   : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo
 echo    -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4
 echo    -p : Enable Phreeqc + Reaktoro (requires Conda). Default: false
 goto :eof
@@ -301,8 +333,8 @@ goto :reaktoro_install
 for /f %%v in ('python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"') do set "py_version=%%v"
 echo Warning: Reaktoro on conda-forge requires Python ^>=3.10 and ^<3.13, but the current environment has Python !py_version!.
 echo.
-echo To install Reaktoro, create a compatible conda environment (e.g., Python 3.12):
-echo   conda create -n darts-rkt python=3.12 -y
+echo To install Reaktoro, create a compatible conda environment (e.g., Python 3.11):
+echo   conda create -n darts-rkt python=3.11 -y
 echo   conda activate darts-rkt
 echo.
 echo Then re-run this script with the -p flag.

@@ -258,7 +258,7 @@ def run(m, specs):
 #%%
 
 """Define realization ID"""
-Nt = 1
+Nt = 10
 Dt = 365
 nx = 840//4
 nz = 120//4
@@ -308,7 +308,7 @@ else:
         # SPE11b
         {'check_rates': True, 'temperature': None, '1000years': 10, 'RHS': True,
              'components': ['H2O', 'CO2'], 'inj_stream': [0.001, .999, 283.15], 'inj_rate': 3024,
-                 'nx': nx, 'nz': nz, 'ny': 1, 'dispersion': False, 'output_dir': 'MY_OUTPUT_V2',
+                 'nx': nx, 'nz': nz, 'ny': 1, 'dispersion': False, 'output_dir': 'output',
                      'post_process': None, 'platform': platform},
 
         # # SPE11c (this model uses msh files compiled with the code made by the repo)

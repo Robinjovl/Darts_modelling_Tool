@@ -222,7 +222,7 @@ class UnstructReservoir:
             # Store volumes and depth to single numpy arrays:
             self.unstr_discr.store_volume_all_cells()
             self.unstr_discr.store_depth_all_cells()
-            self.unstr_discr.store_centroid_all_cells()
+            self.unstr_discr.store_centroids_all_cells()
 
     def set_boundary_conditions(self, physical_tags):
         bc_flow = BoundaryCondition()

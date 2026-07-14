@@ -33,8 +33,8 @@ PY
     py_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
     echo "Warning: Reaktoro on conda-forge requires Python >=3.10 and <3.13, but the current environment has Python $py_version." >&2
     echo "" >&2
-    echo "To install Reaktoro, create a compatible conda environment (e.g., Python 3.12):" >&2
-    echo "  conda create -n darts-rkt python=3.12 -y" >&2
+    echo "To install Reaktoro, create a compatible conda environment (e.g., Python 3.11):" >&2
+    echo "  conda create -n darts-rkt python=3.11 -y" >&2
     echo "  conda activate darts-rkt" >&2
     echo "" >&2
     echo "Then re-run this script with --with-deps flag." >&2

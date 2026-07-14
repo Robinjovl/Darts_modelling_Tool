@@ -16,14 +16,14 @@ Help_Info()
   echo "USAGE: "
   echo "   -h : displays this help menu."
   echo "   -c : cleans up build to prepare a new fresh build. Default: don't clean"
-  echo "   -t : Enable testing: ctest of solvers. Default: don't test"
+  echo "   -t : Enable testing: ctest of solvers and install open-darts[test]. Default: don't test"
   echo "   -w : Enable generation of python wheel. Default: false"
   echo "   -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true"
   echo "   -G : Enable GPU build. Warning: Requires GPU bos solvers. Default: false"
   echo "   -r : Skip building thirdparty libraries (if you have them already compiled). Default: false"
   echo "   -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
   echo "   -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
-  echo "   -d MODE   : Configuration for C++ code [Release, Debug]. Example: -d Debug"
+  echo "   -d MODE   : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo"
   echo "   -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
   echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
   echo "   -p        : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
@@ -63,8 +63,8 @@ PY
     py_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
     echo "Warning: Reaktoro on conda-forge requires Python >=3.10 and <3.13, but the current environment has Python $py_version."
     echo ""
-    echo "To install Reaktoro, create a compatible conda environment (e.g., Python 3.12):"
-    echo "  conda create -n darts-rkt python=3.12 -y"
+    echo "To install Reaktoro, create a compatible conda environment (e.g., Python 3.11):"
+    echo "  conda create -n darts-rkt python=3.11 -y"
     echo "  conda activate darts-rkt"
     echo ""
     echo "Then re-run this script with the -p flag."
@@ -83,6 +83,7 @@ PY
 # Read input arguments ---------------------------------------------------------
 clean_mode=false  # Set mode to clean up, cleans build to prepare for fresh new build
 testing=false     # Whether to enable the testing (ctest) of solvers.
+install_test_extra=false # Whether to install the Python package with the test extra.
 wheel=false       # Whether to generate python wheel.
 bos_solvers_artifact=false # Fetch the bos_solvers library from artifacts (for CI/CD purposes)
 iter_solvers=false # Iterative linear solvers, will be set below depending on -a and -b flags
@@ -104,7 +105,8 @@ while getopts ":chtwmrab:d:j:g:Gpv" option; do
         c) # Clean mode
            clean_mode=true;;
         t) # Testing
-           testing=true;;
+           testing=true
+           install_test_extra=true;;
         w) # Generate wheel
            wheel=true;;
         m) # Multi-thread
@@ -132,6 +134,11 @@ while getopts ":chtwmrab:d:j:g:Gpv" option; do
            valgrind=true;;
     esac
 done
+
+if [[ "$config" != "Release" && "$config" != "Debug" && "$config" != "RelWithDebInfo" ]]; then
+    echo "Error: Invalid build configuration \"$config\". Valid options: Release, Debug, RelWithDebInfo."
+    exit 1
+fi
 
 # Amend possible contradictory inputs
 if [ "$iter_solvers" == true ] && [ "$testing" == true ]; then
@@ -315,13 +322,24 @@ echo -e "CMake options: $cmake_options\n" # Report to user the CMake options
 cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 
 # Build and install openDARTS
-# Under valgrind (-O2 -g) the auto-generated super_part*.cpp interpolator TUs
-# can OOM-kill g++ at high -j. Pre-build the interpolators target with reduced
-# parallelism; the subsequent full build skips already-compiled objects.
-if [[ "$valgrind" == true && "$NT" -gt 1 ]]; then
-    HEAVY_NT=$(( NT / 2 ))
-    echo "-- Pre-building interpolators target with -j $HEAVY_NT (valgrind OOM mitigation)"
-    make interpolators -j $HEAVY_NT 2>> ../make_darts.log
+# Under valgrind (-O2 -g) the auto-generated super_part*.cpp / rates_part*.cpp /
+# all_part*.cpp interpolator TUs peak 2-4 GB resident per cc1plus due to massive
+# template stamping (recursive_exposer over MAX_DIMS x N_OPS combinations). On a
+# typical 8 GB CI runner with -j 8 the OOM killer truncates cc1plus mid-write,
+# leaving the assembler choking on a partial pseudo-op (".uleb12" instead of
+# ".uleb128"). The mitigation has two parts:
+#   1. Pre-build interpolators with -j 2 max — each cc1plus instance gets enough
+#      headroom regardless of NT or runner memory profile.
+#   2. The follow-up full-build pass at -j NT then only links / copies the already
+#      compiled interpolator objects; no large recompiles happen there.
+# Also pass -l so make backs off if the system load average climbs (extra safety
+# when the runner is shared).
+if [[ "$valgrind" == true ]]; then
+    HEAVY_NT=2
+    if [[ "$NT" -lt "$HEAVY_NT" ]]; then HEAVY_NT="$NT"; fi
+    LOAD_LIMIT=$(( NT / 2 > 0 ? NT / 2 : 1 ))
+    echo "-- Pre-building interpolators target with -j $HEAVY_NT -l $LOAD_LIMIT (valgrind OOM mitigation)"
+    make interpolators -j "$HEAVY_NT" -l "$LOAD_LIMIT" 2>&1 | tee -a ../make_darts.log
 fi
 cmake --build . --target install --parallel "$NT" 2>&1 | tee -a ../make_darts.log
 
@@ -351,8 +369,12 @@ if [[ "$wheel" == true ]]; then
     echo -e "-- Python wheel generated! \n"
 fi
 
-# installing python package with -e flag for interactive install (changes will be applied live)
-python3 -m pip install . 2>&1 | tee -a make_wheel.log
+# install the Python package; -t keeps pytest and future test dependencies in one place
+install_target="."
+if [[ "$install_test_extra" == true ]]; then
+    install_target=".[test]"
+fi
+python3 -m pip install "$install_target" 2>&1 | tee -a make_wheel.log
 
 if [[ "$phreeqc" == true ]]; then
     ensure_reaktoro_conda
