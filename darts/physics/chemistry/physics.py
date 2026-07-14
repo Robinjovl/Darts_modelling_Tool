@@ -1,4 +1,4 @@
-from darts.engines import timer_node, value_vector
+from darts.engines import timer_node
 from darts.physics.base.operators_base import (
     PropertyOperators as BasePropertyOperators,
 )
@@ -25,37 +25,25 @@ class ElementBasedReactiveFlow(Compositional):
         timer: timer_node,
         elements: list[str],
         phases: list[str],
-        n_points: int | list[int],
-        axes_min: list[float],
-        axes_max: list[float],
-        epsilon_z: float,
+        axes_step: list[float],
+        axes_origin: list[float] = None,
+        epsilon_z: float = 1e-9,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
         cache: bool = True,
     ):
         """
         Constructor for ElementBasedReactiveFlow class.
-        :param timer: Timer object
-        :type timer: timer_node
-        :param elements: List of elements
-        :type elements: list
-        :param phases: List of phases
-        :type phases: List
-        :param n_points: Number of points
-        :type n_points: int
-        :param axes_min: Minimum axes values
-        :type axes_min: list
-        :param axes_max: Maximum axes values
-        :type axes_max: list
-        :param epsilon_z: Epsilon value for composition OBL axes (min_axis_z, max_axis_z)
-        :type epsilon_z: float
-        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps (minimum offset of solution state from
-                                    OBL bounds, calculated as min_sim_z/max_sim_z in engine), default is 10
-        :type sim_eps_multiplier: float
-        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
-        :type extrapolation_flag: bool
-        :param cache: Cache flag
-        :type cache: bool
+
+        :param timer: Timer object.
+        :param elements: List of elements.
+        :param phases: List of phases.
+        :param axes_step: Per-axis cell size [p_step, z_step_1, ..., z_step_{n_el-1}].
+        :param axes_origin: Per-axis grid origin (defaults via Compositional).
+        :param epsilon_z: Composition axis offset (default 1e-9).
+        :param sim_eps_multiplier: Multiplier on epsilon_z to obtain sim_eps.
+        :param extrapolation_flag: Enable extrapolation logic for z[last] < 0 (n_el >= 3).
+        :param cache: Cache supporting points to disk between runs.
         """
         vars = ["p"] + elements[:-1]
         self.initial_operators = {}
@@ -64,14 +52,8 @@ class ElementBasedReactiveFlow(Compositional):
         super().__init__(
             components=elements,
             phases=phases,
-            n_points=n_points,
-            min_p=axes_min[0],
-            max_p=axes_max[0],
-            min_z=axes_min[1],
-            max_z=1 - axes_min[1],
-            axes_min=axes_min,
-            axes_max=axes_max,
-            n_axes_points=n_points,
+            axes_step=axes_step,
+            axes_origin=axes_origin,
             epsilon_z=epsilon_z,
             sim_eps_multiplier=sim_eps_multiplier,
             extrapolation_flag=extrapolation_flag,
@@ -127,6 +109,21 @@ class ElementBasedReactiveFlow(Compositional):
         super().add_property_region(property_container, region)
         self.output_property_containers[region] = output_property_container
 
+    def _parallel_wrap_targets(self):
+        """
+        Chemistry has reservoir/initial/property per region, plus singular
+        well_ctrl_operators and thermal_var_operator. There is no separate
+        well_operators (acc_flux_w_itor aliases acc_flux_itor[0]).
+        """
+        targets = []
+        for region in self.regions:
+            targets.append(('reservoir_operators', region))
+            targets.append(('initial_operators', region))
+            targets.append(('property_operators', region))
+        targets.append(('well_ctrl_operators', None))
+        targets.append(('thermal_var_operator', None))
+        return targets
+
     def set_interpolators(
         self,
         platform='cpu',
@@ -159,23 +156,18 @@ class ElementBasedReactiveFlow(Compositional):
         :type parallel_evaluation: bool
         :param n_workers: Number of worker processes (default: os.cpu_count())
         :type n_workers: int
-        :param evaluator_factory_hook: Callable (region) -> factory for parallel evaluation
+        :param evaluator_factory_hook: Callable ``(attribute, region) -> factory`` for parallel evaluation
         :type evaluator_factory_hook: callable
         """
-        # Optionally wrap reservoir_operators with ParallelEvaluator
+        # Optionally wrap every chemistry evaluator with ParallelEvaluator via a
+        # single shared pool. Chemistry has no separate well_operators (well uses
+        # acc_flux_itor[0]) but does have initial_operators per region.
         if parallel_evaluation:
-            if evaluator_factory_hook is None:
-                raise ValueError(
-                    "parallel_evaluation=True requires evaluator_factory_hook"
-                )
-            from darts.physics.base.parallel_evaluator import ParallelEvaluator
-
-            for region in self.regions:
-                factory = evaluator_factory_hook(region)
-                self.reservoir_operators[region] = ParallelEvaluator(
-                    evaluator_factory=factory,
-                    n_workers=n_workers,
-                )
+            self._wrap_evaluators_parallel(
+                self._parallel_wrap_targets(),
+                evaluator_factory_hook,
+                n_workers,
+            )
 
         # Create actual accumulation and flux interpolator:
         self.acc_flux_itor = {}
@@ -186,8 +178,6 @@ class ElementBasedReactiveFlow(Compositional):
                 evaluator=self.reservoir_operators[region],
                 timer_name='reservoir interpolation',
                 n_ops=self.n_ops,
-                axes_min=self.axes_min,
-                axes_max=self.axes_max,
                 platform=platform,
                 algorithm=itor_type,
                 mode=itor_mode,
@@ -201,8 +191,6 @@ class ElementBasedReactiveFlow(Compositional):
                 evaluator=self.initial_operators[region],
                 timer_name=f'comp {region} interpolation',
                 n_ops=len(self.initial_operators[region].props_name),
-                axes_min=self.axes_min,
-                axes_max=self.axes_max,
                 platform=platform,
                 algorithm=itor_type,
                 mode=itor_mode,
@@ -217,8 +205,6 @@ class ElementBasedReactiveFlow(Compositional):
                 evaluator=self.property_operators[region],
                 timer_name=f'property {region} interpolation',
                 n_ops=len(self.property_operators[region].props_name),
-                axes_min=self.axes_min,
-                axes_max=self.axes_max,
                 platform=platform,
                 algorithm=itor_type,
                 mode=itor_mode,
@@ -231,8 +217,6 @@ class ElementBasedReactiveFlow(Compositional):
         self.well_ctrl_itor, n_well_ctrl_ops = self.create_interpolator(
             self.well_ctrl_operators,
             n_ops=self.well_ctrl_operators.n_ops,
-            axes_min=self.axes_min,
-            axes_max=self.axes_max,
             timer_name='well controls interpolation',
             platform=platform,
             algorithm=itor_type,
@@ -243,8 +227,6 @@ class ElementBasedReactiveFlow(Compositional):
         self.thermal_var_itor, n_thermal_var_ops = self.create_interpolator(
             self.thermal_var_operator,
             n_ops=self.thermal_var_operator.n_ops,
-            axes_min=value_vector(self.PT_axes_min),
-            axes_max=value_vector(self.PT_axes_max),
             timer_name='well initialization',
             platform=platform,
             algorithm=itor_type,

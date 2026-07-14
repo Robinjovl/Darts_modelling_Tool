@@ -2,6 +2,9 @@
 #define B7CB6645_948A_4B50_A7D5_980BEFD16090
 
 #include <vector>
+#include <cstdio>
+#include <cstddef>
+#include <cstdint>
 #include "interpolation_config.h"
 
 
@@ -173,6 +176,38 @@ public:
    virtual int get_n_ops() const { return 0; };
 
    /**
+     * @brief Cumulative count of per-axis cell indices that overflowed int32 and were
+     *        saturation-clamped, across the whole run (all interpolation batches).
+     *
+     * Nonzero means at least one queried state fell so far outside the (unbounded) OBL
+     * grid that its signed multi-index would not fit in int32_t — typically a diverging
+     * or oscillating Newton step. Interpolation still proceeds on the clamped index, so
+     * affected cells may be inaccurate. The state lives on this shared base so both the
+     * CPU (interpolator_base) and GPU (multilinear_gpu_interpolator_base) interpolator
+     * hierarchies get one identical counter, getter and warning. Exposed for
+     * diagnostics/tests; the human-facing warning is emitted (once) by
+     * report_axis_index_overflows() in every build mode.
+     */
+   uint64_t get_axis_overflow_count() const { return axis_overflow_count; }
+
+   /**
+     * @brief Fold one interpolation batch's per-axis-index overflow tally into the
+     *        cumulative counter and, on the first nonzero batch, emit a single host
+     *        warning (identical in Debug and Release, CPU and GPU). Call once per batch
+     *        (per Newton iteration) from the derived interpolate routine AFTER the hot
+     *        loop — never per cell — so detection stays branchless on the hot path and
+     *        reporting stays off it. axes_origin/axes_step are passed in because this
+     *        shared base does not own the grid (each hierarchy keeps its own copy).
+     *
+     * @param batch_overflows number of clamped per-axis overflows in the just-finished batch
+     * @param axes_origin     per-axis grid origin, for the diagnostic message
+     * @param axes_step       per-axis cell size, for the diagnostic message
+     */
+   void report_axis_index_overflows(uint64_t batch_overflows,
+                                    const std::vector<double> &axes_origin,
+                                    const std::vector<double> &axes_step);
+
+   /**
      * @brief Compute operators values and their gradients for every specified state
      *
      * @param[in]   states        Array of coordinates in parameter space, where operators to be evaluated
@@ -206,7 +241,56 @@ public:
    virtual int evaluate_with_derivatives_d(int n_states_idxs, double *state_d, int *states_idxs_d,
                                            double *values_d, double *derivatives_d) = 0;
 #endif
+
+protected:
+   uint64_t axis_overflow_count = 0; ///< Cumulative per-axis int32 cell-index overflows (saturation-clamped), all batches
+   bool axis_overflow_warned = false; ///< Whether the once-per-interpolator overflow warning has already been emitted
 };
+
+// Defined inline in the header (not a .cpp) on purpose: the CPU and GPU interpolator
+// modules are separate link targets with disjoint base hierarchies, so no single
+// translation unit is guaranteed to be linked into both. Inlining puts the (host-only)
+// definition in whichever TU instantiates an interpolator, sidestepping that. It is
+// only ever called from host code, so nvcc treats it as a plain host function.
+inline void operator_set_gradient_evaluator_iface::report_axis_index_overflows(
+    uint64_t batch_overflows,
+    const std::vector<double> &axes_origin,
+    const std::vector<double> &axes_step)
+{
+   // Off the hot path: called once per interpolation batch (Newton iteration) with the
+   // count accumulated branchlessly across that batch's cells (OpenMP reduction on CPU,
+   // per-thread register + atomicAdd on GPU). This is what informs the user of overflow
+   // in Release, which the former Debug-only per-call warner did not.
+   if (batch_overflows == 0)
+      return;
+
+   axis_overflow_count += batch_overflows;
+
+   // Throttle to a single detailed warning per interpolator lifetime to avoid flooding
+   // stderr when a run diverges over many iterations; the running total stays available
+   // via get_axis_overflow_count() for callers that want to keep watching.
+   if (axis_overflow_warned)
+      return;
+   axis_overflow_warned = true;
+
+   fprintf(stderr,
+           "OBL warning: %llu per-axis cell index(es) fell outside int32_t this batch and were\n"
+           "  clamped to [INT32_MIN, INT32_MAX]. This usually means a diverging/oscillating Newton\n"
+           "  step drove the state far outside the OBL grid, or axes_step is too small. Interpolation\n"
+           "  continues on the saturated (clamped) index, so affected cells may be inaccurate.\n",
+           static_cast<unsigned long long>(batch_overflows));
+
+   fprintf(stderr, "  axes_origin = [");
+   for (std::size_t d = 0; d < axes_origin.size(); ++d)
+      fprintf(stderr, "%s%g", d ? ", " : "", axes_origin[d]);
+   fprintf(stderr, "]\n  axes_step   = [");
+   for (std::size_t d = 0; d < axes_step.size(); ++d)
+      fprintf(stderr, "%s%g", d ? ", " : "", axes_step[d]);
+   fprintf(stderr, "]\n"
+           "  Move axes_origin closer to the operating point or widen axes_step; if the model\n"
+           "  genuinely needs >2.1e9 cells along one axis, widen cell_key_t::idx to int64_t.\n"
+           "  (Further overflow warnings suppressed; query get_axis_overflow_count() for the total.)\n");
+}
 
 /**
  * @brief A class for evaluation of operators values and their gradients on host

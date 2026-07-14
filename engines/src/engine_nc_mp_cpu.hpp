@@ -42,7 +42,7 @@ public:
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   const uint8_t get_n_vars() override { return N_VARS; };
-  const uint8_t get_n_ops() { return N_OPS; };
+  const uint16_t get_n_ops() { return N_OPS; };
   const uint8_t get_n_comps() { return NC; };
   const uint8_t get_z_var_idx() { return Z_VAR; };
 
@@ -64,8 +64,6 @@ public:
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
-  /// @brief vector of variables in the current timestep provided for operator evaluation
-  std::vector<value_t> Xop;
   void extract_Xop();
 
 public:

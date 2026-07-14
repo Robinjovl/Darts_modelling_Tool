@@ -82,7 +82,7 @@ class SingleAmbientTemperature:
         pc = self.physics.property_containers[0]
         for phase_name in initial_conditions_dict["phases_names"]:
             assert phase_name in pc.phases_name[: pc.np_fl], (
-                "Initial pipe phase names must be mobile phases."
+                f'The specified phase "{phase_name}" is not in the list of mobile phases defined in the physics!'
             )
 
         for phase_composition in initial_conditions_dict["phases_compositions"]:
@@ -280,7 +280,7 @@ class LinearAmbientTemperature:
         pc = self.physics.property_containers[0]
         for phase_name in initial_conditions_dict["phases_names"]:
             assert phase_name in pc.phases_name[: pc.np_fl], (
-                "Initial pipe phase names must be mobile phases."
+                f'The specified phase "{phase_name}" is not in the list of mobile phases defined in the physics!'
             )
 
         for phase_composition in initial_conditions_dict["phases_compositions"]:

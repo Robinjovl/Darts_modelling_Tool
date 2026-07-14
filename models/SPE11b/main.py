@@ -299,13 +299,13 @@ else:
         {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True,
             'components': ['H2O', 'CO2'], 'inj_stream': [0.01, 0.99, 283.15],
                 'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': 'OUTPUT',
-                    'post_process': None, 'platform': 'cpu'},
+                    'post_process': None, 'platform': platform},
 
         # restart model
         {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True,
             'components': ['H2O', 'CO2'], 'inj_stream': [0.01, 0.99, 283.15],
                 'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': 'OUTPUT',
-                    'post_process': 'POST', 'platform': 'cpu'},
+                    'post_process': 'POST', 'platform': platform},
     ]
 
 if __name__ == '__main__':
