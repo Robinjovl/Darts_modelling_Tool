@@ -10,7 +10,7 @@ import os
 import pickle
 
 # from model_b import Model, PorPerm, Corey, layer_props
-from model_b import Model
+from model import Model
 from darts.engines import redirect_darts_output, sim_params
 from darts.engines import well_control_iface
 
@@ -260,8 +260,8 @@ def run(m, specs):
 """Define realization ID"""
 Nt = 1
 Dt = 365
-nx = 840//4
-nz = 120//4
+nx = 840//5
+nz = 120//5
 zero = 1e-10
 
 if 0:
@@ -311,11 +311,11 @@ else:
                  'nx': nx, 'nz': nz, 'ny': 1, 'dispersion': False, 'output_dir': 'output',
                      'post_process': None, 'platform': platform},
 
-        # # SPE11c (this model uses msh files compiled with the code made by the repo)
-        # {'check_rates': False, 'temperature': None, '1000years': False, 'RHS': True,
-        #     'components': ['H2O', 'CO2'], 'inj_stream': [0., 1., 283.15], 'inj_rate': 50 * 24 * 60 * 60,
-        #         'nx': 50, 'nz': 50, 'ny': 10, 'dispersion': False, 'output_dir': 'SPE11c_results',
-        #             'post_process': None, 'platform': 'cpu'},
+        # SPE11c (this model uses msh files compiled with the code made by the repo)
+        {'check_rates': False, 'temperature': None, '1000years': False, 'RHS': True,
+            'components': ['H2O', 'CO2'], 'inj_stream': [0., 1., 283.15], 'inj_rate': 50 * 24 * 60 * 60,
+                'nx': 50, 'nz': 50, 'ny': 10, 'dispersion': False, 'output_dir': 'output_SPE11c',
+                    'post_process': None, 'platform': 'cpu'},
 
         # restart model
         # {'check_rates': True, 'temperature': None, '1000years': None, 'RHS': True,
@@ -328,7 +328,7 @@ if __name__ == '__main__':
     for specs in model_specs:
 
         """ set up output directory """
-        from model_b import build_output_dir
+        from model import build_output_dir
         if specs['output_dir'] is None:
             specs["output_dir"] = build_output_dir(specs)
         else:
