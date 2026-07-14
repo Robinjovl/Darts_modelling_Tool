@@ -258,7 +258,7 @@ def run(m, specs):
 #%%
 
 """Define realization ID"""
-Nt = 10
+Nt = 1
 Dt = 365
 nx = 840//4
 nz = 120//4
