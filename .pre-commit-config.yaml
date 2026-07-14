@@ -17,7 +17,7 @@ repos:
       - id: sync-agent-skills-check
         name: sync-agent-skills-check
         entry: python helper_scripts/sync_agent_skills.py --check
-        language: system
+        language: python
         pass_filenames: false
         always_run: true
 
