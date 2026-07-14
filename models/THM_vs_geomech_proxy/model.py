@@ -195,7 +195,7 @@ class Model(THMCModel):
         # RATE control
         self.idata.other.delta_p = None
         self.idata.other.wctrl_type = well_control_iface.MASS_RATE # mass or molar rate can be choosen here
-        self.idata.other.well_rate = 0.#2000. # [m^3/day]
+        self.idata.other.well_rate = 2000. # [m^3/day]
         self.idata.other.well_rate *= self.idata.fluid.density # [kg/day] unit depends on the type at the previous line
 
         self.idata.mesh.bnd_tags = {}
@@ -443,7 +443,7 @@ class Model(THMCModel):
 
 
     def set_boundary_conditions_after_initialization(self): # set well controls
-        #return
+        return  # for testing the pressure change
         """
         Class method called in the init() class method of parents class
         :return:
@@ -513,7 +513,7 @@ class Model(THMCModel):
             set_initial_conditions_from_depth_table(self=self.physics, mesh=self.reservoir.mesh, input_depth=init.depths,
                                                                  input_distribution=input_distribution,
                                                                  input_displacement=self.reservoir.u_init,
-                                                            depths=self.reservoir.depths[:self.reservoir.mesh.n_blocks])
+                                                            depths=np.asarray(self.reservoir.mesh.depth)[:self.reservoir.mesh.n_blocks])
         else:
             #self.reservoir.p_init[:] = 500  # uniform init pressure
             input_distribution = {'pressure': self.reservoir.p_init}
