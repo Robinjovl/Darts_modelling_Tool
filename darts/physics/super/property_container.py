@@ -140,6 +140,33 @@ class PropertyContainer(PropertyBase):
 
         self.output_props = {"sat0": lambda: self.sat[0]}
 
+    def check_properties(self):
+        """
+        Check consistency of input properties
+        """
+        # Check that all phases have a density/viscosity/diffusion/capillary pressure/relperm evaluator
+        # and enthalpy/conductivity evaluators in case of thermal
+        evs = [
+            self.density_ev,
+            self.viscosity_ev,
+            self.diffusion_ev,
+            self.capillary_pressure_ev,
+            self.rel_perm_ev,
+        ] + ([self.enthalpy_ev, self.conductivity_ev] if self.thermal else [])
+
+        for ev in evs:
+            assert np.all(
+                [
+                    phase in ev.keys() and ev[phase] is not None
+                    for phase in self.phases_name
+                ]
+            ), "Evaluator for phase missing"
+
+        for kinetic_ev in self.kinetic_rate_ev.items():
+            assert kinetic_ev is not None, "Evaluator for kinetic rate missing"
+        for energy_ev in self.energy_source_ev.items():
+            assert energy_ev is not None, "Energy evaluator missing"
+
     def validate_history_consistency(self) -> None:
         """Assert that every history-aware evaluator in this container that owns a
         :class:`~darts.physics.properties.hysteresis.KilloughLandModel` (or any other

@@ -259,6 +259,15 @@ class PhysicsBase:
         # interpolation state without touching the Newton system.
         self.history_fields: list[HistoryField] = list(history_fields or [])
 
+    def check_properties(self):
+        """
+        Assert all properties have been specified for each phase in each region
+
+        """
+        for region in self.regions:
+            assert self.property_containers[region].check_properties()
+        return
+
     @property
     def n_history(self) -> int:
         """
@@ -470,6 +479,12 @@ class PhysicsBase:
         # Set state specification in the engine
         self.set_state_spec(state_spec=self.state_spec)
 
+        # Run checks on Physics and PropertyContainer consistency:
+        # Assert all properties have been specified for each phase in each region
+        for region in self.regions:
+            self.property_containers[region].check_properties()
+
+        # Set operators and interpolators
         self.set_operators()
         self.set_interpolators(
             platform,
