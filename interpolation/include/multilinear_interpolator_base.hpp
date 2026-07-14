@@ -20,7 +20,9 @@
  * @tparam N_DIMS The number of dimensions in paramter space
  * @tparam N_OPS The number of operators to be interpolated
  */
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+// N_OPS widened to uint16_t at NC=30 / NP=3 thermal (super-engine N_OPS up to 273) —
+// a uint8_t template parameter would silently narrow point_data_t and operator-index arithmetic.
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 class multilinear_interpolator_base : public interpolator_base
 {
 public:
@@ -34,17 +36,30 @@ public:
   typedef typename std::array<index_t, N_VERTS> hypercube_points_index_t; ///< type for indexing vertexes of a hypercube
 
   /**
-     * @brief Construct the interpolator with specified parametrization space
+     * @brief Construct an unbounded interpolator parametrized by (origin, step).
+     *        Used by adaptive storage; the grid has no upper bound.
      *
      * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
-     * @param[in] axes_points               Number of supporting points (minimum 2) along axes
-     * @param[in] axes_min                  Minimum value for each axis
-     * @param[in] axes_max                  Maximum for each axis
+     * @param[in] axes_origin              Grid origin (lower corner) for each axis
+     * @param[in] axes_step                Cell size for each axis
      */
   multilinear_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
-                                const std::vector<int> &axes_points,
-                                const std::vector<double> &axes_min,
-                                const std::vector<double> &axes_max);
+                                const std::vector<double> &axes_origin,
+                                const std::vector<double> &axes_step);
+
+  /**
+     * @brief Construct a bounded interpolator with a finite dense grid.
+     *        Used by static storage; builds the flat mixed-radix multipliers.
+     *
+     * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
+     * @param[in] axes_origin              Grid origin (lower corner) for each axis
+     * @param[in] axes_step                Cell size for each axis
+     * @param[in] axes_points              Number of supporting points (minimum 2) along each axis
+     */
+  multilinear_interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
+                                const std::vector<double> &axes_origin,
+                                const std::vector<double> &axes_step,
+                                const std::vector<int> &axes_points);
 
   /**
      * @brief Get the number of dimensions in interpolation space
@@ -116,16 +131,27 @@ protected:
      * @param[in] hypercube_index index of hypercube
      * @return operator values at all vertices of the hypercube
      */
-  virtual const hypercube_data_t &get_hypercube_data(const index_t hypercube_index) = 0;
+  // Bounded (flat-index) hypercube accessor — used only by the dense static storage
+  // path (bounded interpolate_with_derivatives). Adaptive interpolators override the
+  // cell-key path and never call this, so it is non-pure: the adaptive subclass is no
+  // longer forced to implement a legacy integer-key shim.
+  virtual const hypercube_data_t &get_hypercube_data(const index_t /*hypercube_index*/)
+  {
+    static const hypercube_data_t empty{};
+    printf("error: bounded get_hypercube_data() called on an unbounded interpolator\n");
+    return empty;
+  };
 
-  // decalare a copy of parametrization parameters in value_t precision to perform maximum computations with this precision
-  const std::vector<value_t> axes_min_internal;      ///< minimum at each axis in value_t type
-  const std::vector<value_t> axes_max_internal;      ///< maximum of each axis in value_t type
+  // declare a copy of parametrization parameters in value_t precision to perform maximum computations with this precision
+  const std::vector<value_t> axes_origin_internal;   ///< grid origin at each axis in value_t type
   const std::vector<value_t> axes_step_internal;     ///< the distance between neighbor supporting points for each axis in value_t type
   const std::vector<value_t> axes_step_inv_internal; ///< inverse of step (to avoid division) in value_t type
 
-  std::vector<index_t> axis_point_mult;     ///< mult factor for each axis (for points) to compute global point index
-  std::vector<index_t> axis_hypercube_mult; ///< mult factor for each axis (for hypercubes) to compute global hypercubes index
+  // The following are populated only for bounded (static) grids; they stay empty for
+  // unbounded adaptive grids, whose hot path uses signed multi-index keys (cell_key_t).
+  std::vector<value_t> axes_max_internal;   ///< maximum of each axis in value_t type (bounded grids only)
+  std::vector<index_t> axis_point_mult;     ///< mult factor for each axis (for points) to compute global point index (bounded grids only)
+  std::vector<index_t> axis_hypercube_mult; ///< mult factor for each axis (for hypercubes) to compute global hypercubes index (bounded grids only)
 };
 
 // now include implementation of the templated class from tpp file

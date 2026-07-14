@@ -207,9 +207,12 @@ class Model(CICDModel):
         """ Activate physics """
         delta_volume = self.dx * self.dy * 10
         num_well_blocks = int(self.ny / 2)
+        # 1 p axis + (nc - 1) z axes
+        ax_step = [2.5] + [2.5e-3] * (len(components) - 1)
+        ax_origin = [1.0] + [epsilon] * (len(components) - 1)
         if custom_physics:  # custom_physics inherits operators and physics for regions with source term
             self.physics = CustomPhysics(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                         axes_step=ax_step, axes_origin=ax_origin, epsilon_z=epsilon,
                                          state_spec=state_spec, cache=0, volume=delta_volume, num_wells=num_well_blocks,
                                          extrapolation_flag=True)
         else:  # default physics adds mass source term to kinetic operator in regions with source term
@@ -217,7 +220,7 @@ class Model(CICDModel):
                             MassSource(0, 1000, delta_volume, num_well_blocks),
                             MassSource(2, 200, delta_volume, num_well_blocks)]
             self.physics = PhysicsBase(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                         axes_step=ax_step, axes_origin=ax_origin, epsilon_z=epsilon,
                                          state_spec=state_spec, cache=0, extrapolation_flag=True)
 
         for i in range(3):
@@ -480,15 +483,16 @@ class MassSource:
 
 
 class CustomPhysics(PhysicsBase):
-    def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, epsilon_z, min_t=-1, max_t=-1,
-                 state_spec = PhysicsBase.StateSpecification.P, cache=False, extrapolation_flag=True, volume=0, num_wells=0):
+    def __init__(self, components, phases, timer, axes_step, axes_origin=None, epsilon_z=1e-9,
+                 state_spec=PhysicsBase.StateSpecification.P, cache=False, extrapolation_flag=True,
+                 volume=0, num_wells=0):
 
         self.delta_volume = volume
         self.num_well_blocks = num_wells
 
-        super().__init__(components=components, phases=phases, timer=timer, n_points=n_points, min_p=min_p, max_p=max_p,
-                         min_z=min_z, max_z=max_z, epsilon_z=epsilon_z, min_t=min_t, max_t=max_t, state_spec=state_spec,
-                         cache=cache, extrapolation_flag=extrapolation_flag)
+        super().__init__(components=components, phases=phases, timer=timer,
+                         axes_step=axes_step, axes_origin=axes_origin, epsilon_z=epsilon_z,
+                         state_spec=state_spec, cache=cache, extrapolation_flag=extrapolation_flag)
 
     def set_operators(self):  # default definition of operators
         # Call base implementation

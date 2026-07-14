@@ -16,7 +16,7 @@ from darts.physics.properties.viscosity import MaoDuan2009
 
 
 class Model(CICDModel):
-    def __init__(self, n_points=128, iapws_physics: bool = True):
+    def __init__(self, iapws_physics: bool = True):
         # call base class constructor
         super().__init__()
 
@@ -25,7 +25,7 @@ class Model(CICDModel):
         self.set_reservoir()
 
         self.iapws_physics = iapws_physics
-        self.set_input_data(n_points)
+        self.set_input_data()
         self.set_physics()
 
         self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650, tol_newton=1e-2, tol_linear=1e-6,
@@ -74,7 +74,7 @@ class Model(CICDModel):
             self.reservoir.add_perforation("PRD", res_cell_idx=(iw[1], jw[1], k + 1),
                                            well_diameter=0.32, ms_epm=True)
 
-    def set_iapws_physics(self, n_points, min_p, max_p, min_t, max_t, cache=False):
+    def set_iapws_physics(self, p_step, p_origin, t_step, t_origin, cache=False):
         """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PT-flash.
 
         State spec is PT so the OBL grid axes are pressure and temperature, matching the
@@ -117,13 +117,13 @@ class Model(CICDModel):
         # output_props exposes derived T (K) via the property interpolator
         pc.output_props = {'temperature': lambda: pc.temperature}
 
+        # Single component (H2O) with state_spec=PT -> OBL axes are [pressure, temperature]
         self.physics = PhysicsBase(
             components, phases, self.timer,
             state_spec=PhysicsBase.StateSpecification.PT,
-            n_points=n_points,
-            min_p=min_p, max_p=max_p,
-            min_z=zero, max_z=1.0 - zero, epsilon_z=zero,
-            min_t=min_t, max_t=max_t,
+            axes_step=[p_step, t_step],
+            axes_origin=[p_origin, t_origin],
+            epsilon_z=zero,
             cache=cache,
         )
         self.physics.add_property_region(pc)
@@ -131,10 +131,11 @@ class Model(CICDModel):
 
     def set_physics(self):
         # Both legacy iapws_physics=True (Geothermal) and iapws_physics=False (GeothermalPH)
-        # branches now route through the compositional + IAPWS PH-flash helper.
-        self.set_iapws_physics(n_points=self.idata.obl.n_points,
-                               min_p=1., max_p=400.,
-                               min_t=273.15, max_t=575.)
+        # branches now route through the compositional + IAPWS PT-flash helper.
+        self.set_iapws_physics(p_step=self.idata.obl.p_step,
+                               p_origin=self.idata.obl.p_origin,
+                               t_step=self.idata.obl.t_step,
+                               t_origin=self.idata.obl.t_origin)
 
     def set_initial_conditions(self):
         input_distribution = {'pressure': 200.,
@@ -158,7 +159,7 @@ class Model(CICDModel):
         temp = _Backward1_T_Ph_vec(X[0:2 * nb:2] / 10, X[1:2 * nb:2] / 18.015)
         return temp
 
-    def set_input_data(self, n_points):
+    def set_input_data(self):
         #init_type = 'uniform'
         init_type = 'gradient'
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
@@ -202,8 +203,10 @@ class Model(CICDModel):
         #     self.idata.wells.controls.prod_bhp_constraint = 70 # lower limit for bhp, bars
         # self.idata.wells.controls.inj_bht = 300  # K
 
-        self.idata.obl.n_points = n_points
-        self.idata.obl.min_p = 1.
-        self.idata.obl.max_p = 351.
-        self.idata.obl.min_e = 1000.  # kJ/kmol, will be overwritten in PHFlash physics
-        self.idata.obl.max_e = 10000.  # kJ/kmol, will be overwritten in PHFlash physics
+        # OBL grid for the compositional + IAPWS PT-flash physics (state_spec=PT).
+        # Cell sizes reproduce the former 128-point grid over p in [1, 400] bar and
+        # T in [273.15, 575] K; the adaptive interpolator extends past it on demand.
+        self.idata.obl.p_step = 3.142  # bar
+        self.idata.obl.p_origin = 1.0
+        self.idata.obl.t_step = 2.377  # K
+        self.idata.obl.t_origin = 273.15

@@ -157,15 +157,21 @@ and open-DARTS are presented in the following table.
 
 Physics are defined in the ``DartsModel.physics`` object,
 ```python
+    nz = len(self.components) - 1
+    ax_step = [0.25] + [1e-3] * nz
+    ax_origin = [200.0] + [self.zero / 10] * nz
+    if thermal:
+        ax_step.append(0.1)
+        ax_origin.append(273.15)
+
     self.physics = PhysicsBase(self.components, phases, timer=self.timer,
-                                     n_points=n_points, min_p=200, max_p=450,
-                                     min_z=0., max_z=1., epsilon_z=self.zero/10, min_t=min_t, max_t=max_t,
-                                     state_spec = state_spec,
-                                     extrapolation_flag = False,
-                                     cache=False)
-    self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
+                                 axes_step=ax_step, axes_origin=ax_origin,
+                                 epsilon_z=self.zero / 10,
+                                 state_spec=state_spec,
+                                 extrapolation_flag=False,
+                                 cache=False)
 ```
-, where OBL parameters are defined. To the physics object we add property correlations using ``DartsModel.physics.property_containers`` per region/facies:
+, where the unbounded OBL grid is defined by per-axis origin and step. To the physics object we add property correlations using ``DartsModel.physics.property_containers`` per region/facies:
 ```python
     for i, (region, corey_params) in enumerate(corey.items()):
         property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,

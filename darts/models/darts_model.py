@@ -76,6 +76,21 @@ class DartsModel:
     :type params: :class:`darts.engines.sim_params`
     """
 
+    # Verbosity levels accepted by :meth:`run` (and other ``verbose`` switches).
+    # ``verbose`` is an integer; legacy ``bool`` values map to 0/1 transparently
+    # (Python ``False``/``True`` are ``0``/``1``), so existing callers are unaffected.
+    VERBOSE_SILENT = 0  # no per-timestep or end-of-run output
+    VERBOSE_DEFAULT = 1  # per-timestep lines + end-of-run statistics (legacy True)
+    VERBOSE_TIMERS = 2  # additionally print timers at the end of every run() call
+    VERBOSE_EVALUATORS = 3  # additionally let every parallel-evaluation worker print
+    #                         (default: only one evaluator's output is shown)
+
+    # The build-info banner (engines/discretizer/package) is process-global. Print it only
+    # on the first DartsModel construction so the silently-built evaluator-factory sub-models
+    # (one per parallel-evaluation wrap target) and forked/spawned workers don't duplicate it
+    # N times in the run log.
+    _build_info_printed = False
+
     def __new__(cls, *args, **kwargs):
         """
         Capture the constructor arguments so the model can be reconstructed in a
@@ -92,10 +107,12 @@ class DartsModel:
         """
         Initialize DartsModel class.
         """
-        # print out build information
-        engines_pbi()
-        discretizer_pbi()
-        package_pbi()
+        # print out build information once per process (see DartsModel._build_info_printed)
+        if not DartsModel._build_info_printed:
+            engines_pbi()
+            discretizer_pbi()
+            package_pbi()
+            DartsModel._build_info_printed = True
 
         # Create member variables reservoir and physics
         self.reservoir = None
@@ -103,6 +120,12 @@ class DartsModel:
 
         # Create member variable wells (it is needed only for DFM wells)
         self.wells = None
+
+        # Single source of truth for verbosity. Methods with a ``verbose`` parameter
+        # default to ``None`` and fall back to this attribute, so the level is set once
+        # (here or by the caller) instead of being re-supplied at every call. See the
+        # VERBOSE_* constants for the meaning of each level.
+        self.verbose = self.VERBOSE_DEFAULT
 
         # Create time_node object for time record
         self.timer = timer_node()
@@ -115,6 +138,13 @@ class DartsModel:
 
         self.timer.node["newton update"] = timer_node()
         self.timer.node["output"] = timer_node()
+
+        # Previously-untimed wall-clock now gets its own root-level nodes so print_timers
+        # attributes it instead of leaving it in the "Total elapsed" gap:
+        #   run loop overhead -- per-timestep Python orchestration in run() outside run_timestep
+        #   cache I/O         -- periodic OBL adaptive-cache flushes (write_cache) during run()
+        self.timer.node["run loop overhead"] = timer_node()
+        self.timer.node["cache I/O"] = timer_node()
 
         # Create timer.node called "initialization" to record initialization time
         self.timer.node["initialization"] = timer_node()
@@ -132,24 +162,32 @@ class DartsModel:
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
 
-    def get_evaluator_factory(self, region):
+    def get_evaluator_factory(self, attribute='reservoir_operators', region=None):
         """
         Return a picklable factory callable ``() -> operator_set_evaluator_iface``
-        that constructs a fresh, independent evaluator for the given region, used
-        by :class:`ParallelEvaluator` when ``parallel_evaluation=True``.
+        that constructs a fresh, independent evaluator for the given physics
+        attribute and (optional) region, used by :class:`ParallelEvaluator` when
+        ``parallel_evaluation=True``.
 
         The default implementation returns a :class:`ModelEvaluatorFactory`, which
         reconstructs this model from its constructor arguments (captured in
-        :meth:`__new__`) and returns ``physics.reservoir_operators[region]``. This
-        reuses the model's own ``set_physics``/``PropertyContainer`` build, so no
-        per-model duplication of the property stack is required and it works for
-        any model whose constructor arguments are picklable.
+        :meth:`__new__`) and returns ``physics.<attribute>`` (singular) or
+        ``physics.<attribute>[region]`` (per-region). This reuses the model's own
+        ``set_physics``/``PropertyContainer`` build, so no per-model duplication of
+        the property stack is required and it works for any model whose constructor
+        arguments are picklable.
 
         Override this method only if model reconstruction is too expensive to
         repeat per worker, or if the constructor arguments are not picklable.
 
-        :param region: Region index
-        :type region: int
+        :param attribute: Name of the physics attribute to wrap
+            (``'reservoir_operators'``, ``'property_operators'``, ``'well_operators'``,
+            ``'well_ctrl_operators'``, ``'thermal_var_operator'``, or chemistry's
+            ``'initial_operators'``).
+        :type attribute: str
+        :param region: Region index for per-region operator dicts; ``None`` for
+            singular attributes such as ``well_ctrl_operators``.
+        :type region: int | None
         :return: Picklable factory callable that creates a fresh evaluator
         :rtype: callable
         """
@@ -159,7 +197,8 @@ class DartsModel:
             type(self),
             getattr(self, '_init_args', ()),
             getattr(self, '_init_kwargs', {}),
-            region,
+            attribute=attribute,
+            region=region,
         )
 
     def init(
@@ -167,7 +206,7 @@ class DartsModel:
         discr_type: str = "tpfa",
         platform: str = "cpu",
         restart: bool = False,
-        verbose: bool = False,
+        verbose: int | None = None,
         itor_mode: str = "adaptive",
         itor_type: str = "multilinear",
         is_barycentric: bool = False,
@@ -190,8 +229,9 @@ class DartsModel:
         :type platform: str
         :param restart: Boolean to check if existing file should be overwritten or appended
         :type restart: bool
-        :param verbose: Switch for verbose
-        :type verbose: bool
+        :param verbose: Verbosity level (``int``; ``bool`` accepted for backward
+            compatibility). Defaults to ``None``, meaning inherit :attr:`self.verbose`.
+        :type verbose: int
         :param itor_mode: specifies either 'static' or 'adaptive' interpolator
         :type itor_mode: str
         :param itor_type: specifies either 'linear' or 'multilinear' interpolator
@@ -201,14 +241,29 @@ class DartsModel:
         :param n_solid: Number of solid minerals for element-based reactive flow
         :type n_solid: int
         :param parallel_evaluation: Enable parallel batch evaluation of supporting points via multiprocessing.
-            Requires the model to implement ``get_evaluator_factory(region)`` method.
+            All five evaluator-interpolator pairs in the physics (reservoir, property, well,
+            well_ctrl, thermal_var) are wrapped through a single shared multiprocessing pool.
+            Requires the model to implement ``get_evaluator_factory(attribute, region=None)``.
         :type parallel_evaluation: bool
         :param n_workers: Number of worker processes for parallel evaluation (default: os.cpu_count())
         :type n_workers: int
         """
+        verbose = self.verbose if verbose is None else verbose
+
+        # Time the (previously untimed) initialization phases. init() runs the big up-front
+        # costs -- mesh build, physics/Engine construction and OBL interpolator setup / cache
+        # loading, and initial-condition interpolation -- that otherwise vanish into the root
+        # "Total elapsed" gap. Accumulates into the same "initialization" node the subclass
+        # __init__ uses, so the node covers construction + init() together.
+        init_timer = self.timer.node["initialization"]
+        init_timer.start()
+
         # Initialize reservoir and Mesh object
         assert self.reservoir is not None, "Reservoir object has not been defined"
-        self.reservoir.init_reservoir(verbose)
+        init_timer.node["reservoir init"] = timer_node()
+        init_timer.node["reservoir init"].start()
+        self.reservoir.init_reservoir(bool(verbose))
+        init_timer.node["reservoir init"].stop()
         self.set_wells()
         self.has_dfm_well = any(
             well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
@@ -229,10 +284,12 @@ class DartsModel:
         if parallel_evaluation:
             evaluator_factory_hook = self.get_evaluator_factory
 
+        init_timer.node["physics init & OBL cache load"] = timer_node()
+        init_timer.node["physics init & OBL cache load"].start()
         self.physics.init_physics(
             discr_type=discr_type,
             platform=platform,
-            verbose=verbose,
+            verbose=bool(verbose),
             itor_mode=itor_mode,
             itor_type=itor_type,
             is_barycentric=is_barycentric,
@@ -240,7 +297,9 @@ class DartsModel:
             parallel_evaluation=parallel_evaluation,
             n_workers=n_workers,
             evaluator_factory_hook=evaluator_factory_hook,
+            verbose_evaluators=int(verbose) >= self.VERBOSE_EVALUATORS,
         )
+        init_timer.node["physics init & OBL cache load"].stop()
         if platform == "gpu":
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
         self.params.sim_eps = self.physics.sim_eps
@@ -256,8 +315,14 @@ class DartsModel:
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         self.restart = restart
         if restart is False:
+            init_timer.node["initial conditions"] = timer_node()
+            init_timer.node["initial conditions"].start()
             self.set_initial_conditions()
+            init_timer.node["initial conditions"].stop()
+            init_timer.node["engine init"] = timer_node()
+            init_timer.node["engine init"].start()
             self.reset()
+            init_timer.node["engine init"].stop()
             self.initialize_history_fields()
         self.data_ts.print()
         if (
@@ -270,6 +335,8 @@ class DartsModel:
                 + ' > 30000',
                 stacklevel=2,
             )
+
+        init_timer.stop()
 
     def reset(self):
         """
@@ -401,7 +468,7 @@ class DartsModel:
         precision: str = "d",
         compression: str = "gzip",
         compression_level: int = 0,
-        verbose: bool = False,
+        verbose: int | None = None,
     ):
         """
         Function to initialize output class
@@ -414,8 +481,10 @@ class DartsModel:
         :param precision: data precision of saved data ('s' single precision, 'd' double precision).
         :param compression: default 'gzip'.
         :param compression_level: 0 (no compression, fast) and 9 (maximum compression, slow), default is 1.
-        :param verbose: boolean flag to enable verbose mode.
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`.
         """
+        verbose = self.verbose if verbose is None else verbose
 
         self.output_folder = output_folder
         self.sol_filename = sol_filename
@@ -440,21 +509,23 @@ class DartsModel:
             precision=precision,
             compression=compression,
             compression_level=compression_level,
-            verbose=verbose,
+            verbose=bool(verbose),
             wells=self.wells,
             has_dfm_well=self.has_dfm_well,
         )
 
         return
 
-    def set_wells(self, verbose: bool = False):
+    def set_wells(self, verbose: int | None = None):
         """
         Function to define wells. The default method of DartsModel.set_wells() calls Reservoir.set_wells().
 
-        :param verbose: Switch for verbose
-        :type verbose: bool
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`.
+        :type verbose: int
         """
-        self.reservoir.set_wells(verbose)
+        verbose = self.verbose if verbose is None else verbose
+        self.reservoir.set_wells(bool(verbose))
         return
 
     def set_initial_conditions(self):
@@ -607,7 +678,7 @@ class DartsModel:
 
     def run_simple(self, physics, data_ts, days, restart_dt=0.0):
         """
-        Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
+        Run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
         :param physics:
         :param data_ts:
@@ -685,23 +756,32 @@ class DartsModel:
         save_well_data: bool = True,
         save_well_data_after_run: bool = True,
         save_reservoir_data: bool = True,
-        verbose: bool = True,
+        verbose: int | None = None,
     ):
         """
-        Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
+        Run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
         :param days: Time increment [days]
         :type days: float
         :param restart_dt: Restart value for timestep size [days, optional]
         :type restart_dt: float
-        :param verbose: Switch for verbose, default is True
-        :type verbose: bool
+        :param verbose: Verbosity level. Defaults to ``None``, meaning inherit
+            :attr:`self.verbose`. Accepts a bool for backward compatibility
+            (``False``/``True`` map to ``0``/``1``). Levels:
+            ``0`` (:attr:`VERBOSE_SILENT`) no output;
+            ``1`` (:attr:`VERBOSE_DEFAULT`) per-timestep lines + end-of-run statistics;
+            ``>=2`` (:attr:`VERBOSE_TIMERS`) additionally print timers at the end of
+            every ``run()`` invocation (otherwise timers are only printed when
+            :meth:`print_timers` is called manually, usually from ``main.py``).
+        :type verbose: int
         :param save_well_data: if True save states of well blocks at every time step to 'well_data.h5', default is True
         :type save_well_data: bool
         :param save_well_data_after_run: Switch to save well data only after runtime of `days`
         :param save_reservoir_data: if True save states of all reservoir blocks at the end of run to 'solution.h5', default is True
         :type save_reservoir_data: bool
         """
+        verbose = self.verbose if verbose is None else verbose
+
         assert hasattr(self, 'output'), (
             "self.output does not exist, please call m.set_output() after m.init()"
         )
@@ -750,11 +830,18 @@ class DartsModel:
 
         ts_counter = 0
 
+        # Per-timestep Python orchestration outside run_timestep (state copies, dt/CFL
+        # control, well-data accumulation) is otherwise untimed; bracket it into the
+        # "run loop overhead" node instead of leaving it in the root "Total elapsed" gap.
+        overhead = self.timer.node["run loop overhead"]
         while t < stop_time:
             # need to copy since Xn will be updated Xn = X
+            overhead.start()
             xn = np.array(self.physics.engine.Xn, copy=True)[: nb * nc]
+            overhead.stop()
             converged = self.run_timestep(dt, t, verbose)
 
+            overhead.start()
             if converged:
                 t += dt
                 self.physics.engine.t = t
@@ -788,8 +875,12 @@ class DartsModel:
                     self.prev_dt = dt
 
                 if save_well_data:
-                    # save well data at every converged time step
+                    # save well data at every converged time step. save_data_to_h5 brackets
+                    # its own output/saving_well_data timer; pause the overhead bracket so
+                    # the h5 write is not double-counted.
+                    overhead.stop()
                     self.output.save_data_to_h5(kind="well")
+                    overhead.start()
 
                 if save_well_data_after_run:
                     # store well data to save later
@@ -807,12 +898,16 @@ class DartsModel:
                 dt /= data_ts.dt_mult
                 if verbose:
                     print(f"Cut timestep to {dt:2.10f}")
+                if dt <= data_ts.dt_min:
+                    overhead.stop()  # keep the bracket balanced before the assert aborts
                 assert dt > data_ts.dt_min, (
                     "Stop simulation. Reason: reached min. timestep "
                     + str(data_ts.dt_min)
                     + " dt="
                     + str(dt)
                 )
+
+            overhead.stop()
 
         # update current engine time
         self.physics.engine.t = stop_time
@@ -838,6 +933,13 @@ class DartsModel:
         if save_reservoir_data:
             self.output.save_data_to_h5(kind="reservoir")
 
+        # If adaptive OBL-point caching is enabled, flush OBL cache at the end of each run/report interval
+        # to preserve newly evaluated points, so the cache progress survives SIGTERM/job cancel.
+        if getattr(self.physics, 'cache', False):
+            self.timer.node["cache I/O"].start()
+            self.physics.write_cache()
+            self.timer.node["cache I/O"].stop()
+
         if verbose:
             print(
                 f"----- TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), "
@@ -845,24 +947,35 @@ class DartsModel:
                 f"LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d}) -----"
             )
 
+        # At higher verbosity, print the timer breakdown at the end of every run()
+        # invocation (the default behaviour only prints timers when print_timers() is
+        # called explicitly, typically from main.py after the full simulation). These
+        # automatic prints go to the redirected darts log rather than stdout, so they
+        # land in the run log instead of cluttering the console.
+        if verbose >= self.VERBOSE_TIMERS:
+            self.print_timers(to_log=True)
+
         return 0
 
-    def run_timestep(self, dt: float, t: float, verbose: bool = True):
+    def run_timestep(self, dt: float, t: float, verbose: int | None = None):
         """
-        Method to solve Newton loop for specified timestep
+        Solve Newton loop for specified timestep
 
         :param dt: Timestep size [days]
         :type dt: float
         :param t: Current time [days]
         :type t: float
-        :param verbose: Switch for verbose, default is True
-        :type verbose: bool
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`.
+        :type verbose: int
         """
+        verbose = self.verbose if verbose is None else verbose
         assert dt > 0, "Time step size must be a positive value!"
 
         max_newt = self.data_ts.newton_max_iter
         max_residual = np.zeros(max_newt + 1)
         self.physics.engine.n_linear_last_dt = 0
+        self._linear_solver_rc_last = 0
         self.timer.node["simulation"].start()
 
         residual_history = []
@@ -974,7 +1087,14 @@ class DartsModel:
                         )
                 else:
                     # compile-time C++ linear solvers
-                    self.physics.engine.solve_linear_equation()
+                    rc = self.physics.engine.solve_linear_equation()
+                    if rc != 0:
+                        # Abort the Newton loop on a failed linear solve so that
+                        # post_newtonloop sees linear_solver_error_last_dt != 0 and
+                        # returns converged=0 without burning the full max_newt
+                        # budget on stale dX updates.
+                        self._linear_solver_rc_last = rc
+                        break
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
@@ -1071,7 +1191,7 @@ class DartsModel:
         t: float,
         coef: np.ndarray,
         history: list | np.ndarray,
-        verbose: bool = False,
+        verbose: int | None = None,
         iter_counter: int = None,
     ):
         """
@@ -1081,13 +1201,16 @@ class DartsModel:
         :param t: Current time.
         :param coef: Array of current coefficients used in the line search.
         :param history: Historical residuals, where each entry contains residuals for 'r_mat' and 'r_well'.
-        :param verbose: If True, prints detailed debug information during execution.
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`. Nonzero prints detailed
+            line-search debug information during execution.
         :param iter_counter: Newton-Raphson iteration counter for the current time step. Used by DFM well velocity updates.
 
         :return: Tuple containing the minimum residual achieved, a placeholder value (0.0), and the coefficient
                  corresponding to the minimum residual.
         :rtype: tuple(float, float, float)
         """
+        verbose = self.verbose if verbose is None else verbose
         newton_iter_counter = (
             self.physics.engine.n_newton_last_dt
             if iter_counter is None
@@ -1258,12 +1381,26 @@ class DartsModel:
         rhs += self.set_rhs_flux(t) * dt
         return
 
-    def print_timers(self):
+    def print_timers(self, to_log: bool = False):
         """
         Function to print the time information, including total time elapsed,
         time consumption at different stages of the simulation, etc..
+
+        :param to_log: When ``False`` (default) the timer tree is written to Python's
+            stdout via ``print``. When ``True`` it is written to the darts output stream
+            instead — i.e. the file passed to :func:`redirect_darts_output` (the same
+            destination the C++ engine output, e.g. ``print_stat``, goes to), or the
+            terminal if no redirect is active. Use this so the timers land in the run log
+            alongside the engine output rather than on the console.
+        :type to_log: bool
         """
-        print(self.timer.print("", ""))
+        timers_str = self.timer.print("", "")
+        if to_log:
+            from darts.engines import write_to_darts_output
+
+            write_to_darts_output(timers_str + "\n")
+        else:
+            print(timers_str)
 
     def print_stat(self):
         """
@@ -1332,11 +1469,14 @@ class DartsModel:
         for name in list(vars(self).keys()):
             delattr(self, name)
 
-    def set_well_controls_idata(self, time: float = 0.0, verbose=True):
+    def set_well_controls_idata(self, time: float = 0.0, verbose: int | None = None):
         """
         :param time: simulation time, [days]
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`.
         :return:
         """
+        verbose = self.verbose if verbose is None else verbose
         from darts.engines import well_control_iface
 
         # store next control index for each well in idata.well_data.wells_next_control_idx

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from darts.engines import value_vector, well_control_iface
+from darts.engines import value_vector, sim_params, well_control_iface
 
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.base.property_container import PropertyContainer
@@ -19,20 +19,27 @@ class ModelGeothermal(Model_CPG):
     def __init__(self, iapws_physics: bool = True):
         self.iapws_physics = iapws_physics
         super().__init__()
+        # The OBL grid is unbounded (no axes_max) in this branch, so a producer
+        # well-control switch can push the well-block enthalpy outside the IAPWS-valid
+        # range in a single Newton step -> singular CPR system -> NaN runaway -> crash.
+        # Enable the global Newton chop (caps the per-step relative change of all
+        # variables) to damp that transient. copy_data_ts_to_sim_params() does not
+        # touch newton_type/newton_params, so this setting reaches the engine.
+        self.params.newton_type = sim_params.newton_solver_t.newton_global_chop
+        self.params.newton_params = value_vector([0.2])
 
     def set_physics(self):
-        # single component, two phase. Pressure and enthalpy are the main variables.
-        # Uses compositional engine in PH-flash mode with IAPWS EoS (drop-in replacement
-        # for the legacy Geothermal physics). State vector layout is [P, H] (n_vars=2).
+        # Single component, two phase. Uses the compositional engine in PT-flash mode
+        # with IAPWS EoS (drop-in replacement for the legacy Geothermal physics).
+        # State vector layout is [P, T] (n_vars=2).
         self.set_iapws_physics(
-            n_points=self.idata.obl.n_points,
-            min_p=self.idata.obl.min_p,
-            max_p=self.idata.obl.max_p,
-            min_t=250.,
-            max_t=575.,
+            p_step=self.idata.obl.p_step,
+            p_origin=self.idata.obl.p_origin,
+            t_step=self.idata.obl.t_step,
+            t_origin=self.idata.obl.t_origin,
         )
 
-    def set_iapws_physics(self, n_points, min_p, max_p, min_t, max_t, cache=False):
+    def set_iapws_physics(self, p_step, p_origin, t_step, t_origin, cache=False):
         """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PT-flash.
         Single-component water; phases are vapor ('V') and liquid ('L').
         State spec is PT so engine.X layout is [P, T, ...] and the OBL grid is sampled on (P, T).
@@ -72,13 +79,13 @@ class ModelGeothermal(Model_CPG):
         # output_props exposes derived T (K) via the property interpolator
         pc.output_props = {'temperature': lambda: pc.temperature}
 
+        # Single component (H2O) with state_spec=PT -> OBL axes are [pressure, temperature]
         self.physics = PhysicsBase(
             components, phases, self.timer,
             state_spec=PhysicsBase.StateSpecification.PT,
-            n_points=n_points,
-            min_p=min_p, max_p=max_p,
-            min_z=zero, max_z=1.0 - zero, epsilon_z=zero,
-            min_t=min_t, max_t=max_t,
+            axes_step=[p_step, t_step],
+            axes_origin=[p_origin, t_origin],
+            epsilon_z=zero,
             cache=cache,
         )
         self.physics.add_property_region(pc)
@@ -212,10 +219,10 @@ class ModelGeothermal(Model_CPG):
         else:
             assert False, 'Unknown wctrl_type' +  case
 
-        self.idata.obl.n_points = 100
-        self.idata.obl.min_p = 50.
-        self.idata.obl.max_p = 400.
-        # min_e/max_e are ignored by the PhysicsBase PH-flash physics: the enthalpy
-        # axis is autocomputed from the PT corner box (min_p/max_p, min_t/max_t).
-        self.idata.obl.min_e = 1000.  # kJ/kmol, unused
-        self.idata.obl.max_e = 25000.  # kJ/kmol, unused
+        # OBL grid for the compositional + IAPWS PT-flash physics (state_spec=PT).
+        # Cell sizes reproduce the former 100-point grid over p in [50, 400] bar and
+        # T in [250, 575] K; the adaptive interpolator extends past it on demand.
+        self.idata.obl.p_step = 3.5   # bar
+        self.idata.obl.p_origin = 50.0
+        self.idata.obl.t_step = 3.25  # K
+        self.idata.obl.t_origin = 250.0

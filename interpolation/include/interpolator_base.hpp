@@ -13,17 +13,38 @@ class interpolator_base : public operator_set_gradient_evaluator_cpu
 {
 public:
     /**
-     * @brief Construct an interpolator with predefined parametrization space
+     * @brief Construct an unbounded interpolator parametrized by (origin, step).
+     *
+     * The grid is defined entirely by a per-axis origin and cell size; it has no
+     * upper bound. Adaptive interpolators use this form — cells are enumerated on
+     * demand via signed multi-index keys (cell_key_t), so neither axes_max nor a
+     * finite axes_points is needed, and the per-axis index may go below 0 or grow
+     * arbitrarily large.
      *
      * @param[in] supporting_point_evaluator    Object used to compute operator values at supporting points
-     * @param[in] axes_points                   Number of supporting points (minimum 2) along axes
-     * @param[in] axes_min                      Minimum value for each axis
-     * @param[in] axes_max                      Maximum for each axis
+     * @param[in] axes_origin                   Grid origin (lower corner) for each axis
+     * @param[in] axes_step                     Cell size for each axis
      */
     interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
-                      const std::vector<int> &axes_points,
-                      const std::vector<double> &axes_min,
-                      const std::vector<double> &axes_max);
+                      const std::vector<double> &axes_origin,
+                      const std::vector<double> &axes_step);
+
+    /**
+     * @brief Construct a bounded interpolator with a finite dense grid.
+     *
+     * Used by static interpolators, whose dense vector storage requires a finite
+     * number of supporting points per axis. axes_max is derived internally as
+     * origin + (axes_points - 1) * step.
+     *
+     * @param[in] supporting_point_evaluator    Object used to compute operator values at supporting points
+     * @param[in] axes_origin                   Grid origin (lower corner) for each axis
+     * @param[in] axes_step                     Cell size for each axis
+     * @param[in] axes_points                   Number of supporting points (minimum 2) along each axis
+     */
+    interpolator_base(operator_set_evaluator_iface *supporting_point_evaluator,
+                      const std::vector<double> &axes_origin,
+                      const std::vector<double> &axes_step,
+                      const std::vector<int> &axes_points);
 
     /**
      * @brief Initialize interpolator, perform internal sanity checks unavailable at construction time
@@ -144,18 +165,18 @@ public:
     uint64_t get_n_points_used() const;
 
 protected:
-    const std::vector<int> axes_points;                       ///< number of supporting points along each axis
-    const std::vector<double> axes_min;                       ///< minimum at each axis
-    const std::vector<double> axes_max;                       ///< maximum of each axis
+    const std::vector<double> axes_origin;                    ///< grid origin (lower corner) at each axis
+    const std::vector<double> axes_step;                      ///< the distance between neighbor supporting points for each axis
+    const std::vector<int> axes_points;                       ///< number of supporting points along each axis (empty for unbounded/adaptive grids)
+    const std::vector<double> axes_max;                       ///< maximum of each axis (empty for unbounded/adaptive grids; bounded grids only)
     operator_set_evaluator_iface *supporting_point_evaluator; ///< object which computes operator values for supporting points
 
-    std::vector<double> axes_step;     ///< the distance between neighbor supporting points for each axis
     std::vector<double> axes_step_inv; ///< inverse of step (to avoid division)
 
     uint64_t n_interpolations; ///< Number of interpolations that took place
-    __uint128_t n_points_total;   ///< Total number of parametrization points
-    double n_points_total_fp;  ///< Total number of parametrization points in floating point format, to detect index overflow in derived classes
-    __uint128_t n_points_used;    ///< Number of parametrization points which were used (equal to n_points_total for static interpolators)
+    uint64_t n_points_total;   ///< Total number of parametrization points (advisory; may saturate for huge grids — n_points_total_fp is authoritative)
+    double n_points_total_fp;  ///< Total number of parametrization points in floating point format, used for diagnostics and overflow detection
+    uint64_t n_points_used;    ///< Number of parametrization points which were used (equal to n_points_total for static interpolators)
 
     std::vector<double> new_point_coords;    ///< intermediate storage for supporting point generation
     std::vector<double> new_operator_values; ///< intermediate storage for supporting point generation

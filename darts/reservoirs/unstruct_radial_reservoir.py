@@ -117,7 +117,7 @@ class UnstructRadialReservoir(UnstructReservoir):
         # Store volumes and depth to single numpy arrays:
         self.discretizer.store_volume_all_cells()
         self.discretizer.store_depth_all_cells()
-        self.discretizer.store_centroid_all_cells()
+        self.discretizer.store_centroids_all_cells()
 
         # Assign layer properties
         self.set_layer_properties()
@@ -144,7 +144,7 @@ class UnstructRadialReservoir(UnstructReservoir):
         np.array(self.mesh.depth, copy=False)[:] = self.discretizer.depth_all_cells
         np.array(self.mesh.volume, copy=False)[:] = self.discretizer.volume_all_cells
 
-        coord = self.discretizer.centroid_all_cells
+        coord = self.discretizer.centroids_all_cells
         self.r = np.zeros(self.mesh.n_res_blocks)
         for ith_cell, xyz in enumerate(coord):
             self.r[ith_cell] = np.sqrt(xyz[0] ** 2 + xyz[1] ** 2)

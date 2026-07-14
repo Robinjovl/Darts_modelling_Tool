@@ -63,8 +63,15 @@ class Model(CICDModel):
         """ Activate physics """
         thermal = False
         state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        # axes_step-based API: per-axis cell size + per-axis origin. The adaptive
+        # multi-index-keyed interpolator caches cells on demand wherever the solver
+        # lands; no axes_max, no n_points, no min_p needed.
+        p_step = (300 - 1) / (200 - 1)
+        z_step = (1 - 3 * epsilon) / (200 - 1)
         self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=200, min_p=1, max_p=300, min_z=0., max_z=1., epsilon_z=epsilon,
+                                     axes_step=[p_step, z_step, z_step],
+                                     axes_origin=[1.0, epsilon, epsilon],
+                                     epsilon_z=epsilon,
                                      extrapolation_flag=True)
         # property_container.output_props = {
         #     "sat0": lambda: property_container.sat[0],
@@ -86,7 +93,7 @@ class Model(CICDModel):
                                                               input_distribution=input_distribution)
 
     def set_well_controls(self):
-        zero = self.physics.axes_min[1]
+        zero = self.physics.axes_origin[1]
         inj_composition = [1.0 - 2 * zero*10, zero*10]
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:

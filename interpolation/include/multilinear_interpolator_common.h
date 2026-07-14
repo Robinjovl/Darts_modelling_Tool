@@ -138,8 +138,9 @@ __forceinline__ __host__ __device__ void interpolate_with_derivatives(const valu
                                                                       // OUTPUT:
                                                                       value_t *interp_values, value_t *interp_derivs)
 {
-  static const uint16_t N_VERTS = 1 << N_DIMS;
-  uint16_t pwr = N_VERTS / 2; // distance between high and low values
+  // N_VERTS and pwr widened to uint32_t: at N_DIMS=30, N_VERTS = 2^30 overflows uint16_t.
+  static const uint32_t N_VERTS = 1u << N_DIMS;
+  uint32_t pwr = N_VERTS / 2; // distance between high and low values
   interp_value_t workspace[(2 * N_VERTS - 1) * N_OPS];
 
   // copy operator values for all vertices
@@ -281,8 +282,9 @@ __forceinline__ __host__ __device__ void interpolate_operator_with_derivatives(c
                                                                                // OUTPUT:
                                                                                double *interp_values, double *interp_derivs)
 {
-  static const uint16_t N_VERTS = 1 << N_DIMS;
-  uint16_t pwr = N_VERTS / 2; // distance between high and low values
+  // N_VERTS and pwr widened to uint32_t: at N_DIMS=30, N_VERTS = 2^30 overflows uint16_t.
+  static const uint32_t N_VERTS = 1u << N_DIMS;
+  uint32_t pwr = N_VERTS / 2; // distance between high and low values
   value_t workspace[2 * N_VERTS - 1];
 
   // copy operator values for all vertices

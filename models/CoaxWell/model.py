@@ -14,7 +14,7 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 
 
 class Model(CICDModel):
-    def __init__(self, resolution=10, n_points=128):
+    def __init__(self, resolution=10):
         # call base class constructor
         super().__init__()
 
@@ -22,11 +22,16 @@ class Model(CICDModel):
 
         self.resolution = resolution
         self.set_reservoir(resolution)
-        self.set_physics(n_points)
+        self.set_physics()
 
+        # The OBL grid is unbounded in this branch, so the former axis clamp no longer
+        # caps a Newton excursion: a first-step overshoot drove the well-block temperature
+        # far below the IAPWS-valid range (-> "BISECTION not converged" crash). Tighten the
+        # global chop from 1 (100% relative change) to 0.2, matching the mitigation already
+        # used by cpg_sloping_fault's ModelGeothermal for the same failure.
         self.set_sim_params(first_ts=1e-6, mult_ts=8, max_ts=31, runtime=365, tol_newton=1e-4, tol_linear=1e-6,
                             it_newton=20, it_linear=40, newton_type=sim_params.newton_global_chop,
-                            newton_params=value_vector([1]))
+                            newton_params=value_vector([0.2]))
 
         self.timer.node["initialization"].stop()
 
@@ -83,15 +88,17 @@ class Model(CICDModel):
             (self.reservoir.wells[0].name, self.reservoir.wells[1].name): [(perf_1, perf_2)]
         }
 
-    def set_physics(self, n_points):
-        # create compositional + IAPWS PH-flash physics (drop-in for legacy Geothermal)
-        self.set_iapws_physics(n_points=n_points, min_p=1., max_p=351.,
-                               min_t=273.15, max_t=575., cache=False)
+    def set_physics(self):
+        # create compositional + IAPWS PT-flash physics (drop-in for legacy Geothermal).
+        # OBL cell sizes reproduce the former 128-point grid over p in [1, 351] bar and
+        # T in [273.15, 575] K; the adaptive interpolator extends past it on demand.
+        self.set_iapws_physics(p_step=2.756, p_origin=1.,
+                               t_step=2.377, t_origin=273.15, cache=False)
 
         return
 
-    def set_iapws_physics(self, n_points, min_p, max_p, min_t, max_t, cache=False):
-        """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PH-flash."""
+    def set_iapws_physics(self, p_step, p_origin, t_step, t_origin, cache=False):
+        """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PT-flash."""
         components = ["H2O"]
         phases     = ['V', 'L']           # vapor, liquid (replaces 'steam','water')
         zero       = 1e-12
@@ -127,13 +134,13 @@ class Model(CICDModel):
         # output_props exposes derived T (K) via the property interpolator
         pc.output_props = {'temperature': lambda: pc.temperature}
 
+        # Single component (H2O) with state_spec=PT -> OBL axes are [pressure, temperature]
         self.physics = PhysicsBase(
             components, phases, self.timer,
             state_spec=PhysicsBase.StateSpecification.PT,
-            n_points=n_points,
-            min_p=min_p, max_p=max_p,
-            min_z=zero, max_z=1.0 - zero, epsilon_z=zero,
-            min_t=min_t, max_t=max_t,
+            axes_step=[p_step, t_step],
+            axes_origin=[p_origin, t_origin],
+            epsilon_z=zero,
             cache=cache,
         )
         self.physics.add_property_region(pc)

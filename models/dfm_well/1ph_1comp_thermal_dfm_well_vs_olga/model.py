@@ -86,8 +86,7 @@ class Model(CICDModel):
         ph = True
         state_spec = PhysicsBase.StateSpecification.PH if ph else PhysicsBase.StateSpecification.PT
         self.physics = PhysicsBase(components_names, phases_names, self.timer, state_spec=state_spec,
-                                     n_points=10000, min_p=1, max_p=500, min_z=0, max_z=1, epsilon_z=epsilon,
-                                     min_t=150, max_t=500)
+                                     axes_step=[0.05, 0.035], axes_origin=[1., 150.], epsilon_z=epsilon)
 
         """ PropertyContainer object and correlations """
         property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, eps_z=epsilon,

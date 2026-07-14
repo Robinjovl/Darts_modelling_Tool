@@ -71,8 +71,13 @@ class Model(CICDModel):
         """ Activate physics """
         thermal = False
         state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        # 1 p + (nc-1) z
+        nz = len(components) - 1
+        ax_step = [1.0] + [1e-3] * nz
+        ax_origin = [1.0] + [self.zero / 10] * nz
         self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=1000, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10)
+                                     axes_step=ax_step, axes_origin=ax_origin,
+                                     epsilon_z=self.zero / 10)
         self.physics.add_property_region(property_container)
 
         return

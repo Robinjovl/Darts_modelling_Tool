@@ -66,8 +66,9 @@ class Model(CICDModel):
         thermal = True
         state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=0, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
-                                     min_t=273.15, max_t=273.15 + 200, extrapolation_flag=True)
+                                     axes_step=[2.5, 0.5],  # p [bar], T [K]
+                                     axes_origin=[0.0, 273.15],
+                                     epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return

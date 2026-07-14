@@ -178,3 +178,75 @@
    fun:H5VL__native_dataset_close
    fun:H5VL_dataset_close
 }
+# numpy >= 2.4 / Python 3.11: building an ndarray from a Python sequence routes
+# through PyArray_AssignFromCache -> <dtype>_setitem, whose vectorised store
+# branches on padding bytes Valgrind flags as uninitialised. Harmless numpy
+# internal (the model runs to completion); not a DARTS bug. Surfaced by the
+# Python-3.11 / numpy-2.4.x migration. Wildcard fun:*_setitem covers
+# DOUBLE_/FLOAT_/LONG_/... dtype variants.
+{
+   numpy-AssignFromCache-setitem-Cond
+   Memcheck:Cond
+   fun:*_setitem
+   fun:PyArray_AssignFromCache_Recursive
+   ...
+}
+{
+   numpy-AssignFromCache-setitem-Value8
+   Memcheck:Value8
+   fun:*_setitem
+   fun:PyArray_AssignFromCache_Recursive
+   ...
+}
+# Catch-all for the remaining numpy-internal uninitialised-value false positives
+# under Python 3.11 / numpy >= 2.4 / Valgrind 3.24 (the manylinux wheel on the CI
+# image surfaces a few more contexts in both the main process and the numpy-import
+# child than the setitem case above). These match only errors whose *innermost*
+# frame is inside a numpy shared object (numpy/_core/_multiarray_umath, the CPU
+# dispatch modules, and the bundled BLAS in numpy.libs), so genuine DARTS bugs
+# (engines/discretizer/interpolators/libIPhreeqc .so) are still reported.
+{
+   numpy-internal-cond
+   Memcheck:Cond
+   obj:*/numpy/*.so
+}
+{
+   numpy-internal-value8
+   Memcheck:Value8
+   obj:*/numpy/*.so
+}
+{
+   numpy-libs-cond
+   Memcheck:Cond
+   obj:*/numpy.libs/*
+}
+{
+   numpy-libs-value8
+   Memcheck:Value8
+   obj:*/numpy.libs/*
+}
+# CPython int.from_bytes() during module import (.pyc hash validation reads the
+# source-hash bytes via _PyLong_FromByteArray). On the CI python:3.11 image
+# Valgrind 3.24 flags those reads as uninitialised - a libpython-internal false
+# positive (~once per imported module, so it dominates once the log-corruption
+# fix made the main process countable). Top frame is in libpython, NOT numpy, so
+# the numpy obj rules above do not match it. Anchored on the int_from_bytes ->
+# _PyLong_FromByteArray pair, so only this conversion is suppressed.
+{
+   cpython-int-from-bytes-cond
+   Memcheck:Cond
+   ...
+   fun:_PyLong_FromByteArray
+   ...
+   fun:int_from_bytes
+   ...
+}
+{
+   cpython-int-from-bytes-value8
+   Memcheck:Value8
+   ...
+   fun:_PyLong_FromByteArray
+   ...
+   fun:int_from_bytes
+   ...
+}

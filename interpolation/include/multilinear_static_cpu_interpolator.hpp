@@ -20,7 +20,8 @@
  * @tparam N_DIMS The number of dimensions in paramter space
  * @tparam N_OPS The number of operators to be interpolated
  */
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+// N_OPS widened to uint16_t — must match base class.
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 class multilinear_static_cpu_interpolator : public multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>
 {
 public:
@@ -29,17 +30,17 @@ public:
    using typename multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::hypercube_data_t;
    using typename multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>::hypercube_points_index_t;
    /**
-     * @brief Construct the interpolator with specified parametrization space
+     * @brief Construct the interpolator with a finite dense grid (origin, step, points).
      *
      * @param[in] supporting_point_evaluator    Object used to compute operators values at supporting points
-     * @param[in] axes_points               Number of supporting points (minimum 2) along axes
-     * @param[in] axes_min                  Minimum value for each axis
-     * @param[in] axes_max                  Maximum for each axis
+     * @param[in] axes_origin              Grid origin (lower corner) for each axis
+     * @param[in] axes_step                Cell size for each axis
+     * @param[in] axes_points              Number of supporting points (minimum 2) along each axis
      */
    multilinear_static_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
-                                       const std::vector<int> &axes_points,
-                                       const std::vector<double> &axes_min,
-                                       const std::vector<double> &axes_max);
+                                       const std::vector<double> &axes_origin,
+                                       const std::vector<double> &axes_step,
+                                       const std::vector<int> &axes_points);
 
    /**
      * @brief Initialize the interpolator by:
@@ -56,7 +57,7 @@ public:
       * @param filename name of the file
       * @return int error code
       */
-   int write_to_file(const std::string filename) override;
+   int write_to_file(const std::string &filename) override;
 
    /**
    * @brief static point storage: the values of operators at all supporting points

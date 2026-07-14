@@ -441,18 +441,22 @@ class WellData:
 
 class OBLParams:
     """
-    OBL range, number of points
+    OBL grid resolution + origin per axis.
+
+    With the multi-index-keyed adaptive interpolator the cache extends past the
+    prescribed window on demand; only (step, origin) per axis are load-bearing.
     """
 
     def __init__(self):
         self.zero = None
-        self.n_points = None
-        self.min_p = None
-        self.max_p = None
-        self.min_t = None
-        self.max_t = None
-        self.min_z = None
-        self.max_z = None
+        self.p_step = None
+        self.p_origin = None
+        self.z_step = None
+        self.z_origin = None
+        self.t_step = None
+        self.t_origin = None
+        self.e_step = None  # enthalpy step (geothermal P-H grid)
+        self.e_origin = None
         self.epsilon_z = None
 
 
@@ -506,12 +510,26 @@ class InputData:
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
-            if k in [
-                'initial',
-                'mesh',
-                'sim',
-                'other',
-            ]:  # do not check initial currently #TODO
+            if (
+                k
+                in [
+                    'initial',
+                    'mesh',
+                    'sim',
+                    'other',
+                    # OBLParams holds per-axis grid settings whose required subset
+                    # depends on the physics: enthalpy (e_step/e_origin) is only
+                    # used by Geothermal/PH state, temperature (t_step/t_origin)
+                    # only by thermal physics, composition (z_step/z_origin) only
+                    # by multi-component physics. The per-physics constructors
+                    # (BlackOil/DeadOil/Geothermal/Poroelasticity) and PhysicsBase
+                    # already assert on the fields they actually consume
+                    # (`axes_step must have N entries`), so a blanket "every OBL
+                    # field must be non-None" check here over-rejects legitimate
+                    # single-phase / isothermal / non-PH configurations.
+                    'obl',
+                ]
+            ):  # do not check these subobjects — their validity is enforced by their consumers
                 continue
             for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)
