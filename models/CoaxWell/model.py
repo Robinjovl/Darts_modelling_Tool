@@ -11,6 +11,7 @@ from darts.physics.base.property_container import PropertyContainer
 from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+from darts.physics.properties.viscosity import MaoDuan2009
 
 
 class Model(CICDModel):
@@ -117,7 +118,7 @@ class Model(CICDModel):
         }
         pc.viscosity_ev = {
             'V': ConstFunc(0.01),         # cP, steam
-            'L': ConstFunc(0.3),          # cP, liquid water
+            'L': MaoDuan2009(components),  # cP, liquid water (pressure/temperature-dependent)
         }
         pc.enthalpy_ev = {
             'V': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
