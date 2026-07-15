@@ -1979,6 +1979,20 @@ void engine_base::correct_obl_axes()
 		apply_obl_axis_local_correction(X, dX);
 }
 
+void engine_base::correct_obl_axes(const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max)
+{
+	if (axis_min.size() != (size_t)n_vars || axis_max.size() != (size_t)n_vars)
+	{
+		std::cout << "OBL axis correction skipped: axis bounds size mismatch (expected " << (int)n_vars << " values per axis)" << std::endl;
+		return;
+	}
+	for (auto &region_bounds : op_axis_min)
+		region_bounds = axis_min;
+	for (auto &region_bounds : op_axis_max)
+		region_bounds = axis_max;
+	apply_obl_axis_local_correction(X, dX);
+}
+
 void engine_base::correct_thermal()
 {
 	// Apply thermal variable correction when the PH formulation with a multi-component fluid is used.

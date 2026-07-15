@@ -131,15 +131,40 @@ class NewtonSolver(NonlinearSolver):
         """Newton dX-correction pipeline prescribed by the spec, mirroring the
         legacy C++ ``apply_newton_update`` composite: composition correction,
         chop (per :class:`ChopSpec`), OBL-axes clamp (per :class:`OBLBoundsSpec`;
-        the kernel is inert while the engine's op_axis bounds are unset) and
-        thermal-variable correction (self-guarded by the state specification)."""
+        when the spec provides axis bounds they are passed to the C++ kernel,
+        otherwise the no-argument kernel is inert while the engine's op_axis
+        bounds are unset) and thermal-variable correction (self-guarded by the
+        state specification)."""
         engine, spec = self.engine, self.spec
         steps = [engine.correct_composition]
         if spec.chop.mode == "global":
             steps.append(engine.correct_chop_global)
         elif spec.chop.mode == "local":
             steps.append(engine.correct_chop_local)
-        if spec.obl_bounds.mode is None or spec.obl_bounds.mode == "obl_axes":
+        obl = spec.obl_bounds
+        if obl.mode == "obl_axes" and (
+            obl.axis_min is not None or obl.axis_max is not None
+        ):
+            from functools import partial
+
+            from darts.engines import value_vector
+
+            n_vars = self.model.physics.n_vars
+            for name in ("axis_min", "axis_max"):
+                bound = getattr(obl, name)
+                if bound is not None and len(bound) != n_vars:
+                    raise ValueError(
+                        f"OBLBoundsSpec.{name} has {len(bound)} entries, "
+                        f"expected n_vars = {n_vars}"
+                    )
+            # None entries leave an axis unbounded (+/-inf never clamps)
+            inf = float("inf")
+            lo = obl.axis_min if obl.axis_min is not None else [None] * n_vars
+            hi = obl.axis_max if obl.axis_max is not None else [None] * n_vars
+            axis_min = value_vector([-inf if v is None else v for v in lo])
+            axis_max = value_vector([inf if v is None else v for v in hi])
+            steps.append(partial(engine.correct_obl_axes, axis_min, axis_max))
+        elif obl.mode is None or obl.mode == "obl_axes":
             steps.append(engine.correct_obl_axes)
         steps.append(engine.correct_thermal)
         return steps

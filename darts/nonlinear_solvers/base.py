@@ -75,11 +75,15 @@ class OBLBoundsSpec:
 
     :ivar mode: ``None`` (disabled, default), ``'obl_axes'`` (clamp the update
         into the OBL parametrization box via the C++
-        ``apply_obl_axis_local_correction`` kernel) or ``'physical'``
-        (per-axis physical box, e.g. ``p >= p_min``; reserved for the
-        axis box-constraint extension).
-    :ivar axis_min: optional per-axis lower bounds overriding the OBL axes.
-    :ivar axis_max: optional per-axis upper bounds overriding the OBL axes.
+        ``apply_obl_axis_local_correction`` kernel; ``axis_min``/``axis_max``
+        are passed to the kernel, populating the engine's per-region op_axis
+        bounds) or ``'physical'`` (per-axis physical box, e.g. ``p >= p_min``;
+        reserved for the axis box-constraint extension).
+    :ivar axis_min: per-axis lower bounds (state-variable order), consumed by
+        the ``'obl_axes'`` mode. ``None`` entries leave that axis unbounded;
+        composition axes are usually left ``None`` — the composition
+        correction kernel already projects onto the simplex.
+    :ivar axis_max: per-axis upper bounds, same conventions as ``axis_min``.
     """
 
     mode: str | None = None
@@ -373,6 +377,11 @@ class NonlinearSolver:
         """Convergence verdict for the finished nonlinear loop (previously the
         re-check inside the C++ ``post_newtonloop``)."""
         status, spec = self.status, self.spec
+        # a NaN residual satisfies neither >= nor > below — reject it explicitly
+        if not (
+            np.isfinite(status.newton_residual) and np.isfinite(status.well_residual)
+        ):
+            return False
         return not (
             status.linear_solver_rc != 0
             or status.newton_residual >= spec.tolerance
@@ -385,6 +394,10 @@ class NonlinearSolver:
             reason = "linear solver setup failed"
         elif status.linear_solver_rc == 2:
             reason = "linear solver solve failed"
+        elif not (
+            np.isfinite(status.newton_residual) and np.isfinite(status.well_residual)
+        ):
+            reason = "newton residual not finite"
         elif status.newton_residual >= self.spec.tolerance:
             reason = "newton residual reservoir"
         else:

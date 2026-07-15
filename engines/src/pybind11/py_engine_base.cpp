@@ -24,7 +24,8 @@ void pybind_engine_base (py::module &m)
 	   .def("correct_composition", &engine_base::correct_composition, py::call_guard<py::gil_scoped_release>())  \
 	   .def("correct_chop_global", &engine_base::correct_chop_global, py::call_guard<py::gil_scoped_release>())  \
 	   .def("correct_chop_local", &engine_base::correct_chop_local, py::call_guard<py::gil_scoped_release>())  \
-	   .def("correct_obl_axes", &engine_base::correct_obl_axes, py::call_guard<py::gil_scoped_release>())  \
+	   .def("correct_obl_axes", py::overload_cast<>(&engine_base::correct_obl_axes), py::call_guard<py::gil_scoped_release>())  \
+	   .def("correct_obl_axes", py::overload_cast<const std::vector<value_t> &, const std::vector<value_t> &>(&engine_base::correct_obl_axes), py::arg("axis_min"), py::arg("axis_max"), py::call_guard<py::gil_scoped_release>())  \
 	   .def("correct_thermal", &engine_base::correct_thermal, py::call_guard<py::gil_scoped_release>())  \
 	   .def("apply_update", &engine_base::apply_update, py::call_guard<py::gil_scoped_release>())  \
 	   .def("post_newtonloop", &engine_base::post_newtonloop, py::call_guard<py::gil_scoped_release>())  \

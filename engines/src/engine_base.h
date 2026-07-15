@@ -217,6 +217,11 @@ public:
 	void correct_chop_global();
 	void correct_chop_local();
 	void correct_obl_axes();
+	/// @brief populate op_axis_min/op_axis_max (broadcast to every operator
+	/// region) from the per-variable bounds prescribed by the nonlinear solver
+	/// spec (OBLBoundsSpec.axis_min/axis_max; +/-inf entries leave an axis
+	/// unbounded) and run the per-axis clamp kernel
+	void correct_obl_axes(const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max);
 	void correct_thermal();
 	/// @brief plain Newton update X -= newton_update_coefficient * dX (resets the coefficient)
 	virtual int apply_update(value_t dt);
