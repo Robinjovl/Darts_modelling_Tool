@@ -2,7 +2,7 @@ import numpy as np
 
 from darts.engines import *
 from darts.physics.base.operator_evaluator import *
-from darts.physics.base.operators_base import (
+from darts.physics.base.operator_evaluator import (
     PropertyOperators,
     ThermalVarOperator,
     WellCtrlOperators,

@@ -15,11 +15,12 @@ from scipy.interpolate import interp1d
 
 from darts.engines import *
 from darts.interpolators import *
-from darts.physics.base.operator_evaluator import ReservoirOperators, WellOperators
-from darts.physics.base.operators_base import (
+from darts.physics.base.operator_evaluator import (
     PropertyOperators,
+    ReservoirOperators,
     ThermalVarOperator,
     WellCtrlOperators,
+    WellOperators,
 )
 from darts.tools.obl_cache import OblCacheCodec
 

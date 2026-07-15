@@ -3,7 +3,6 @@ from typing import Any
 import numpy as np
 
 from darts.engines import value_vector
-from darts.physics.base.property_base import PropertyBase
 from darts.physics.properties.basic import ConstFunc, RockCompactionEvaluator
 from darts.physics.properties.flash import Flash
 from darts.physics.properties.hysteresis import (
@@ -12,7 +11,12 @@ from darts.physics.properties.hysteresis import (
 )
 
 
-class PropertyContainer(PropertyBase):
+class PropertyContainer:
+    # Interface attributes (folded in from the former PropertyBase):
+    nc: int
+    nph: int
+    output_props = {}
+
     def __init__(
         self,
         phases_name: list,
@@ -487,3 +491,11 @@ class PropertyContainer(PropertyBase):
         self.compute_saturation(ph)
 
         return self.sat, self.dens_m
+
+    def set_output_props(self, props: dict):
+        """
+        :param props: Dictionary of lambdas with output properties to be evaluated
+        :type props: dict[str, lambda]
+        """
+        self.output_props = props
+        return

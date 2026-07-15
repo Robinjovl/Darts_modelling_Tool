@@ -1,8 +1,8 @@
 from darts.engines import timer_node
-from darts.physics.base.operators_base import (
+from darts.physics.base.operator_evaluator import (
     PropertyOperators as BasePropertyOperators,
 )
-from darts.physics.base.operators_base import (
+from darts.physics.base.operator_evaluator import (
     ThermalVarOperator,
     WellCtrlOperators,
 )

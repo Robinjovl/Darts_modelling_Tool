@@ -1,7 +1,7 @@
 import numpy as np
 
 from darts.engines import index_vector, value_vector
-from darts.physics.base.operators_base import PropertyOperators
+from darts.physics.base.operator_evaluator import PropertyOperators
 from darts.physics.base.physics import PhysicsBase
 
 

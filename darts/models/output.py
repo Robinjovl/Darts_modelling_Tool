@@ -14,7 +14,7 @@ from darts.engines import (
     value_vector,
     well_control_iface,
 )
-from darts.physics.base.operators_base import PropertyOperators
+from darts.physics.base.operator_evaluator import PropertyOperators
 from darts.physics.base.physics import PhysicsBase
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.tools.vtk_io import write_lines_vtp, write_pvd
