@@ -38,7 +38,7 @@ class Model(CICDModel):
         (nx, ny, nz) = (60, 60, 3)
         nb = nx * ny * nz
         perm = np.ones(nb) * 2000
-        perm = load_single_keyword('permXVanEssen.in', 'PERMX')
+        perm = load_single_keyword(r'/palmyra/data/ychen/open-darts/models/GeoRising/permXVanEssen.in', 'PERMX')
         perm = perm[:nb]
 
         poro = np.ones(nb) * 0.2
@@ -82,6 +82,11 @@ class Model(CICDModel):
         sampling extended below 273.15 K, triggering "LIQUID MINIMUM BISECTION not converged"
         crashes during init.
         """
+        from dartsflash.libflash import PXFlash, FlashParams, EoS
+        from dartsflash.libflash import CubicEoS, AQEoS
+        from dartsflash.components import CompData
+        from darts.physics.properties.density import Spivey2004
+        from darts.physics.properties.flash import SinglePhase
         components = ["H2O"]
         phases = ['V', 'L']  # vapor, liquid (replaces 'steam','water')
         zero = 1e-12
@@ -90,21 +95,44 @@ class Model(CICDModel):
         pc = PropertyContainer(phases_name=phases, components_name=components,
                                Mw=comp_data.Mw, eps_z=zero)
 
-        flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
+        # flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
+        # flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
+        # pc.flash_ev = flash_ev
+        ceos = CubicEoS(comp_data, CubicEoS.PR)
+        ceos.set_preferred_roots(0, 0.75, EoS.MAX)
+        aq = AQEoS(comp_data, AQEoS.Jager2003)
+        aq.set_eos_range(0, [0.6, 1.])
+
+        flash_params = FlashParams(comp_data)
+
+        # EoS-related parameters
+        flash_params.add_eos("CEOS", ceos)
+        flash_params.add_eos("AQ", aq)
+        flash_params.eos_order = ["AQ", "CEOS"]
+
+        flash_params.T_min = 250.
+        flash_params.T_max = 575.
+        
+        # flash_ev = PXFlash(flash_params, PXFlash.ENTHALPY)
+        flash_ev = SinglePhase(nc=len(components))
         pc.flash_ev = flash_ev
 
+
         pc.density_ev = {
-            'V': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),
-            'L': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN),
+            # 'V': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),
+            # 'L': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN),
+            'V':ConstFunc(1),
+            'L': Spivey2004(components)
         }
         pc.viscosity_ev = {
             'V': ConstFunc(0.01),                  # cP, steam
-            'L': MaoDuan2009(components),          # cP, liquid water (pressure-dependent)
+            'L': MaoDuan2009(components)          # cP, liquid water (pressure-dependent)
         }
         pc.enthalpy_ev = {
-            'V': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
-            'L': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
+            # 'V': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
+            # 'L': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
+            'V': EoSEnthalpy(ceos),
+            'L': EoSEnthalpy(aq)
         }
         pc.rel_perm_ev = {
             'V': PhaseRelPerm("gas", swc=0.0),
