@@ -10,6 +10,7 @@ from darts.physics.base.physics_base import PhysicsBase
 from darts.physics.chemistry.operator_evaluator import (
     ConversionOperators,
     ReservoirOperators,
+    SmoothFieldsReservoirOperators,
 )
 from darts.physics.super.physics import Compositional
 
@@ -68,8 +69,16 @@ class ElementBasedReactiveFlow(Compositional):
         :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
+        # Nested kinetics: tabulate smooth fields (SRb, A, rho_t) in the KIN slots and
+        # compose the sharp rates analytically after interpolation (see
+        # kinetic_composition_cpu_interpolator). Opt-in via physics.nested_kinetics.
+        reservoir_op_cls = (
+            SmoothFieldsReservoirOperators
+            if getattr(self, 'nested_kinetics', False)
+            else ReservoirOperators
+        )
         for region in self.regions:
-            self.reservoir_operators[region] = ReservoirOperators(
+            self.reservoir_operators[region] = reservoir_op_cls(
                 self.property_containers[region],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
@@ -124,6 +133,46 @@ class ElementBasedReactiveFlow(Compositional):
         targets.append(('thermal_var_operator', None))
         return targets
 
+    def _wrap_nested_kinetics(self, inner_itor, region):
+        """
+        Build the C++ nested-kinetics composition wrapper around an inner field
+        interpolator (see :class:`SmoothFieldsReservoirOperators` for the field
+        layout and exactness argument).
+        """
+        import numpy as np
+
+        from darts import interpolators as _itors
+
+        ops = self.reservoir_operators[region]  # attribute access delegates through
+        # ParallelEvaluator.__getattr__ to the underlying SmoothFields instance
+        prop = self.property_containers[region]
+        n_min = len(ops.mineral_keys)
+        # solid-composition state axes: [p, z_solid_1..n_min, fluids...] => 1..n_min;
+        # derive from the property's solid state mask when available for robustness
+        mask = np.asarray(getattr(prop, 's_mask_state', []))
+        if mask.dtype == bool and mask.any():
+            mineral_axes = [int(i) for i in np.flatnonzero(mask)]
+        elif mask.size and mask.dtype != bool:
+            mineral_axes = [int(i) for i in mask]
+        else:
+            mineral_axes = list(range(1, 1 + n_min))
+        stoich = np.asarray(prop.stoich_matrix, dtype=float)
+        assert stoich.shape == (n_min, ops.ne), (
+            f"stoich matrix {stoich.shape} != ({n_min}, {ops.ne})"
+        )
+        return _itors.kinetic_composition_cpu_interpolator(
+            inner=inner_itor,
+            n_dims=len(self.vars),
+            n_ops=self.n_ops,
+            kin_op_start=int(ops.KIN_OP),
+            ne=int(ops.ne),
+            mineral_axes=mineral_axes,
+            c_coeffs=list(ops.c_coeffs),
+            p_aff=list(ops.p_aff),
+            q_aff=list(ops.q_aff),
+            stoich_flat=[float(v) for v in stoich.flatten()],
+        )
+
     def set_interpolators(
         self,
         platform='cpu',
@@ -171,6 +220,7 @@ class ElementBasedReactiveFlow(Compositional):
 
         # Create actual accumulation and flux interpolator:
         self.acc_flux_itor = {}
+        self.acc_flux_itor_inner = {}
         self.comp_itor = {}
         self.property_itor = {}
         for region in self.regions:
@@ -184,6 +234,14 @@ class ElementBasedReactiveFlow(Compositional):
                 precision=itor_precision,
                 is_barycentric=is_barycentric,
             )
+            if getattr(self, 'nested_kinetics', False):
+                # Wrap the field interpolator with the analytic kinetic composition.
+                # Cache registration, hypercube cap and timers stay on the inner itor
+                # (already set up by create_interpolator); the engine sees the wrapper.
+                self.acc_flux_itor_inner[region] = self.acc_flux_itor[region]
+                self.acc_flux_itor[region] = self._wrap_nested_kinetics(
+                    self.acc_flux_itor[region], region
+                )
 
             # ==============================================================================================================
             # Create initialization & porosity evaluator

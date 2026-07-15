@@ -28,6 +28,7 @@ void pybind_operator_set_interpolator_pz_cap_gra(py::module &);
 void pybind_operator_set_interpolator_pze_gra(py::module &);
 void pybind_evaluator_iface(py::module&);
 void pybind_globals(py::module&);
+void pybind_kinetic_composition(py::module&);
 
 class operator_set_gradient_evaluator_iface;
 
@@ -87,6 +88,7 @@ PYBIND11_MODULE(interpolators, m)
   pybind_operator_set_interpolator_rates(m);
   pybind_operator_set_interpolator_pz_cap_gra(m);
   pybind_operator_set_interpolator_pze_gra(m);
+  pybind_kinetic_composition(m);
 }
 
 void pybind_globals(py::module& m)
