@@ -71,12 +71,11 @@ class THMCModel(DartsModel):
 
     def set_solver_params(self):
         self.set_solver()
-        self.nonlinear_solver.tolerance = (
-            1e-6  # Tolerance of newton residual norm ||residual||<tol_newt
-        )
-        self.nonlinear_solver.chop.mode = "global"
-        self.nonlinear_solver.chop.factor = 0.2
-        self.nonlinear_solver.max_iterations = 10
+        spec = self.nonlinear_solver.spec
+        spec.tolerance = 1e-6  # Tolerance of newton residual norm ||residual||<tol_newt
+        spec.chop.mode = "global"
+        spec.chop.factor = 0.2
+        spec.max_iterations = 10
 
         if self.discretizer_name == 'mech_discretizer':
             self.params.tolerance_linear = (

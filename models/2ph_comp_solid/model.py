@@ -1,7 +1,7 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector, ms_well
-from darts.nonlinear_solvers import NewtonSpec, ChopSpec
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -25,7 +25,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSpec(tolerance=1e-5, max_iterations=10, chop=ChopSpec(mode='local'))
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=10, chop=ChopSpec(mode='local'))
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_linear=1e-6,
                             it_linear=50)
         self.data_ts.newton_tol_stationary = 1e-5

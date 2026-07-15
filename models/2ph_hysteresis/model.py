@@ -7,7 +7,7 @@ import numpy as np
 
 from darts.engines import value_vector
 from darts.models.cicd_model import CICDModel
-from darts.nonlinear_solvers import NewtonSpec
+from darts.nonlinear_solvers import NewtonSolver
 from darts.physics.base.physics_base import HistoryField, PhysicsBase
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.enthalpy import EnthalpyBasic
@@ -106,7 +106,7 @@ class Model(CICDModel):
             start_injection_h2o_days=self.start_injection_h2o_days,
             water_injection_rate=self.water_injection_rate,
         )
-        self.nonlinear_solver = NewtonSpec(tolerance=1e-3, max_iterations=16)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=16)
         self.set_sim_params(
             first_ts=1e-4,
             mult_ts=1.5,

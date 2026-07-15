@@ -713,10 +713,10 @@ class DartsModelWithLivePlots(DartsModel):
         """
         solver = self._get_nonlinear()
         if not isinstance(solver, _LivePlotNewtonSolver):
-            solver = self._nonlinear = _LivePlotNewtonSolver(
-                self, self.nonlinear_solver
-            )
-        converged = solver.run_timestep(dt, t, verbose)
+            # swap in a live-plot solver built from the same spec, bound to self
+            solver = _LivePlotNewtonSolver(solver.spec, model=self)
+            self.nonlinear_solver = solver
+        converged = solver.solve_timestep(dt, t, verbose)
 
         """ Live plotting for every time step """
         if (

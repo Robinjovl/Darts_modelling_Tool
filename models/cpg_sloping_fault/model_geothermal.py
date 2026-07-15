@@ -20,8 +20,8 @@ class ModelGeothermal(Model_CPG):
         # Enable the global Newton chop (caps the per-step relative change of all
         # variables) to damp that transient.
         self.set_solver()
-        self.nonlinear_solver.chop.mode = 'global'
-        self.nonlinear_solver.chop.factor = 0.2
+        self.nonlinear_solver.spec.chop.mode = 'global'
+        self.nonlinear_solver.spec.chop.factor = 0.2
 
     def set_physics(self):
         # single component, two phase. Pressure and enthalpy are the main variables

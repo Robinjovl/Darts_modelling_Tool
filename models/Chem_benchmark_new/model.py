@@ -12,7 +12,7 @@ from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.kinetics import KineticBasic
 
 from darts.physics.super.operator_evaluator import ReservoirOperators
-from darts.nonlinear_solvers import NewtonSpec, ChopSpec
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 import matplotlib.pyplot as plt
 
@@ -53,7 +53,7 @@ class Model(CICDModel):
         self.set_reservoir(grid_1D, res, solid_init)
         self.set_physics(grid_1D, solid_init, custom_physics)
 
-        self.nonlinear_solver = NewtonSpec(tolerance=1e-3, max_iterations=10,
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
                                            chop=ChopSpec(mode='local'))
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=0.1, runtime=50, tol_linear=1e-5,
                             it_linear=50)

@@ -43,7 +43,7 @@ class NewtonSpec(NonlinearSolverSpec):
     obl_bounds: OBLBoundsSpec = field(default_factory=OBLBoundsSpec)
     inexact: InexactNewtonSpec | None = None
 
-    def make_solver(self, model) -> "NewtonSolver":
+    def make_solver(self, model=None) -> "NewtonSolver":
         if self.inexact is not None:
             raise NotImplementedError(
                 "Inexact Newton (forcing sequences) is not implemented yet"
@@ -52,7 +52,7 @@ class NewtonSpec(NonlinearSolverSpec):
             raise NotImplementedError(
                 "Physical per-axis Newton bounds are not implemented yet"
             )
-        return NewtonSolver(model, self)
+        return NewtonSolver(self, model=model)
 
     def sync_to_engine(self, engine):
         """Sync the residual norm (base) plus the Newton kernel controls."""
@@ -84,9 +84,16 @@ class TrustRegionNewtonSpec(NewtonSpec):
         raise NotImplementedError("Trust-region Newton is not implemented yet")
 
 
-def default_nonlinear_solver() -> NewtonSpec:
-    """Default nonlinear solver: local-chop Newton, matching the historic sim_params defaults."""
+def default_nonlinear_spec() -> NewtonSpec:
+    """Default nonlinear solver spec: local-chop Newton, matching the historic
+    sim_params defaults."""
     return NewtonSpec()
+
+
+def default_nonlinear_solver() -> "NewtonSolver":
+    """Default nonlinear solver: a detached local-chop Newton solver, matching
+    the historic sim_params defaults."""
+    return NewtonSolver(default_nonlinear_spec())
 
 
 # ------------------------------------------------------------------ solver
@@ -95,12 +102,30 @@ def default_nonlinear_solver() -> NewtonSpec:
 class NewtonSolver(NonlinearSolver):
     """Newton-Raphson driver: the Python Newton loop over the C++ kernels.
 
-    Ported from ``DartsModel.run_timestep``; behaviour-identical to the
+    Constructed from a :class:`NewtonSpec` (or its keyword arguments) and
+    detached from the model until :meth:`bind`; the driving Newton loop is
+    ported from ``DartsModel.run_timestep`` and is behaviour-identical to the
     historic implementation.
+
+    :param spec: the :class:`NewtonSpec` to run, or ``None`` to build one from
+        the keyword arguments.
+    :param model: optional model to bind to at construction (usually left
+        ``None`` — the model binds the solver during ``init()``).
     """
 
-    def __init__(self, model, spec: NewtonSpec):
-        super().__init__(model, spec)
+    def __init__(self, spec: NewtonSpec = None, model=None, **spec_kwargs):
+        if spec is None:
+            spec = NewtonSpec(**spec_kwargs)
+        elif spec_kwargs:
+            raise TypeError(
+                "NewtonSolver: pass either a NewtonSpec or its keyword "
+                "arguments, not both"
+            )
+        elif not isinstance(spec, NewtonSpec):
+            raise TypeError(
+                f"NewtonSolver expects a NewtonSpec, got {type(spec).__name__}"
+            )
+        super().__init__(spec, model=model)
 
     def build_corrections(self) -> list:
         """Newton dX-correction pipeline prescribed by the spec, mirroring the

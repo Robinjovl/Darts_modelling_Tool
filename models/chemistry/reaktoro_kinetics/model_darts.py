@@ -12,7 +12,7 @@ from darts.physics.chemistry.property_container import (
     PropertyContainer,
 )
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
-from darts.nonlinear_solvers import NewtonSpec
+from darts.nonlinear_solvers import NewtonSolver
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.input.input_data import linear_solver_types
 from darts.physics.properties.kinetics import (
@@ -118,7 +118,7 @@ class Model(CICDModel):
         self.timer.node["initialization"].start()
         self.set_reservoir()
         self.set_physics()
-        self.nonlinear_solver = NewtonSpec(tolerance=1e-5, max_iterations=15)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=15)
         self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_linear=1e-6, it_linear=200)
         self.params.linear_type = sim_params.cpu_superlu
 

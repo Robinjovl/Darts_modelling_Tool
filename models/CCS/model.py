@@ -9,7 +9,7 @@ from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-from darts.nonlinear_solvers import NewtonSpec
+from darts.nonlinear_solvers import NewtonSolver
 
 
 class Model(DartsModel):
@@ -78,7 +78,7 @@ class Model(DartsModel):
         self.set_physics(zero, temperature=None, ph=False, vl_phases=False)
         self.inj_stream = [0.001] if self.components[0] == "H2O" else [0.999]
 
-        self.nonlinear_solver = NewtonSpec(tolerance=1e-6, max_iterations=8)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-6, max_iterations=8)
         self.set_sim_params(first_ts=1e-7, mult_ts=2, max_ts=20., tol_linear=1e-6,
                             it_linear=50, runtime=1)
         # self.params.nonlinear_norm_type = self.params.L1

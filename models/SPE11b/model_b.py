@@ -4,7 +4,7 @@ import os
 
 from dataclasses import dataclass
 from darts.models.darts_model import DartsModel
-from darts.nonlinear_solvers import Norm, NewtonSpec, ChopSpec
+from darts.nonlinear_solvers import Norm, NewtonSolver, ChopSpec
 from darts.engines import value_vector
 from math import fabs
 try:
@@ -107,7 +107,7 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
-        self.nonlinear_solver = NewtonSpec(tolerance=1e-3, max_iterations=12,
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=12,
                                            chop=ChopSpec(mode='local', factor=0.01),
                                            norm=Norm.L2)  # Norm.LINF if you use m.set_rhs() for injection
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4,

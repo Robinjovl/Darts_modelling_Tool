@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from darts.engines import redirect_darts_output
-from darts.nonlinear_solvers import NewtonSpec
+from darts.nonlinear_solvers import NewtonSolver
 
 from model import Model, default_corey_regions
 
@@ -91,7 +91,7 @@ def build_model(config: CaseConfig, platform: str = "cpu") -> Model:
         start_injection_h2o_days=config.start_injection_h2o_days,
         water_injection_rate=1.728,
     )
-    model.nonlinear_solver = NewtonSpec(tolerance=config.tol_newton, max_iterations=config.it_newton)
+    model.nonlinear_solver = NewtonSolver(tolerance=config.tol_newton, max_iterations=config.it_newton)
     model.set_sim_params(
         first_ts=config.first_ts,
         mult_ts=config.mult_ts,

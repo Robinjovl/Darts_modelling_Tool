@@ -243,6 +243,12 @@ def write_to_log(message: str):
 class NonlinearSolver:
     """Base runtime nonlinear solver: owns the timestep solve loop.
 
+    The solver is the object a model assigns to ``DartsModel.nonlinear_solver``.
+    It is constructed *detached* from its declarative :attr:`spec` (no model
+    needed) and later :meth:`bind`\\ s to the model during ``init()``. The spec
+    it runs stays retrievable via :attr:`spec` / :meth:`to_spec` (Pydantic-ready)
+    for input tracing / serialization.
+
     Subclasses implement :meth:`run_timestep` and :meth:`build_corrections`.
     The heavy kernels stay on the C++ engine; models can customize behaviour by
     overriding the hooks :meth:`compute_residuals` and :meth:`on_iteration` in a
@@ -250,9 +256,9 @@ class NonlinearSolver:
     ``post_routines``.
     """
 
-    def __init__(self, model, spec: NonlinearSolverSpec):
-        self.model = model
+    def __init__(self, spec: NonlinearSolverSpec, model=None):
         self.spec = spec
+        self.model = model
         self.status = NonlinearStatus()
         self.stats = SolverStats()
         # ordered dX-correction pipeline assembled from the spec by build_corrections()
@@ -260,6 +266,17 @@ class NonlinearSolver:
         # extra routines injected by a FallbackSpec retry (empty on the primary solver)
         self.extra_pre_routines = []
         self.extra_post_routines = []
+
+    def bind(self, model):
+        """Attach this (possibly detached) solver to a model; returns self."""
+        self.model = model
+        return self
+
+    def to_spec(self) -> NonlinearSolverSpec:
+        """Return the specification this solver runs (the live config object the
+        model's ``data_ts``/constructor kwargs write into). Pydantic-ready, so
+        ``solver.to_spec().model_dump()`` traces the solver input (autospec)."""
+        return self.spec
 
     @property
     def engine(self):
@@ -292,7 +309,7 @@ class NonlinearSolver:
 
     def _make_fallback_solver(self, fallback: FallbackSpec) -> "NonlinearSolver":
         spec = fallback.solver if fallback.solver is not None else self.spec
-        solver = spec.make_solver(self.model)
+        solver = spec.make_solver(self.model)  # constructed bound to this model
         solver.stats = self.stats  # single cumulative statistics object
         solver.extra_pre_routines = list(fallback.pre_routines)
         solver.extra_post_routines = list(fallback.post_routines)

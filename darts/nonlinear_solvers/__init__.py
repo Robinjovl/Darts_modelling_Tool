@@ -66,6 +66,7 @@ from darts.nonlinear_solvers.newton import (
     QuasiNewtonSpec,
     TrustRegionNewtonSpec,
     default_nonlinear_solver,
+    default_nonlinear_spec,
 )
 
 __all__ = [
@@ -84,6 +85,7 @@ __all__ = [
     "TrustRegionNewtonSpec",
     "PicardSpec",
     "default_nonlinear_solver",
+    "default_nonlinear_spec",
     # runtime
     "NonlinearSolver",
     "NewtonSolver",

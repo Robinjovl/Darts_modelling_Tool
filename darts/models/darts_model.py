@@ -19,6 +19,7 @@ from darts.models.output import Output
 from darts.nonlinear_solvers import (
     NonlinearSolverSpec,
     default_nonlinear_solver,
+    default_nonlinear_spec,
 )
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
@@ -56,8 +57,10 @@ class DataTS:
     )
 
     def __init__(self, n_vars, nonlinear: NonlinearSolverSpec = None):
+        # holds the nonlinear-solver SPEC (the config the adapter forwards to);
+        # sourced from DartsModel.nonlinear_solver.spec
         self._nonlinear = (
-            nonlinear if nonlinear is not None else default_nonlinear_solver()
+            nonlinear if nonlinear is not None else default_nonlinear_spec()
         )
 
         # timestep control (owned by this structure)
@@ -207,10 +210,11 @@ class DartsModel:
         # Create sim_params object to set simulation parameters
         self.params = sim_params()
 
-        # Nonlinear solver specification (single input source; see
-        # darts.nonlinear_solvers). Assigned lazily by set_solver().
+        # Nonlinear solver instance (a NewtonSolver; see darts.nonlinear_solvers)
+        # built from its declarative spec. Assigned lazily by set_solver() and
+        # bound to this model in init(). Its input spec is DartsModel
+        # .nonlinear_solver.spec (retrievable for tracing/serialization).
         self.nonlinear_solver = None
-        self._nonlinear = None  # runtime solver object built from the spec
         self._data_ts = (
             None  # lazy timestep-control structure, see the data_ts property
         )
@@ -636,14 +640,26 @@ class DartsModel:
         linear-solver ``set_solver()`` of MR280 — after the merge both the
         linear and the nonlinear solver are specified here).
 
-        The default implementation is idempotent and lazy: it keeps any spec a
+        ``self.nonlinear_solver`` holds the solver *instance* built from its
+        declarative spec; the input spec stays retrievable as
+        ``self.nonlinear_solver.spec`` (Pydantic-ready, for tracing).
+
+        The default implementation is idempotent and lazy: it keeps any solver a
         subclass already assigned and otherwise materializes the default.
-        Override in a model to select/tune the nonlinear solver::
+        Override in a model to select/tune the nonlinear solver, either by
+        replacing it::
 
             def set_solver(self):
                 super().set_solver()
-                self.nonlinear_solver.tolerance = 1e-4
-                self.nonlinear_solver.chop.factor = 0.2
+                self.nonlinear_solver = NewtonSolver(tolerance=1e-4,
+                                                     chop=ChopSpec(mode='global'))
+
+        or by tuning the spec of the default::
+
+            def set_solver(self):
+                super().set_solver()
+                self.nonlinear_solver.spec.tolerance = 1e-4
+                self.nonlinear_solver.spec.chop.factor = 0.2
         """
         if getattr(self, "nonlinear_solver", None) is None:
             self.nonlinear_solver = default_nonlinear_solver()
@@ -652,11 +668,12 @@ class DartsModel:
     def data_ts(self):
         """Timestep-control structure (and nonlinear-settings adapter, see
         :class:`DataTS`), created lazily so it can be read/written both before
-        and after ``init()``."""
+        and after ``init()``. Its nonlinear-attribute adapters forward to
+        ``self.nonlinear_solver.spec``."""
         if self._data_ts is None:
             self.set_solver()
             n_vars = self.physics.n_vars if getattr(self, "physics", None) else 0
-            self._data_ts = DataTS(n_vars, nonlinear=self.nonlinear_solver)
+            self._data_ts = DataTS(n_vars, nonlinear=self.nonlinear_solver.spec)
         return self._data_ts
 
     @data_ts.setter
@@ -664,17 +681,18 @@ class DartsModel:
         self._data_ts = value
 
     def _apply_nonlinear(self):
-        """Materialize the nonlinear solver spec into the runtime solver object
-        and make sure ``data_ts``/``sim_params`` mirror it. Called from init()."""
+        """Bind the nonlinear solver to this model and make sure
+        ``data_ts``/``sim_params`` mirror its spec. Called from init()."""
         self.set_solver()
+        spec = self.nonlinear_solver.spec
         if self._data_ts is None:
-            self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver)
+            self.data_ts = DataTS(self.physics.n_vars, nonlinear=spec)
             self.copy_data_ts_to_sim_params()
-        elif self._data_ts._nonlinear is not self.nonlinear_solver:
-            # the model replaced the spec object after set_sim_params(): rebind
-            # the adapter to the new spec, keeping timestep + linear settings
+        elif self._data_ts._nonlinear is not spec:
+            # the model replaced the solver after set_sim_params(): rebind the
+            # adapter to the new spec, keeping timestep + linear settings
             old = self._data_ts
-            self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver)
+            self.data_ts = DataTS(self.physics.n_vars, nonlinear=spec)
             for k in (
                 "eta",
                 "dt_first",
@@ -691,10 +709,12 @@ class DartsModel:
         # the structure may have been created pre-init with n_vars=0: size eta now
         if len(self._data_ts.eta) < self.physics.n_vars:
             self._data_ts.eta = 1e20 * np.ones(self.physics.n_vars)
-        self._nonlinear = self.nonlinear_solver.make_solver(self)
+        # bind the (possibly detached) solver to this model
+        self.nonlinear_solver.bind(self)
 
     def set_sim_params_data_ts(self, data_ts):
-        """Deprecated: assign ``nonlinear_solver``/``timestep`` specs instead."""
+        """Deprecated: assign ``nonlinear_solver`` and set timestep controls on
+        ``data_ts`` instead."""
         warnings.warn(
             "set_sim_params_data_ts() is deprecated; specify DartsModel.nonlinear_solver "
             "in set_solver() and set timestep controls on DartsModel.data_ts instead",
@@ -702,7 +722,7 @@ class DartsModel:
             stacklevel=2,
         )
         self.set_solver()
-        self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver)
+        self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver.spec)
         # copy attributes except eta
         for k in DataTS._FIELDS:
             if k == "eta":
@@ -724,11 +744,11 @@ class DartsModel:
         Function to set the timestep and linear solver parameters.
 
         The nonlinear solver parameters are NOT set here anymore — specify them
-        on ``self.nonlinear_solver`` (a :class:`darts.nonlinear_solvers.NewtonSpec`),
+        on ``self.nonlinear_solver`` (a :class:`darts.nonlinear_solvers.NewtonSolver`),
         typically in a ``set_solver()`` override::
 
-            self.nonlinear_solver = NewtonSpec(tolerance=1e-4, max_iterations=15,
-                                               chop=ChopSpec(mode='local', factor=0.2))
+            self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
+                                                 chop=ChopSpec(mode='local', factor=0.2))
 
         :param first_ts: First timestep
         :type first_ts: float
@@ -757,8 +777,8 @@ class DartsModel:
         # NOT touch it here — nonlinear settings live on self.nonlinear_solver
         self.set_solver()
 
-        # fresh timestep-control structure bound to the current spec
-        self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver)
+        # fresh timestep-control structure bound to the current solver's spec
+        self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver.spec)
         ts = self.data_ts
 
         # Time stepping parameters. if None, default value will be used
@@ -800,9 +820,8 @@ class DartsModel:
         """
         self.physics = physics
         self.data_ts = data_ts
-        # rebind the spec (and runtime solver) to the externally supplied data_ts
-        self.nonlinear_solver = data_ts._nonlinear
-        self._nonlinear = None
+        # build the runtime solver from the externally supplied data_ts spec
+        self.nonlinear_solver = data_ts._nonlinear.make_solver(self)
 
         days = days if days is not None else self.runtime
         assert days > 0, "Time must be a positive value!"
@@ -833,7 +852,7 @@ class DartsModel:
                 self.after_converged_timestep()
                 if verbose:
                     print(
-                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self._nonlinear.status.n_newton:d}\tLI={self._nonlinear.status.n_linear:d}"
+                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.nonlinear_solver.status.n_newton:d}\tLI={self.nonlinear_solver.status.n_linear:d}"
                     )
 
                 dt = min(dt * self.data_ts.dt_mult, self.data_ts.dt_max)
@@ -860,7 +879,7 @@ class DartsModel:
 
         if verbose:
             print(
-                f"TS = {self._nonlinear.stats.n_timesteps_total:d}({self._nonlinear.stats.n_timesteps_wasted:d}), NI = {self._nonlinear.stats.n_newton_total:d}({self._nonlinear.stats.n_newton_wasted:d}), LI = {self._nonlinear.stats.n_linear_total:d}({self._nonlinear.stats.n_linear_wasted:d})"
+                f"TS = {self.nonlinear_solver.stats.n_timesteps_total:d}({self.nonlinear_solver.stats.n_timesteps_wasted:d}), NI = {self.nonlinear_solver.stats.n_newton_total:d}({self.nonlinear_solver.stats.n_newton_wasted:d}), LI = {self.nonlinear_solver.stats.n_linear_total:d}({self.nonlinear_solver.stats.n_linear_wasted:d})"
             )
 
     def run(
@@ -975,7 +994,7 @@ class DartsModel:
                 if verbose:
                     max_dx_str = '[' + ', '.join(f'{v:.1e}' for v in max_dx) + ']'
                     print(
-                        f"#{ts_counter:d}\tT={t:3g}\tDT={dt:2g}\tNI={self._nonlinear.status.n_newton:d}\tLI={self._nonlinear.status.n_linear:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
+                        f"#{ts_counter:d}\tT={t:3g}\tDT={dt:2g}\tNI={self.nonlinear_solver.status.n_newton:d}\tLI={self.nonlinear_solver.status.n_linear:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
                     )
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
@@ -1056,9 +1075,9 @@ class DartsModel:
 
         if verbose:
             print(
-                f"----- TS = {self._nonlinear.stats.n_timesteps_total:d}({self._nonlinear.stats.n_timesteps_wasted:d}), "
-                f"NI = {self._nonlinear.stats.n_newton_total:d}({self._nonlinear.stats.n_newton_wasted:d}), "
-                f"LI = {self._nonlinear.stats.n_linear_total:d}({self._nonlinear.stats.n_linear_wasted:d}) -----"
+                f"----- TS = {self.nonlinear_solver.stats.n_timesteps_total:d}({self.nonlinear_solver.stats.n_timesteps_wasted:d}), "
+                f"NI = {self.nonlinear_solver.stats.n_newton_total:d}({self.nonlinear_solver.stats.n_newton_wasted:d}), "
+                f"LI = {self.nonlinear_solver.stats.n_linear_total:d}({self.nonlinear_solver.stats.n_linear_wasted:d}) -----"
             )
 
         # At higher verbosity, print the timer breakdown at the end of every run()
@@ -1089,11 +1108,12 @@ class DartsModel:
         return self._get_nonlinear().solve_timestep(dt, t, verbose)
 
     def _get_nonlinear(self):
-        """Return the runtime nonlinear solver, (re)building it when the spec
-        object was replaced after init()."""
-        if self._nonlinear is None or self._nonlinear.spec is not self.nonlinear_solver:
+        """Return the runtime nonlinear solver, binding it to this model when it
+        was (re)assigned after init()."""
+        self.set_solver()
+        if self.nonlinear_solver.model is not self:
             self._apply_nonlinear()
-        return self._nonlinear
+        return self.nonlinear_solver
 
     def update_dfm_well_vels_and_ders(self, dt, t, iter_counter):
         """

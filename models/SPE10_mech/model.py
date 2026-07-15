@@ -40,9 +40,9 @@ class Model(THMCModel):
         self.data_ts.dt_first = 0.0001
         self.data_ts.dt_mult = 2
         self.data_ts.dt_max = 5
-        self.nonlinear_solver.tolerance = 1e-6
+        self.nonlinear_solver.spec.tolerance = 1e-6
         self.params.tolerance_linear = 1e-8
-        self.nonlinear_solver.max_iterations = 20
+        self.nonlinear_solver.spec.max_iterations = 20
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, fluid_vars=self.physics.vars,

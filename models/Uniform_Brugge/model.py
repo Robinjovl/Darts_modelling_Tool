@@ -1,6 +1,6 @@
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params, ms_well
-from darts.nonlinear_solvers import NewtonSpec
+from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
@@ -23,7 +23,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSpec(tolerance=1e-3, max_iterations=10)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10)
         self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=2, runtime=2000,
                             tol_linear=1e-3, it_linear=50)
 

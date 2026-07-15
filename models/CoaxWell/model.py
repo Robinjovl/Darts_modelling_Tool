@@ -5,7 +5,7 @@ from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from darts.engines import value_vector, sim_params
 from darts.engines import well_control_iface, ms_well
-from darts.nonlinear_solvers import NewtonSpec, ChopSpec
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.physics.geothermal.physics import Geothermal
 from darts.physics.geothermal.property_container import PropertyContainer
@@ -22,7 +22,7 @@ class Model(CICDModel):
         self.set_reservoir(resolution)
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSpec(tolerance=1e-4, max_iterations=20,
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=20,
                                            chop=ChopSpec(mode='global', factor=1))
         self.set_sim_params(first_ts=1e-6, mult_ts=8, max_ts=31, runtime=365, tol_linear=1e-6,
                             it_linear=40)

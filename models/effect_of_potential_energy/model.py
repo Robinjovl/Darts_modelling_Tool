@@ -10,7 +10,7 @@ from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-from darts.nonlinear_solvers import NewtonSpec
+from darts.nonlinear_solvers import NewtonSolver
 
 from dartsflash.libflash import NegativeFlash
 from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
@@ -30,7 +30,7 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSpec(tolerance=1e-3, max_iterations=10)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10)
         self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5,
                             tol_linear=1e-5, it_linear=50,
                             runtime=50, # This runtime will be used when CI test is conducted without the main file

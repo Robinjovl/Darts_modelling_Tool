@@ -23,7 +23,7 @@ from darts.physics.properties.kinetics import (
 from darts.physics.properties.phreeqc import Flash as PhreeqcFlash, PhreeqcFlashError
 from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
 from darts.physics.properties.flash_exceptions import FlashError
-from darts.nonlinear_solvers import NewtonSpec, ChopSpec, Norm
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec, Norm
 
 from iapws._iapws import _Viscosity
 from conversions import convert_composition, correct_composition, calculate_injection_stream, \
@@ -154,9 +154,9 @@ class Model(CICDModel):
         # initialize wormhole propagation ratio
         self.reservoir.wh_propagation_ratio = 0.0
 
-        self.nonlinear_solver = NewtonSpec(tolerance=1e-4, max_iterations=15,
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
                                            chop=ChopSpec(mode='local', factor=0.2))
-        # self.nonlinear_solver.norm = Norm.LINF
+        # self.nonlinear_solver.spec.norm = Norm.LINF
         # self.data_ts.linear_type = sim_params.cpu_superlu
         self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_linear=1e-6, it_linear=200)
         self.runtime = 1
