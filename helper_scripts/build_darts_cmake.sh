@@ -276,7 +276,7 @@ if [[ "$skip_req" == false ]]; then
           -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
           -D CMAKE_INSTALL_PREFIX=../../../install \
           .. &> ../../../../make_hypre.log
-    make install -j $NT &>> ../../../../make_hypre.log
+    make install -j $NT >> ../../../../make_hypre.log 2>&1
     cd ../../../
     echo -e "\n--- Building Hypre: DONE!\n"
 
@@ -320,7 +320,7 @@ if [[ "$skip_req" == false ]]; then
           -D CMAKE_BUILD_TYPE=${config} \
           -D CMAKE_INSTALL_PREFIX=../../install \
           ../../superlu &> ../../../make_superlu.log
-    make install -j $NT &>> ../../../make_superlu.log
+    make install -j $NT >> ../../../make_superlu.log 2>&1
     cd ../../../
     echo -e "\n--- Building SuperLU: DONE!\n"
 
@@ -342,7 +342,7 @@ if [[ "$skip_req" == false ]]; then
             -D BUILD_TESTING=OFF \
             -D BUILD_SHARED_LIBS=ON \
             ../../iphreeqc            &> ../../../make_iphreeqc.log
-        make install -j $NT           &>> ../../../make_iphreeqc.log
+        make install -j $NT           >> ../../../make_iphreeqc.log 2>&1
         cd ../../..
         echo -e "\n--- Building IPhreeqc: DONE!\n"
     fi
