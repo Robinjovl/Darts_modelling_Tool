@@ -502,32 +502,12 @@ report_build_summary()
     "open-DARTS:make_darts.log"
   )
 
-  # Count warnings/errors before printing (avoid reading make_darts.log while appending)
-  local -A warn_counts err_counts
-  for entry in "${components[@]}"; do
-    local name="${entry%%:*}"
-    local logfile="${entry##*:}"
-    if [[ -f "$logfile" ]]; then
-      if [[ "$name" == "open-DARTS" ]]; then
-        # make_darts.log also captures the thirdparty AMGX subdirectory build
-        # (add_subdirectory in the main CMake). AMGX's own deprecation warnings
-        # are NOT open-DARTS warnings and must not gate CI. Exclude them by two
-        # reliable markers: a 'thirdparty/' path (AMGX headers) and the amgx::
-        # namespace (AMGX compiles thrust/cub under THRUST_CUB_WRAPPED_NAMESPACE
-        # =amgx, so its template-instantiation warnings -- reported against nvcc
-        # intermediate stub files outside the source tree -- carry 'amgx::';
-        # open-DARTS uses plain thrust::, never amgx::).
-        local _amgx_re='thirdparty/|amgx::'
-        warn_counts[$name]=$(grep -E "$warn_pattern" "$logfile" 2>/dev/null | grep -Ecv "$_amgx_re" || true)
-        err_counts[$name]=$(grep -E "$err_pattern" "$logfile" 2>/dev/null | grep -Ecv "$_amgx_re" || true)
-      else
-        warn_counts[$name]=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
-        err_counts[$name]=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
-      fi
-    fi
-  done
+  # Count warnings/errors and print the summary table in a single pass over
+  # components (avoid reading make_darts.log while appending). Bash 3.2 (the
+  # default /bin/bash on macOS) has no associative arrays, so counts are kept
+  # in plain scalars per iteration rather than a name-indexed map.
+  local darts_warnings=0
 
-  # Print to stdout and append to make_darts.log
   {
     echo ""
     echo "========================================="
@@ -538,14 +518,32 @@ report_build_summary()
 
     for entry in "${components[@]}"; do
       local name="${entry%%:*}"
-      if [[ -n "${warn_counts[$name]+x}" ]]; then
-        printf " %-14s | %8d | %6d\n" "$name" "${warn_counts[$name]}" "${err_counts[$name]}"
+      local logfile="${entry##*:}"
+      if [[ -f "$logfile" ]]; then
+        local warn_count err_count
+        if [[ "$name" == "open-DARTS" ]]; then
+          # make_darts.log also captures the thirdparty AMGX subdirectory build
+          # (add_subdirectory in the main CMake). AMGX's own deprecation warnings
+          # are NOT open-DARTS warnings and must not gate CI. Exclude them by two
+          # reliable markers: a 'thirdparty/' path (AMGX headers) and the amgx::
+          # namespace (AMGX compiles thrust/cub under THRUST_CUB_WRAPPED_NAMESPACE
+          # =amgx, so its template-instantiation warnings -- reported against nvcc
+          # intermediate stub files outside the source tree -- carry 'amgx::';
+          # open-DARTS uses plain thrust::, never amgx::).
+          local _amgx_re='thirdparty/|amgx::'
+          warn_count=$(grep -E "$warn_pattern" "$logfile" 2>/dev/null | grep -Ecv "$_amgx_re" || true)
+          err_count=$(grep -E "$err_pattern" "$logfile" 2>/dev/null | grep -Ecv "$_amgx_re" || true)
+          darts_warnings=$warn_count
+        else
+          warn_count=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
+          err_count=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
+        fi
+        printf " %-14s | %8d | %6d\n" "$name" "$warn_count" "$err_count"
       fi
     done
 
     echo "========================================="
 
-    local darts_warnings=${warn_counts[open-DARTS]:-0}
     if [[ $darts_warnings -gt 0 ]]; then
       echo ""
       echo " open-DARTS unique warnings:"
