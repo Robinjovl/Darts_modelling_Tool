@@ -73,7 +73,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         'Uniform_Brugge',
         'Chem_benchmark_new',
         #'CO2_foam_CCS',
-        'GeoRising',
+        # 'GeoRising' runs below as parametrized PT/PH variants (accepted_dirs_variants)
         'CoaxWell',
         'effect_of_potential_energy',
     ]
@@ -192,13 +192,22 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     if platform == 'cpu':  # MPFA code is excluded from gpu build due to compilation issues (c++ std 20)
         accepted_dirs_adjoint += ['Adjoint_mpfa']
 
+    # Parametrized model.py runs: the same model folder is tested in several
+    # formulations, each producing/comparing its own reference pkl. Entries are
+    # (directory, proc_kwargs) tuples passed through for_each_model to check_performance.
+    accepted_dirs_variants = [
+        ('GeoRising', {'formulation': 'PT'}),
+        ('GeoRising', {'formulation': 'PH'}),
+    ]
+
     # RUN
     failed_models_m = []
     n_total = 0
-    # run tests accepted_dirs/model.py with comparison of pkl files
-    if len(accepted_dirs):
-        failed_models_m = for_each_model(model_dir, check_performance, accepted_dirs)
-    n_total_m = len(accepted_dirs)
+    # run tests accepted_dirs/model.py (+ parametrized variants) with comparison of pkl files
+    if len(accepted_dirs) or len(accepted_dirs_variants):
+        failed_models_m = for_each_model(model_dir, check_performance,
+                                         accepted_dirs + accepted_dirs_variants)
+    n_total_m = len(accepted_dirs) + len(accepted_dirs_variants)
     n_total += n_total_m
 
     # check main.py files and compare well time-series pkl files when they are produced
@@ -317,15 +326,18 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     exit(n_failed)
 
 
-def check_performance(mod):
+def check_performance(mod, formulation=None):
     _normalize_odls_env()
     pkl_suffix = _pkl_suffix()
+    # A parametrized run (e.g. a formulation) gets its own reference pkl and log so
+    # several variants of one model do not overwrite each other.
+    tag = '_' + str(formulation) if formulation is not None else ''
     x = os.path.basename(os.getcwd())
-    print("Running {:<30}".format(x + ': '), flush=True)
+    print("Running {:<30}".format(x + tag.replace('_', ' ') + ': '), flush=True)
     # erase previous log file if existed
     models_dir = os.path.dirname(os.path.abspath(__file__))  # /models
     rel_dir = os.path.relpath(os.getcwd(), models_dir)  # e.g., dfm_well/coupled_dfm_well_reservoir
-    safe_name = rel_dir.replace(os.sep, '__')
+    safe_name = rel_dir.replace(os.sep, '__') + tag
     log_file = os.path.join(models_dir, '_logs', safe_name + '.log')
     _ensure_parent_dir(log_file)
     f = open(log_file, "w")
@@ -333,7 +345,7 @@ def check_performance(mod):
     log_stream = redirect_all_output(log_file)
     shutil.rmtree("__pycache__", ignore_errors=True)
     # create model instance
-    m = mod.Model()
+    m = mod.Model() if formulation is None else mod.Model(formulation=formulation)
     #m.params.linear_type = sim_params.cpu_superlu
 
     platform='cpu'
@@ -353,7 +365,7 @@ def check_performance(mod):
     overwrite = 0
     if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = 1
-    failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix)
+    failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix + tag)
 
     return failed
 

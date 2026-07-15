@@ -16,15 +16,33 @@ from darts.physics.properties.viscosity import MaoDuan2009
 
 
 class Model(CICDModel):
-    def __init__(self, iapws_physics: bool = True):
+    def __init__(self, formulation: str = 'PT'):
+        """Single-component-water geothermal model with a selectable thermal formulation.
+
+        :param formulation: thermal state specification of the compositional physics:
+
+            * ``'PT'`` (default) — pressure/temperature state, IAPWS-95 PT-flash.
+              Unknowns are ``[pressure, temperature]``.
+            * ``'PH'`` — pressure/enthalpy state, IAPWS-95 PH-flash (a
+              ``PXFlash`` with enthalpy specification under the hood). Unknowns are
+              ``[pressure, enthalpy]``; temperature is a derived output property.
+
+        Both formulations use the same IAPWS-95 equation of state, so they differ only
+        in the thermal state variable and are directly comparable.
+        :type formulation: str
+        """
         # call base class constructor
         super().__init__()
+
+        formulation = formulation.upper()
+        assert formulation in ('PT', 'PH'), \
+            f"formulation must be 'PT' or 'PH', got {formulation!r}"
+        self.formulation = formulation
 
         self.timer.node["initialization"].start()
 
         self.set_reservoir()
 
-        self.iapws_physics = iapws_physics
         self.set_input_data()
         self.set_physics()
 
@@ -38,7 +56,10 @@ class Model(CICDModel):
         (nx, ny, nz) = (60, 60, 3)
         nb = nx * ny * nz
         perm = np.ones(nb) * 2000
-        perm = load_single_keyword(r'/palmyra/data/ychen/open-darts/models/GeoRising/permXVanEssen.in', 'PERMX')
+        # Heterogeneous permeability shipped alongside the model (relative path so the
+        # model runs anywhere, incl. CI; the absolute path from an earlier WIP commit
+        # only existed on one workstation).
+        perm = load_single_keyword('permXVanEssen.in', 'PERMX')
         perm = perm[:nb]
 
         poro = np.ones(nb) * 0.2
@@ -74,65 +95,46 @@ class Model(CICDModel):
             self.reservoir.add_perforation("PRD", res_cell_idx=(iw[1], jw[1], k + 1),
                                            well_diameter=0.32, ms_epm=True)
 
-    def set_iapws_physics(self, p_step, p_origin, t_step, t_origin, cache=False):
-        """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PT-flash.
+    def set_physics(self):
+        """Route to the PT- or PH-formulation physics selected in the constructor."""
+        if self.formulation == 'PT':
+            self.set_pt_physics(p_step=self.idata.obl.p_step, p_origin=self.idata.obl.p_origin,
+                                t_step=self.idata.obl.t_step, t_origin=self.idata.obl.t_origin)
+        else:
+            self.set_ph_physics(p_step=self.idata.obl.p_step, p_origin=self.idata.obl.p_origin,
+                                e_step=self.idata.obl.e_step, e_origin=self.idata.obl.e_origin)
 
-        State spec is PT so the OBL grid axes are pressure and temperature, matching the
-        BaseModels.set_iapws_physics template. PHFlash on IAPWS95 was unstable: the OBL
-        sampling extended below 273.15 K, triggering "LIQUID MINIMUM BISECTION not converged"
-        crashes during init.
+    def set_pt_physics(self, p_step, p_origin, t_step, t_origin, cache=False):
+        """PT formulation: compositional physics on the IAPWS-95 PT-flash.
+
+        State spec is PT, so ``engine.X`` is ``[pressure, temperature]`` and the OBL
+        grid axes are (pressure, temperature). ``ice_phase=False`` -> keep the
+        temperature origin at the IAPWS liquid floor (273.15 K) so the unbounded grid
+        never samples the sub-freezing (NaN) region.
         """
-        from dartsflash.libflash import PXFlash, FlashParams, EoS
-        from dartsflash.libflash import CubicEoS, AQEoS
-        from dartsflash.components import CompData
-        from darts.physics.properties.density import Spivey2004
-        from darts.physics.properties.flash import SinglePhase
         components = ["H2O"]
-        phases = ['V', 'L']  # vapor, liquid (replaces 'steam','water')
+        phases = ['V', 'L']  # vapor, liquid
         zero = 1e-12
         comp_data = CompData(components=components, setprops=True)
 
         pc = PropertyContainer(phases_name=phases, components_name=components,
                                Mw=comp_data.Mw, eps_z=zero)
 
-        # flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
-        # flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
-        # pc.flash_ev = flash_ev
-        ceos = CubicEoS(comp_data, CubicEoS.PR)
-        ceos.set_preferred_roots(0, 0.75, EoS.MAX)
-        aq = AQEoS(comp_data, AQEoS.Jager2003)
-        aq.set_eos_range(0, [0.6, 1.])
-
-        flash_params = FlashParams(comp_data)
-
-        # EoS-related parameters
-        flash_params.add_eos("CEOS", ceos)
-        flash_params.add_eos("AQ", aq)
-        flash_params.eos_order = ["AQ", "CEOS"]
-
-        flash_params.T_min = 250.
-        flash_params.T_max = 575.
-        
-        # flash_ev = PXFlash(flash_params, PXFlash.ENTHALPY)
-        flash_ev = SinglePhase(nc=len(components))
+        flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
         pc.flash_ev = flash_ev
 
-
         pc.density_ev = {
-            # 'V': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),
-            # 'L': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN),
-            'V':ConstFunc(1),
-            'L': Spivey2004(components)
+            'V': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),
+            'L': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN),
         }
         pc.viscosity_ev = {
             'V': ConstFunc(0.01),                  # cP, steam
-            'L': MaoDuan2009(components)          # cP, liquid water (pressure-dependent)
+            'L': MaoDuan2009(components),          # cP, liquid water (pressure/temperature-dependent)
         }
         pc.enthalpy_ev = {
-            # 'V': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
-            # 'L': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
-            'V': EoSEnthalpy(ceos),
-            'L': EoSEnthalpy(aq)
+            'V': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
+            'L': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
         }
         pc.rel_perm_ev = {
             'V': PhaseRelPerm("gas", swc=0.0),
@@ -145,7 +147,6 @@ class Model(CICDModel):
         # output_props exposes derived T (K) via the property interpolator
         pc.output_props = {'temperature': lambda: pc.temperature}
 
-        # Single component (H2O) with state_spec=PT -> OBL axes are [pressure, temperature]
         self.physics = PhysicsBase(
             components, phases, self.timer,
             state_spec=PhysicsBase.StateSpecification.PT,
@@ -157,27 +158,84 @@ class Model(CICDModel):
         self.physics.add_property_region(pc)
         return pc
 
-    def set_physics(self):
-        # Both legacy iapws_physics=True (Geothermal) and iapws_physics=False (GeothermalPH)
-        # branches now route through the compositional + IAPWS PT-flash helper.
-        self.set_iapws_physics(p_step=self.idata.obl.p_step,
-                               p_origin=self.idata.obl.p_origin,
-                               t_step=self.idata.obl.t_step,
-                               t_origin=self.idata.obl.t_origin)
+    def set_ph_physics(self, p_step, p_origin, e_step, e_origin, cache=False):
+        """PH formulation: compositional physics on an IAPWS-95 PXFlash (enthalpy spec).
+
+        ``DARTSFlash.FlashType.PHFlash`` builds a ``PXFlash(StateSpecification.ENTHALPY)``
+        internally, so this is the pressure-enthalpy flash counterpart of the PT branch
+        on the *same* IAPWS-95 EoS — the two formulations differ only in the thermal
+        state variable, which makes them directly comparable. State spec is PH, so
+        ``engine.X`` is ``[pressure, enthalpy]`` and temperature is a derived output;
+        the flash's internal PT sub-solve converts the initial temperature to enthalpy.
+        """
+        components = ["H2O"]
+        phases = ['V', 'L']  # vapor, liquid (same labels as the PT branch)
+        zero = 1e-12
+        comp_data = CompData(components=components, setprops=True)
+
+        pc = PropertyContainer(phases_name=phases, components_name=components,
+                               Mw=comp_data.Mw, eps_z=zero)
+
+        flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
+        # PHFlash -> PXFlash(ENTHALPY) under the hood (dartsflash wrapper). Bound the
+        # PXFlash temperature root-finding to the IAPWS liquid range: the default
+        # t_min=100 K lets the solver sample far below the ice point, where IAPWS-95
+        # density bisection diverges ("LIQUID MINIMUM BISECTION not converged").
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PHFlash,
+                            t_min=273.15, t_max=575., t_init=350.)
+        pc.flash_ev = flash_ev
+
+        pc.density_ev = {
+            'V': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),
+            'L': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN),
+        }
+        pc.viscosity_ev = {
+            'V': ConstFunc(0.01),                  # cP, steam
+            'L': MaoDuan2009(components),          # cP, liquid water (pressure/temperature-dependent)
+        }
+        pc.enthalpy_ev = {
+            'V': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
+            'L': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
+        }
+        pc.rel_perm_ev = {
+            'V': PhaseRelPerm("gas", swc=0.0),
+            'L': PhaseRelPerm("oil", swc=0.0),
+        }
+        pc.conductivity_ev = {
+            'V': ConstFunc(0.0),
+            'L': ConstFunc(172.8),                 # kJ/m/day/K, matches geothermal default
+        }
+        # output_props exposes derived T (K) via the property interpolator
+        pc.output_props = {'temperature': lambda: pc.temperature}
+
+        # state_spec=PH -> OBL axes are [pressure, enthalpy]; grid extends adaptively.
+        self.physics = PhysicsBase(
+            components, phases, self.timer,
+            state_spec=PhysicsBase.StateSpecification.PH,
+            axes_step=[p_step, e_step],
+            axes_origin=[p_origin, e_origin],
+            epsilon_z=zero,
+            cache=cache,
+        )
+        self.physics.add_property_region(pc)
+        return pc
 
     def set_initial_conditions(self):
+        # Same physical initial state for both formulations; PhysicsBase converts the
+        # temperature to enthalpy internally when state_spec is PH.
         input_distribution = {'pressure': 200.,
                               'temperature': 350.
                               }
         return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
                                                               input_distribution=input_distribution)
 
-
     def set_well_controls(self):
+        # Both formulations label the liquid phase 'L'.
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
-                                               is_inj=True, target=8000., phase_name='L', inj_composition=[], inj_temp=300.)
+                                               is_inj=True, target=8000., phase_name='L',
+                                               inj_composition=[], inj_temp=300.)
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
                                                is_inj=False, target=8000., phase_name='L')
@@ -196,45 +254,22 @@ class Model(CICDModel):
         self.idata.rock.compressibility_ref_p = 1.  # [bars]
         self.idata.rock.compressibility_ref_T = 273.15  # [K]
 
-        # Fluid evaluator wiring now lives in set_iapws_physics(); no idata.fluid needed.
+        # Fluid evaluator wiring lives in set_pt_physics()/set_ph_physics(); no idata.fluid needed.
         self.compositional = True
 
-        # example - how to change the properties
-        # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
-
-        #from darts.physics.properties.basic import ConstFunc
-        #self.idata.fluid.conduction_ev['water'] = ConstFunc(172.8)
-
-        # if init_type== 'uniform': # uniform initial conditions
-        #     self.idata.initial.initial_pressure = 200.  # bars
-        #     self.idata.initial.initial_temperature = 350.  # K
-        # elif init_type == 'gradient':         # gradient by depth
-        #     self.idata.initial.reference_depth_for_pressure = 0  # [m]
-        #     self.idata.initial.pressure_gradient = 100  # [bar/km]
-        #     self.idata.initial.pressure_at_ref_depth = 1 # [bars]
-        #
-        #     self.idata.initial.reference_depth_for_temperature = 0  # [m]
-        #     self.idata.initial.temperature_gradient = 30  # [K/km]
-        #     self.idata.initial.temperature_at_ref_depth = 273.15 + 20 # [K]
-
-        # # well controls
-        # wctrl = self.idata.wells.controls  # short name
-        # wctrl.type = 'rate'
-        # #wctrl.type = 'bhp'
-        # if wctrl.type == 'bhp':
-        #     self.idata.wells.controls.inj_bhp = 250 # bars
-        #     self.idata.wells.controls.prod_bhp = 100 # bars
-        # elif wctrl.type == 'rate':
-        #     self.idata.wells.controls.inj_rate = 5500 # m3/day
-        #     self.idata.wells.controls.inj_bhp_constraint = 300 # upper limit for bhp, bars
-        #     self.idata.wells.controls.prod_rate = 5500 # m3/day
-        #     self.idata.wells.controls.prod_bhp_constraint = 70 # lower limit for bhp, bars
-        # self.idata.wells.controls.inj_bht = 300  # K
-
-        # OBL grid for the compositional + IAPWS PT-flash physics (state_spec=PT).
-        # Cell sizes reproduce the former 128-point grid over p in [1, 400] bar and
-        # T in [273.15, 575] K; the adaptive interpolator extends past it on demand.
-        self.idata.obl.p_step = 3.142  # bar
-        self.idata.obl.p_origin = 1.0
-        self.idata.obl.t_step = 2.377  # K
-        self.idata.obl.t_origin = 273.15
+        # OBL grid resolution per formulation. The adaptive interpolator is anchored at
+        # (origin) and extends on demand, so origin/step only set the index-0 node and cell size.
+        if self.formulation == 'PT':
+            # (pressure, temperature) axes; T origin at the IAPWS liquid floor.
+            self.idata.obl.p_step = 3.142  # bar
+            self.idata.obl.p_origin = 1.0
+            self.idata.obl.t_step = 2.377  # K
+            self.idata.obl.t_origin = 273.15
+        else:
+            # (pressure, enthalpy) axes for the PH (PXFlash) formulation. Enthalpy is in
+            # kJ/kmol (IAPWS-95): H(273.15 K) ~ 361, H(350 K) ~ 6086; these reproduce the
+            # legacy Geothermal P-H grid resolution.
+            self.idata.obl.p_step = 2.756  # bar
+            self.idata.obl.p_origin = 1.0
+            self.idata.obl.e_step = 70.87  # kJ/kmol
+            self.idata.obl.e_origin = 1000.0

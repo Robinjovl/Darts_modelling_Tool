@@ -27,7 +27,7 @@ def _sigterm_handler():
     print("received SIGABRT")
     sys.exit()
 
-def spawn_process_function(model_path, model_procedure, ret_value):
+def spawn_process_function(model_path, model_procedure, ret_value, proc_kwargs=None):
     # step in target folder
     os.chdir(model_path)
 
@@ -38,8 +38,8 @@ def spawn_process_function(model_path, model_procedure, ret_value):
     try:
         # import model.py
         mod = importlib.import_module('model')
-        # perform required procedures
-        ret_value.value = model_procedure(mod)
+        # perform required procedures (proc_kwargs parametrize the run, e.g. a formulation)
+        ret_value.value = model_procedure(mod, **(proc_kwargs or {}))
 
     except Exception as err:
         # sys.stdout = orig_stdout
@@ -74,18 +74,22 @@ def for_each_model(root_path, model_procedure, accepted_paths=[], excluded_paths
     parent = p.cwd()
     failed = []
     if len(accepted_paths) != 0:
-        for x in accepted_paths:
+        for entry in accepted_paths:
+            # an entry is either a directory string, or a (directory, proc_kwargs) tuple
+            # for a parametrized run (e.g. the same model in several formulations).
+            x, proc_kwargs = entry if isinstance(entry, tuple) else (entry, {})
+            label = x + ((' ' + '_'.join(map(str, proc_kwargs.values()))) if proc_kwargs else '')
             if 'mpfa' in  x:
                 nt = os.environ['OMP_NUM_THREADS']
                 os.environ['OMP_NUM_THREADS'] = '1'
             # set as failed by default - if model run fails with exception,ret_value remains equal to 1
             ret_value = Value("i", 1, lock=False)
-            p = Process(target=spawn_process_function, args=(x, model_procedure,ret_value), )
+            p = Process(target=spawn_process_function, args=(x, model_procedure, ret_value, proc_kwargs), )
             p.start()
             p.join(timeout=7200)
             p.terminate()
             if ret_value.value:
-                failed.append(x)
+                failed.append(label)
             if 'mpfa' in x:
                 os.environ['OMP_NUM_THREADS'] = nt
     else:
