@@ -3,8 +3,10 @@
 #include <sstream>
 #include <string>
 #include <iostream>
+#include <cmath>
 #include <algorithm>
 #include <numeric>
+#include <stdexcept>
 #include <type_traits>
 #include <stdlib.h>
 #include <assert.h>
@@ -49,6 +51,79 @@ conn_mesh::init(std::vector<index_t>& block_m, std::vector<index_t>& block_p, st
   // mobility multiplier
   mob_multiplier.assign(n_res_blocks * 2, 1);   // assume two phases present and default multiplier 1
 
+  return 0;
+}
+
+int conn_mesh::init_weno_static(
+  std::vector<index_t>& cell_candidate_offset,
+  std::vector<index_t>& candidate_support_cell,
+  std::vector<index_t>& candidate_support_kind,
+  std::vector<value_t>& candidate_inverse,
+  std::vector<value_t>& candidate_gamma,
+  std::vector<index_t>& cell_dependency_offset,
+  std::vector<index_t>& cell_dependency_cell,
+  std::vector<index_t>& cell_status,
+  std::vector<value_t>& one_way_face_reference_m,
+  std::vector<value_t>& one_way_face_reference_p,
+  std::vector<index_t>& one_way_face_status_m,
+  std::vector<index_t>& one_way_face_status_p)
+{
+  const size_t n_candidates = candidate_gamma.size();
+  const size_t n_res_connections = one_way_face_status_m.size();
+  if (cell_candidate_offset.size() != static_cast<size_t>(n_res_blocks) + 1 ||
+      cell_dependency_offset.size() != static_cast<size_t>(n_res_blocks) + 1 ||
+      cell_status.size() != static_cast<size_t>(n_res_blocks) ||
+      cell_candidate_offset.empty() || cell_candidate_offset.front() != 0 ||
+      cell_candidate_offset.back() != static_cast<index_t>(n_candidates) ||
+      candidate_support_cell.size() != 3 * n_candidates ||
+      candidate_support_kind.size() != 3 * n_candidates ||
+      candidate_inverse.size() != 9 * n_candidates ||
+      cell_dependency_offset.front() != 0 ||
+      cell_dependency_offset.back() != static_cast<index_t>(cell_dependency_cell.size()) ||
+      one_way_face_status_p.size() != n_res_connections ||
+      one_way_face_reference_m.size() != 3 * n_res_connections ||
+      one_way_face_reference_p.size() != 3 * n_res_connections ||
+      n_res_connections != static_cast<size_t>(n_one_way_conns_res))
+    throw std::invalid_argument("Inconsistent WENO static array sizes");
+
+  // Offsets must be monotonic non-decreasing so per-cell candidate/dependency
+  // ranges are well formed; a malformed offset would otherwise silently produce
+  // an empty range and degrade the cell to SPU without any diagnostic.
+  for (index_t cell = 0; cell < n_res_blocks; ++cell)
+    if (cell_candidate_offset[cell + 1] < cell_candidate_offset[cell] ||
+        cell_dependency_offset[cell + 1] < cell_dependency_offset[cell])
+      throw std::invalid_argument("WENO cell offsets must be non-decreasing");
+
+  for (size_t candidate = 0; candidate < n_candidates; ++candidate)
+  {
+    if (!(candidate_gamma[candidate] > 0.0) || !std::isfinite(candidate_gamma[candidate]))
+      throw std::invalid_argument("WENO linear weights must be finite and positive");
+    for (index_t entry = 0; entry < 9; ++entry)
+      if (!std::isfinite(candidate_inverse[9 * candidate + entry]))
+        throw std::invalid_argument("WENO candidate inverse matrix must be finite");
+    for (index_t support = 0; support < 3; ++support)
+    {
+      const index_t cell = candidate_support_cell[3 * candidate + support];
+      const index_t kind = candidate_support_kind[3 * candidate + support];
+      if (cell < 0 || cell >= n_res_blocks || kind < 0 || kind > 1)
+        throw std::invalid_argument("Invalid WENO candidate support");
+    }
+  }
+
+  weno_cell_candidate_offset = cell_candidate_offset;
+  weno_candidate_support_cell = candidate_support_cell;
+  weno_candidate_support_kind = candidate_support_kind;
+  weno_candidate_inverse = candidate_inverse;
+  weno_candidate_gamma = candidate_gamma;
+  weno_cell_dependency_offset = cell_dependency_offset;
+  weno_cell_dependency_cell = cell_dependency_cell;
+  weno_cell_status = cell_status;
+  one_way_weno_face_reference_m = one_way_face_reference_m;
+  one_way_weno_face_reference_p = one_way_face_reference_p;
+  one_way_weno_face_status_m = one_way_face_status_m;
+  one_way_weno_face_status_p = one_way_face_status_p;
+  weno_enabled = true;
+  weno_finalized = false;
   return 0;
 }
 
@@ -826,6 +901,17 @@ conn_mesh::reverse_and_sort()
   n_conns *= 2;
   n_res_conns *= 2;
 
+  physical_row_offset.assign(static_cast<size_t>(n_blocks) + 1, 0);
+  for (const index_t row : block_m)
+    ++physical_row_offset[row + 1];
+  std::partial_sum(physical_row_offset.begin(), physical_row_offset.end(), physical_row_offset.begin());
+  connection_jacobian_slot.resize(n_conns);
+  for (index_t connection = 0; connection < n_conns; ++connection)
+  {
+    const index_t row = block_m[connection];
+    connection_jacobian_slot[connection] = connection + row + (block_p[connection] > row ? 1 : 0);
+  }
+
   std::vector<value_t> test_t;
   std::vector<value_t> test_tD;
 
@@ -834,6 +920,271 @@ conn_mesh::reverse_and_sort()
 
   reverse_and_sort_one_way(one_way_is_dfm_conn, is_dfm_conn);
 
+  if (weno_enabled)
+    finalize_weno_static();
+
+  return 0;
+}
+
+int conn_mesh::finalize_weno_static()
+{
+  if (!weno_enabled)
+    return 0;
+  if (weno_cell_candidate_offset.size() != static_cast<size_t>(n_res_blocks) + 1)
+    throw std::runtime_error("WENO static data was attached to a different reservoir mesh");
+
+  // Remove candidates that cross OBL regions and renormalize the immutable
+  // positive linear weights once.  This is done after wells are appended,
+  // when the final op_num array and block numbering are available.
+  std::vector<index_t> filtered_offset;
+  std::vector<index_t> filtered_support_cell;
+  std::vector<index_t> filtered_support_kind;
+  std::vector<value_t> filtered_inverse;
+  std::vector<value_t> filtered_gamma;
+  std::vector<index_t> filtered_status(n_res_blocks, 0);
+  filtered_offset.reserve(static_cast<size_t>(n_res_blocks) + 1);
+  filtered_offset.push_back(0);
+
+  for (index_t cell = 0; cell < n_res_blocks; ++cell)
+  {
+    const size_t gamma_begin = filtered_gamma.size();
+    value_t gamma_sum = 0.0;
+    if (weno_cell_status[cell])
+    {
+      for (index_t candidate = weno_cell_candidate_offset[cell];
+           candidate < weno_cell_candidate_offset[cell + 1]; ++candidate)
+      {
+        bool valid = true;
+        for (index_t support = 0; support < 3; ++support)
+        {
+          const index_t support_cell = weno_candidate_support_cell[3 * candidate + support];
+          const index_t support_kind = weno_candidate_support_kind[3 * candidate + support];
+          if (support_cell < 0 || support_cell >= n_res_blocks ||
+              (support_kind == 0 && op_num[support_cell] != op_num[cell]))
+          {
+            valid = false;
+            break;
+          }
+        }
+        if (!valid)
+          continue;
+
+        filtered_support_cell.insert(filtered_support_cell.end(),
+          weno_candidate_support_cell.begin() + 3 * candidate,
+          weno_candidate_support_cell.begin() + 3 * candidate + 3);
+        filtered_support_kind.insert(filtered_support_kind.end(),
+          weno_candidate_support_kind.begin() + 3 * candidate,
+          weno_candidate_support_kind.begin() + 3 * candidate + 3);
+        filtered_inverse.insert(filtered_inverse.end(),
+          weno_candidate_inverse.begin() + 9 * candidate,
+          weno_candidate_inverse.begin() + 9 * candidate + 9);
+        filtered_gamma.push_back(weno_candidate_gamma[candidate]);
+        gamma_sum += weno_candidate_gamma[candidate];
+      }
+    }
+
+    if (gamma_sum > 0.0 && std::isfinite(gamma_sum))
+    {
+      filtered_status[cell] = 1;
+      for (size_t candidate = gamma_begin; candidate < filtered_gamma.size(); ++candidate)
+        filtered_gamma[candidate] /= gamma_sum;
+    }
+    else
+    {
+      filtered_support_cell.resize(3 * gamma_begin);
+      filtered_support_kind.resize(3 * gamma_begin);
+      filtered_inverse.resize(9 * gamma_begin);
+      filtered_gamma.resize(gamma_begin);
+    }
+    filtered_offset.push_back(static_cast<index_t>(filtered_gamma.size()));
+  }
+
+  weno_cell_candidate_offset.swap(filtered_offset);
+  weno_candidate_support_cell.swap(filtered_support_cell);
+  weno_candidate_support_kind.swap(filtered_support_kind);
+  weno_candidate_inverse.swap(filtered_inverse);
+  weno_candidate_gamma.swap(filtered_gamma);
+  weno_cell_status.swap(filtered_status);
+
+  // Rebuild sorted per-target dependencies after region filtering and map each
+  // candidate support to its local dependency position.
+  weno_cell_dependency_offset.clear();
+  weno_cell_dependency_cell.clear();
+  weno_cell_target_dependency.assign(n_res_blocks, -1);
+  weno_candidate_support_dependency.assign(weno_candidate_support_cell.size(), -1);
+  weno_cell_dependency_offset.reserve(static_cast<size_t>(n_res_blocks) + 1);
+  weno_cell_dependency_offset.push_back(0);
+  for (index_t cell = 0; cell < n_res_blocks; ++cell)
+  {
+    std::vector<index_t> dependencies;
+    if (weno_cell_status[cell])
+    {
+      dependencies.push_back(cell);
+      for (index_t candidate = weno_cell_candidate_offset[cell];
+           candidate < weno_cell_candidate_offset[cell + 1]; ++candidate)
+        for (index_t support = 0; support < 3; ++support)
+          dependencies.push_back(weno_candidate_support_cell[3 * candidate + support]);
+      std::sort(dependencies.begin(), dependencies.end());
+      dependencies.erase(std::unique(dependencies.begin(), dependencies.end()), dependencies.end());
+
+      const auto target_it = std::lower_bound(dependencies.begin(), dependencies.end(), cell);
+      weno_cell_target_dependency[cell] = static_cast<index_t>(target_it - dependencies.begin());
+      for (index_t candidate = weno_cell_candidate_offset[cell];
+           candidate < weno_cell_candidate_offset[cell + 1]; ++candidate)
+        for (index_t support = 0; support < 3; ++support)
+        {
+          const index_t support_cell = weno_candidate_support_cell[3 * candidate + support];
+          const auto support_it = std::lower_bound(dependencies.begin(), dependencies.end(), support_cell);
+          weno_candidate_support_dependency[3 * candidate + support] =
+            static_cast<index_t>(support_it - dependencies.begin());
+        }
+    }
+    weno_cell_dependency_cell.insert(weno_cell_dependency_cell.end(), dependencies.begin(), dependencies.end());
+    weno_cell_dependency_offset.push_back(static_cast<index_t>(weno_cell_dependency_cell.size()));
+  }
+
+  // Duplicate target-side face query vectors into final directed connection
+  // order.  Appended well/DFM connections have no entries and remain SPU.
+  weno_face_reference_m.assign(static_cast<size_t>(3) * n_conns, 0.0);
+  weno_face_reference_p.assign(static_cast<size_t>(3) * n_conns, 0.0);
+  weno_face_status_m.assign(n_conns, 0);
+  weno_face_status_p.assign(n_conns, 0);
+  const index_t one_way_weno_connections = static_cast<index_t>(one_way_weno_face_status_m.size());
+  for (index_t one_way = 0; one_way < one_way_weno_connections; ++one_way)
+  {
+    const index_t forward = one_way_to_conn_index_forward[one_way];
+    const index_t reverse = one_way_to_conn_index_reverse[one_way];
+    for (index_t d = 0; d < 3; ++d)
+    {
+      weno_face_reference_m[3 * forward + d] = one_way_weno_face_reference_m[3 * one_way + d];
+      weno_face_reference_p[3 * forward + d] = one_way_weno_face_reference_p[3 * one_way + d];
+      weno_face_reference_m[3 * reverse + d] = one_way_weno_face_reference_p[3 * one_way + d];
+      weno_face_reference_p[3 * reverse + d] = one_way_weno_face_reference_m[3 * one_way + d];
+    }
+    weno_face_status_m[forward] = one_way_weno_face_status_m[one_way];
+    weno_face_status_p[forward] = one_way_weno_face_status_p[one_way];
+    weno_face_status_m[reverse] = one_way_weno_face_status_p[one_way];
+    weno_face_status_p[reverse] = one_way_weno_face_status_m[one_way];
+  }
+  for (index_t connection = 0; connection < n_conns; ++connection)
+  {
+    const index_t cell_m = block_m[connection];
+    const index_t cell_p = block_p[connection];
+    if (cell_m >= n_res_blocks || !weno_cell_status[cell_m])
+      weno_face_status_m[connection] = 0;
+    if (cell_p >= n_res_blocks || !weno_cell_status[cell_p])
+      weno_face_status_p[connection] = 0;
+  }
+
+  // Physical connections stay in their existing sorted row order.  Build a
+  // separate, expanded fixed BCSR graph containing every possible WENO
+  // derivative column for either upwind direction.
+  physical_row_offset.assign(static_cast<size_t>(n_blocks) + 1, 0);
+  for (const index_t row : block_m)
+    ++physical_row_offset[row + 1];
+  std::partial_sum(physical_row_offset.begin(), physical_row_offset.end(), physical_row_offset.begin());
+
+  cell_stencil.assign(n_blocks, {});
+  for (index_t row = 0; row < n_blocks; ++row)
+  {
+    auto& columns = cell_stencil[row];
+    columns.push_back(row);
+    for (index_t connection = physical_row_offset[row]; connection < physical_row_offset[row + 1]; ++connection)
+    {
+      const index_t neighbour = block_p[connection];
+      columns.push_back(neighbour);
+      if (weno_face_status_m[connection])
+      {
+        columns.insert(columns.end(),
+          weno_cell_dependency_cell.begin() + weno_cell_dependency_offset[row],
+          weno_cell_dependency_cell.begin() + weno_cell_dependency_offset[row + 1]);
+      }
+      if (weno_face_status_p[connection])
+      {
+        columns.insert(columns.end(),
+          weno_cell_dependency_cell.begin() + weno_cell_dependency_offset[neighbour],
+          weno_cell_dependency_cell.begin() + weno_cell_dependency_offset[neighbour + 1]);
+      }
+    }
+    std::sort(columns.begin(), columns.end());
+    columns.erase(std::unique(columns.begin(), columns.end()), columns.end());
+  }
+
+  weno_jacobian_row_offset.assign(static_cast<size_t>(n_blocks) + 1, 0);
+  for (index_t row = 0; row < n_blocks; ++row)
+    weno_jacobian_row_offset[row + 1] = weno_jacobian_row_offset[row] + static_cast<index_t>(cell_stencil[row].size());
+  n_links = weno_jacobian_row_offset.back();
+
+  auto jacobian_slot = [this](const index_t row, const index_t column)
+  {
+    const auto& columns = cell_stencil[row];
+    const auto it = std::lower_bound(columns.begin(), columns.end(), column);
+    if (it == columns.end() || *it != column)
+      throw std::runtime_error("Missing WENO Jacobian dependency slot");
+    return weno_jacobian_row_offset[row] + static_cast<index_t>(it - columns.begin());
+  };
+
+  connection_jacobian_slot.resize(n_conns);
+  weno_connection_dependency_offset_m.assign(static_cast<size_t>(n_conns) + 1, 0);
+  weno_connection_dependency_offset_p.assign(static_cast<size_t>(n_conns) + 1, 0);
+  weno_connection_dependency_slot_m.clear();
+  weno_connection_dependency_slot_p.clear();
+  weno_connection_candidate_coefficient_offset_m.assign(static_cast<size_t>(n_conns) + 1, 0);
+  weno_connection_candidate_coefficient_offset_p.assign(static_cast<size_t>(n_conns) + 1, 0);
+  weno_connection_candidate_coefficient_m.clear();
+  weno_connection_candidate_coefficient_p.clear();
+  for (index_t connection = 0; connection < n_conns; ++connection)
+  {
+    const index_t row = block_m[connection];
+    const index_t neighbour = block_p[connection];
+    connection_jacobian_slot[connection] = jacobian_slot(row, neighbour);
+
+    if (weno_face_status_m[connection])
+      for (index_t dependency = weno_cell_dependency_offset[row];
+           dependency < weno_cell_dependency_offset[row + 1]; ++dependency)
+        weno_connection_dependency_slot_m.push_back(
+          jacobian_slot(row, weno_cell_dependency_cell[dependency]));
+    weno_connection_dependency_offset_m[connection + 1] =
+      static_cast<index_t>(weno_connection_dependency_slot_m.size());
+
+    if (weno_face_status_p[connection])
+      for (index_t dependency = weno_cell_dependency_offset[neighbour];
+           dependency < weno_cell_dependency_offset[neighbour + 1]; ++dependency)
+        weno_connection_dependency_slot_p.push_back(
+          jacobian_slot(row, weno_cell_dependency_cell[dependency]));
+    weno_connection_dependency_offset_p[connection + 1] =
+      static_cast<index_t>(weno_connection_dependency_slot_p.size());
+
+    // y_face^T A_candidate is immutable.  Store its three support
+    // coefficients in the exact target/candidate order consumed by assembly.
+    auto append_candidate_coefficients = [this, connection](
+      index_t target, const std::vector<value_t>& reference,
+      std::vector<value_t>& coefficients)
+    {
+      for (index_t candidate = weno_cell_candidate_offset[target];
+           candidate < weno_cell_candidate_offset[target + 1]; ++candidate)
+        for (index_t support = 0; support < 3; ++support)
+        {
+          value_t coefficient = 0.0;
+          for (index_t direction = 0; direction < 3; ++direction)
+            coefficient += reference[3 * connection + direction] *
+              weno_candidate_inverse[9 * candidate + 3 * direction + support];
+          coefficients.push_back(coefficient);
+        }
+    };
+    if (weno_face_status_m[connection])
+      append_candidate_coefficients(row, weno_face_reference_m,
+                                    weno_connection_candidate_coefficient_m);
+    weno_connection_candidate_coefficient_offset_m[connection + 1] =
+      static_cast<index_t>(weno_connection_candidate_coefficient_m.size());
+    if (weno_face_status_p[connection])
+      append_candidate_coefficients(neighbour, weno_face_reference_p,
+                                    weno_connection_candidate_coefficient_p);
+    weno_connection_candidate_coefficient_offset_p[connection + 1] =
+      static_cast<index_t>(weno_connection_candidate_coefficient_p.size());
+  }
+
+  weno_finalized = true;
   return 0;
 }
 

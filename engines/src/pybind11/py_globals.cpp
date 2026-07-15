@@ -123,8 +123,14 @@ void pybind_globals(py::module &m)
     .def_readwrite("stationary_point_tolerance", &sim_params::stationary_point_tolerance)
     .def_readwrite("assembly_kernel", &sim_params::assembly_kernel)
     .def_readwrite("finalize_mpi", &sim_params::finalize_mpi)
-    .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance)
-    .def_readwrite("line_search", &sim_params::line_search);
+	.def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance)
+	.def_readwrite("transport_scheme", &sim_params::transport_scheme)
+	.def_readwrite("weno_epsilon", &sim_params::weno_epsilon)
+	.def_readwrite("weno_power", &sim_params::weno_power)
+	.def_readwrite("weno_bound_fallback", &sim_params::weno_bound_fallback)
+	.def_readwrite("weno_condition_limit", &sim_params::weno_condition_limit)
+	.def_readwrite("weno_max_candidates", &sim_params::weno_max_candidates)
+	.def_readwrite("line_search", &sim_params::line_search);
 
 
   py::class_<linear_solver_params>(m, "linear_solver_params", "Class linear solver parameters") \
@@ -139,6 +145,11 @@ void pybind_globals(py::module &m)
     .value("newton_global_chop", sim_params::newton_solver_t::NEWTON_GLOBAL_CHOP)
     .value("newton_local_chop", sim_params::newton_solver_t::NEWTON_LOCAL_CHOP)
     .value("newton_inflection_point", sim_params::newton_solver_t::NEWTON_INFLECTION_POINT)
+    .export_values();
+
+  py::enum_<sim_params::transport_scheme_t>(sim_params, "transport_scheme_t", "Advective transport schemes")
+    .value("spu", sim_params::transport_scheme_t::SPU)
+    .value("weno2", sim_params::transport_scheme_t::WENO2)
     .export_values();
 
   py::enum_<sim_params::linear_solver_t>(sim_params, "linear_solver_t", "Available types of linear solvers")

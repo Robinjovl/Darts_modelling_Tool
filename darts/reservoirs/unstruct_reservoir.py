@@ -102,15 +102,15 @@ class UnstructReservoir(ReservoirBase):
         self.set_layer_properties()
 
         # Perform discretization:
-        cell_m, cell_p, tran, tran_thermal = (
+        self.cell_m, self.cell_p, tran, tran_thermal = (
             self.discretizer.calc_connections_all_cells(cache=self.cache)
         )
 
         # Initialize mesh using built connection list
         mesh = conn_mesh()
         mesh.init(
-            index_vector(cell_m),
-            index_vector(cell_p),
+            index_vector(self.cell_m),
+            index_vector(self.cell_p),
             value_vector(tran),
             value_vector(tran_thermal),
         )
@@ -129,6 +129,104 @@ class UnstructReservoir(ReservoirBase):
         ]
 
         return mesh
+
+    def prepare_weno(self, params) -> None:
+        """
+        Re-read Gmsh geometry natively and map it to engine cell ordering.
+
+        :param params: Simulation parameters containing WENO setup controls.
+        :type params: sim_params
+        """
+        from darts.discretizer import (
+            Discretizer as WenoDiscretizer,
+        )
+        from darts.discretizer import (
+            Mesh as WenoMesh,
+        )
+        from darts.discretizer import (
+            elem_loc,
+        )
+        from darts.discretizer import (
+            index_vector as discretizer_index_vector,
+        )
+        from darts.discretizer import (
+            value_vector as discretizer_value_vector,
+        )
+
+        tags = {
+            elem_loc.MATRIX: set(self.physical_tags["matrix"]),
+            elem_loc.FRACTURE: set(self.physical_tags["fracture"]),
+            elem_loc.BOUNDARY: set(self.physical_tags["boundary"]),
+            elem_loc.FRACTURE_BOUNDARY: set(self.physical_tags["fracture_boundary"]),
+        }
+        self.weno_discr_mesh = WenoMesh()
+        fracture_aperture = (
+            np.asarray(self.discretizer.fracture_aperture, dtype=np.float64)
+            if self.discretizer.frac_cells_tot
+            else np.empty(0, dtype=np.float64)
+        )
+        self.weno_discr_mesh.init_apertures = discretizer_value_vector(
+            fracture_aperture
+        )
+        self.weno_discr_mesh.gmsh_mesh_processing(self.discretizer.mesh_file, tags)
+
+        # Map native Gmsh cells to engine block ids by matching cell centroids.
+        # The native C++ Gmsh reader numbers cells in file entity-block order,
+        # whereas the Python/meshio engine mesh groups cells by element type, so
+        # a block-level matrix/fracture swap silently mis-attributes stencils on
+        # mixed-topology meshes.  Centroid matching is correct for any ordering.
+        from scipy.spatial import cKDTree
+
+        n_matrix = self.discretizer.mat_cells_tot
+        n_fracture = self.discretizer.frac_cells_tot
+        n_volume = n_matrix + n_fracture
+        native_n_cells = self.weno_discr_mesh.n_cells
+
+        native_centroids = np.asarray(
+            [v.values for v in self.weno_discr_mesh.centroids[:native_n_cells]],
+            dtype=np.float64,
+        )
+        engine_centroids = np.asarray(
+            self.discretizer.centroids_all_cells, dtype=np.float64
+        ).reshape(-1, 3)[:n_volume]
+        if native_n_cells != n_volume:
+            raise RuntimeError(
+                f"WENO2 native Gmsh mesh has {native_n_cells} volume cells but the "
+                f"engine has {n_volume}; cannot build a one-to-one cell map."
+            )
+
+        tree = cKDTree(engine_centroids)
+        # Adaptive tolerance: matches must be far closer than the typical
+        # inter-cell spacing so each native cell maps unambiguously to its own
+        # engine cell, regardless of small centroid-definition differences.
+        if n_volume > 1:
+            nn_distance = tree.query(engine_centroids, k=2)[0][:, 1]
+            tol = 0.25 * float(np.median(nn_distance))
+        else:
+            tol = np.inf
+        distance, engine_index = tree.query(native_centroids, k=1)
+        if distance.max() > tol or np.unique(engine_index).size != native_n_cells:
+            raise RuntimeError(
+                "WENO2 could not build a unique native->engine cell map by centroid "
+                f"matching (max distance {float(distance.max()):.3e}, tol {tol:.3e}, "
+                f"{int(np.unique(engine_index).size)} unique of {native_n_cells}). The "
+                "native and engine meshes disagree on cell geometry; WENO2 on this "
+                "unstructured mesh is unsafe."
+            )
+        discretizer_to_engine = np.full(native_n_cells, -1, dtype=np.int32)
+        discretizer_to_engine[:] = engine_index.astype(np.int32)
+
+        self.weno_discretizer = WenoDiscretizer()
+        self.weno_discretizer.set_mesh(self.weno_discr_mesh)
+        self.weno_discretizer.prepare_weno_static(
+            discretizer_index_vector(discretizer_to_engine),
+            self.mesh.n_res_blocks,
+            discretizer_index_vector(np.asarray(self.cell_m, dtype=np.int32)),
+            discretizer_index_vector(np.asarray(self.cell_p, dtype=np.int32)),
+            params.weno_condition_limit,
+            params.weno_max_candidates,
+        )
+        self._attach_weno_static(self.weno_discretizer.weno)
 
     def set_boundary_volume(self, boundary_volumes: dict):
         # Set-up dictionary with data for boundary cells:

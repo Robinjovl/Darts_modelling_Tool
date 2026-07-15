@@ -1,34 +1,57 @@
-import numpy as np
-import pandas as pd
-import sys, os
-from model import Model
-from darts.engines import value_vector, redirect_darts_output
+import argparse
+
 import matplotlib.pyplot as plt
+import numpy as np
+from darts.engines import redirect_darts_output
+from model import Model
+
 from darts.physics.base.operators_base import PropertyOperators as props
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Two-phase compositional model")
+    parser.add_argument(
+        "platform",
+        nargs="?",
+        default="cpu",
+        help="Compute platform positional (cpu/gpu); accepted for run_test_suite2 compatibility",
+    )
+    parser.add_argument(
+        "--transport-scheme",
+        choices=("spu", "weno2"),
+        default="spu",
+        help="Advective transport reconstruction (default: spu)",
+    )
+    parser.add_argument("--runtime", type=float, default=1000.0)
+    parser.add_argument("--nx", type=int, default=1000)
+    parser.add_argument(
+        "--no-plots", action="store_true", help="Skip interactive and file plots"
+    )
+    return parser.parse_args()
+
 
 def plot_sol(n):
     Xn = np.array(n.physics.engine.X, copy=False)
     nc = n.property_container.nc + n.thermal
-    P = Xn[0:n.reservoir.nb * nc:nc]
+    P = Xn[0 : n.reservoir.nb * nc : nc]
     z = np.ones((nc, n.reservoir.nb))
     phi = np.ones(n.reservoir.nb)
     sat_ev = props(n.property_container)
-    prop = np.zeros(2*n.property_container.nph)
+    prop = np.zeros(2 * n.property_container.nph)
 
     plt.figure(num=1, figsize=(12, 8), dpi=100)
-    for i in range(nc-1):
-        z[i][:] = Xn[i + 1:n.reservoir.nb * nc:nc]
+    for i in range(nc - 1):
+        z[i][:] = Xn[i + 1 : n.reservoir.nb * nc : nc]
         z[-1][:] -= z[i][:]
 
     for i in range(n.reservoir.nb):
-        state = Xn[i*nc:(i+1)*nc]
+        state = Xn[i * nc : (i + 1) * nc]
         sat_ev.evaluate(state, prop)
-        density_tot = np.sum(prop[0:3] * prop[3:6])
         phi[i] -= prop[2]  # (z[-1, i] * density_tot / prop[-1])
 
     for i in range(3):
         plt.subplot(330 + (i + 1))
-        plt.plot(z[i]/(1-z[3]))
+        plt.plot(z[i] / (1 - z[3]))
         plt.title('Composition' + str(i + 1), y=1)
 
     i = 3
@@ -45,33 +68,22 @@ def plot_sol(n):
 
 
 if __name__ == '__main__':
-
-    redirect_darts_output('run.log')
-    n = Model()
+    args = parse_args()
+    redirect_darts_output(f'run_{args.transport_scheme}.log')
+    n = Model(transport_scheme=args.transport_scheme, nx=args.nx, runtime=args.runtime)
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
     n.set_output()
 
+    n.run(args.runtime)
+    n.print_timers()
+    n.print_stat()
 
-    if True:
-        n.run(1000)
-        # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
-        # n.run_python(300, restart_dt=1e-3)
-        n.print_timers()
-        n.print_stat()
-
-        # compute and save well time data
-        time_data_dict = n.output.store_well_time_data(save_output_files=True)
-
-        # plot well time data
+    n.output.store_well_time_data(save_output_files=True)
+    if not args.no_plots:
         n.output.plot_well_time_data(phase_volumetric_rates=True)
 
-    else:
-        # n.load_restart_data()
-        n.load_restart_data('output/solution.h5')
-        time_data = pd.read_pickle("darts_time_data.pkl")
-
-    if True:
+    if not args.no_plots:
         Xn = np.array(n.physics.engine.X, copy=False)
         nc = n.physics.nc + n.physics.thermal
         nb = n.reservoir.mesh.n_res_blocks
@@ -79,13 +91,10 @@ if __name__ == '__main__':
         plt.figure(num=1, figsize=(12, 8), dpi=100)
         for i in range(nc if nc < 3 else 3):
             plt.subplot(330 + (i + 1))
-            plt.plot(Xn[i:nb*nc:nc])
+            plt.plot(Xn[i : nb * nc : nc])
         plt.savefig('out.png')
-    else:
-        #plot_sol(n)
-        n.print_and_plot('sim_data')
 
-#z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
+# z_c10 = Xn[nc-1:n.reservoir.nb*nc:nc]
 
 # rho_aq = n.property_container.density_ev['wat'].evaluate(P, z_co2)
 # Sg = np.zeros(n.reservoir.nb)

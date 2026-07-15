@@ -455,6 +455,10 @@ void Connection::calculate_centroid(const std::vector<Vector3>& nodes, const std
 
 	// set the centroid value
 	this->c = Vector3{ Cx, Cy, Cz };
+	// Ordinary conforming faces have the same centroid from both cells.  CPG
+	// processing overwrites c_2 later when a split/fault face requires a
+	// target-side location.
+	this->c_2 = this->c;
 }
 
 void Connection::calculate_area(const std::vector<Vector3>& nodes, const std::vector<index_t>& conn_nodes) {

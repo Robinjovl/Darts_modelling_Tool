@@ -22,6 +22,8 @@ void pybind_mesh_conn(py::module &m)
 		  std::vector<value_t> &, std::vector<value_t> &)) &conn_mesh::init,
 		  "Initialize by connection list defined by block_m, block_p, tran and tranD arrays ",
 		  py::arg("block_m"), py::arg("block_p"), py::arg("tran"), py::arg("tranD") = std::vector<value_t>(0))
+	  .def("init_weno_static", &conn_mesh::init_weno_static,
+		  "Attach discretizer-precomputed WENO geometry before wells and sorting")
 	  //.def("init_mpfa", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
 		//  std::vector<index_t>&, std::vector<value_t>&, std::vector<value_t>&, index_t, index_t)) & conn_mesh::init_mpfa)
 	  .def("init_mpfa", (int (conn_mesh::*)(std::vector<index_t>&, std::vector<index_t>&, std::vector<index_t>&,
@@ -67,6 +69,15 @@ void pybind_mesh_conn(py::module &m)
 	  //properties
 	  .def_readwrite("n_blocks", &conn_mesh::n_blocks)
 	  .def_readwrite("n_res_blocks", &conn_mesh::n_res_blocks)
+	  .def_readonly("weno_enabled", &conn_mesh::weno_enabled)
+	  .def_readonly("weno_finalized", &conn_mesh::weno_finalized)
+	  .def_readonly("weno_cell_status", &conn_mesh::weno_cell_status)
+	  .def_readonly("weno_cell_candidate_offset", &conn_mesh::weno_cell_candidate_offset)
+	  .def_readonly("weno_cell_dependency_offset", &conn_mesh::weno_cell_dependency_offset)
+	  .def_readonly("weno_cell_dependency_cell", &conn_mesh::weno_cell_dependency_cell)
+	  .def_readonly("weno_face_status_m", &conn_mesh::weno_face_status_m)
+	  .def_readonly("weno_face_status_p", &conn_mesh::weno_face_status_p)
+	  .def_readonly("weno_jacobian_row_offset", &conn_mesh::weno_jacobian_row_offset)
 	  .def_readwrite("poro", &conn_mesh::poro)
 	  .def_readwrite("volume", &conn_mesh::volume)
 	  .def_readwrite("initial_state", &conn_mesh::initial_state)

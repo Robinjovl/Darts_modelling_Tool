@@ -304,6 +304,20 @@ class DartsModel:
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
         self.params.sim_eps = self.physics.sim_eps
 
+        if self.params.transport_scheme == sim_params.weno2:
+            if discr_type != "tpfa" or platform != "cpu":
+                raise ValueError(
+                    "WENO2 currently requires TPFA and the Super CPU engine"
+                )
+            if not type(self.physics.engine).__name__.startswith("engine_super_cpu"):
+                raise ValueError(
+                    "WENO2 is currently implemented only by the Super CPU engine"
+                )
+            init_timer.node["WENO geometry"] = timer_node()
+            init_timer.node["WENO geometry"].start()
+            self.reservoir.prepare_weno(self.params)
+            init_timer.node["WENO geometry"].stop()
+
         # Initialize well objects
         self.reservoir.init_wells()
         self.physics.init_wells(self.reservoir.wells)

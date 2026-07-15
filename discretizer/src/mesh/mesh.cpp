@@ -3,6 +3,7 @@
 #include <chrono>
 #include <algorithm>
 #include <numeric>
+#include <stdexcept>
 #include <unordered_set>
 
 #include "mesh.h"
@@ -26,6 +27,47 @@ using std::chrono::duration_cast;
 using std::cout;
 using std::endl;
 
+namespace
+{
+	std::vector<std::vector<index_t>> topology_faces(const ElemType type)
+	{
+		switch (type)
+		{
+		case TETRA:
+			return {{0, 2, 1}, {0, 1, 3}, {1, 2, 3}, {2, 0, 3}};
+		case HEX:
+			return {{0, 1, 2, 3}, {4, 7, 6, 5}, {0, 4, 5, 1},
+					{1, 5, 6, 2}, {2, 6, 7, 3}, {3, 7, 4, 0}};
+		case PRISM:
+			return {{0, 2, 1}, {3, 4, 5}, {0, 1, 4, 3},
+					{1, 2, 5, 4}, {2, 0, 3, 5}};
+		case PYRAMID:
+			return {{0, 3, 2, 1}, {0, 1, 4}, {1, 2, 4}, {2, 3, 4}, {3, 0, 4}};
+		default:
+			return {};
+		}
+	}
+
+	Vector3 face_centroid(const std::vector<Vector3>& nodes, const std::vector<index_t>& face)
+	{
+		Vector3 centroid;
+		for (const index_t node : face)
+			centroid += nodes[node];
+		if (!face.empty())
+			centroid /= static_cast<value_t>(face.size());
+		return centroid;
+	}
+
+	value_t face_area(const std::vector<Vector3>& nodes, const std::vector<index_t>& face)
+	{
+		value_t area = 0.0;
+		for (size_t i = 1; i + 1 < face.size(); ++i)
+			area += 0.5 * cross(nodes[face[i]] - nodes[face[0]],
+							 nodes[face[i + 1]] - nodes[face[0]]).norm();
+		return area;
+	}
+}
+
 Mesh::Mesh()
 {
 	elem_type_map[LINE] = vector<index_t>();
@@ -46,6 +88,220 @@ void Mesh::gmsh_mesh_processing(string filename, const PhysicalTags& tags)
 	gmsh_mesh_reading(filename, tags);
 	gmsh_mesh_construct_connections(tags);
 	generate_adjacency_matrix();
+	build_gmsh_weno_face_sides();
+}
+
+void Mesh::build_gmsh_weno_face_sides()
+{
+	weno_face_sides.clear();
+	weno_face_nodes.clear();
+	weno_cell_face_offset.clear();
+	weno_cell_face_offset.reserve(static_cast<size_t>(n_cells) + 1);
+	weno_cell_face_offset.push_back(0);
+
+	const auto matrix_range_it = region_ranges.find(MATRIX);
+	const index_t matrix_begin = matrix_range_it == region_ranges.end() ? 0 : matrix_range_it->second.first;
+	const index_t matrix_end = matrix_range_it == region_ranges.end() ? 0 : matrix_range_it->second.second;
+
+	for (index_t cell = 0; cell < n_cells; ++cell)
+	{
+		if (cell < matrix_begin || cell >= matrix_end)
+		{
+			weno_cell_face_offset.push_back(static_cast<index_t>(weno_face_sides.size()));
+			continue;
+		}
+
+		const Elem& elem = elems[cell];
+		const auto local_faces = topology_faces(elem.type);
+		std::map<std::vector<index_t>, index_t> connection_by_nodes;
+		for (index_t adj = adj_matrix_offset[cell]; adj < adj_matrix_offset[cell + 1]; ++adj)
+		{
+			const index_t connection_id = adj_matrix[adj];
+			const Connection& connection = conns[connection_id];
+			std::vector<index_t> key(conn_nodes.begin() + connection.pts_offset,
+									 conn_nodes.begin() + connection.pts_offset + connection.n_pts);
+			std::sort(key.begin(), key.end());
+			connection_by_nodes.emplace(std::move(key), connection_id);
+		}
+
+		for (index_t local_face = 0; local_face < static_cast<index_t>(local_faces.size()); ++local_face)
+		{
+			std::vector<index_t> face;
+			face.reserve(local_faces[local_face].size());
+			for (const index_t local_node : local_faces[local_face])
+				face.push_back(elem_nodes[elem.pts_offset + local_node]);
+
+			std::vector<index_t> key = face;
+			std::sort(key.begin(), key.end());
+			const auto connection_it = connection_by_nodes.find(key);
+
+			WenoFaceSide side;
+			side.cell = cell;
+			side.logical_face = local_face;
+			side.node_offset = static_cast<index_t>(weno_face_nodes.size());
+			side.node_count = static_cast<index_t>(face.size());
+			weno_face_nodes.insert(weno_face_nodes.end(), face.begin(), face.end());
+
+			if (connection_it == connection_by_nodes.end())
+			{
+				side.neighbour = -1;
+				side.connection_id = -1;
+				side.centroid = face_centroid(nodes, face);
+				side.area = face_area(nodes, face);
+			}
+			else
+			{
+				const Connection& connection = conns[connection_it->second];
+				side.connection_id = connection.conn_id;
+				side.centroid = connection.elem_id1 == cell ? connection.c : connection.c_2;
+				side.area = connection.area;
+
+				const index_t other = connection.elem_id1 == cell ? connection.elem_id2 : connection.elem_id1;
+				if (connection.type == MAT_MAT && other >= matrix_begin && other < matrix_end)
+					side.neighbour = other;
+				else if (connection.type == MAT_BOUND)
+					side.neighbour = -1;
+				else
+					side.neighbour = -2;
+			}
+			weno_face_sides.push_back(side);
+		}
+		weno_cell_face_offset.push_back(static_cast<index_t>(weno_face_sides.size()));
+	}
+}
+
+void Mesh::build_structured_weno_geometry(
+	index_t nx_, index_t ny_, index_t nz_,
+	const std::vector<index_t>& global_to_local_,
+	const std::vector<value_t>& cell_centroids,
+	const std::vector<value_t>& cell_sizes)
+{
+	const index_t n_global = nx_ * ny_ * nz_;
+	if (static_cast<index_t>(global_to_local_.size()) != n_global ||
+		static_cast<index_t>(cell_centroids.size()) != ND * n_global ||
+		static_cast<index_t>(cell_sizes.size()) != ND * n_global)
+		throw std::invalid_argument("Invalid structured WENO geometry array size");
+
+	mesh_type = STRUCTURED;
+	nx = nx_;
+	ny = ny_;
+	nz = nz_;
+	global_to_local = global_to_local_;
+	n_cells = 0;
+	for (const index_t local : global_to_local)
+		if (local >= 0)
+			n_cells = std::max(n_cells, local + 1);
+	num_of_elements = n_cells;
+	local_to_global.assign(n_cells, -1);
+	for (index_t global = 0; global < n_global; ++global)
+		if (global_to_local[global] >= 0)
+			local_to_global[global_to_local[global]] = global;
+
+	nodes.clear();
+	elems.clear();
+	elem_nodes.clear();
+	centroids.assign(n_cells, Vector3());
+	volumes.assign(n_cells, 0.0);
+	element_tags.assign(n_cells, 0);
+	weno_face_sides.clear();
+	weno_face_nodes.clear();
+	weno_cell_face_offset.clear();
+	elem_type_map.clear();
+	elem_type_map[HEX].reserve(n_cells);
+	region_ranges.clear();
+	region_elems_num.clear();
+	region_ranges[MATRIX] = {0, n_cells};
+	region_elems_num[MATRIX] = n_cells;
+
+	nodes.reserve(static_cast<size_t>(n_cells) * 8);
+	elems.reserve(n_cells);
+	elem_nodes.reserve(static_cast<size_t>(n_cells) * 8);
+	weno_face_sides.reserve(static_cast<size_t>(n_cells) * 6);
+	weno_face_nodes.reserve(static_cast<size_t>(n_cells) * 24);
+	weno_cell_face_offset.reserve(static_cast<size_t>(n_cells) + 1);
+	weno_cell_face_offset.push_back(0);
+
+	const auto hex_faces = topology_faces(HEX);
+	const std::array<std::array<index_t, 3>, 6> directions = {{{0, 0, -1}, {0, 0, 1},
+		{0, -1, 0}, {1, 0, 0}, {0, 1, 0}, {-1, 0, 0}}};
+	std::map<std::pair<index_t, index_t>, index_t> connection_ids;
+	index_t next_connection = 0;
+
+	for (index_t cell = 0; cell < n_cells; ++cell)
+	{
+		const index_t global = local_to_global[cell];
+		if (global < 0)
+			throw std::invalid_argument("Structured WENO local numbering contains a gap");
+		const index_t i = global % nx;
+		const index_t j = (global / nx) % ny;
+		const index_t k = global / (nx * ny);
+		const Vector3 centre(cell_centroids[ND * global], cell_centroids[ND * global + 1],
+						 cell_centroids[ND * global + 2]);
+		const value_t hx = 0.5 * cell_sizes[ND * global];
+		const value_t hy = 0.5 * cell_sizes[ND * global + 1];
+		const value_t hz = 0.5 * cell_sizes[ND * global + 2];
+		if (!(hx > 0.0 && hy > 0.0 && hz > 0.0))
+			throw std::invalid_argument("Structured WENO cell sizes must be positive");
+
+		centroids[cell] = centre;
+		volumes[cell] = 8.0 * hx * hy * hz;
+		const index_t node_offset = static_cast<index_t>(nodes.size());
+		const std::array<Vector3, 8> cell_nodes = {{
+			{centre.x - hx, centre.y - hy, centre.z - hz},
+			{centre.x + hx, centre.y - hy, centre.z - hz},
+			{centre.x + hx, centre.y + hy, centre.z - hz},
+			{centre.x - hx, centre.y + hy, centre.z - hz},
+			{centre.x - hx, centre.y - hy, centre.z + hz},
+			{centre.x + hx, centre.y - hy, centre.z + hz},
+			{centre.x + hx, centre.y + hy, centre.z + hz},
+			{centre.x - hx, centre.y + hy, centre.z + hz}}};
+		nodes.insert(nodes.end(), cell_nodes.begin(), cell_nodes.end());
+		for (index_t local_node = 0; local_node < 8; ++local_node)
+			elem_nodes.push_back(node_offset + local_node);
+
+		Elem elem(HEX, cell, static_cast<index_t>(elem_nodes.size()) - 8);
+		elem.loc = MATRIX;
+		elems.push_back(elem);
+		elem_type_map[HEX].push_back(cell);
+
+		for (index_t face_id = 0; face_id < 6; ++face_id)
+		{
+			std::vector<index_t> face;
+			face.reserve(4);
+			for (const index_t local_node : hex_faces[face_id])
+				face.push_back(node_offset + local_node);
+
+			const index_t ni = i + directions[face_id][0];
+			const index_t nj = j + directions[face_id][1];
+			const index_t nk = k + directions[face_id][2];
+			index_t neighbour = -1;
+			if (ni >= 0 && ni < nx && nj >= 0 && nj < ny && nk >= 0 && nk < nz)
+				neighbour = global_to_local[nk * nx * ny + nj * nx + ni];
+
+			WenoFaceSide side;
+			side.cell = cell;
+			side.neighbour = neighbour;
+			side.logical_face = face_id;
+			side.node_offset = static_cast<index_t>(weno_face_nodes.size());
+			side.node_count = static_cast<index_t>(face.size());
+			side.centroid = face_centroid(nodes, face);
+			side.area = face_area(nodes, face);
+			weno_face_nodes.insert(weno_face_nodes.end(), face.begin(), face.end());
+
+			if (neighbour >= 0)
+			{
+				const auto key = std::minmax(cell, neighbour);
+				const std::pair<index_t, index_t> pair_key(key.first, key.second);
+				auto [it, inserted] = connection_ids.emplace(pair_key, next_connection);
+				if (inserted)
+					++next_connection;
+				side.connection_id = it->second;
+			}
+			weno_face_sides.push_back(side);
+		}
+		weno_cell_face_offset.push_back(static_cast<index_t>(weno_face_sides.size()));
+	}
+	num_of_nodes = static_cast<index_t>(nodes.size());
 }
 
 // fills:
@@ -1155,6 +1411,13 @@ void Mesh::cpg_connections(
 	index_t nebr_id, counter = 0, offset = 0, node_id;
 	std::map<int, int> face_nodes_set; // map<face, node_set> - use set to make nodes from faces unique
 	conns.reserve(number_of_faces);
+	weno_face_sides.clear();
+	weno_face_nodes.clear();
+	weno_cell_face_offset.clear();
+	weno_face_sides.reserve(static_cast<size_t>(cell_faces.size()));
+	weno_face_nodes.reserve(static_cast<size_t>(face_nodes.size()) * 2);
+	weno_cell_face_offset.reserve(static_cast<size_t>(num_of_cells) + 1);
+	weno_cell_face_offset.push_back(0);
 
 	std::vector<double_t> x, y, z; // only for the current face direction (face_tag)
 	x.reserve(100); y.reserve(100); z.reserve(100);
@@ -1225,11 +1488,36 @@ void Mesh::cpg_connections(
 			int face_tag = cell_facetag[f];
 			bool face_processed = face_nodes_set.find(face) != face_nodes_set.end(); // process the face only once
 
-			node_id = face_cells[2 * face];
-			nebr_id = face_cells[2 * face + 1];
-			bool face_is_boundary = node_id < 0 || nebr_id < 0;
-			if (face_is_boundary)
-				continue;
+				node_id = face_cells[2 * face];
+				nebr_id = face_cells[2 * face + 1];
+				bool face_is_boundary = node_id < 0 || nebr_id < 0;
+
+				WenoFaceSide weno_side;
+				weno_side.cell = c;
+				weno_side.logical_face = face_tag;
+				weno_side.node_offset = static_cast<index_t>(weno_face_nodes.size());
+				weno_side.node_count = face_nodepos[face + 1] - face_nodepos[face];
+				// Use the target-cell 'original' (un-split) face centre, matching
+				// conn.c/c_2 and the discretizer TPFA quadrature point, rather than
+				// the shared OPM subface centroid which differs on split/fault faces.
+				weno_side.centroid = local_face_centers[face_tag];
+				weno_side.area = std::abs(face_areas[face]);
+				for (int k = face_nodepos[face]; k < face_nodepos[face + 1]; ++k)
+					weno_face_nodes.push_back(face_nodes[k]);
+				if (face_is_boundary)
+				{
+					weno_side.neighbour = -1;
+					weno_side.connection_id = -1;
+				}
+				else
+				{
+					weno_side.neighbour = node_id == c ? nebr_id : node_id;
+					weno_side.connection_id = face_processed ? face_nodes_set[face] : counter;
+				}
+				weno_face_sides.push_back(weno_side);
+
+				if (face_is_boundary)
+					continue;
 
 			// skip the same element
 			if (nebr_id == node_id)
@@ -1279,7 +1567,8 @@ void Mesh::cpg_connections(
 			conns.push_back(conn);
 		}//faces loop
 
-	}//cells loop
+			weno_cell_face_offset.push_back(static_cast<index_t>(weno_face_sides.size()));
+		}//cells loop
 
 	// erase absent
 	for (auto it = conn_type_map.begin(); it != conn_type_map.end();)

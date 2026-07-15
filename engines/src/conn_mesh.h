@@ -61,6 +61,21 @@ public:
     std::vector<value_t> &tran,
     std::vector<value_t> &tranD);
 
+  /// Attach immutable WENO geometry before wells are added and the mesh is sorted.
+  int init_weno_static(
+    std::vector<index_t>& cell_candidate_offset,
+    std::vector<index_t>& candidate_support_cell,
+    std::vector<index_t>& candidate_support_kind,
+    std::vector<value_t>& candidate_inverse,
+    std::vector<value_t>& candidate_gamma,
+    std::vector<index_t>& cell_dependency_offset,
+    std::vector<index_t>& cell_dependency_cell,
+    std::vector<index_t>& cell_status,
+    std::vector<value_t>& one_way_face_reference_m,
+    std::vector<value_t>& one_way_face_reference_p,
+    std::vector<index_t>& one_way_face_status_m,
+    std::vector<index_t>& one_way_face_status_p);
+
   /// @brief init mesh by reading MPFA connections
   /*int init_mpfa(std::vector<index_t>& block_m,
       std::vector<index_t>& block_p,
@@ -208,6 +223,12 @@ public:
 
   void shift_boundary_ids_mpfa(const int n);
 
+  /// Number of BCSR blocks required by the selected fixed structure.
+  index_t jacobian_nnz() const
+  {
+    return weno_enabled ? n_links : n_conns + n_blocks;
+  }
+
   // two-way, sorted connection list
   /// [n_conns] array of indices of blocks on the minus side of a connection (smaller index)
   std::vector<index_t> block_m;
@@ -255,7 +276,40 @@ public:
   // [n_conns] array of free-terms in the discretization of unknown pressure and displacements on faces
   std::vector<value_t> rhs_face;
   /// number of non-zero links
-  index_t n_links;
+  index_t n_links = 0;
+
+  /* WENO2 static geometry and assembly lookup data. */
+  bool weno_enabled = false;
+  bool weno_finalized = false;
+  std::vector<index_t> weno_cell_candidate_offset;
+  std::vector<index_t> weno_candidate_support_cell;
+  std::vector<index_t> weno_candidate_support_kind;
+  std::vector<index_t> weno_candidate_support_dependency;
+  std::vector<value_t> weno_candidate_inverse;
+  std::vector<value_t> weno_candidate_gamma;
+  std::vector<index_t> weno_cell_dependency_offset;
+  std::vector<index_t> weno_cell_dependency_cell;
+  std::vector<index_t> weno_cell_target_dependency;
+  std::vector<index_t> weno_cell_status;
+
+  // Target-side query vectors in final directed physical-connection order.
+  std::vector<value_t> weno_face_reference_m;
+  std::vector<value_t> weno_face_reference_p;
+  std::vector<index_t> weno_face_status_m;
+  std::vector<index_t> weno_face_status_p;
+
+  // Physical-connection iteration and precomputed BCSR scatter slots.
+  std::vector<index_t> physical_row_offset;
+  std::vector<index_t> connection_jacobian_slot;
+  std::vector<index_t> weno_jacobian_row_offset;
+  std::vector<index_t> weno_connection_dependency_offset_m;
+  std::vector<index_t> weno_connection_dependency_offset_p;
+  std::vector<index_t> weno_connection_dependency_slot_m;
+  std::vector<index_t> weno_connection_dependency_slot_p;
+  std::vector<index_t> weno_connection_candidate_coefficient_offset_m;
+  std::vector<index_t> weno_connection_candidate_coefficient_offset_p;
+  std::vector<value_t> weno_connection_candidate_coefficient_m;
+  std::vector<value_t> weno_connection_candidate_coefficient_p;
 
   /*
   * Previous time step
@@ -362,6 +416,8 @@ public:
   std::vector<value_t> velocity_appr;
 
 private:
+  int finalize_weno_static();
+
   // one-way, unsorted conection list
   std::vector <index_t> one_way_block_m;
   std::vector <index_t> one_way_block_p;
@@ -370,6 +426,10 @@ private:
   std::vector <value_t> one_way_tranD;
   std::vector <value_t> one_way_tran_th_expn;
   std::vector <bool> one_way_is_dfm_conn;
+  std::vector<value_t> one_way_weno_face_reference_m;
+  std::vector<value_t> one_way_weno_face_reference_p;
+  std::vector<index_t> one_way_weno_face_status_m;
+  std::vector<index_t> one_way_weno_face_status_p;
   // arrays for multi-point approximation
   std::vector<index_t> one_way_stencil;
   std::vector<index_t> one_way_offset;

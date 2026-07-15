@@ -97,6 +97,12 @@ public:
     LINF
   };
 
+  enum transport_scheme_t
+  {
+    SPU = 0,
+    WENO2
+  };
+
   sim_params()
   {
     // set default params
@@ -135,6 +141,12 @@ public:
     finalize_mpi = 1;
 
     phase_existence_tolerance = 1.e-6;
+    transport_scheme = SPU;
+    weno_epsilon = 1.e-12;
+    weno_power = 2;
+    weno_bound_fallback = true;
+    weno_condition_limit = 1.e8;
+    weno_max_candidates = 16;
   }
 
   value_t first_ts; // first time step length (days)
@@ -176,6 +188,12 @@ public:
   index_t finalize_mpi;         // flag to run MPI_Finalize in relevant solvers (required for multiple model run)
 
   value_t phase_existence_tolerance;    // tolerance defining presence of phase in a cell
+  transport_scheme_t transport_scheme;  // advective transport reconstruction
+  value_t weno_epsilon;                 // nonlinear WENO weight regularization
+  index_t weno_power;                   // nonlinear WENO weight exponent
+  bool weno_bound_fallback;             // revert non-finite/negative reconstructions to SPU
+  value_t weno_condition_limit;         // setup-time condition-number ceiling
+  index_t weno_max_candidates;          // setup-time candidates retained per cell
 };
 
 class linear_solver_params

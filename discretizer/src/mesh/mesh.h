@@ -12,7 +12,27 @@ namespace mesh
 {
 	typedef std::unordered_map<ElemLoc, std::set<index_t>> PhysicalTags;
 
-	enum MESH_TYPE {GMSH, CPG};
+	enum MESH_TYPE {GMSH, CPG, STRUCTURED};
+
+	/**
+	 * Geometry-only view of one face as seen from one matrix cell.
+	 *
+	 * Flow connections intentionally omit some boundary faces (notably for CPG)
+	 * and can split one logical cell face into several connections.  WENO needs
+	 * both the complete cell boundary and a target-side face centroid, so this
+	 * view is kept separate from ``Mesh::conns``.
+	 */
+	struct WenoFaceSide
+	{
+		index_t cell = -1;
+		index_t neighbour = -1;       ///< Matrix neighbour, -1 for no-flow boundary, -2 for unsupported interface.
+		index_t connection_id = -1;   ///< Canonical physical connection, -1 for a geometry-only boundary face.
+		index_t logical_face = -1;    ///< CPG facetag or topology-local face number.
+		index_t node_offset = 0;
+		index_t node_count = 0;
+		Vector3 centroid;
+		value_t area = 0.0;
+	};
 
 	class Mesh
 	{
@@ -86,6 +106,11 @@ namespace mesh
 		// conn ids for each conn type
 		std::unordered_map<ConnType, std::vector<index_t>> conn_type_map;
 
+		// Geometry-only WENO face sides, grouped by target matrix cell.
+		std::vector<WenoFaceSide> weno_face_sides;
+		std::vector<index_t> weno_face_nodes;
+		std::vector<index_t> weno_cell_face_offset;
+
 		/* Fluxes */
 		// array of fluxes through elements
 		std::vector<value_t> flux_elems;
@@ -96,6 +121,15 @@ namespace mesh
 		~Mesh();
 
 		void gmsh_mesh_processing(std::string filename, const PhysicalTags& tags);
+
+		/** Build a Cartesian hexahedral geometry view for WENO preprocessing. */
+		void build_structured_weno_geometry(
+			index_t nx,
+			index_t ny,
+			index_t nz,
+			const std::vector<index_t>& global_to_local,
+			const std::vector<value_t>& cell_centroids,
+			const std::vector<value_t>& cell_sizes);
 
 		void print_elems_nodes();
 
@@ -241,6 +275,7 @@ namespace mesh
 		void gmsh_mesh_reading(std::string filename, const PhysicalTags& tags);
 		void gmsh_mesh_construct_connections(const PhysicalTags& tags);
 		void generate_adjacency_matrix();
+		void build_gmsh_weno_face_sides();
 
 	}; //class Mesh
 
