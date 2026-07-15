@@ -113,8 +113,11 @@ def input_data_default():
 
     idata.obl.p_step = 5.0
     idata.obl.p_origin = 0.5
-    idata.obl.e_step = 250.0
-    idata.obl.e_origin = 10.0
+    # PT flash: OBL temperature axis (K). t_origin sits at the IAPWS liquid
+    # floor (273.15 K) so sampling stays above the ice region; t_step reproduces
+    # the legacy ~128-point grid over [273.15, 575] K.
+    idata.obl.t_step = 2.377
+    idata.obl.t_origin = 273.15
 
     return idata
 

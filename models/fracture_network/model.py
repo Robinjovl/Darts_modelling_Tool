@@ -106,9 +106,10 @@ class Model(CICDModel):
         # initialize physics
         self.cell_property = ['pressure', 'enthalpy', 'temperature']
 
-        self.set_iapws_physics(n_points=self.idata.obl.n_points,
-                               min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
-                               min_t=273.15, max_t=575.)
+        self.set_iapws_physics(p_step=self.idata.obl.p_step,
+                               p_origin=self.idata.obl.p_origin,
+                               t_step=self.idata.obl.t_step,
+                               t_origin=self.idata.obl.t_origin)
 
         # Some tuning parameters:
         self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_newton=1e-4, tol_linear=1e-5)
@@ -121,10 +122,11 @@ class Model(CICDModel):
         # End timer for model initialization:
         self.timer.node["initialization"].stop()
 
-    def set_iapws_physics(self, n_points, min_p, max_p, min_t, max_t, cache=False):
+    def set_iapws_physics(self, p_step, p_origin, t_step, t_origin, cache=False):
         """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PT-flash.
         Single-component water; phases are vapor ('V') and liquid ('L').
         State spec is PT so engine.X layout is [P, T, ...] and the OBL grid is sampled on (P, T).
+        The adaptive interpolator is defined by per-axis step + origin and extends on demand.
         """
         components = ["H2O"]
         phases = ['V', 'L']
@@ -164,10 +166,9 @@ class Model(CICDModel):
         self.physics = PhysicsBase(
             components, phases, self.timer,
             state_spec=PhysicsBase.StateSpecification.PT,
-            n_points=n_points,
-            min_p=min_p, max_p=max_p,
-            min_z=zero, max_z=1.0 - zero, epsilon_z=zero,
-            min_t=min_t, max_t=max_t,
+            axes_step=[p_step, t_step],
+            axes_origin=[p_origin, t_origin],
+            epsilon_z=zero,
             cache=cache,
         )
         self.physics.add_property_region(pc)
