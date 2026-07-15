@@ -20,8 +20,8 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     else:
         runtime = m.runtime
 
-    mult_dt = m.params.mult_ts
-    max_dt = m.params.max_ts
+    mult_dt = m.data_ts.dt_mult
+    max_dt = m.data_ts.dt_max
     m.e = m.physics.engine
 
     # get current engine time
@@ -57,14 +57,14 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             t += dt
             ts = ts + 1
             print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
-                   % (ts, t, dt, m.e.n_newton_last_dt, m.e.n_linear_last_dt))
+                   % (ts, t, dt, m._get_nonlinear().status.n_newton, m._get_nonlinear().status.n_linear))
             if not init_step:
                 m.reservoir.write_to_vtk(m.output_directory, m.ith_step + 1, m.physics.engine, dt)
                 m.ith_step += 1
                 if m.ith_step > 1000:
                     exit(0)
 
-            if m.physics.engine.n_newton_last_dt < 4:
+            if m._get_nonlinear().status.n_newton < 4:
                 dt *= 1.5
             if dt > max_dt:
                dt = max_dt
@@ -97,7 +97,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
         #         m.ith_step - m.ith_step_ready_for_reinjection > 500:
         #     m.physics.engine.momentum_inertia = 0.0
         #     dt = 0.001
-        #     m.params.max_ts = max_dt = 0.005
+        #     m.data_ts.dt_max = max_dt = 0.005
         #     m.enable_dynamic_mode = False
         #     m.reservoir.wells[0].control = m.physics.new_rate_prod(0.0)
         #     #X = np.array(m.physics.engine.X, copy = False)
@@ -109,13 +109,16 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     # update current engine time
     m.e.t = runtime
 
-    print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (m.e.stat.n_timesteps_total, m.e.stat.n_timesteps_wasted,
-                                                        m.e.stat.n_newton_total, m.e.stat.n_newton_wasted,
-                                                        m.e.stat.n_linear_total, m.e.stat.n_linear_wasted))
+    stats = m._get_nonlinear().stats
+    print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (stats.n_timesteps_total, stats.n_timesteps_wasted,
+                                                        stats.n_newton_total, stats.n_newton_wasted,
+                                                        stats.n_linear_total, stats.n_linear_wasted))
 def run_timestep_python(m, dt, t):
     self = m
-    max_newt = self.params.max_i_newton
-    self.e.n_linear_last_dt = 0
+    max_newt = self.data_ts.newton_max_iter
+    solver = self._get_nonlinear()
+    status = solver.status
+    status.reset()
     well_tolerance_coefficient = 1e2
     self.timer.node['simulation'].start()
     res_history = []
@@ -129,18 +132,18 @@ def run_timestep_python(m, dt, t):
         else:                                       self.e.dev_g = 0.0
         res_history.append((res[0], res[1], res[2]))
 
-        self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + self.e.dev_g ** 2)
-        #self.e.newton_residual_last_dt = self.e.calc_newton_residual()
-        self.e.well_residual_last_dt = self.e.calc_well_residual()
+        status.newton_residual = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + self.e.dev_g ** 2)
+        #status.newton_residual = self.e.calc_newton_residual()
+        status.well_residual = self.e.calc_well_residual()
         print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + \
-                    'rg = ' + str(self.e.dev_g) + '\t' + 'rwell = ' + str(self.e.well_residual_last_dt))
-        self.e.n_newton_last_dt = i
+                    'rg = ' + str(self.e.dev_g) + '\t' + 'rwell = ' + str(status.well_residual))
+        status.n_newton = i
         #  check tolerance if it converges
-        if ((self.e.dev_p < self.params.tolerance_newton and
-             self.e.dev_u < self.params.tolerance_newton and
-             self.e.dev_g < self.params.tolerance_newton and
-             self.e.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton )
-              or self.e.n_newton_last_dt == self.params.max_i_newton):
+        if ((self.e.dev_p < self.data_ts.newton_tol and
+             self.e.dev_u < self.data_ts.newton_tol and
+             self.e.dev_g < self.data_ts.newton_tol and
+             status.well_residual < well_tolerance_coefficient * self.data_ts.newton_tol )
+              or status.n_newton == self.data_ts.newton_max_iter):
             if (i > 0):  # min_i_newton
                 if i < max_newt:
                     converged = 1
@@ -153,6 +156,9 @@ def run_timestep_python(m, dt, t):
             break
 
         r_code = self.e.solve_linear_equation()
+        status.linear_solver_rc = r_code
+        if r_code == 0:
+            status.n_linear += self.e.get_last_linear_iters()
         self.timer.node["newton update"].start()
         self.e.apply_newton_update(dt)
         self.timer.node["newton update"].stop()
@@ -172,7 +178,11 @@ def run_timestep_python(m, dt, t):
             m.slip_area.append(cur_area)
             converged *= 1
 
+    # NOTE: the old C++ pm/super_elastic post_newtonloop did not veto `converged`
+    # (its residual re-check only selected a failure message), so the Python
+    # verdict is passed through unchanged.
     converged = self.e.post_newtonloop(dt, t, converged)
+    solver.stats.update(converged, status)
 
     self.timer.node['simulation'].stop()
     return converged
@@ -218,7 +228,7 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     # m.physics.engine.t_dim = 1.0
     # m.physics.engine.m_dim = 1.0
 
-    m.params.first_ts = 1.0
+    m.data_ts.dt_first = 1.0
     run_python(m, 1.0, init_step=True)
     m.reinit(zero_conduction=True)
     m.physics.engine.dt1 = 0.0
@@ -238,8 +248,8 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     time = 0
     for ith_step, dt in enumerate(t):
         time += dt
-        m.params.max_ts = dt
-        m.params.mult_ts = 10.0
+        m.data_ts.dt_max = dt
+        m.data_ts.dt_mult = 10.0
         run_python(m, dt)
         ith_step += 1
 

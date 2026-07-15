@@ -3,6 +3,7 @@ import numpy as np
 from darts.models.cicd_model import CICDModel
 from darts.pipes.viz.plot_live import DartsModelWithLivePlots
 from darts.engines import sim_params, ms_well, value_vector, well_control_iface
+from darts.nonlinear_solvers import NewtonSpec, ChopSpec
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 
@@ -43,9 +44,11 @@ class Model(CICDModel):
         self.set_physics()
 
         # For isenthalpic injection and injection at a constant gas rate
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
-                            it_newton=10, it_linear=10, newton_type=sim_params.newton_local_chop,
-                            coupled_well_res_norm_method=2,
+        self.nonlinear_solver = NewtonSpec(tolerance=1e-3, max_iterations=10,
+                                           chop=ChopSpec(mode='local'),
+                                           coupled_well_res_norm_method=2)
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_linear=1e-4,
+                            it_linear=10,
                             runtime=1/24/60, # This runtime will be used when CI test is conducted without the main file
                             )
 

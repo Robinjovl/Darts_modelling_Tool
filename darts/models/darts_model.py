@@ -4,13 +4,6 @@ from math import fabs
 
 import numpy as np
 
-from darts.models.output import Output
-
-try:
-    from darts.engines import copy_data_to_device
-except ImportError:
-    pass
-
 from darts.discretizer import print_build_info as discretizer_pbi
 from darts.engines import (
     ms_well,
@@ -22,42 +15,101 @@ from darts.engines import (
 from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
 from darts.interpolators import op_vector
+from darts.models.output import Output
+from darts.nonlinear_solvers import (
+    NonlinearSolverSpec,
+    default_nonlinear_solver,
+)
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
 
 class DataTS:
-    def __init__(self, n_vars):
+    """Timestep control structure and backward-compatibility adapter.
+
+    The timestep controls (``dt_first``/``dt_min``/``dt_mult``/``dt_max``/``eta``)
+    are plain attributes and live ONLY here (removed from ``sim_params``).
+    The historic nonlinear-solver attribute names are properties reading and
+    writing the underlying :class:`darts.nonlinear_solvers.NonlinearSolverSpec`,
+    which is the single source of the nonlinear solve settings. The
+    ``linear_*`` settings remain plain attributes here until the linear-solver
+    spec branch (MR280) is merged.
+    """
+
+    _FIELDS = (
+        "eta",
+        "dt_first",
+        "dt_min",
+        "dt_mult",
+        "dt_max",
+        "newton_tol",
+        "newton_tol_wel_mult",
+        "newton_tol_stationary",
+        "newton_max_iter",
+        "linear_tol",
+        "linear_max_iter",
+        "linear_type",
+        "linear_print_level",
+        "line_search",
+        "min_line_search_update",
+        "coupled_well_res_norm_method",
+    )
+
+    def __init__(self, n_vars, nonlinear: NonlinearSolverSpec = None):
+        self._nonlinear = (
+            nonlinear if nonlinear is not None else default_nonlinear_solver()
+        )
+
+        # timestep control (owned by this structure)
         self.eta = (
             1e20 * np.ones(n_vars)
         )  # controls the timestep by the variable change from the previous newton iteration
-        # dX = Xn - X . Eta has a size of number of DOFs per cell. It set to a large value by default, so doesn't affect the timestep choice
-
-        # default values
+        # dX = Xn - X. Eta has a size of number of DOFs per cell. Set to a large value by default, so doesn't affect the timestep choice
         self.dt_first = 1.0  # initial timestep [days]
         self.dt_min = 1e-12  # minimal allowed timestep [days]
         self.dt_mult = 2.0  # timestep multiplier, affects the next timestep choice
         self.dt_max = 10.0  # maximal allowed timestep [days]
-        self.newton_tol = 1e-2  # newton solver residual
-        self.newton_tol_wel_mult = 100.0  # used to compute the newton solver residual for wells = tol_res * tol_wel_mult
-        self.newton_tol_stationary = 1e-3  # tolerance for stationary point detection in the newton solver (by residual)
-        self.newton_max_iter = 20  # maximum newton iterations allowed
+
+        # linear solver settings (plain attributes until MR280 merge)
         self.linear_tol = 1e-5
         self.linear_max_iter = 50  # maximum linear iterations allowed
         self.linear_type = None  # linear solver and preconditioner type
         self.linear_print_level = None  # linear solver messages printing level (used only for PETSC option), 0 - no messages, 10 - all messages
-        #
-        self.line_search = False
-        self.min_line_search_update = 1e-4
 
-        # For coupled well-reservoir model
-        self.coupled_well_res_norm_method = 1
+    # nonlinear solver control -> NonlinearSolverSpec
+    newton_tol = property(
+        lambda s: s._nonlinear.tolerance,
+        lambda s, v: setattr(s._nonlinear, "tolerance", v),
+    )
+    newton_tol_wel_mult = property(
+        lambda s: s._nonlinear.well_tolerance_multiplier,
+        lambda s, v: setattr(s._nonlinear, "well_tolerance_multiplier", v),
+    )
+    newton_tol_stationary = property(
+        lambda s: s._nonlinear.stationary_point_tolerance,
+        lambda s, v: setattr(s._nonlinear, "stationary_point_tolerance", v),
+    )
+    newton_max_iter = property(
+        lambda s: s._nonlinear.max_iterations,
+        lambda s, v: setattr(s._nonlinear, "max_iterations", v),
+    )
+    line_search = property(
+        lambda s: s._nonlinear.line_search.enabled,
+        lambda s, v: setattr(s._nonlinear.line_search, "enabled", v),
+    )
+    min_line_search_update = property(
+        lambda s: s._nonlinear.line_search.min_update,
+        lambda s, v: setattr(s._nonlinear.line_search, "min_update", v),
+    )
+    coupled_well_res_norm_method = property(
+        lambda s: s._nonlinear.coupled_well_res_norm_method,
+        lambda s, v: setattr(s._nonlinear, "coupled_well_res_norm_method", v),
+    )
 
     def print(self):
         print("Simulation parameters:")
-        for k in self.__dict__.keys():
-            value = self.__getattribute__(k)
-            print("\t", k, "=", value)
+        for k in self._FIELDS:
+            print("\t", k, "=", getattr(self, k))
 
 
 class DartsModel:
@@ -154,6 +206,14 @@ class DartsModel:
 
         # Create sim_params object to set simulation parameters
         self.params = sim_params()
+
+        # Nonlinear solver specification (single input source; see
+        # darts.nonlinear_solvers). Assigned lazily by set_solver().
+        self.nonlinear_solver = None
+        self._nonlinear = None  # runtime solver object built from the spec
+        self._data_ts = (
+            None  # lazy timestep-control structure, see the data_ts property
+        )
 
         self.time = []
         self.n_newton_iters = []
@@ -311,6 +371,10 @@ class DartsModel:
         self.set_op_list()
         self.set_boundary_conditions()
         self.set_well_controls()
+
+        # Materialize the nonlinear solver spec (and default specs/data_ts if the
+        # model did not configure them) before the engine is initialized.
+        self._apply_nonlinear()
 
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         self.restart = restart
@@ -567,14 +631,83 @@ class DartsModel:
         self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
         self.op_num[self.reservoir.mesh.n_res_blocks :] = len(self.op_list) - 1
 
+    def set_solver(self):
+        """Hook to specify the solvers of the model (consistent with the
+        linear-solver ``set_solver()`` of MR280 — after the merge both the
+        linear and the nonlinear solver are specified here).
+
+        The default implementation is idempotent and lazy: it keeps any spec a
+        subclass already assigned and otherwise materializes the default.
+        Override in a model to select/tune the nonlinear solver::
+
+            def set_solver(self):
+                super().set_solver()
+                self.nonlinear_solver.tolerance = 1e-4
+                self.nonlinear_solver.chop.factor = 0.2
+        """
+        if getattr(self, "nonlinear_solver", None) is None:
+            self.nonlinear_solver = default_nonlinear_solver()
+
+    @property
+    def data_ts(self):
+        """Timestep-control structure (and nonlinear-settings adapter, see
+        :class:`DataTS`), created lazily so it can be read/written both before
+        and after ``init()``."""
+        if self._data_ts is None:
+            self.set_solver()
+            n_vars = self.physics.n_vars if getattr(self, "physics", None) else 0
+            self._data_ts = DataTS(n_vars, nonlinear=self.nonlinear_solver)
+        return self._data_ts
+
+    @data_ts.setter
+    def data_ts(self, value):
+        self._data_ts = value
+
+    def _apply_nonlinear(self):
+        """Materialize the nonlinear solver spec into the runtime solver object
+        and make sure ``data_ts``/``sim_params`` mirror it. Called from init()."""
+        self.set_solver()
+        if self._data_ts is None:
+            self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver)
+            self.copy_data_ts_to_sim_params()
+        elif self._data_ts._nonlinear is not self.nonlinear_solver:
+            # the model replaced the spec object after set_sim_params(): rebind
+            # the adapter to the new spec, keeping timestep + linear settings
+            old = self._data_ts
+            self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver)
+            for k in (
+                "eta",
+                "dt_first",
+                "dt_min",
+                "dt_mult",
+                "dt_max",
+                "linear_tol",
+                "linear_max_iter",
+                "linear_type",
+                "linear_print_level",
+            ):
+                setattr(self.data_ts, k, getattr(old, k))
+            self.copy_data_ts_to_sim_params()
+        # the structure may have been created pre-init with n_vars=0: size eta now
+        if len(self._data_ts.eta) < self.physics.n_vars:
+            self._data_ts.eta = 1e20 * np.ones(self.physics.n_vars)
+        self._nonlinear = self.nonlinear_solver.make_solver(self)
+
     def set_sim_params_data_ts(self, data_ts):
-        self.data_ts = DataTS(self.physics.n_vars)
+        """Deprecated: assign ``nonlinear_solver``/``timestep`` specs instead."""
+        warnings.warn(
+            "set_sim_params_data_ts() is deprecated; specify DartsModel.nonlinear_solver "
+            "in set_solver() and set timestep controls on DartsModel.data_ts instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.set_solver()
+        self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver)
         # copy attributes except eta
-        for k in data_ts.__dict__.keys():
+        for k in DataTS._FIELDS:
             if k == "eta":
                 continue
-            value = data_ts.__getattribute__(k)
-            self.data_ts.__setattr__(k, value)
+            setattr(self.data_ts, k, getattr(data_ts, k))
         self.copy_data_ts_to_sim_params()
 
     def set_sim_params(
@@ -584,17 +717,18 @@ class DartsModel:
         min_ts=1e-15,
         max_ts: float = None,
         runtime: float = 1000,
-        tol_newton: float = None,
         tol_linear: float = None,
-        it_newton: int = None,
         it_linear: int = None,
-        newton_type=None,
-        newton_params=None,
-        line_search: bool = False,
-        coupled_well_res_norm_method: int = 1,
     ):
         """
-        Function to set simulation parameters.
+        Function to set the timestep and linear solver parameters.
+
+        The nonlinear solver parameters are NOT set here anymore — specify them
+        on ``self.nonlinear_solver`` (a :class:`darts.nonlinear_solvers.NewtonSpec`),
+        typically in a ``set_solver()`` override::
+
+            self.nonlinear_solver = NewtonSpec(tolerance=1e-4, max_iterations=15,
+                                               chop=ChopSpec(mode='local', factor=0.2))
 
         :param first_ts: First timestep
         :type first_ts: float
@@ -604,70 +738,47 @@ class DartsModel:
         :type max_ts: float
         :param runtime: Total runtime in days, default is 1000
         :type runtime: float
-        :param tol_newton: Tolerance for Newton iterations
-        :type tol_newton: float
         :param tol_linear: Tolerance for linear iterations
         :type tol_linear: float
-        :param it_newton: Maximum number of Newton iterations
-        :type it_newton: int
         :param it_linear: Maximum number of linear iterations
         :type it_linear: int
-        :param newton_type:
-        :param newton_params:
-        :param coupled_well_res_norm_method: Method of norm evaluation of residuals for the coupled well-reservoir model
-        :type coupled_well_res_norm_method: int
+
+        .. deprecated::
+            Set timestep controls on ``self.data_ts`` and the linear solver via
+            the linear-solver spec (MR280) instead.
         """
-        self.data_ts = DataTS(self.physics.n_vars)
+        warnings.warn(
+            "set_sim_params() is deprecated; set timestep controls on "
+            "DartsModel.data_ts and specify DartsModel.nonlinear_solver in set_solver()",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # make sure the nonlinear spec exists (so data_ts binds to it), but do
+        # NOT touch it here — nonlinear settings live on self.nonlinear_solver
+        self.set_solver()
+
+        # fresh timestep-control structure bound to the current spec
+        self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver)
+        ts = self.data_ts
 
         # Time stepping parameters. if None, default value will be used
-        self.data_ts.dt_first = (
-            first_ts if first_ts is not None else self.data_ts.dt_first
-        )
-        self.data_ts.dt_min = min_ts if min_ts is not None else self.data_ts.dt_min
-        self.data_ts.dt_max = max_ts if max_ts is not None else self.data_ts.dt_max
-        self.data_ts.dt_mult = mult_ts if mult_ts is not None else self.data_ts.dt_mult
-
-        # Non linear solver parameters. if None, default value will be used
-        self.data_ts.newton_max_iter = (
-            it_newton if it_newton is not None else self.data_ts.newton_max_iter
-        )
-        self.data_ts.newton_tol = (
-            tol_newton if tol_newton is not None else self.data_ts.newton_tol
-        )
-
-        self.params.newton_type = (
-            newton_type if newton_type is not None else self.params.newton_type
-        )
-        self.params.newton_params = (
-            newton_params if newton_params is not None else self.params.newton_params
-        )
-
-        self.data_ts.line_search = line_search
+        ts.dt_first = first_ts if first_ts is not None else ts.dt_first
+        ts.dt_min = min_ts if min_ts is not None else ts.dt_min
+        ts.dt_max = max_ts if max_ts is not None else ts.dt_max
+        ts.dt_mult = mult_ts if mult_ts is not None else ts.dt_mult
 
         # Linear solver parameters. if None, default value will be used
-        self.data_ts.linear_tol = (
-            tol_linear if tol_linear is not None else self.data_ts.linear_tol
-        )
-        self.data_ts.linear_max_iter = (
-            it_linear if it_linear is not None else self.data_ts.linear_max_iter
-        )
-
-        assert coupled_well_res_norm_method in [1, 2], (
-            "Method number for calculating the norm of coupled "
-            "well-reservoir residuals must be either 1 or 2."
-        )
-        self.data_ts.coupled_well_res_norm_method = coupled_well_res_norm_method
+        ts.linear_tol = tol_linear if tol_linear is not None else 1e-5
+        ts.linear_max_iter = it_linear if it_linear is not None else 50
 
         self.runtime = runtime
 
         self.copy_data_ts_to_sim_params()
 
     def copy_data_ts_to_sim_params(self):
-        self.params.first_ts = self.data_ts.dt_first
-        self.params.max_ts = self.data_ts.dt_max
-        self.params.mult_ts = self.data_ts.dt_mult
-        self.params.tolerance_newton = self.data_ts.newton_tol
-        self.params.max_i_newton = self.data_ts.newton_max_iter
+        """Transitional: mirror the linear solver settings into the C++
+        ``sim_params`` fields the engine still reads. The nonlinear controls
+        are synced directly into the engine by the nonlinear solver."""
         self.params.tolerance_linear = self.data_ts.linear_tol
         self.params.max_i_linear = self.data_ts.linear_max_iter
         if self.data_ts.linear_type is not None:
@@ -689,6 +800,9 @@ class DartsModel:
         """
         self.physics = physics
         self.data_ts = data_ts
+        # rebind the spec (and runtime solver) to the externally supplied data_ts
+        self.nonlinear_solver = data_ts._nonlinear
+        self._nonlinear = None
 
         days = days if days is not None else self.runtime
         assert days > 0, "Time must be a positive value!"
@@ -719,7 +833,7 @@ class DartsModel:
                 self.after_converged_timestep()
                 if verbose:
                     print(
-                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}"
+                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self._nonlinear.status.n_newton:d}\tLI={self._nonlinear.status.n_linear:d}"
                     )
 
                 dt = min(dt * self.data_ts.dt_mult, self.data_ts.dt_max)
@@ -746,7 +860,7 @@ class DartsModel:
 
         if verbose:
             print(
-                f"TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d})"
+                f"TS = {self._nonlinear.stats.n_timesteps_total:d}({self._nonlinear.stats.n_timesteps_wasted:d}), NI = {self._nonlinear.stats.n_newton_total:d}({self._nonlinear.stats.n_newton_wasted:d}), LI = {self._nonlinear.stats.n_linear_total:d}({self._nonlinear.stats.n_linear_wasted:d})"
             )
 
     def run(
@@ -861,7 +975,7 @@ class DartsModel:
                 if verbose:
                     max_dx_str = '[' + ', '.join(f'{v:.1e}' for v in max_dx) + ']'
                     print(
-                        f"#{ts_counter:d}\tT={t:3g}\tDT={dt:2g}\tNI={self.physics.engine.n_newton_last_dt:d}\tLI={self.physics.engine.n_linear_last_dt:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
+                        f"#{ts_counter:d}\tT={t:3g}\tDT={dt:2g}\tNI={self._nonlinear.status.n_newton:d}\tLI={self._nonlinear.status.n_linear:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
                     )
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
@@ -942,9 +1056,9 @@ class DartsModel:
 
         if verbose:
             print(
-                f"----- TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), "
-                f"NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), "
-                f"LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d}) -----"
+                f"----- TS = {self._nonlinear.stats.n_timesteps_total:d}({self._nonlinear.stats.n_timesteps_wasted:d}), "
+                f"NI = {self._nonlinear.stats.n_newton_total:d}({self._nonlinear.stats.n_newton_wasted:d}), "
+                f"LI = {self._nonlinear.stats.n_linear_total:d}({self._nonlinear.stats.n_linear_wasted:d}) -----"
             )
 
         # At higher verbosity, print the timer breakdown at the end of every run()
@@ -959,7 +1073,10 @@ class DartsModel:
 
     def run_timestep(self, dt: float, t: float, verbose: int | None = None):
         """
-        Solve Newton loop for specified timestep
+        Solve the nonlinear loop for the specified timestep.
+
+        Delegates to the runtime nonlinear solver built from
+        :attr:`nonlinear_solver` (see :mod:`darts.nonlinear_solvers`).
 
         :param dt: Timestep size [days]
         :type dt: float
@@ -969,145 +1086,14 @@ class DartsModel:
             ``None``, meaning inherit :attr:`self.verbose`.
         :type verbose: int
         """
-        verbose = self.verbose if verbose is None else verbose
-        assert dt > 0, "Time step size must be a positive value!"
+        return self._get_nonlinear().solve_timestep(dt, t, verbose)
 
-        max_newt = self.data_ts.newton_max_iter
-        max_residual = np.zeros(max_newt + 1)
-        self.physics.engine.n_linear_last_dt = 0
-        self._linear_solver_rc_last = 0
-        self.timer.node["simulation"].start()
-
-        residual_history = []
-        for i in range(max_newt + 1):
-            # Update well phase velocities and derivatives if DFM wells are used
-            if self.has_dfm_well:
-                self.update_dfm_well_vels_and_ders(dt, t, i)
-
-            # assemble Jacobian and residual of reservoir and well blocks
-            self.physics.engine.assemble_linear_system(dt)
-
-            # apply RHS flux
-            self.apply_rhs_flux(dt, t)
-
-            if self.has_dfm_well:
-                self.apply_dfm_well_lateral_heat_flux(dt, t)
-
-            if self.platform == "gpu":
-                copy_data_to_device(
-                    self.physics.engine.RHS, self.physics.engine.get_RHS_d()
-                )
-
-            if not self.has_dfm_well:
-                self.physics.engine.newton_residual_last_dt = (
-                    self.physics.engine.calc_newton_residual()
-                )  # calc norm of residual
-            elif self.has_dfm_well:
-                # Method is either 1 or 2
-                self.physics.engine.newton_residual_last_dt = (
-                    self.physics.engine.calc_coupled_well_reservoir_residual(
-                        self.data_ts.coupled_well_res_norm_method
-                    )
-                )
-
-            max_residual[i] = self.physics.engine.newton_residual_last_dt
-            counter = 0
-            for j in range(i):
-                denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
-                if (
-                    abs(max_residual[i] - max_residual[j]) / denom
-                    < self.data_ts.newton_tol_stationary
-                ):
-                    counter += 1
-            if counter > 2:
-                if verbose:
-                    print("Stationary point detected!")
-                break
-
-            self.physics.engine.well_residual_last_dt = (
-                self.physics.engine.calc_well_residual()
-            )
-            residual_history.append(
-                (
-                    self.physics.engine.newton_residual_last_dt,  # matrix residual
-                    self.physics.engine.well_residual_last_dt,  # well residual
-                    1.0,
-                )
-            )  # Newton update coefficient
-
-            self.physics.engine.n_newton_last_dt = i
-            #  check tolerance if it converges
-            if (
-                self.physics.engine.newton_residual_last_dt < self.data_ts.newton_tol
-                and self.physics.engine.well_residual_last_dt
-                < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult
-            ) or self.physics.engine.n_newton_last_dt == max_newt:
-                if i > 0:  # min_i_newton
-                    break
-
-            # line search
-            if (
-                self.data_ts.line_search
-                and i > 0
-                and residual_history[-1][0] > 0.9 * residual_history[-2][0]
-            ):
-                coef = np.array([0.0, 1.0])
-                history = np.array([residual_history[-2], residual_history[-1]])
-                residual_history[-1] = self.line_search(
-                    dt, t, coef, history, verbose, iter_counter=i
-                )
-                max_residual[i] = residual_history[-1][0]
-
-                # check stationary point after line search
-                counter = 0
-                for j in range(i):
-                    denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
-                    if (
-                        abs(max_residual[i] - max_residual[j]) / denom
-                        < self.data_ts.newton_tol_stationary
-                    ):
-                        counter += 1
-                if counter > 2:
-                    if verbose:
-                        print("Stationary point detected!")
-                    break
-            else:
-                if isinstance(self.data_ts.linear_type, linear_solver_types):
-                    # solvers via Python interface
-                    if self.data_ts.linear_type in [
-                        linear_solver_types.CPU_PETSC_CPR,
-                        linear_solver_types.CPU_PETSC_FS,
-                    ]:
-                        self.petsc_solve_linear_equation()
-                    elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                        self.pardiso_solve_linear_equation()
-                    else:
-                        raise Exception(
-                            "Unknown linear solver type", self.data_ts.linear_type
-                        )
-                else:
-                    # compile-time C++ linear solvers
-                    rc = self.physics.engine.solve_linear_equation()
-                    if rc != 0:
-                        # Abort the Newton loop on a failed linear solve so that
-                        # post_newtonloop sees linear_solver_error_last_dt != 0 and
-                        # returns converged=0 without burning the full max_newt
-                        # budget on stale dX updates.
-                        self._linear_solver_rc_last = rc
-                        break
-                self.timer.node["newton update"].start()
-                self.physics.engine.apply_newton_update(dt)
-                self.timer.node["newton update"].stop()
-
-        # End of newton loop
-        converged = self.physics.engine.post_newtonloop(dt, t)
-
-        self.time.append(t)
-        self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
-        self.time_step_size.append(dt)
-
-        self.timer.node["simulation"].stop()
-        return converged
+    def _get_nonlinear(self):
+        """Return the runtime nonlinear solver, (re)building it when the spec
+        object was replaced after init()."""
+        if self._nonlinear is None or self._nonlinear.spec is not self.nonlinear_solver:
+            self._apply_nonlinear()
+        return self._nonlinear
 
     def update_dfm_well_vels_and_ders(self, dt, t, iter_counter):
         """
@@ -1189,148 +1175,19 @@ class DartsModel:
         self,
         dt: float,
         t: float,
-        coef: np.ndarray,
-        history: list | np.ndarray,
+        coef,
+        history,
         verbose: int | None = None,
         iter_counter: int = None,
     ):
         """
         Perform a line search to find the optimal coefficient that minimizes residuals.
 
-        :param dt: Time step for the update process.
-        :param t: Current time.
-        :param coef: Array of current coefficients used in the line search.
-        :param history: Historical residuals, where each entry contains residuals for 'r_mat' and 'r_well'.
-        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
-            ``None``, meaning inherit :attr:`self.verbose`. Nonzero prints detailed
-            line-search debug information during execution.
-        :param iter_counter: Newton-Raphson iteration counter for the current time step. Used by DFM well velocity updates.
-
-        :return: Tuple containing the minimum residual achieved, a placeholder value (0.0), and the coefficient
-                 corresponding to the minimum residual.
-        :rtype: tuple(float, float, float)
+        Delegates to the runtime nonlinear solver (see :mod:`darts.nonlinear_solvers`).
         """
-        verbose = self.verbose if verbose is None else verbose
-        newton_iter_counter = (
-            self.physics.engine.n_newton_last_dt
-            if iter_counter is None
-            else iter_counter
+        return self._get_nonlinear().line_search(
+            dt, t, coef, history, verbose, iter_counter
         )
-
-        if verbose:
-            print(
-                "LS: "
-                + str(coef[0])
-                + "\t"
-                + "r_mat = "
-                + str(history[0][0])
-                + "\tr_well = "
-                + str(history[0][1])
-            )
-            print(
-                "LS: "
-                + str(coef[1])
-                + "\t"
-                + "r_mat = "
-                + str(history[1][0])
-                + "\tr_well = "
-                + str(history[1][1])
-            )
-        res_history = np.array([history[0][0], history[1][0]])
-
-        for _iter in range(5):
-            if coef.size > 2:
-                idx_min = res_history.argmin()
-                closest_left = np.where(coef < coef[idx_min])[0]
-                closest_right = np.where(coef > coef[idx_min])[0]
-                if closest_left.size and closest_right.size:
-                    left = closest_left[coef[closest_left].argmax()]
-                    right = closest_right[coef[closest_right].argmin()]
-                    if res_history[left] < res_history[idx_min]:
-                        coef = np.append(coef, (coef[idx_min] + coef[left]) / 2)
-                    elif res_history[right] < res_history[idx_min]:
-                        coef = np.append(coef, (coef[idx_min] + coef[right]) / 2)
-                    else:
-                        if res_history[left] < res_history[right]:
-                            coef = np.append(
-                                coef, coef[idx_min] - (coef[idx_min] - coef[left]) / 4
-                            )
-                        else:
-                            coef = np.append(
-                                coef, coef[idx_min] + (coef[right] - coef[idx_min]) / 4
-                            )
-                elif closest_left.size:
-                    left = closest_left[coef[closest_left].argmax()]
-                    if res_history[left] < res_history[idx_min]:
-                        coef = np.append(coef, (coef[idx_min] + coef[left]) / 2)
-                    else:
-                        coef = np.append(
-                            coef, coef[idx_min] + (coef[idx_min] - coef[left]) / 2
-                        )
-                elif closest_right.size:
-                    right = closest_right[coef[closest_right].argmin()]
-                    if res_history[right] < res_history[idx_min]:
-                        coef = np.append(coef, (coef[idx_min] + coef[right]) / 2)
-                    else:
-                        coef = np.append(
-                            coef, coef[idx_min] - (coef[right] - coef[idx_min]) / 2
-                        )
-                if coef[-1] <= 0:
-                    coef[-1] = self.data_ts.min_line_search_update
-                if coef[-1] >= 1:
-                    coef[-1] = 1.0 - self.data_ts.min_line_search_update
-            else:
-                coef = np.append(coef, coef[-1] / 2)
-
-            self.physics.engine.newton_update_coefficient = coef[-1] - coef[-2]
-            self.timer.node["newton update"].start()
-            self.physics.engine.apply_newton_update(dt)
-            self.timer.node["newton update"].stop()
-            if self.has_dfm_well:
-                self.update_dfm_well_vels_and_ders(dt, t, newton_iter_counter)
-            self.physics.engine.assemble_linear_system(dt)
-            self.apply_rhs_flux(dt, t)
-            if self.has_dfm_well:
-                self.apply_dfm_well_lateral_heat_flux(dt, t)
-            if self.platform == "gpu":
-                copy_data_to_device(
-                    self.physics.engine.RHS, self.physics.engine.get_RHS_d()
-                )
-            if self.has_dfm_well:
-                res = (
-                    self.physics.engine.calc_coupled_well_reservoir_residual(
-                        self.data_ts.coupled_well_res_norm_method
-                    ),
-                    self.physics.engine.calc_well_residual(),
-                )
-            else:
-                res = (
-                    self.physics.engine.calc_newton_residual(),
-                    self.physics.engine.calc_well_residual(),
-                )
-            res_history = np.append(res_history, res[0])
-            if verbose:
-                print(
-                    "LS: "
-                    + str(coef[-1])
-                    + "\t"
-                    + "r_mat = "
-                    + str(res[0])
-                    + "\tr_well = "
-                    + str(res[1])
-                )
-
-        final_id = res_history.argmin()
-        self.physics.engine.newton_update_coefficient = coef[final_id] - coef[-1]
-        self.timer.node["newton update"].start()
-        self.physics.engine.apply_newton_update(dt)
-        self.timer.node["newton update"].stop()
-        if self.has_dfm_well:
-            # The accepted line-search coefficient can differ from the last tested coefficient.
-            # Recompute DFM velocities and derivatives so stored well data matches the accepted state.
-            self.update_dfm_well_vels_and_ders(dt, t, newton_iter_counter)
-
-        return res_history[final_id], 0.0, coef[final_id]
 
     def do_after_step(self):
         """
@@ -1406,6 +1263,12 @@ class DartsModel:
         """
         Function to print the statistics information, including total timesteps, Newton iteration, linear iteration, etc..
         """
+        stats = self._get_nonlinear().stats
+        print(
+            f"Total steps {stats.n_timesteps_total} ({stats.n_timesteps_wasted}) "
+            f"newton {stats.n_newton_total} ({stats.n_newton_wasted}) "
+            f"linear {stats.n_linear_total} ({stats.n_linear_wasted})"
+        )
         self.physics.engine.print_stat()
 
     def reconstruct_velocities(self):

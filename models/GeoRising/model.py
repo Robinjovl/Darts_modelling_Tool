@@ -4,6 +4,7 @@ from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_ve
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from darts.engines import value_vector, sim_params, ms_well
+from darts.nonlinear_solvers import NewtonSpec, ChopSpec
 
 from darts.input.input_data import InputData
 
@@ -21,9 +22,10 @@ class Model(CICDModel):
         self.set_input_data()
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650, tol_newton=1e-2, tol_linear=1e-6,
-                            it_newton=20, it_linear=40, newton_type=sim_params.newton_global_chop,
-                            newton_params=value_vector([1]))
+        self.nonlinear_solver = NewtonSpec(tolerance=1e-2, max_iterations=20,
+                                           chop=ChopSpec(mode='global', factor=1))
+        self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650, tol_linear=1e-6,
+                            it_linear=40)
 
         self.timer.node["initialization"].stop()
 

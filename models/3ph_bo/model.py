@@ -3,6 +3,7 @@ from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.physics.super.property_container import PropertyContainer
 from darts.engines import ms_well
+from darts.nonlinear_solvers import NewtonSpec
 
 from darts.physics.properties.black_oil import *
 from darts.physics.blackoil import BlackOil, BlackOilFluidProps
@@ -20,8 +21,9 @@ class Model(CICDModel):
         idata = self.set_input_data('')
         self.set_physics(idata)
 
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=10, runtime=100, tol_newton=1e-3, tol_linear=1e-7,
-                            it_newton=10, it_linear=50)
+        self.nonlinear_solver = NewtonSpec(tolerance=1e-3, max_iterations=10)
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=10, runtime=100, tol_linear=1e-7,
+                            it_linear=50)
 
         self.timer.node["initialization"].stop()
 

@@ -4,6 +4,7 @@ import os
 
 from dataclasses import dataclass
 from darts.models.darts_model import DartsModel
+from darts.nonlinear_solvers import Norm, NewtonSpec, ChopSpec
 from darts.engines import value_vector
 from math import fabs
 try:
@@ -106,12 +107,12 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4, tol_newton=1e-3,
-                            it_linear=50, it_newton=12,
-                            newton_type=sim_params.newton_local_chop,
-                            newton_params=value_vector([0.01]))
+        self.nonlinear_solver = NewtonSpec(tolerance=1e-3, max_iterations=12,
+                                           chop=ChopSpec(mode='local', factor=0.01),
+                                           norm=Norm.L2)  # Norm.LINF if you use m.set_rhs() for injection
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4,
+                            it_linear=50)
         # self.data_ts.eta = np.ones(self.physics.n_vars)
-        self.params.nonlinear_norm_type = self.params.L2  # linf if you use m.set_rhs() for injection
 
         """Define the reservoir and wells """
         well_centers = {
@@ -666,7 +667,9 @@ class Model(DartsModel):
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         max_newt = self.data_ts.newton_max_iter
         max_residual = np.zeros(max_newt + 1)
-        self.physics.engine.n_linear_last_dt = 0
+        solver = self._get_nonlinear()
+        status = solver.status
+        status.reset()
         self.data_ts.newton_tol_wel_mult = 1e2
 
         self.timer.node['simulation'].start()
@@ -686,9 +689,9 @@ class Model(DartsModel):
             if self.platform == 'gpu':
                 copy_data_to_device(self.physics.engine.RHS, self.physics.engine.get_RHS_d())
 
-            self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()  # calc norm of residual
+            status.newton_residual = self.physics.engine.calc_newton_residual()  # calc norm of residual
 
-            max_residual[i] = self.physics.engine.newton_residual_last_dt
+            max_residual[i] = status.newton_residual
             counter = 0
             for j in range(i):
                 if abs(max_residual[i] - max_residual[j]) / max_residual[i] < self.data_ts.newton_tol_stationary:
@@ -698,12 +701,12 @@ class Model(DartsModel):
                     print("Stationary point detected!")
                 break
 
-            self.physics.engine.well_residual_last_dt = self.physics.engine.calc_well_residual()
-            self.physics.engine.n_newton_last_dt = i
+            status.well_residual = self.physics.engine.calc_well_residual()
+            status.n_newton = i
             #  check tolerance if it converges
-            if ((self.physics.engine.newton_residual_last_dt < self.data_ts.newton_tol and
-                 self.physics.engine.well_residual_last_dt < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult) or
-                    self.physics.engine.n_newton_last_dt == max_newt):
+            if ((status.newton_residual < self.data_ts.newton_tol and
+                 status.well_residual < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult) or
+                    status.n_newton == max_newt):
                 if i > 0:  # min_i_newton
                     break
 
@@ -725,11 +728,19 @@ class Model(DartsModel):
                     break
             else:
                 r_code = self.physics.engine.solve_linear_equation()
+                status.linear_solver_rc = r_code
+                if r_code == 0:
+                    status.n_linear += self.physics.engine.get_last_linear_iters()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()
-        # End of newton loop
-        converged = self.physics.engine.post_newtonloop(dt, t)
+        # End of newton loop: convergence verdict previously made by the C++
+        # post_newtonloop (linear solver rc + residual re-check), now in Python.
+        converged = not (status.linear_solver_rc != 0 or
+                         status.newton_residual >= self.data_ts.newton_tol or
+                         status.well_residual > 1e2 * self.data_ts.newton_tol)
+        converged = self.physics.engine.post_newtonloop(dt, t, converged)
+        solver.stats.update(converged, status)
 
         self.timer.node['simulation'].stop()
         return converged

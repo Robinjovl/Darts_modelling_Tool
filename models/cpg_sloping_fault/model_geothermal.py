@@ -18,10 +18,10 @@ class ModelGeothermal(Model_CPG):
         # well-control switch can push the well-block enthalpy outside the IAPWS-valid
         # range in a single Newton step -> singular CPR system -> NaN runaway -> crash.
         # Enable the global Newton chop (caps the per-step relative change of all
-        # variables) to damp that transient. copy_data_ts_to_sim_params() does not
-        # touch newton_type/newton_params, so this setting reaches the engine.
-        self.params.newton_type = sim_params.newton_solver_t.newton_global_chop
-        self.params.newton_params = value_vector([0.2])
+        # variables) to damp that transient.
+        self.set_solver()
+        self.nonlinear_solver.chop.mode = 'global'
+        self.nonlinear_solver.chop.factor = 0.2
 
     def set_physics(self):
         # single component, two phase. Pressure and enthalpy are the main variables

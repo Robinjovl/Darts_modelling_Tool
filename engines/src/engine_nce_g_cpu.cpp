@@ -488,7 +488,7 @@ engine_nce_g_cpu<NC, NP>::solve_linear_equation()
 {
   int r_code;
   char buffer[1024];
-  linear_solver_error_last_dt = 0;
+  last_linear_iters = 0;
 
   // scaling according to dimensions
   if (scale_dimless)
@@ -506,11 +506,7 @@ engine_nce_g_cpu<NC, NP>::solve_linear_equation()
   {
 	sprintf(buffer, "ERROR: Linear solver setup returned %d \n", r_code);
 	std::cout << buffer << std::flush;
-	// use class property to save error state from linear solver
-	// this way it will work for both C++ and python newton loop
-	//Jacobian->write_matrix_to_file("jac_linear_setup_fail.csr");
-	linear_solver_error_last_dt = 1;
-	return linear_solver_error_last_dt;
+	return 1;
   }
 
   timer->node["linear solver solve"].start();
@@ -538,17 +534,12 @@ engine_nce_g_cpu<NC, NP>::solve_linear_equation()
   {
 	sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);
 	std::cout << buffer << std::flush;
-	// use class property to save error state from linear solver
-	// this way it will work for both C++ and python newton loop
-	linear_solver_error_last_dt = 2;
-	return linear_solver_error_last_dt;
+	return 2;
   }
   else
   {
-	sprintf(buffer, "\t #%d (%.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1, newton_residual_last_dt,
-	  well_residual_last_dt, linear_solver->get_n_iters(), linear_solver->get_residual());
-	std::cout << buffer << std::flush;
-	n_linear_last_dt += linear_solver->get_n_iters();
+	last_linear_iters = linear_solver->get_n_iters();
+		last_linear_residual = linear_solver->get_residual();
   }
   return 0;
 }

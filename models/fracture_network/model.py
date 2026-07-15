@@ -1,4 +1,5 @@
 from darts.engines import value_vector, sim_params, well_control_iface
+from darts.nonlinear_solvers import NewtonSpec, ChopSpec
 from darts.physics.geothermal.geothermal import Geothermal
 from darts.models.cicd_model import CICDModel
 from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
@@ -105,9 +106,9 @@ class Model(CICDModel):
         self.physics = Geothermal(self.idata, self.timer)
 
         # Some tuning parameters:
-        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_newton=1e-4, tol_linear=1e-5)
-        self.params.newton_type = sim_params.newton_local_chop  # Type of newton method (related to chopping strategy?)
-        self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
+        self.nonlinear_solver = NewtonSpec(tolerance=1e-4,
+                                           chop=ChopSpec(mode='local', factor=0.2))  # nonlinear update chopping strategy
+        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_linear=1e-5)
         # direct linear solver
         #if int(input_data['overburden_layers']) + int(input_data['underburden_layers']) > 0:
         #    self.params.linear_type = sim_params.cpu_superlu

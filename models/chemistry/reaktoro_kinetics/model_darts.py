@@ -12,6 +12,7 @@ from darts.physics.chemistry.property_container import (
     PropertyContainer,
 )
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
+from darts.nonlinear_solvers import NewtonSpec
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.input.input_data import linear_solver_types
 from darts.physics.properties.kinetics import (
@@ -117,7 +118,8 @@ class Model(CICDModel):
         self.timer.node["initialization"].start()
         self.set_reservoir()
         self.set_physics()
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-5, tol_linear=1e-6, it_newton=15, it_linear=200)
+        self.nonlinear_solver = NewtonSpec(tolerance=1e-5, max_iterations=15)
+        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_linear=1e-6, it_linear=200)
         self.params.linear_type = sim_params.cpu_superlu
 
         self.runtime = 1
@@ -286,7 +288,13 @@ class Model(CICDModel):
         """
         max_newt = self.data_ts.newton_max_iter
         max_residual = np.zeros(max_newt + 1)
-        self.physics.engine.n_linear_last_dt = 0
+        solver = self._get_nonlinear()
+        status = solver.status
+        status.reset()
+        # This loop never computes a well residual (the old C++ member stayed at
+        # its initial value, so the well check in post_newtonloop never failed);
+        # keep that behavior by zeroing it instead of leaving reset()'s inf.
+        status.well_residual = 0.0
         self.timer.node["simulation"].start()
         residual_history = []
         for i in range(max_newt + 1):
@@ -303,10 +311,10 @@ class Model(CICDModel):
 
             # calc norm of residual
             RHS = np.asarray(self.physics.engine.RHS)
-            self.physics.engine.newton_residual_last_dt = np.linalg.norm(RHS)
-            # self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()
+            status.newton_residual = np.linalg.norm(RHS)
+            # status.newton_residual = self.physics.engine.calc_newton_residual()
 
-            max_residual[i] = self.physics.engine.newton_residual_last_dt
+            max_residual[i] = status.newton_residual
             counter = 0
             for j in range(i):
                 denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
@@ -320,13 +328,13 @@ class Model(CICDModel):
                     print("Stationary point detected!")
                 break
 
-            residual_history.append(self.physics.engine.newton_residual_last_dt)
-            print(f'Newton iteration {i}: residual = {self.physics.engine.newton_residual_last_dt}')
+            residual_history.append(status.newton_residual)
+            print(f'Newton iteration {i}: residual = {status.newton_residual}')
 
-            self.physics.engine.n_newton_last_dt = i
+            status.n_newton = i
             #  check tolerance if it converges
-            if self.physics.engine.newton_residual_last_dt < self.data_ts.newton_tol or \
-                    self.physics.engine.n_newton_last_dt == max_newt:
+            if status.newton_residual < self.data_ts.newton_tol or \
+                    status.n_newton == max_newt:
                 if i > 0:  # min_i_newton
                     break
 
@@ -345,12 +353,20 @@ class Model(CICDModel):
                         "Unknown linear solver type", self.data_ts.linear_type
                     )
             else:  # compile-tyme C++ linear solvers
-                self.physics.engine.solve_linear_equation()
+                rc = self.physics.engine.solve_linear_equation()
+                status.linear_solver_rc = rc
+                if rc == 0:
+                    status.n_linear += self.physics.engine.get_last_linear_iters()
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()
-        # End of newton loop
-        converged = self.physics.engine.post_newtonloop(dt, t)
+        # End of newton loop: convergence verdict previously made by the C++
+        # post_newtonloop (linear solver rc + residual re-check), now in Python.
+        converged = not (status.linear_solver_rc != 0 or
+                         status.newton_residual >= self.data_ts.newton_tol or
+                         status.well_residual > 1e2 * self.data_ts.newton_tol)
+        converged = self.physics.engine.post_newtonloop(dt, t, converged)
+        solver.stats.update(converged, status)
 
         self.timer.node["simulation"].stop()
         return converged

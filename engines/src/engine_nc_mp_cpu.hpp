@@ -60,7 +60,6 @@ public:
                 sim_params *params_, timer_node *timer_);
   int init_jacobian_structure_mpfa(csr_matrix_base *jacobian);
 
-  int run_single_newton_iteration(value_t deltat);
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 

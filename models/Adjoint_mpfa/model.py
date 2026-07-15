@@ -1,6 +1,7 @@
 from darts.models.cicd_model import CICDModel
 from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, ms_well
+from darts.nonlinear_solvers import NewtonSpec
 import numpy as np
 
 from darts.physics.super.physics import Compositional
@@ -34,7 +35,8 @@ class Model(DartsModel, OptModuleSettings):
         self.set_physics()
         self.set_reservoir(mesh_file)
 
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, tol_newton=1e-3, tol_linear=1e-6)
+        self.nonlinear_solver = NewtonSpec(tolerance=1e-3)
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, tol_linear=1e-6)
 
         self.timer.node["initialization"].stop()
 

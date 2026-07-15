@@ -60,8 +60,8 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     else:
         runtime = m.runtime
 
-    mult_dt = m.params.mult_ts
-    max_dt = m.params.max_ts
+    mult_dt = m.data_ts.dt_mult
+    max_dt = m.data_ts.dt_max
     m.e = m.physics.engine
 
     # get current engine time
@@ -69,11 +69,11 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
 
     # same logic as in engine.run
     if fabs(t) < 1e-15:
-        dt = m.params.first_ts
+        dt = m.data_ts.dt_first
     elif restart_dt > 0:
         dt = restart_dt
     else:
-        dt = m.params.max_ts
+        dt = m.data_ts.dt_max
 
     # evaluate end time
     runtime += t
@@ -99,7 +99,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             t += dt
             ts = ts + 1
             print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
-                   % (ts, t, dt, m.e.n_newton_last_dt, m.e.n_linear_last_dt))
+                   % (ts, t, dt, m._get_nonlinear().status.n_newton, m._get_nonlinear().status.n_linear))
 
             dt *= 1.5
             if dt > max_dt:
@@ -114,32 +114,35 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     # update current engine time
     m.e.t = runtime
 
-    print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (m.e.stat.n_timesteps_total, m.e.stat.n_timesteps_wasted,
-                                                        m.e.stat.n_newton_total, m.e.stat.n_newton_wasted,
-                                                        m.e.stat.n_linear_total, m.e.stat.n_linear_wasted))
+    stats = m._get_nonlinear().stats
+    print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (stats.n_timesteps_total, stats.n_timesteps_wasted,
+                                                        stats.n_newton_total, stats.n_newton_wasted,
+                                                        stats.n_linear_total, stats.n_linear_wasted))
 def run_timestep_python(m, dt, t):
     self = m
-    max_newt = self.params.max_i_newton
-    self.e.n_linear_last_dt = 0
+    max_newt = self.data_ts.newton_max_iter
+    solver = self._get_nonlinear()
+    status = solver.status
+    status.reset()
     self.timer.node['simulation'].start()
     for i in range(max_newt + 1):
         self.e.assemble_linear_system(dt)
         res = self.e.calc_newton_dev()#self.e.calc_newton_residual()
 
         if m.reservoir.thermoporoelasticity:
-            self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + self.e.dev_e ** 2)
+            status.newton_residual = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + self.e.dev_e ** 2)
             dev_e = self.e.dev_e
             print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + \
                         're = ' + str(self.e.dev_e) + '\t' + 'CFL = ' + str(self.e.CFL_max))
         else:
-            self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2)
+            status.newton_residual = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2)
             dev_e = 0.0
             print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + 'CFL = ' + str(self.e.CFL_max))
 
-        self.e.n_newton_last_dt = i
+        status.n_newton = i
         #  check tolerance if it converges
-        if ((self.e.dev_p < self.params.tolerance_newton and self.e.dev_u < self.params.tolerance_newton and dev_e < self.params.tolerance_newton)
-              or self.e.n_newton_last_dt == self.params.max_i_newton):
+        if ((self.e.dev_p < self.data_ts.newton_tol and self.e.dev_u < self.data_ts.newton_tol and dev_e < self.data_ts.newton_tol)
+              or status.n_newton == self.data_ts.newton_max_iter):
             if (i > 0):  # min_i_newton
                 if i < max_newt:
                     converged = 1
@@ -157,6 +160,9 @@ def run_timestep_python(m, dt, t):
                 raise Exception("Unknown linear solver type", self.idata.data_ts.linear_type)
         else: # compile-tyme C++ linear solvers
             r_code = self.e.solve_linear_equation()
+            status.linear_solver_rc = r_code
+            if r_code == 0:
+                status.n_linear += self.e.get_last_linear_iters()
 
         self.timer.node["newton update"].start()
         self.e.apply_newton_update(dt)
@@ -165,7 +171,11 @@ def run_timestep_python(m, dt, t):
             converged = 1
 
     # End of newton loop
+    # NOTE: the old C++ pm/super_elastic post_newtonloop did not veto `converged`
+    # (its residual re-check only selected a failure message), so the Python
+    # verdict is passed through unchanged.
     converged = self.e.post_newtonloop(dt, t, converged)
+    solver.stats.update(converged, status)
     self.timer.node['simulation'].stop()
     return converged
 def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0'):
@@ -212,8 +222,8 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
 
     for ith_step, dt in enumerate(t):
         time += dt
-        m.params.first_ts = dt
-        m.params.max_ts = dt
+        m.data_ts.dt_first = dt
+        m.data_ts.dt_max = dt
         run_python(m, dt)
 
         # write a vtk snapshot
@@ -345,8 +355,8 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', con
     time = 0.0
     for ith_step, dt in enumerate(t):
         time += dt
-        m.params.first_ts = dt
-        m.params.max_ts = dt
+        m.data_ts.dt_first = dt
+        m.data_ts.dt_max = dt
         run_python(m, dt)
 
         X = np.array(m.physics.engine.X, copy=False)
@@ -533,7 +543,7 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     # set equilibrium (including boundary conditions)
     # m.reservoir.set_equilibrium()
     # m.physics.engine.find_equilibrium = True
-    # m.params.first_ts = 1
+    # m.data_ts.dt_first = 1
     # run_python(m, 1.0)
     # m.reinit_reference(output_directory)
     # m.physics.engine.find_equilibrium = False
@@ -544,8 +554,8 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     time = 0.0
     for ith_step, dt in enumerate(m.idata.sim.time_steps):
         time += dt
-        m.params.first_ts = dt
-        m.params.max_ts = dt
+        m.data_ts.dt_first = dt
+        m.data_ts.dt_max = dt
         run_python(m, dt)
         m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
 

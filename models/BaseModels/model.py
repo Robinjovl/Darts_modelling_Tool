@@ -7,6 +7,7 @@ import numpy as np
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 from darts.physics.properties.black_oil import *
+from darts.nonlinear_solvers import NewtonSpec
 
 class Model(DartsModel):
     def __init__(self, physics: str = 'geo'):
@@ -50,7 +51,8 @@ class Model(DartsModel):
             self.inj_temp = 300
             self.inj_comp = []
 
-        self.set_sim_params(first_ts=1e-3, mult_ts=4, max_ts=dt_max, tol_newton=1e-2)
+        self.nonlinear_solver = NewtonSpec(tolerance=1e-2)
+        self.set_sim_params(first_ts=1e-3, mult_ts=4, max_ts=dt_max)
 
         self.timer.node["initialization"].stop()
 

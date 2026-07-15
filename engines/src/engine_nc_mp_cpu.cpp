@@ -272,7 +272,6 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
 
-	stat = sim_stat();
 
 	print_header();
 
@@ -308,7 +307,7 @@ int engine_nc_mp_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	}
 
 	Xn = X = X_init;
-	dt = params->first_ts;
+	dt = 0.0; // timestep sizing is owned by the Python driver
 	prev_usual_dt = dt;
 
 	// initialize arrays for every operator set
@@ -383,59 +382,6 @@ int engine_nc_mp_cpu<NC>::init_jacobian_structure_mpfa(csr_matrix_base *jacobian
 		diag_ind[i] = rows_ptr[i] + index_t(find(cur.begin(), cur.end(), i) - cur.begin());
 	}
 
-	return 0;
-}
-
-template <uint8_t NC>
-int engine_nc_mp_cpu<NC>::run_single_newton_iteration(value_t deltat)
-{
-	// switch constraints if needed
-	timer->node["jacobian assembly"].start();
-	for (ms_well *w : wells)
-	{
-		w->check_constraints(deltat, X);
-	}
-
-	// evaluate all operators and their derivatives
-	timer->node["jacobian assembly"].node["interpolation"].start();
-
-	if (get_n_history() > 0)
-	{
-		build_Xop();
-		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
-		{
-			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
-			if (result < 0)
-				return 0;
-		}
-		project_xop_ders();
-	}
-	else
-	{
-		extract_Xop();
-		for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		{
-			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
-			if (result < 0)
-				return 0;
-		}
-	}
-
-	timer->node["jacobian assembly"].node["interpolation"].stop();
-
-	// assemble jacobian
-	assemble_jacobian_array(deltat, X, Jacobian, RHS);
-
-#ifdef WITH_GPU
-	if (params->linear_type >= sim_params::GPU_GMRES_CPR_AMG)
-	{
-		timer->node["jacobian assembly"].node["send_to_device"].start();
-		Jacobian->copy_values_to_device();
-		timer->node["jacobian assembly"].node["send_to_device"].stop();
-	}
-#endif
-
-	timer->node["jacobian assembly"].stop();
 	return 0;
 }
 

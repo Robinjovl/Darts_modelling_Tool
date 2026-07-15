@@ -84,13 +84,14 @@ class Model(THMCModel):
                     X[4 * cell_id + 3] += p(cell.centroid[0])
                     Xn[4 * cell_id + 3] += p(cell.centroid[0])
     def set_solver_params(self):
-        self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
-        self.params.newton_type = sim_params.newton_local_chop  # Type of newton method (related to chopping strategy?)
-        self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
+        self.set_solver()
+        self.nonlinear_solver.tolerance = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
+        self.nonlinear_solver.chop.mode = 'local'  # nonlinear update chopping strategy
+        self.nonlinear_solver.chop.factor = 0.2
         if self.friction_law == 'rsf':
-            self.params.max_i_newton = 20
+            self.nonlinear_solver.max_iterations = 20
         else:
-            self.params.max_i_newton = 8
+            self.nonlinear_solver.max_iterations = 8
 
         ls1 = linear_solver_params()
         ls1.linear_type = sim_params.cpu_superlu
