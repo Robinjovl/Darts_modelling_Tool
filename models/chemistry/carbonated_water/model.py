@@ -697,7 +697,7 @@ class Model(CICDModel):
             # Mirror the base method's per-step history bookkeeping for the failed step.
             try:
                 self.time.append(t)
-                self.n_newton_iters.append(self._get_nonlinear().status.n_newton)
+                self.n_newton_iters.append(self.nonlinear_solver.status.n_newton)
                 self.time_step_size.append(dt)
             except Exception:
                 pass
@@ -824,7 +824,7 @@ class Model(CICDModel):
             xn = np.array(self.physics.engine.Xn, copy=True)[:nb * nc]  # need to copy since Xn will be updated Xn = X
             overhead.stop()
             converged = self.run_timestep(dt, t, verbose)
-            status = self._get_nonlinear().status
+            status = self.nonlinear_solver.status
 
             overhead.start()
             if converged:
@@ -946,7 +946,7 @@ class Model(CICDModel):
             self.timer.node["cache I/O"].stop()
 
         if verbose:
-            stats = self._get_nonlinear().stats
+            stats = self.nonlinear_solver.stats
             print(
                 f"----- TS = {stats.n_timesteps_total:d}({stats.n_timesteps_wasted:d}), "
                 f"NI = {stats.n_newton_total:d}({stats.n_newton_wasted:d}), "

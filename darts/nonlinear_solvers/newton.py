@@ -144,15 +144,6 @@ class NewtonSolver(NonlinearSolver):
         steps.append(engine.correct_thermal)
         return steps
 
-    def _corrections_and_update(self, dt: float):
-        """Correction pipeline + plain update, bracketed like the legacy
-        composite ``apply_newton_update`` (used per line-search trial too)."""
-        self.timer.node["newton update"].start()
-        for step in self._corrections:
-            step()
-        self.engine.apply_update(dt)
-        self.timer.node["newton update"].stop()
-
     def run_timestep(self, dt: float, t: float, verbose: int | None = None) -> bool:
         """
         Solve the Newton loop for the specified timestep.
@@ -276,11 +267,9 @@ class NewtonSolver(NonlinearSolver):
                     status.linear_solver_rc = rc
                     model._linear_solver_rc_last = rc
                     break
-                self.timer.node["newton update"].start()
-                self.pre_nonlinear(dt, t, i)
+                self.pre_iteration(dt, t, i)
                 self.update(dt)
-                self.timer.node["newton update"].stop()
-                self.post_nonlinear(dt, t, i)
+                self.post_iteration(dt, t, i)
 
         # End of newton loop: the convergence decision is made here and the
         # engine only commits (converged) or rolls back (failed) its state.
@@ -402,7 +391,7 @@ class NewtonSolver(NonlinearSolver):
                 coef = np.append(coef, coef[-1] / 2)
 
             engine.newton_update_coefficient = coef[-1] - coef[-2]
-            self._corrections_and_update(dt)
+            self.update(dt)
             if model.has_dfm_well:
                 model.update_dfm_well_vels_and_ders(dt, t, newton_iter_counter)
             engine.assemble_linear_system(dt)
@@ -439,7 +428,7 @@ class NewtonSolver(NonlinearSolver):
 
         final_id = res_history.argmin()
         engine.newton_update_coefficient = coef[final_id] - coef[-1]
-        self._corrections_and_update(dt)
+        self.update(dt)
         if model.has_dfm_well:
             # The accepted line-search coefficient can differ from the last tested coefficient.
             # Recompute DFM velocities and derivatives so stored well data matches the accepted state.

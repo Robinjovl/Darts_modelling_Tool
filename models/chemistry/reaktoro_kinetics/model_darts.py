@@ -286,9 +286,9 @@ class Model(CICDModel):
         :param verbose: Switch for verbose, default is True
         :type verbose: bool
         """
-        max_newt = self.data_ts.newton_max_iter
+        max_newt = self.nonlinear_solver.spec.max_iterations
         max_residual = np.zeros(max_newt + 1)
-        solver = self._get_nonlinear()
+        solver = self.nonlinear_solver
         status = solver.status
         status.reset()
         # This loop never computes a well residual (the old C++ member stayed at
@@ -320,7 +320,7 @@ class Model(CICDModel):
                 denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
                 if (
                     abs(max_residual[i] - max_residual[j]) / denom
-                    < self.data_ts.newton_tol_stationary
+                    < self.nonlinear_solver.spec.stationary_point_tolerance
                 ):
                     counter += 1
             if counter > 2:
@@ -333,7 +333,7 @@ class Model(CICDModel):
 
             status.n_newton = i
             #  check tolerance if it converges
-            if status.newton_residual < self.data_ts.newton_tol or \
+            if status.newton_residual < self.nonlinear_solver.spec.tolerance or \
                     status.n_newton == max_newt:
                 if i > 0:  # min_i_newton
                     break
@@ -363,8 +363,8 @@ class Model(CICDModel):
         # End of newton loop: convergence verdict previously made by the C++
         # post_newtonloop (linear solver rc + residual re-check), now in Python.
         converged = not (status.linear_solver_rc != 0 or
-                         status.newton_residual >= self.data_ts.newton_tol or
-                         status.well_residual > 1e2 * self.data_ts.newton_tol)
+                         status.newton_residual >= self.nonlinear_solver.spec.tolerance or
+                         status.well_residual > 1e2 * self.nonlinear_solver.spec.tolerance)
         converged = self.physics.engine.post_newtonloop(dt, t, converged)
         solver.stats.update(converged, status)
 

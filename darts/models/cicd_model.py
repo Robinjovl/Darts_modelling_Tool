@@ -232,15 +232,15 @@ class CICDModel(DartsModel):
         perf_data['OBL axes_step'] = list(self.physics.axes_step)
         perf_data['OBL axes_origin'] = list(self.physics.axes_origin)
         perf_data['operators'] = self.physics.n_ops
-        perf_data['timesteps'] = self._get_nonlinear().stats.n_timesteps_total
-        perf_data['wasted timesteps'] = self._get_nonlinear().stats.n_timesteps_wasted
-        perf_data['newton iterations'] = self._get_nonlinear().stats.n_newton_total
+        perf_data['timesteps'] = self.nonlinear_solver.stats.n_timesteps_total
+        perf_data['wasted timesteps'] = self.nonlinear_solver.stats.n_timesteps_wasted
+        perf_data['newton iterations'] = self.nonlinear_solver.stats.n_newton_total
         perf_data['wasted newton iterations'] = (
-            self._get_nonlinear().stats.n_newton_wasted
+            self.nonlinear_solver.stats.n_newton_wasted
         )
-        perf_data['linear iterations'] = self._get_nonlinear().stats.n_linear_total
+        perf_data['linear iterations'] = self.nonlinear_solver.stats.n_linear_total
         perf_data['wasted linear iterations'] = (
-            self._get_nonlinear().stats.n_linear_wasted
+            self.nonlinear_solver.stats.n_linear_wasted
         )
 
         sim = self.timer.node['simulation']

@@ -69,7 +69,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             t += dt
             ts = ts + 1
             print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
-                   % (ts, t, dt, m._get_nonlinear().status.n_newton, m._get_nonlinear().status.n_linear))
+                   % (ts, t, dt, m.nonlinear_solver.status.n_newton, m.nonlinear_solver.status.n_linear))
 
             dt *= 1.5
             if dt > max_dt:
@@ -84,14 +84,14 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     # update current engine time
     m.e.t = runtime
 
-    stats = m._get_nonlinear().stats
+    stats = m.nonlinear_solver.stats
     print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (stats.n_timesteps_total, stats.n_timesteps_wasted,
                                                         stats.n_newton_total, stats.n_newton_wasted,
                                                         stats.n_linear_total, stats.n_linear_wasted))
 def run_timestep_python(m, dt, t):
     self = m
-    max_newt = self.data_ts.newton_max_iter
-    solver = self._get_nonlinear()
+    max_newt = self.nonlinear_solver.spec.max_iterations
+    solver = self.nonlinear_solver
     status = solver.status
     status.reset()
     well_tolerance_coefficient = 1e2
@@ -114,9 +114,9 @@ def run_timestep_python(m, dt, t):
 
         status.n_newton = i
         #  check tolerance if it converges
-        if ((self.e.dev_p < self.data_ts.newton_tol and self.e.dev_u < self.data_ts.newton_tol and dev_e < self.data_ts.newton_tol
-           and status.well_residual < well_tolerance_coefficient * self.data_ts.newton_tol )
-              or status.n_newton == self.data_ts.newton_max_iter):
+        if ((self.e.dev_p < self.nonlinear_solver.spec.tolerance and self.e.dev_u < self.nonlinear_solver.spec.tolerance and dev_e < self.nonlinear_solver.spec.tolerance
+           and status.well_residual < well_tolerance_coefficient * self.nonlinear_solver.spec.tolerance )
+              or status.n_newton == self.nonlinear_solver.spec.max_iterations):
             if (i > 0):  # min_i_newton
                 if i < max_newt:
                     converged = 1

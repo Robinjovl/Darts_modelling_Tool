@@ -16,25 +16,20 @@ from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
 from darts.interpolators import op_vector
 from darts.models.output import Output
-from darts.nonlinear_solvers import (
-    NonlinearSolverSpec,
-    default_nonlinear_solver,
-    default_nonlinear_spec,
-)
+from darts.nonlinear_solvers import default_nonlinear_solver
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
 
 class DataTS:
-    """Timestep control structure and backward-compatibility adapter.
+    """Timestep-control (and, transitionally, linear-solver) parameters.
 
-    The timestep controls (``dt_first``/``dt_min``/``dt_mult``/``dt_max``/``eta``)
-    are plain attributes and live ONLY here (removed from ``sim_params``).
-    The historic nonlinear-solver attribute names are properties reading and
-    writing the underlying :class:`darts.nonlinear_solvers.NonlinearSolverSpec`,
-    which is the single source of the nonlinear solve settings. The
-    ``linear_*`` settings remain plain attributes here until the linear-solver
-    spec branch (MR280) is merged.
+    Holds ONLY the timestep controls (``dt_first``/``dt_min``/``dt_mult``/
+    ``dt_max``/``eta``) and the linear-solver settings (``linear_*``, plain
+    attributes until the linear-solver spec branch (MR280) is merged). The
+    nonlinear-solver settings are NOT mirrored here — they live at the single
+    source of truth ``DartsModel.nonlinear_solver.spec`` (a
+    :class:`darts.nonlinear_solvers.NonlinearSolverSpec`).
     """
 
     _FIELDS = (
@@ -43,26 +38,13 @@ class DataTS:
         "dt_min",
         "dt_mult",
         "dt_max",
-        "newton_tol",
-        "newton_tol_wel_mult",
-        "newton_tol_stationary",
-        "newton_max_iter",
         "linear_tol",
         "linear_max_iter",
         "linear_type",
         "linear_print_level",
-        "line_search",
-        "min_line_search_update",
-        "coupled_well_res_norm_method",
     )
 
-    def __init__(self, n_vars, nonlinear: NonlinearSolverSpec = None):
-        # holds the nonlinear-solver SPEC (the config the adapter forwards to);
-        # sourced from DartsModel.nonlinear_solver.spec
-        self._nonlinear = (
-            nonlinear if nonlinear is not None else default_nonlinear_spec()
-        )
-
+    def __init__(self, n_vars):
         # timestep control (owned by this structure)
         self.eta = (
             1e20 * np.ones(n_vars)
@@ -78,36 +60,6 @@ class DataTS:
         self.linear_max_iter = 50  # maximum linear iterations allowed
         self.linear_type = None  # linear solver and preconditioner type
         self.linear_print_level = None  # linear solver messages printing level (used only for PETSC option), 0 - no messages, 10 - all messages
-
-    # nonlinear solver control -> NonlinearSolverSpec
-    newton_tol = property(
-        lambda s: s._nonlinear.tolerance,
-        lambda s, v: setattr(s._nonlinear, "tolerance", v),
-    )
-    newton_tol_wel_mult = property(
-        lambda s: s._nonlinear.well_tolerance_multiplier,
-        lambda s, v: setattr(s._nonlinear, "well_tolerance_multiplier", v),
-    )
-    newton_tol_stationary = property(
-        lambda s: s._nonlinear.stationary_point_tolerance,
-        lambda s, v: setattr(s._nonlinear, "stationary_point_tolerance", v),
-    )
-    newton_max_iter = property(
-        lambda s: s._nonlinear.max_iterations,
-        lambda s, v: setattr(s._nonlinear, "max_iterations", v),
-    )
-    line_search = property(
-        lambda s: s._nonlinear.line_search.enabled,
-        lambda s, v: setattr(s._nonlinear.line_search, "enabled", v),
-    )
-    min_line_search_update = property(
-        lambda s: s._nonlinear.line_search.min_update,
-        lambda s, v: setattr(s._nonlinear.line_search, "min_update", v),
-    )
-    coupled_well_res_norm_method = property(
-        lambda s: s._nonlinear.coupled_well_res_norm_method,
-        lambda s, v: setattr(s._nonlinear, "coupled_well_res_norm_method", v),
-    )
 
     def print(self):
         print("Simulation parameters:")
@@ -666,14 +618,13 @@ class DartsModel:
 
     @property
     def data_ts(self):
-        """Timestep-control structure (and nonlinear-settings adapter, see
-        :class:`DataTS`), created lazily so it can be read/written both before
-        and after ``init()``. Its nonlinear-attribute adapters forward to
-        ``self.nonlinear_solver.spec``."""
+        """Timestep-control (and transitional linear-solver) structure, see
+        :class:`DataTS`. Created lazily so it can be read/written both before and
+        after ``init()``. The nonlinear-solver settings live on
+        ``self.nonlinear_solver.spec``, not here."""
         if self._data_ts is None:
-            self.set_solver()
             n_vars = self.physics.n_vars if getattr(self, "physics", None) else 0
-            self._data_ts = DataTS(n_vars, nonlinear=self.nonlinear_solver.spec)
+            self._data_ts = DataTS(n_vars)
         return self._data_ts
 
     @data_ts.setter
@@ -682,29 +633,10 @@ class DartsModel:
 
     def _apply_nonlinear(self):
         """Bind the nonlinear solver to this model and make sure
-        ``data_ts``/``sim_params`` mirror its spec. Called from init()."""
+        ``data_ts``/``sim_params`` exist. Called from init()."""
         self.set_solver()
-        spec = self.nonlinear_solver.spec
         if self._data_ts is None:
-            self.data_ts = DataTS(self.physics.n_vars, nonlinear=spec)
-            self.copy_data_ts_to_sim_params()
-        elif self._data_ts._nonlinear is not spec:
-            # the model replaced the solver after set_sim_params(): rebind the
-            # adapter to the new spec, keeping timestep + linear settings
-            old = self._data_ts
-            self.data_ts = DataTS(self.physics.n_vars, nonlinear=spec)
-            for k in (
-                "eta",
-                "dt_first",
-                "dt_min",
-                "dt_mult",
-                "dt_max",
-                "linear_tol",
-                "linear_max_iter",
-                "linear_type",
-                "linear_print_level",
-            ):
-                setattr(self.data_ts, k, getattr(old, k))
+            self.data_ts = DataTS(self.physics.n_vars)
             self.copy_data_ts_to_sim_params()
         # the structure may have been created pre-init with n_vars=0: size eta now
         if len(self._data_ts.eta) < self.physics.n_vars:
@@ -722,7 +654,7 @@ class DartsModel:
             stacklevel=2,
         )
         self.set_solver()
-        self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver.spec)
+        self.data_ts = DataTS(self.physics.n_vars)
         # copy attributes except eta
         for k in DataTS._FIELDS:
             if k == "eta":
@@ -773,12 +705,11 @@ class DartsModel:
             DeprecationWarning,
             stacklevel=2,
         )
-        # make sure the nonlinear spec exists (so data_ts binds to it), but do
-        # NOT touch it here — nonlinear settings live on self.nonlinear_solver
+        # nonlinear settings are NOT set here — they live on self.nonlinear_solver
         self.set_solver()
 
-        # fresh timestep-control structure bound to the current solver's spec
-        self.data_ts = DataTS(self.physics.n_vars, nonlinear=self.nonlinear_solver.spec)
+        # fresh timestep-control structure
+        self.data_ts = DataTS(self.physics.n_vars)
         ts = self.data_ts
 
         # Time stepping parameters. if None, default value will be used
@@ -820,8 +751,9 @@ class DartsModel:
         """
         self.physics = physics
         self.data_ts = data_ts
-        # build the runtime solver from the externally supplied data_ts spec
-        self.nonlinear_solver = data_ts._nonlinear.make_solver(self)
+        # bind the model's nonlinear solver (its spec is the single config source)
+        self.set_solver()
+        self.nonlinear_solver.bind(self)
 
         days = days if days is not None else self.runtime
         assert days > 0, "Time must be a positive value!"
@@ -1105,15 +1037,7 @@ class DartsModel:
             ``None``, meaning inherit :attr:`self.verbose`.
         :type verbose: int
         """
-        return self._get_nonlinear().solve_timestep(dt, t, verbose)
-
-    def _get_nonlinear(self):
-        """Return the runtime nonlinear solver, binding it to this model when it
-        was (re)assigned after init()."""
-        self.set_solver()
-        if self.nonlinear_solver.model is not self:
-            self._apply_nonlinear()
-        return self.nonlinear_solver
+        return self.nonlinear_solver.bind(self).solve_timestep(dt, t, verbose)
 
     def update_dfm_well_vels_and_ders(self, dt, t, iter_counter):
         """
@@ -1205,7 +1129,7 @@ class DartsModel:
 
         Delegates to the runtime nonlinear solver (see :mod:`darts.nonlinear_solvers`).
         """
-        return self._get_nonlinear().line_search(
+        return self.nonlinear_solver.line_search(
             dt, t, coef, history, verbose, iter_counter
         )
 
@@ -1283,7 +1207,7 @@ class DartsModel:
         """
         Function to print the statistics information, including total timesteps, Newton iteration, linear iteration, etc..
         """
-        stats = self._get_nonlinear().stats
+        stats = self.nonlinear_solver.stats
         print(
             f"Total steps {stats.n_timesteps_total} ({stats.n_timesteps_wasted}) "
             f"newton {stats.n_newton_total} ({stats.n_newton_wasted}) "

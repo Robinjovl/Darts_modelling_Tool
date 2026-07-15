@@ -28,7 +28,7 @@ class Model(CICDModel):
         self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=10, chop=ChopSpec(mode='local'))
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_linear=1e-6,
                             it_linear=50)
-        self.data_ts.newton_tol_stationary = 1e-5
+        self.nonlinear_solver.spec.stationary_point_tolerance = 1e-5
 
         self.timer.node["initialization"].stop()
 

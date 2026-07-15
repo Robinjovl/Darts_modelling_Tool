@@ -765,12 +765,12 @@ class Model(DartsModel):
         """
         assert dt > 0, "Time step size must be a positive value!"
 
-        max_newt = self.data_ts.newton_max_iter
+        max_newt = self.nonlinear_solver.spec.max_iterations
         max_residual = np.zeros(max_newt + 1)
-        solver = self._get_nonlinear()
+        solver = self.nonlinear_solver
         status = solver.status
         status.reset()
-        self.data_ts.newton_tol_wel_mult = 1e2
+        self.nonlinear_solver.spec.well_tolerance_multiplier = 1e2
         self.timer.node["simulation"].start()
 
         residual_history = []
@@ -813,7 +813,7 @@ class Model(DartsModel):
                 # Method is either 1 or 2
                 status.newton_residual = (
                     self.physics.engine.calc_coupled_well_reservoir_residual(
-                        self.data_ts.coupled_well_res_norm_method
+                        self.nonlinear_solver.spec.coupled_well_res_norm_method
                     )
                 )
 
@@ -823,7 +823,7 @@ class Model(DartsModel):
                 denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
                 if (
                     abs(max_residual[i] - max_residual[j]) / denom
-                    < self.data_ts.newton_tol_stationary
+                    < self.nonlinear_solver.spec.stationary_point_tolerance
                 ):
                     counter += 1
             if counter > 2:
@@ -843,16 +843,16 @@ class Model(DartsModel):
             status.n_newton = i
             #  check tolerance if it converges
             if (
-                status.newton_residual < self.data_ts.newton_tol
+                status.newton_residual < self.nonlinear_solver.spec.tolerance
                 and status.well_residual
-                < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult
+                < self.nonlinear_solver.spec.tolerance * self.nonlinear_solver.spec.well_tolerance_multiplier
             ) or status.n_newton == max_newt:
                 if i > 0:  # min_i_newton
                     break
 
             # line search
             if (
-                self.data_ts.line_search
+                self.nonlinear_solver.spec.line_search.enabled
                 and i > 0
                 and residual_history[-1][0] > 0.9 * residual_history[-2][0]
             ):
@@ -869,7 +869,7 @@ class Model(DartsModel):
                     denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
                     if (
                         abs(max_residual[i] - max_residual[j]) / denom
-                        < self.data_ts.newton_tol_stationary
+                        < self.nonlinear_solver.spec.stationary_point_tolerance
                     ):
                         counter += 1
                 if counter > 2:
@@ -904,8 +904,8 @@ class Model(DartsModel):
         # post_newtonloop (linear solver rc + residual re-check), now in Python.
         converged = not (
             status.linear_solver_rc != 0
-            or status.newton_residual >= self.data_ts.newton_tol
-            or status.well_residual > 1e2 * self.data_ts.newton_tol
+            or status.newton_residual >= self.nonlinear_solver.spec.tolerance
+            or status.well_residual > 1e2 * self.nonlinear_solver.spec.tolerance
         )
         converged = self.physics.engine.post_newtonloop(dt, t, converged)
         solver.stats.update(converged, status)

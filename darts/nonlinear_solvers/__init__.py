@@ -29,9 +29,9 @@ Design (mirrors the linear-solver specs of MR280):
   ``DartsModel._apply_nonlinear()`` during ``init()``; the solver owns
   ``run_timestep()`` — the nonlinear loop driving the C++ per-iteration kernels
   (assembly, linear solve, update corrections, residual norms). Every iteration
-  is staged into ``pre_nonlinear`` (user routines + the dX-correction pipeline
+  is staged into ``pre_iteration`` (user routines + the dX-correction pipeline
   assembled from the spec: composition correction, chopping, OBL-bounds
-  constraints), ``update`` and ``post_nonlinear``.
+  constraints), ``update`` and ``post_iteration``.
 
 - On divergence of the primary solver, the ordered ``spec.fallbacks``
   (:class:`FallbackSpec`) are tried on the same timestep — with extra

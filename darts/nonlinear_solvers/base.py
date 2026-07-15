@@ -10,7 +10,7 @@ This module holds everything that is common to all nonlinear solution methods:
   :class:`PicardSpec`),
 - the runtime base classes :class:`NonlinearStatus`, :class:`SolverStats` and
   :class:`NonlinearSolver`, which stage every nonlinear iteration into
-  ``pre_nonlinear`` / ``update`` / ``post_nonlinear`` and drive the
+  ``pre_iteration`` / ``update`` / ``post_iteration`` and drive the
   fallback retries of :meth:`NonlinearSolver.solve_timestep`.
 
 Method-specific specs and solvers live in sibling modules (e.g.
@@ -115,8 +115,8 @@ class FallbackSpec:
     :ivar solver: alternative solver spec to retry with (``None`` = retry with
         the primary spec, useful together with extra routines).
     :ivar pre_routines: extra routines ``f(solver, dt, t, iteration)`` run in
-        ``pre_nonlinear`` of every retry iteration (built-in or user-defined).
-    :ivar post_routines: extra routines run in ``post_nonlinear``.
+        ``pre_iteration`` of every retry iteration (built-in or user-defined).
+    :ivar post_routines: extra routines run in ``post_iteration``.
     """
 
     solver: "NonlinearSolverSpec | None" = None
@@ -140,8 +140,8 @@ class NonlinearSolverSpec:
     :ivar coupled_well_res_norm_method: norm evaluation method (1 or 2) for the
         coupled well-reservoir residual of DFM wells.
     :ivar pre_routines: user routines ``f(solver, dt, t, iteration)`` run at the
-        start of ``pre_nonlinear`` on every nonlinear iteration.
-    :ivar post_routines: user routines run in ``post_nonlinear`` after the update.
+        start of ``pre_iteration`` on every nonlinear iteration.
+    :ivar post_routines: user routines run in ``post_iteration`` after the update.
     :ivar fallbacks: ordered :class:`FallbackSpec` list tried when the timestep
         solve diverges, before the timestep is cut.
     """
@@ -317,21 +317,32 @@ class NonlinearSolver:
 
     # -------- per-iteration stages (assembled from the spec)
 
-    def pre_nonlinear(self, dt: float, t: float, iteration: int):
-        """Stage run before the update of every nonlinear iteration: user/fallback
-        pre-routines, then the spec-assembled dX-correction pipeline
-        (composition correction, chopping, OBL-bounds constraints, ...)."""
+    def pre_iteration(self, dt: float, t: float, iteration: int):
+        """Hook run before the update of every nonlinear iteration: the user/
+        fallback pre-routines from the spec (once per iteration)."""
         for routine in list(self.spec.pre_routines) + self.extra_pre_routines:
             routine(self, dt, t, iteration)
+
+    def apply_corrections(self):
+        """Apply the spec-assembled dX-correction pipeline (composition
+        correction, chopping, OBL-bounds constraints, thermal correction) to the
+        engine's ``dX``. Applied before every ``apply_update`` — the main Newton
+        step and each line-search trial alike."""
         for step in self._corrections:
             step()
 
     def update(self, dt: float):
-        """Plain nonlinear update ``X -= newton_update_coefficient * dX``."""
-        return self.engine.apply_update(dt)
+        """Nonlinear update: apply the spec-assembled dX corrections, then the
+        plain step ``X -= newton_update_coefficient * dX``. Used by both the
+        main loop and every line-search trial."""
+        self.timer.node["newton update"].start()
+        self.apply_corrections()
+        self.engine.apply_update(dt)
+        self.timer.node["newton update"].stop()
 
-    def post_nonlinear(self, dt: float, t: float, iteration: int):
-        """Stage run after the update of every nonlinear iteration."""
+    def post_iteration(self, dt: float, t: float, iteration: int):
+        """Hook run after the update of every nonlinear iteration: the user/
+        fallback post-routines from the spec (once per iteration)."""
         for routine in list(self.spec.post_routines) + self.extra_post_routines:
             routine(self, dt, t, iteration)
 

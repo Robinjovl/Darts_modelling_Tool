@@ -711,7 +711,7 @@ class DartsModelWithLivePlots(DartsModel):
         Uses the standard nonlinear solver (see :mod:`darts.nonlinear_solvers`)
         with a per-iteration hook driving the live plot updates.
         """
-        solver = self._get_nonlinear()
+        solver = self.nonlinear_solver
         if not isinstance(solver, _LivePlotNewtonSolver):
             # swap in a live-plot solver built from the same spec, bound to self
             solver = _LivePlotNewtonSolver(solver.spec, model=self)
