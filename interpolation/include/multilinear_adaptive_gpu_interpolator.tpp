@@ -269,6 +269,25 @@ int multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::evaluate_with
 
     if (h == HYPERCUBE_BUFFER_SIZE || (i == (n_states_idxs - 1) && h))
     {
+      // Ensure the map has room for THIS batch before inserting it. The other expansion
+      // check runs only once per interpolate() call (after this whole loop), so a single
+      // call that generates more hypercubes than the current capacity overflows the map:
+      // add_hypercubes_to_hashmap then hits its "hashmap overflow" branch and silently
+      // drops the excess, which later surfaces as "hypercube missing". Grow here, before
+      // the batch insert, keeping occupied + h under a 0.7 load factor.
+      {
+        gpu_hashmap_async::gpu_hash_map<value_t, N_VERTS * N_OPS> _hdr;
+        cudaMemcpy(&_hdr, hypercube_data_d, sizeof(_hdr), cudaMemcpyDeviceToHost);
+        bool _grew = false;
+        while (static_cast<long long>(_hdr.occupied) + h > static_cast<long long>(0.7 * _hdr.size))
+        {
+          hypercube_data_d = gpu_hashmap_async::expand_hashmap(hypercube_data_d, 2);
+          cudaMemcpy(&_hdr, hypercube_data_d, sizeof(_hdr), cudaMemcpyDeviceToHost);
+          _grew = true;
+        }
+        if (_grew)
+          cudaDeviceSynchronize();  // rehash (default stream) must finish before the batch insert
+      }
       thrust::copy(new_hypercube_data.begin(), new_hypercube_data.end(), new_hypercube_data_buffer.begin());
       thrust::copy(new_hypercube_index.begin(), new_hypercube_index.end(), new_hypercube_index_buffer.begin());
 
