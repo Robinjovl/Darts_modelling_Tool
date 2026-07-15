@@ -195,7 +195,7 @@ class Model(THMCModel):
         # RATE control
         self.idata.other.delta_p = None
         self.idata.other.wctrl_type = well_control_iface.MASS_RATE # mass or molar rate can be choosen here
-        self.idata.other.well_rate = 2000. # [m^3/day]
+        self.idata.other.well_rate = 0. # [m^3/day]
         self.idata.other.well_rate *= self.idata.fluid.density # [kg/day] unit depends on the type at the previous line
 
         self.idata.mesh.bnd_tags = {}
