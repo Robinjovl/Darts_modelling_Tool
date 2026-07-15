@@ -137,6 +137,16 @@ while getopts ":chtwmrab:d:j:g:Gpv" option; do
     esac
 done
 
+# Thirdparty (HYPRE, SuperLU, IPhreeqc) builds run their own `cmake` invocation
+# and don't inherit CMAKE_CXX_COMPILER from the main project's cmake_options below
+# In macOS: without this they'd silently fall back to the system Apple Clang
+# even when -g gcc/g++ was requested for the main build.
+thirdparty_compiler_flags=""
+if [[ "$special_gpp" == true ]]; then
+    gcc_version="${gpp_version/g++/gcc}"
+    thirdparty_compiler_flags="-D CMAKE_C_COMPILER=${gcc_version} -D CMAKE_CXX_COMPILER=${gpp_version}"
+fi
+
 if [[ "$config" != "Release" && "$config" != "Debug" && "$config" != "RelWithDebInfo" ]]; then
     echo "Error: Invalid build configuration \"$config\". Valid options: Release, Debug, RelWithDebInfo."
     exit 1
@@ -272,6 +282,7 @@ if [[ "$skip_req" == false ]]; then
           -D HYPRE_BUILD_EXAMPLES=OFF \
           -D HYPRE_ENABLE_MPI=OFF \
           ${hypre_omp_flag} \
+          ${thirdparty_compiler_flags} \
           -D CMAKE_BUILD_TYPE=${config} \
           -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
           -D CMAKE_INSTALL_PREFIX=../../../install \
@@ -316,6 +327,7 @@ if [[ "$skip_req" == false ]]; then
           -D enable_examples=OFF \
           -D XSDK_INDEX_SIZE=32 \
           -D BUILD_SHARED_LIBS=OFF \
+          ${thirdparty_compiler_flags} \
           -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
           -D CMAKE_BUILD_TYPE=${config} \
           -D CMAKE_INSTALL_PREFIX=../../install \
@@ -341,6 +353,7 @@ if [[ "$skip_req" == false ]]; then
             -D CMAKE_INSTALL_PREFIX=../../install/iphreeqc \
             -D BUILD_TESTING=OFF \
             -D BUILD_SHARED_LIBS=ON \
+            ${thirdparty_compiler_flags} \
             ../../iphreeqc            &> ../../../make_iphreeqc.log
         make install -j $NT           >> ../../../make_iphreeqc.log 2>&1
         cd ../../..
@@ -374,7 +387,9 @@ if [[ "$testing" == true ]]; then
     cmake_options+=" -D ENABLE_TESTING=ON"
 fi
 if [[ "$special_gpp" == true ]]; then
-    cmake_options+=" -D CMAKE_CXX_COMPILER=${gpp_version}"
+    # gcc_version was derived from gpp_version earlier (e.g. g++-14 -> gcc-14),
+    # alongside thirdparty_compiler_flags used for the HYPRE/SuperLU/IPhreeqc builds.
+    cmake_options+=" -D CMAKE_CXX_COMPILER=${gpp_version} -D CMAKE_C_COMPILER=${gcc_version}"
 fi
 
 build=ST
