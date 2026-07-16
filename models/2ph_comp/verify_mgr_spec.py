@@ -45,7 +45,7 @@ class ModelSpec(Model):
         # Base Model.set_solver() now owns set_sim_params(); replicate it here since
         # this override does not call super().
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
-                            tol_newton=1e-3, tol_linear=1e-4, it_newton=20, it_linear=50,
+                            tol_newton=1e-3, it_newton=20,
                             newton_type=sim_params.newton_local_chop)
         self.params.linear_print_level = 0
         block_size = self.physics.n_vars
@@ -60,8 +60,8 @@ class ModelSpec(Model):
         )
 
         self._solver_spec = MGRSolverSpec(
-            tolerance=self.params.tolerance_linear,
-            max_iterations=self.params.max_i_linear,
+            tolerance=1e-4,
+            max_iterations=50,
             log_level=self.params.linear_print_level,
             kdim=150,
             use_mgr=True,

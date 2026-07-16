@@ -18,6 +18,14 @@ class Model_CPG(CICDModel):
     def __init__(self):
         super().__init__()
 
+    def set_solver(self):
+        # Linear-solver settings live on self.solver (the LinearSolverSpec), not in
+        # data_ts. The case files (case_*.py) may set idata.sim.linear_tol / linear_max_iter.
+        super().set_solver()  # platform default linear solver spec
+        sim = self.idata.sim
+        self.solver.tolerance = getattr(sim, 'linear_tol', self.solver.tolerance)
+        self.solver.max_iterations = getattr(sim, 'linear_max_iter', self.solver.max_iterations)
+
     def init_input_arrays(self):
         if self.idata.generate_grid:
             if self.idata.grid_out_dir is None:

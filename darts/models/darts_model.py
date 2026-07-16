@@ -79,10 +79,10 @@ class DataTS:
         self.newton_tol_wel_mult = 100.0  # used to compute the newton solver residual for wells = tol_res * tol_wel_mult
         self.newton_tol_stationary = 1e-3  # tolerance for stationary point detection in the newton solver (by residual)
         self.newton_max_iter = 20  # maximum newton iterations allowed
-        self.linear_tol = 1e-5
-        self.linear_max_iter = 50  # maximum linear iterations allowed
-        self.linear_type = None  # linear solver and preconditioner type (proprietary/GPU backend selector)
-        self.linear_print_level = None  # linear solver messages printing level (used only for PETSC option), 0 - no messages, 10 - all messages
+        # NOTE: linear-solver settings do NOT live here. They belong to the linear
+        # solver itself -- self.solver (a LinearSolverSpec): tolerance, max_iterations,
+        # print_level, and the solver/preconditioner choice. DartsModel._apply_solver()
+        # pushes them into sim_params before engine.init(). See docs/MR280_REVIEW_RESPONSE.md.
         #
         self.line_search = False
         self.min_line_search_update = 1e-4
@@ -195,9 +195,15 @@ class DartsModel:
         # The single source of truth for the linear solver: a LinearSolverSpec
         # (e.g. MGRSolverSpec / GMRESSolverSpec(prec=CPRSolverSpec()) / SuperLUSolverSpec
         # / AdaptiveSolverSpec) set by set_solver(); default = default_linear_solver().
-        # Built and injected before engine.init by _apply_solver(). Left None on
-        # GPU / proprietary builds, where the engine factory uses params.linear_type.
+        # It owns ALL linear-solver settings -- solver + preconditioner choice,
+        # tolerance, max_iterations, print_level -- which _apply_solver() builds,
+        # injects and mirrors into sim_params before engine.init().
         self.solver = None
+        # The spec object set_solver() materialised as the platform default (identity
+        # compared against self.solver by _solver_is_default(), so that a model which
+        # calls super().set_solver() and then replaces self.solver still counts as
+        # having *chosen* its solver).
+        self._default_solver_obj = None
         self.solver_label = (
             None  # optional short name for self.solver (model-side, log)
         )
@@ -445,6 +451,9 @@ class DartsModel:
         engine = getattr(self.physics, "engine", None)
         if engine is None:
             return
+        # self.solver owns the linear-solver settings: mirror them into sim_params,
+        # which is what engine.init() re-applies to the solver it (re-)inits.
+        self._sync_solver_to_sim_params()
         # Python-resident solver (PETSc / Pardiso); None unless a
         # PythonLinearSolverSpec is selected. Reset on every (re)build.
         self._python_solver = None
@@ -462,13 +471,20 @@ class DartsModel:
         if not _HAVE_SOLVER_REGISTRY:
             spec = self._resolve_solver_spec()
             proprietary_type = getattr(spec, "proprietary_linear_type", None)
-            if proprietary_type is not None:
+            # Only a spec the model actually chose selects the enum; the default spec
+            # materialised by set_solver() leaves the proprietary factory's own default
+            # in charge (params.linear_type as engine init() set it).
+            if proprietary_type is not None and not self._solver_is_default():
                 self.params.linear_type = proprietary_type
             return
         # Other non-CPU platforms (gpu handled above): leave the factory in charge.
         if platform != "cpu":
             return
         spec = self._resolve_solver_spec()
+        if self._solver_is_default() and getattr(self, "data_ts", None) is None:
+            # Mechanics / THMC models configure engine.ls_params + params directly and
+            # never chose a spec: leave the engine factory / ls_params in charge.
+            return
         if spec is None and self.solver is not None:
             # A raw compiled solver object (darts.solvers.LinearSolver handle
             # built outside the spec API) -- the documented fine-control path.
@@ -591,21 +607,23 @@ class DartsModel:
         # keeps its choice, so super().set_solver() composition is safe.
         if getattr(self, "solver", None) is not None:
             return
+        # Materialise the platform default so that self.solver is always a spec a
+        # subclass can tune -- the single home for linear-solver settings:
+        #
+        #     def set_solver(self):
+        #         self.set_sim_params(first_ts=..., tol_newton=...)  # time-stepping / Newton
+        #         super().set_solver()                               # platform default spec
+        #         self.solver.tolerance = 1e-6                       # linear knobs
+        #         self.solver.max_iterations = 40
+        #
+        # _solver_is_default() records that nobody *chose* this spec. Builds/platforms
+        # that do not use the open-source registry (proprietary) and models without a
+        # data_ts (mechanics / THMC, which drive engine.ls_params + params directly)
+        # keep the engine factory in charge, so _apply_solver() must not build or
+        # otherwise act on a spec the model never asked for -- it checks this flag.
         platform = getattr(self, "platform", "cpu")
-        if platform == "gpu":
-            # GPU: the default GPU spec (AMGXCPRSolverSpec). It does not build a C++
-            # solver; _apply_solver translates it to params.linear_type, which the
-            # GPU engine factory (engine_base_gpu) consumes.
-            self.solver = default_linear_solver("gpu")
-            return
-        if not _HAVE_SOLVER_REGISTRY:
-            # Proprietary: the engine factory selects from params.linear_type.
-            return
-        if getattr(self, "data_ts", None) is None:
-            # Mechanics / THMC models that configure engine.ls_params + params
-            # directly (no data_ts): leave the factory / ls_params in charge.
-            return
-        self.solver = default_linear_solver("cpu")
+        self.solver = default_linear_solver("gpu" if platform == "gpu" else "cpu")
+        self._default_solver_obj = self.solver
 
     @staticmethod
     def open_source_solvers_available() -> bool:
@@ -835,22 +853,52 @@ class DartsModel:
             return "rebuilt"
         return "reconfigured"
 
+    def _solver_is_default(self) -> bool:
+        """True when ``self.solver`` is the platform default that :meth:`set_solver`
+        materialised, i.e. the model never *chose* a linear solver. Identity-compared,
+        so a model that calls ``super().set_solver()`` and then assigns its own spec
+        counts as having chosen one."""
+        default = getattr(self, "_default_solver_obj", None)
+        return default is not None and self.solver is default
+
+    def _sync_solver_to_sim_params(self):
+        """Mirror the linear-solver settings of ``self.solver`` into ``sim_params``.
+
+        ``self.solver`` (a :class:`LinearSolverSpec`) is the single owner of the linear
+        knobs; ``sim_params`` is the C++ mirror the engine reads -- it re-applies
+        ``tolerance_linear`` / ``max_i_linear`` to whatever solver it (re-)inits, and
+        passes ``linear_print_level`` to the Python-resident solvers. Called by
+        :meth:`_apply_solver` -- i.e. after :meth:`set_solver`, before ``engine.init``.
+
+        Models that never chose a solver *and* have no ``data_ts`` (mechanics / THMC:
+        they drive ``engine.ls_params`` + ``params`` directly) are left alone.
+        """
+        spec = self._resolve_solver_spec()
+        if spec is None:
+            return  # raw compiled solver handle: it carries its own configuration
+        if self._solver_is_default() and getattr(self, "data_ts", None) is None:
+            return
+        # An AdaptiveSolverSpec delegates to the candidate currently in use.
+        candidates = getattr(spec, "candidates", None)
+        if candidates:
+            spec = candidates[getattr(self, "_adaptive_solver_index", 0)]
+        self.params.tolerance_linear = spec.tolerance
+        self.params.max_i_linear = spec.max_iterations
+        if getattr(spec, "print_level", None) is not None:
+            self.params.linear_print_level = spec.print_level
+
     def _sync_linear_params(self, field_updates, spec):
         """Keep the engine-side linear-solve knobs coherent with a spec
         update: params.tolerance_linear / max_i_linear are what the engine
         re-applies to any solver it (re-)inits."""
         if "tolerance" in field_updates:
             self.params.tolerance_linear = field_updates["tolerance"]
-            if getattr(self, "data_ts", None) is not None and hasattr(
-                self.data_ts, "linear_tol"
-            ):
-                self.data_ts.linear_tol = field_updates["tolerance"]
         if "max_iterations" in field_updates:
             self.params.max_i_linear = field_updates["max_iterations"]
         # Note: a bare spec switch deliberately does NOT overwrite
         # params.tolerance_linear / max_i_linear -- engine-resident solvers
         # take those from the engine at (re-)init (the documented convention),
-        # and silently replacing e.g. tol_linear=1e-2 with a spec DEFAULT of
+        # and silently replacing e.g. a model's 1e-2 with a spec DEFAULT of
         # 1e-5 would change every subsequent solve.
 
     def initialize_history_fields(self):
@@ -1087,9 +1135,7 @@ class DartsModel:
         max_ts: float = None,
         runtime: float = 1000,
         tol_newton: float = None,
-        tol_linear: float = None,
         it_newton: int = None,
-        it_linear: int = None,
         newton_type=None,
         newton_params=None,
         line_search: bool = False,
@@ -1106,14 +1152,15 @@ class DartsModel:
         :type max_ts: float
         :param runtime: Total runtime in days, default is 1000
         :type runtime: float
+        Linear-solver parameters are NOT set here: the linear solver is
+        configured through ``self.solver`` (a :class:`LinearSolverSpec`, e.g.
+        ``tolerance`` / ``max_iterations``) in :meth:`set_solver`. See
+        ``docs/MR280_REVIEW_RESPONSE.md``.
+
         :param tol_newton: Tolerance for Newton iterations
         :type tol_newton: float
-        :param tol_linear: Tolerance for linear iterations
-        :type tol_linear: float
         :param it_newton: Maximum number of Newton iterations
         :type it_newton: int
-        :param it_linear: Maximum number of linear iterations
-        :type it_linear: int
         :param newton_type:
         :param newton_params:
         :param coupled_well_res_norm_method: Method of norm evaluation of residuals for the coupled well-reservoir model
@@ -1146,13 +1193,12 @@ class DartsModel:
 
         self.data_ts.line_search = line_search
 
-        # Linear solver parameters. if None, default value will be used
-        self.data_ts.linear_tol = (
-            tol_linear if tol_linear is not None else self.data_ts.linear_tol
-        )
-        self.data_ts.linear_max_iter = (
-            it_linear if it_linear is not None else self.data_ts.linear_max_iter
-        )
+        # NOTE: linear-solver parameters are deliberately NOT accepted here -- this
+        # method configures time-stepping and the Newton solver only. Linear settings
+        # belong to self.solver (a LinearSolverSpec):
+        #     super().set_solver()          # platform default spec
+        #     self.solver.tolerance = 1e-6
+        #     self.solver.max_iterations = 40
 
         assert coupled_well_res_norm_method in [1, 2], (
             "Method number for calculating the norm of coupled "
@@ -1170,10 +1216,10 @@ class DartsModel:
         self.params.mult_ts = self.data_ts.dt_mult
         self.params.tolerance_newton = self.data_ts.newton_tol
         self.params.max_i_newton = self.data_ts.newton_max_iter
-        self.params.tolerance_linear = self.data_ts.linear_tol
-        self.params.max_i_linear = self.data_ts.linear_max_iter
-        if self.data_ts.linear_type is not None:
-            self.params.linear_type = self.data_ts.linear_type
+        # Linear-solver knobs (tolerance / max_iterations / print_level / solver type)
+        # are NOT copied from data_ts: they belong to self.solver and are pushed into
+        # sim_params by _apply_solver() -> _sync_solver_to_sim_params(), which runs
+        # after set_solver() and before engine.init().
 
     def run_simple(self, physics, data_ts, days, restart_dt=0.0):
         """
@@ -2092,7 +2138,9 @@ class DartsModel:
         nonzeros = indices.size
 
         if nonzeros == 0:
-            print(f'linear solver type is {self.data_ts.linear_type}')
+            print(
+                f'linear solver is {self.solver} (params.linear_type={self.params.linear_type})'
+            )
 
         assert nonzeros > 0, (
             'Jacobian is not exposed to python! Probably superlu set as a linear solver!'

@@ -324,11 +324,9 @@ class Model(CICDModel, OptModuleSettings):
         # Single per-model home for time-stepping / Newton config (the unified
         # set_solver pattern); the base reset() calls this before engine.init.
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
-                            tol_newton=1e-6, tol_linear=1e-3, it_newton=10, it_linear=50,
+                            tol_newton=1e-6, it_newton=10,
                             newton_type=sim_params.newton_local_chop)
-        if self.data_ts.linear_print_level is None:
-            self.data_ts.linear_print_level = 0
-        self.params.linear_print_level = self.data_ts.linear_print_level
+        self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
         # Forward MGR (BCSR-CPR) via the single unified spec API (self.solver =
         # MGRSolverSpec). The base DartsModel._apply_solver hook builds + injects it
         # before engine.init on the open-source CPU build; the adjoint solver is
@@ -347,8 +345,8 @@ class Model(CICDModel, OptModuleSettings):
         )
 
         self.solver = MGRSolverSpec(
-            tolerance=self.params.tolerance_linear,
-            max_iterations=self.params.max_i_linear,
+            tolerance=1e-3,
+            max_iterations=50,
             log_level=self.params.linear_print_level,
             proprietary_linear_type=sim_params.cpu_gmres_cpr_amg,
             kdim=150,

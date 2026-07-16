@@ -35,7 +35,9 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.DataTS.dt_mult = 2
     idata.sim.DataTS.dt_max = 92
     idata.sim.DataTS.newton_tol = 1e-2
-    idata.sim.DataTS.linear_tol = 1e-4
+    # Linear-solver tolerance: applied to self.solver (the LinearSolverSpec) by
+    # Model_CPG.set_solver(); linear settings do not belong on DataTS.
+    idata.sim.linear_tol = 1e-4
     # optional: choose a non-default linear solver via the Spec interface,
     # e.g. in the model's set_solver():
     #   from darts.solvers import SuperLUSolverSpec, PETScSolverSpec, PardisoSolverSpec

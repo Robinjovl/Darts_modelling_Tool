@@ -36,10 +36,12 @@ class Model(CICDModel):
         return
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5, tol_newton=1e-3,
-                            tol_linear=1e-5, it_newton=10, it_linear=50,
+        self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5, tol_newton=1e-3, it_newton=10,
                             runtime=50, # This runtime will be used when CI test is conducted without the main file
                             )
+        super().set_solver()  # platform default linear solver spec
+        self.solver.tolerance = 1e-5
+        self.solver.max_iterations = 50
 
         return
 

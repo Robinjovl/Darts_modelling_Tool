@@ -61,8 +61,15 @@ class Model(THMCModel):
         # (engine.ls_params), so its spec carries no proprietary fallback (None).
         self.solver = GMRESSolverSpec(
             prec=fs_cpr,
-            tolerance=1e-8,
-            max_iterations=200,
+            # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
+            # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()
+            # with sim_params (defaults 1e-5 / 50, globals.h:117), so the spec's numbers were
+            # decorative. The spec is authoritative now, so state the values the model has
+            # really been running -- keeping behaviour unchanged. FS-CPR does not reach 1e-8 on
+            # these systems anyway: asking for it only burns the iteration budget (on SPE10_mech
+            # 22 of 48 solves exhaust the 200-iteration cap; 99 vs 41 linear iters per Newton).
+            tolerance=1e-5,
+            max_iterations=50,
             restart=50,
             proprietary_linear_type=(sim_params.cpu_gmres_fs_cpr
                                      if self.discretizer_name == 'mech_discretizer' else None),

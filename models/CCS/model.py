@@ -80,11 +80,13 @@ class Model(DartsModel):
         # Solver/time-stepping configuration moved to set_solver() (called from base reset()).
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-7, mult_ts=2, max_ts=20., tol_newton=1e-6, tol_linear=1e-6, it_newton=8,
-                            it_linear=50, runtime=1,
+        self.set_sim_params(first_ts=1e-7, mult_ts=2, max_ts=20., tol_newton=1e-6, it_newton=8, runtime=1,
                             # newton_type=self.params.newton_global_chop,  # Type of newton method (related to chopping strategy?)
                             # newton_params=value_vector([0.2]),  # Probably chop-criteria(?)
                             )
+        super().set_solver()  # platform default linear solver spec
+        self.solver.tolerance = 1e-6
+        self.solver.max_iterations = 50
         # self.params.nonlinear_norm_type = self.params.L1
         # self.params.linear_type = self.params.cpu_superlu
 

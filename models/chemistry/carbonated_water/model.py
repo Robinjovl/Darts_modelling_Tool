@@ -176,7 +176,7 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, tol_linear=1e-6, it_newton=15, it_linear=200)
+        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, it_newton=15)
         self.params.newton_type = sim_params.newton_local_chop
         # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
         self.params.newton_params[0] = 0.2
@@ -186,7 +186,7 @@ class Model(CICDModel):
         # in the proprietary build the spec is ignored and the engine factory keeps
         # its iterative default. (Mirrors the long-standing `cpu_superlu` hint here.)
         from darts.solvers import SuperLUSolverSpec
-        self.solver = SuperLUSolverSpec()
+        self.solver = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200)
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,

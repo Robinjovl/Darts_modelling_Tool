@@ -36,14 +36,20 @@ class Model(CICDModel):
         # NOTE: set_sim_params stays in __init__ (not moved to set_solver): set_wells()
         # builds RampUpRate from self.data_ts.dt_first and runs during init() before
         # reset()/set_solver(). dfm_well is the documented set_solver exception.
-        self.set_sim_params(first_ts=0.001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
-                            it_newton=10, it_linear=10,
+        self.set_sim_params(first_ts=0.001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3,
+                            it_newton=10,
                             newton_type=sim_params.newton_local_chop,
                             coupled_well_res_norm_method=2,
                             runtime = 100 / 60 / 60 / 24,  # This runtime will be used when CI test is conducted without the main file
                             )
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        # Linear-solver settings live on self.solver (the LinearSolverSpec).
+        super().set_solver()  # platform default linear solver spec
+        self.solver.tolerance = 1e-4
+        self.solver.max_iterations = 10
 
     def set_reservoir(self):
         (nr, nz) = (2, 1)

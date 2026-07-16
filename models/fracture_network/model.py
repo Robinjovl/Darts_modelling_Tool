@@ -112,7 +112,7 @@ class Model(CICDModel):
 
     def set_solver(self):
         # Time-stepping and Newton tuning.
-        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_newton=1e-4, tol_linear=1e-5)
+        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_newton=1e-4)
         self.params.newton_type = sim_params.newton_local_chop  # chopping strategy
         self.params.newton_params = value_vector([0.2])         # chop criterion
 
@@ -132,6 +132,8 @@ class Model(CICDModel):
                 self.solver = GPUCuSolverSpec()
         else:
             self.solver = SuperLUSolverSpec()
+        super().set_solver()  # platform default when no spec was picked above
+        self.solver.tolerance = 1e-5
 
     def print_range(self, time, part='cells'):
         depth = np.array(self.reservoir.mesh.depth, copy=True)

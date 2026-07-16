@@ -106,8 +106,7 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4, tol_newton=1e-3,
-                            it_linear=50, it_newton=12,
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_newton=1e-3, it_newton=12,
                             newton_type=sim_params.newton_local_chop,
                             newton_params=value_vector([0.01]))
         # self.data_ts.eta = np.ones(self.physics.n_vars)
@@ -153,6 +152,12 @@ class Model(DartsModel):
             self.platform = 'gpu'
             from darts.engines import set_gpu_device
             set_gpu_device(1)
+
+    def set_solver(self):
+        # Linear-solver settings live on self.solver (the LinearSolverSpec).
+        super().set_solver()  # platform default linear solver spec
+        self.solver.tolerance = 1e-4
+        self.solver.max_iterations = 50
 
     def set_wells(self):
         self.reservoir.set_wells(False)

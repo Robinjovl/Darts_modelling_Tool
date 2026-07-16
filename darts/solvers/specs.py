@@ -37,15 +37,23 @@ class LinearSolverSpec:
     solver is registered under in C++) and, if they have extra parameters,
     override :meth:`_make_config`.
 
-    ``tolerance`` and ``max_iterations`` are honoured by the Python-resident
-    solvers (PETSc / Pardiso). For engine-resident solvers (MGR / GMRES / CPR /
-    SuperLU) the engine's ``linear_solver->init()`` call subsequently overrides
-    them with ``data_ts.linear_tol`` / ``data_ts.linear_max_iter`` -- those are
-    the authoritative knobs on the Newton loop.
+    The spec is the **single owner of the linear-solver settings**: ``tolerance``,
+    ``max_iterations`` and ``print_level`` are authoritative for every backend.
+    :meth:`DartsModel._apply_solver` mirrors them into ``sim_params``
+    (``tolerance_linear`` / ``max_i_linear`` / ``linear_print_level``) after
+    ``set_solver()`` and before ``engine.init()``, so the engine re-applies exactly
+    these values to whatever solver it (re-)inits -- engine-resident (MGR / GMRES /
+    CPR / SuperLU) and Python-resident (PETSc / Pardiso) alike. A model therefore
+    configures the linear solve in one place::
 
-    ``print_level`` controls Python-resident solver verbosity. Engine-resident
-    solvers expose their own verbosity knob through the solver-specific spec
-    (e.g. :attr:`MGRSolverSpec.log_level`).
+        def set_solver(self):
+            self.set_sim_params(first_ts=..., tol_newton=1e-3)  # time-stepping / Newton
+            super().set_solver()                                # platform default spec
+            self.solver.tolerance = 1e-6                        # linear knobs
+            self.solver.max_iterations = 40
+
+    ``print_level`` is the generic verbosity knob; some engine-resident solvers also
+    expose a solver-specific one (e.g. :attr:`MGRSolverSpec.log_level`).
     """
 
     tolerance: float = 1e-5

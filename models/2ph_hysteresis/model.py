@@ -115,10 +115,10 @@ class Model(CICDModel):
             max_ts=1.0,
             runtime=1000.0,
             tol_newton=1e-3,
-            tol_linear=1e-3,
-            it_newton=16,
-            it_linear=20,
-        )
+            it_newton=16)
+        super().set_solver()  # platform default linear solver spec
+        self.solver.tolerance = 1e-3
+        self.solver.max_iterations = 20
         self.data_ts.eta[-1] = 0.05
 
     def setup_case(

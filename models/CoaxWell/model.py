@@ -26,9 +26,12 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-6, mult_ts=8, max_ts=31, runtime=365, tol_newton=1e-4, tol_linear=1e-6,
-                            it_newton=20, it_linear=40, newton_type=sim_params.newton_global_chop,
+        self.set_sim_params(first_ts=1e-6, mult_ts=8, max_ts=31, runtime=365, tol_newton=1e-4,
+                            it_newton=20, newton_type=sim_params.newton_global_chop,
                             newton_params=value_vector([1]))
+        super().set_solver()  # platform default linear solver spec
+        self.solver.tolerance = 1e-6
+        self.solver.max_iterations = 40
 
     def set_reservoir(self, resolution):
         y_scale = 3
