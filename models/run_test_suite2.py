@@ -359,13 +359,29 @@ def check_performance(mod, formulation=None):
     m.init(platform=platform)
 
     m.set_output()
+    model_path = os.getcwd()
+    if formulation is not None:
+        # Parametrized runs do not go through the main.py suite path, so produce and
+        # check the well time-series here, against a variant-tagged reference
+        # (e.g. well_time_data_lin_iter_PT.pkl).
+        well_snapshot = create_well_time_series_snapshot(model_path)
     m.run(save_well_data=False, save_reservoir_data=False)
     m.print_stat()
+    if formulation is not None:
+        m.output.store_well_time_data(save_output_files=True)
     abort_redirection(log_stream)
     overwrite = 0
     if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = 1
     failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix + tag)
+    if formulation is not None:
+        failed_well_time_series, _, _ = compare_generated_well_time_series(
+            model_path,
+            well_snapshot,
+            overwrite=overwrite,
+            pkl_suffix=pkl_suffix + tag,
+        )
+        failed += failed_well_time_series
 
     return failed
 
