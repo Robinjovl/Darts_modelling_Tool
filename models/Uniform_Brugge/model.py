@@ -150,44 +150,6 @@ class Model(CICDModel):
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=150.)
 
-    def run_custom(self, export_to_vtk=False):
-        if export_to_vtk:
-            X = np.array(self.engine.X, copy=False)
-            for ith_prop in range(self.physics.n_vars):
-                self.property_array[ith_prop, :] = X[ith_prop::self.physics.n_vars]
-
-        time_step = self.report_step
-        even_end = int(self.T / time_step) * time_step
-        time_step_arr = np.ones(int(self.T / time_step)) * time_step
-        if self.T - even_end > 0:
-            time_step_arr = np.append(time_step_arr, self.T - even_end)
-
-        from darts.engines import well_control_iface
-        for ith_step, ts in enumerate(time_step_arr):
-            # print("Running time: %d days" % ts)
-            for i, w in enumerate(self.reservoir.wells):
-                if 'I' in w.name:
-                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                                   is_inj=True, target=175., inj_composition=self.inj_composition)
-                else:
-                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                                   is_inj=False, target=125.)
-                    # w.control = self.physics.new_rate_water_prod(self.inj_prod_rate)
-
-            self.engine.run(ts)
-            self.engine.report()
-
-            if export_to_vtk:
-                X = np.array(self.engine.X, copy=False)
-                for ith_prop in range(self.physics.n_vars):
-                    self.property_array[ith_prop, :] = X[ith_prop::self.physics.n_vars]
-
-                self.property_array[-1, :] = _Backward1_T_Ph_vec(X[0::self.physics.n_vars] / 10,
-                                                                 X[1::self.physics.n_vars] / 18.015)  # calc temperature
-                self.reservoir.unstr_discr.write_to_vtk('vtk_data', self.property_array,
-                                                        ['pressure', 'enthalpy', 'temperature'], ith_step + 1)
-
-
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, pvt, eps_z=1e-11):
         # Call base class constructor

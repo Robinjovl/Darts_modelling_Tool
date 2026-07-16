@@ -1,6 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import DartsModel
-from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_vec
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 
@@ -324,11 +323,6 @@ class Model(DartsModel):
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=170)
 
-
-    def compute_temperature(self, X):
-        nb = self.reservoir.mesh.n_res_blocks
-        temp = _Backward1_T_Ph_vec(X[0:2 * nb:2] / 10, X[1:2 * nb:2] / 18.015)
-        return temp
 
 from darts.physics.base.property_container import PropertyContainer
 
