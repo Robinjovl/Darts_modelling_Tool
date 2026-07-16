@@ -2,9 +2,9 @@ import gmsh
 import math
 import os
 
-
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 def generate_3d_fault_mesh(
-    msh_filename=os.path.join('meshes', 'case_5', "mesh.msh"),
+    msh_filename=os.path.join(BASE_DIR, 'meshes', 'case_5', "mesh.msh"),
     fault_dip_degrees=45.0,
     reservoir_block_offset=180.0,
     damage_width_left=100,
@@ -628,7 +628,6 @@ def generate_3d_fault_mesh(
     gmsh.model.occ.synchronize()
     gmsh.model.mesh.removeDuplicateNodes()
     gmsh.option.setNumber("Mesh.MshFileVersion", 2.1)
-    gmsh.write("fault_with_well_damage_zone_thin_fault.geo_unrolled")
     gmsh.model.mesh.generate(3)
     gmsh.write(msh_filename)
     gmsh.finalize()
