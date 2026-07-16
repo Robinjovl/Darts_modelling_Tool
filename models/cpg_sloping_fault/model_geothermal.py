@@ -7,7 +7,7 @@ from darts.physics.base.physics import PhysicsBase
 from darts.physics.base.property_container import PropertyContainer
 from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+from darts.physics.properties.basic import ConstFunc, PhaseRelPerm, RockCompactionEvaluator
 from darts.physics.properties.viscosity import MaoDuan2009
 
 from darts.input.input_data import InputData
@@ -51,6 +51,9 @@ class ModelGeothermal(Model_CPG):
 
         pc = PropertyContainer(phases_name=phases, components_name=components,
                                Mw=comp_data.Mw, eps_z=zero)
+
+        pc.rock_compr_ev = RockCompactionEvaluator(pref=self.idata.rock.compressibility_ref_p,
+                                                   compres=self.idata.rock.compressibility)
 
         flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
         flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
