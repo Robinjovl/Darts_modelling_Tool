@@ -13,7 +13,7 @@ from darts.physics.chemistry.property_container import (
 )
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.solvers import SuperLUSolverSpec
+from darts.linear_solvers import SuperLUSolverSpec
 from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
@@ -118,7 +118,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
         # Time-stepping and the linear solver are configured in set_solver()
-        # (the unified self.solver = <LinearSolverSpec> pattern), which the base
+        # (the unified self.linear_solver = <LinearSolverSpec> pattern), which the base
         # reset() calls before engine.init.
         self.runtime = 1
         self.timer.node["initialization"].stop()
@@ -126,10 +126,10 @@ class Model(CICDModel):
     def set_solver(self):
         self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-5, it_newton=15)
         # SuperLU direct solve for this small, stiff chemistry system, declared solely
-        # through self.solver (replaces the params.linear_type = cpu_superlu carrier,
+        # through self.linear_solver (replaces the params.linear_type = cpu_superlu carrier,
         # which the base FGMRES+CPR default had been shadowing). proprietary_linear_type
         # carries the same enum for the proprietary build's engine factory.
-        self.solver = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200,
+        self.linear_solver = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200,
                                         proprietary_linear_type=sim_params.cpu_superlu)
 
     def set_reservoir(self):
@@ -340,7 +340,7 @@ class Model(CICDModel):
                     break
 
             # Python-resident solver (PETSc / Pardiso) is dispatched via
-            # self.solver = PETScSolverSpec() / PardisoSolverSpec() (in set_solver()).
+            # self.linear_solver = PETScSolverSpec() / PardisoSolverSpec() (in set_solver()).
             self._solve_linear_equation()
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)

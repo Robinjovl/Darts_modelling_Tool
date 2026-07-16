@@ -5,9 +5,9 @@
 darts/*.so*
 darts/*.pyd
 darts/*.dll
-darts/solvers/*.so*
-darts/solvers/*.pyd
-darts/solvers/*.dll
+darts/linear_solvers/*.so*
+darts/linear_solvers/*.pyd
+darts/linear_solvers/*.dll
 dist/
 sdist/
 eggs/

@@ -126,14 +126,14 @@ class Model(CICDModel):
         # cuSOLVER QR (gpu_cusolver; CuDSSSolverSpec is the faster alternative
         # on WITH_CUDSS builds). Proprietary builds ignore CPU specs and lack
         # an in-tree GPU direct solver -> keep their engine-factory default.
-        from darts.solvers import GPUCuSolverSpec, SuperLUSolverSpec
+        from darts.linear_solvers import GPUCuSolverSpec, SuperLUSolverSpec
         if getattr(self, "platform", "cpu") == "gpu":
             if self.open_source_solvers_available():
-                self.solver = GPUCuSolverSpec()
+                self.linear_solver = GPUCuSolverSpec()
         else:
-            self.solver = SuperLUSolverSpec()
+            self.linear_solver = SuperLUSolverSpec()
         super().set_solver()  # platform default when no spec was picked above
-        self.solver.tolerance = 1e-5
+        self.linear_solver.tolerance = 1e-5
 
     def print_range(self, time, part='cells'):
         depth = np.array(self.reservoir.mesh.depth, copy=True)

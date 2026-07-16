@@ -3,7 +3,7 @@ set -e
 
 # Build and install openDARTS with GPU support.
 #
-# By default the GPU build uses the in-tree open-source solvers (darts.solvers,
+# By default the GPU build uses the in-tree open-source solvers (darts.linear_solvers,
 # including the GPU solver wrappers). To build against the proprietary
 # bos_solvers library instead, pass:
 #   -b <path>   explicit path to the bos_solvers directory
@@ -94,7 +94,7 @@ done
 if [[ -n "$BOS_FLAG" ]]; then
   echo "openDARTS GPU build: using bos_solvers at ${BOS_FLAG#-b }"
 else
-  echo "openDARTS GPU build: using the in-tree open-source solvers (darts.solvers)"
+  echo "openDARTS GPU build: using the in-tree open-source solvers (darts.linear_solvers)"
 fi
 
 ./helper_scripts/build_darts_cmake.sh \

@@ -1,8 +1,8 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params, well_control_iface, ms_well
-from darts import solvers
-from darts.solvers import (
+from darts import linear_solvers
+from darts.linear_solvers import (
     BCSRCPRSpec,
     BILU0Spec,
     LocalCorrectionSpec,
@@ -10,7 +10,7 @@ from darts.solvers import (
     MGRSolverSpec,
     PressureAMGSpec,
 )
-from darts.solvers.enums import (
+from darts.linear_solvers.enums import (
     BCSRCPRReduction,
     CoarseGrid,
     CompositeMode,
@@ -44,7 +44,7 @@ class Model(CICDModel):
         self.set_physics()
         # Time-stepping and linear-solver configuration live in set_solver(),
         # which the base reset() calls before engine.init (see the unified
-        # self.solver = <LinearSolverSpec> API).
+        # self.linear_solver = <LinearSolverSpec> API).
 
         self.timer.node["initialization"].stop()
 
@@ -114,7 +114,7 @@ class Model(CICDModel):
                             newton_type=sim_params.newton_local_chop)
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
 
-        # MGR (BCSR-CPR) via the single unified spec API (self.solver = MGRSolverSpec).
+        # MGR (BCSR-CPR) via the single unified spec API (self.linear_solver = MGRSolverSpec).
         # The base DartsModel._apply_solver hook builds + injects it before engine.init
         # on the open-source CPU build. On the proprietary build the spec is not built;
         # _apply_solver instead applies proprietary_linear_type (cpu_gmres_cpr_amg) to
@@ -134,7 +134,7 @@ class Model(CICDModel):
             block_size - 1
         )
 
-        self.solver = MGRSolverSpec(
+        self.linear_solver = MGRSolverSpec(
             tolerance=1e-4,
             max_iterations=50,
             log_level=self.params.linear_print_level,

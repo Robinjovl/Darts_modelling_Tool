@@ -1,9 +1,9 @@
 """HYPRE MGR integer-code enumerations.
 
 These ``IntEnum`` classes mirror the C++ enums in
-``solvers/include/MGRStrategy.hpp``. The values MUST match HYPRE's official
+``linear_solvers/include/MGRStrategy.hpp``. The values MUST match HYPRE's official
 numbering. Being ``IntEnum``, they can be used anywhere a plain ``int`` is
-expected -- e.g. the integer fields of :class:`darts.solvers.specs.MGRLevelSpec`.
+expected -- e.g. the integer fields of :class:`darts.linear_solvers.specs.MGRLevelSpec`.
 """
 
 from enum import IntEnum
@@ -113,7 +113,7 @@ class VariableRole(IntEnum):
 class CompositeMode(IntEnum):
     """MGR composite-preconditioner mode (``MGRSolverSpec.composite_mode``).
 
-    Mirrors ``mgr::CompositePreconditionerMode`` in ``solvers/include/MGRStrategy.hpp``.
+    Mirrors ``mgr::CompositePreconditionerMode`` in ``linear_solvers/include/MGRStrategy.hpp``.
     """
 
     MGR_ONLY = 0
@@ -124,7 +124,7 @@ class CompositeMode(IntEnum):
 class LocalPreconditioner(IntEnum):
     """MGR local F-relaxation solver (``MGRSolverSpec.local_solver``).
 
-    Mirrors ``mgr::LocalPreconditionerType`` in ``solvers/include/MGRStrategy.hpp``.
+    Mirrors ``mgr::LocalPreconditionerType`` in ``linear_solvers/include/MGRStrategy.hpp``.
     """
 
     NONE = 0
@@ -136,7 +136,7 @@ class LocalPreconditioner(IntEnum):
 class LocalFallback(IntEnum):
     """Block-ILU(0) singular-pivot fallback strategy (``BILU0Spec.fallback_strategy``).
 
-    Mirrors ``mgr::LocalFallbackStrategy`` in ``solvers/include/MGRStrategy.hpp``.
+    Mirrors ``mgr::LocalFallbackStrategy`` in ``linear_solvers/include/MGRStrategy.hpp``.
     """
 
     IDENTITY = 0
@@ -148,7 +148,7 @@ class LocalFallback(IntEnum):
 class BCSRCPRReduction(IntEnum):
     """BCSR-CPR pressure-reduction weighting (``BCSRCPRSpec.reduction_type``).
 
-    Mirrors ``mgr::BCSRCPRReductionType`` in ``solvers/include/MGRStrategy.hpp``.
+    Mirrors ``mgr::BCSRCPRReductionType`` in ``linear_solvers/include/MGRStrategy.hpp``.
     """
 
     PRESSURE_ROW = 0
@@ -159,7 +159,7 @@ class BCSRCPRReduction(IntEnum):
 class ScalingType(IntEnum):
     """MGR matrix-scaling strategy (``MGRSolverSpec.scaling_type``).
 
-    Mirrors ``mgr::ScalingType`` in ``solvers/include/MGRStrategy.hpp``.
+    Mirrors ``mgr::ScalingType`` in ``linear_solvers/include/MGRStrategy.hpp``.
     """
 
     NONE = 0

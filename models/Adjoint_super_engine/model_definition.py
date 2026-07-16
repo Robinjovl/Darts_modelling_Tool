@@ -1,9 +1,9 @@
+import numpy as np
 from darts.engines import *
-from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
-from darts import solvers
-from darts.solvers import (
+
+from darts import linear_solvers
+from darts.linear_solvers import (
     BCSRCPRSpec,
     BILU0Spec,
     LocalCorrectionSpec,
@@ -11,7 +11,7 @@ from darts.solvers import (
     MGRSolverSpec,
     PressureAMGSpec,
 )
-from darts.solvers.enums import (
+from darts.linear_solvers.enums import (
     BCSRCPRReduction,
     CoarseGrid,
     CompositeMode,
@@ -23,16 +23,14 @@ from darts.solvers.enums import (
     Restriction,
     VariableRole,
 )
-import numpy as np
-
+from darts.models.cicd_model import CICDModel
+from darts.models.opt.opt_module_settings import OptModuleSettings
+from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+from darts.physics.properties.density import DensityBasic
+from darts.physics.properties.flash import ConstantK
 from darts.physics.super.physics import Compositional
 from darts.physics.super.property_container import PropertyContainer
-
-from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
-from darts.physics.properties.flash import ConstantK
-from darts.physics.properties.density import DensityBasic
-
-from darts.models.opt.opt_module_settings import OptModuleSettings
+from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.tools.keyword_file_tools import get_table_keyword
 
 
@@ -67,7 +65,7 @@ class Model(CICDModel, OptModuleSettings):
         self.set_reservoir(perm, poro)
         self.Peaceman_WI = Peaceman_WI
         self.set_physics()
-        self.solver = None
+        self.linear_solver = None
         self.adjoint_solver = None
         self.adjoint_linear_tol = 1e-10
         self.adjoint_linear_max_iter = 300
@@ -319,7 +317,7 @@ class Model(CICDModel, OptModuleSettings):
         # adjoint solver can hold a reference to it). The base reset() calls
         # set_solver() again at its top -- skip the rebuild so that reference stays
         # valid.
-        if self.solver is not None:
+        if self.linear_solver is not None:
             return
         # Single per-model home for time-stepping / Newton config (the unified
         # set_solver pattern); the base reset() calls this before engine.init.
@@ -327,7 +325,7 @@ class Model(CICDModel, OptModuleSettings):
                             tol_newton=1e-6, it_newton=10,
                             newton_type=sim_params.newton_local_chop)
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
-        # Forward MGR (BCSR-CPR) via the single unified spec API (self.solver =
+        # Forward MGR (BCSR-CPR) via the single unified spec API (self.linear_solver =
         # MGRSolverSpec). The base DartsModel._apply_solver hook builds + injects it
         # before engine.init on the open-source CPU build; the adjoint solver is
         # injected separately by _attach_mgr_solvers_to_engine(). On the proprietary -a
@@ -344,7 +342,7 @@ class Model(CICDModel, OptModuleSettings):
             block_size - 1
         )
 
-        self.solver = MGRSolverSpec(
+        self.linear_solver = MGRSolverSpec(
             tolerance=1e-3,
             max_iterations=50,
             log_level=self.params.linear_print_level,
@@ -450,7 +448,7 @@ class Model(CICDModel, OptModuleSettings):
             "adjoint_mgr_options",
             self._make_adjoint_mgr_options("physical"),
         )
-        self.adjoint_solver = solvers.create_mgr_solver_for_block_size(block_size)
+        self.adjoint_solver = linear_solvers.create_mgr_solver_for_block_size(block_size)
         self.adjoint_solver.set_max_iterations(self.adjoint_linear_max_iter)
         self.adjoint_solver.set_tolerance(self.adjoint_linear_tol)
         self.adjoint_solver.set_log_level(self.params.linear_print_level)
@@ -572,14 +570,14 @@ class Model(CICDModel, OptModuleSettings):
         # No amg_tolerance: BoomerAMG inside CPR always runs with tol=0 as a
         # preconditioner stage (the parameter was removed in the spec-surface
         # cleanup; the sweep budget amg_max_iters is the only AMG knob).
-        cpr_spec = solvers.CPRSolverSpec(
+        cpr_spec = linear_solvers.CPRSolverSpec(
             tolerance=self.adjoint_linear_tol,
             max_iterations=self.adjoint_linear_max_iter,
             print_level=self.params.linear_print_level,
             amg_max_iters=int(options.get("cpr_amg_max_iters", 2)),
             ilu_fill_level=int(options.get("cpr_ilu_fill_level", 0)),
         )
-        gmres_spec = solvers.GMRESSolverSpec(
+        gmres_spec = linear_solvers.GMRESSolverSpec(
             tolerance=self.adjoint_linear_tol,
             max_iterations=self.adjoint_linear_max_iter,
             print_level=self.params.linear_print_level,
@@ -594,7 +592,7 @@ class Model(CICDModel, OptModuleSettings):
         if engine is None:
             return
 
-        # The forward solver (self.solver = MGRSolverSpec) is built and injected by
+        # The forward solver (self.linear_solver = MGRSolverSpec) is built and injected by
         # the base DartsModel._apply_solver hook from super().reset(). Its
         # n_reservoir_blocks is only FINAL after engine.init (the well/reservoir
         # partition is split there): mesh.n_res_blocks reads the total pre-init and

@@ -30,7 +30,7 @@ def _jac_ptr(engine):
 
 @pytest.fixture()
 def model():
-    solvers = pytest.importorskip("darts.solvers")
+    solvers = pytest.importorskip("darts.linear_solvers")
     if not getattr(solvers, "_have_compiled_solvers", False):
         pytest.skip("open-source solver registry not available in this build")
     cwd = os.getcwd()
@@ -50,14 +50,14 @@ def model():
 
 
 def test_reconfigure_and_switch_without_jacobian_reallocation(model):
-    from darts.solvers import (
+    from darts.linear_solvers import (
         CPRSolverSpec,
         GMRESSolverSpec,
         SuperLUSolverSpec,
     )
 
     m = model
-    m.solver = GMRESSolverSpec(restart=40, prec=CPRSolverSpec())
+    m.linear_solver = GMRESSolverSpec(restart=40, prec=CPRSolverSpec())
     m.init()
     m.set_output(output_folder="test_solver_reconfigure_out")
     m.run(20, verbose=False)
@@ -101,7 +101,7 @@ def test_reconfigure_and_switch_without_jacobian_reallocation(model):
 
 
 def test_adaptive_policy_actions(model):
-    from darts.solvers import (
+    from darts.linear_solvers import (
         AdaptiveSolverSpec,
         CPRSolverSpec,
         GMRESSolverSpec,
@@ -128,7 +128,7 @@ def test_adaptive_policy_actions(model):
             return SolverAction(index=1, updates={"tolerance": 1e-6})
         return ctx.current_index
 
-    m.solver = AdaptiveSolverSpec(
+    m.linear_solver = AdaptiveSolverSpec(
         candidates=[
             GMRESSolverSpec(restart=40, prec=CPRSolverSpec()),
             SuperLUSolverSpec(),

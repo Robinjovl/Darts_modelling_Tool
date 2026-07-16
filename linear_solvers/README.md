@@ -7,15 +7,15 @@ matrix and linear solvers. Currently, data storage and direct solver using Super
 are the only functionalities, i.e., linear algebra
 such as matrix-matrix multiplication of matrix-vector multiplication is **NOT** implemented.
 
-The folder `open-darts/tests/cpp`, contains the tests that also show how to use the library `opendarts-solvers`.
+The folder `open-darts/tests/cpp`, contains the tests that also show how to use the library `opendarts-linear-solvers`.
 
 ## Quick build instructions
-If you wish to use `opendarts-solvers` in `openDARTS`, the easiest way to build and install `opendarts-solvers` is to follow the instructions below. As a pre-requisite you need to have the `gcc` compiler installed (on macOS you need version 11 or later installed with homebrew and available as `gcc-11`). Additionally you need to have `cmake` available.
+If you wish to use `opendarts-linear-solvers` in `openDARTS`, the easiest way to build and install `opendarts-linear-solvers` is to follow the instructions below. As a pre-requisite you need to have the `gcc` compiler installed (on macOS you need version 11 or later installed with homebrew and available as `gcc-11`). Additionally you need to have `cmake` available.
 
-Clone this project and then move into folder `helper_scripts` inside `solvers`:
+Clone this project and then move into folder `helper_scripts` inside `linear_solvers`:
 
 ```bash
-cd solvers/helper_scripts
+cd linear_solvers/helper_scripts
 ```
 
 ### Unix systems (Linux and MacOS)
@@ -23,7 +23,7 @@ cd solvers/helper_scripts
 In Linux execute the script: `./build_linux.sh`
 Or in macOS execute the script `./build_macos.sh`
 
-This will build all thirdparty dependencies and `opendarts-solvers`. Adding the option `-t` will also run the unit tests, to make sure everything was built correctly. Finally it installs `opendarts-solvers` into the correct subfolder inside `engines`: `open-darts/engines/lib/solvers`.
+This will build all thirdparty dependencies and `opendarts-linear-solvers`. Adding the option `-t` will also run the unit tests, to make sure everything was built correctly. Finally it installs `opendarts-linear-solvers` into the correct subfolder inside `engines`: `open-darts/engines/lib/linear_solvers`.
 
 Explore other options: `./build_linux.sh -h`
 

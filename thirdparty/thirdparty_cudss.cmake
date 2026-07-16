@@ -28,7 +28,7 @@ if(cudss_FOUND AND TARGET cudss)
   # Bundle the runtime library on this path too -- previously only the
   # manual-discovery branch installed it, so a CONFIG-package build produced
   # a wheel without libcudss (see the bundling comment below).
-  install(FILES "$<TARGET_FILE:cudss>" DESTINATION "${CMAKE_INSTALL_PREFIX}/solvers")
+  install(FILES "$<TARGET_FILE:cudss>" DESTINATION "${CMAKE_INSTALL_PREFIX}/linear_solvers")
   message(STATUS "  cuDSS: found via CONFIG package (${cudss_DIR})")
   return()
 endif()
@@ -61,7 +61,7 @@ if(NOT CUDSS_INCLUDE_DIR OR NOT CUDSS_LIBRARY)
   # WITH_CUDSS is ON by default for GPU builds; a missing prebuilt library must
   # NOT hard-fail the whole GPU build. Warn, disable cuDSS, and continue -- the
   # GPU stack is then built without the cuDSS direct solver. (Setting the cache
-  # value with FORCE propagates the disable to solvers/src/CMakeLists.txt.)
+  # value with FORCE propagates the disable to linear_solvers/src/CMakeLists.txt.)
   message(WARNING
     "WITH_CUDSS=ON but cuDSS was not found -- building the GPU stack WITHOUT cuDSS.\n"
     "  To enable it, provide cuDSS via one of:\n"
@@ -85,13 +85,13 @@ set_target_properties(cudss_imported PROPERTIES
 add_library(cudss::cudss ALIAS cudss_imported)
 
 # Bundle the runtime library NEXT TO the extension that links it. cudss::cudss
-# is linked (PUBLIC) into opendarts_solvers, whose shared lib + pybind module
-# install into darts/solvers/ with RPATH=$ORIGIN -- so the loader resolves the
-# NEEDED libcudss.so.0 from darts/solvers/, NOT darts/. Installing it there (and
-# adding 'libcudss.so*' to the darts.solvers wheel package_data in pyproject.toml,
+# is linked (PUBLIC) into opendarts_linear_solvers, whose shared lib + pybind module
+# install into darts/linear_solvers/ with RPATH=$ORIGIN -- so the loader resolves the
+# NEEDED libcudss.so.0 from darts/linear_solvers/, NOT darts/. Installing it there (and
+# adding 'libcudss.so*' to the darts.linear_solvers wheel package_data in pyproject.toml,
 # since the versioned soname is not matched by the '*.so' glob) makes the wheel
 # self-contained, with no LD_LIBRARY_PATH. (mirrors the libamgxsh / IPhreeqc bundling.)
-install(FILES "${CUDSS_LIBRARY}" DESTINATION "${CMAKE_INSTALL_PREFIX}/solvers")
+install(FILES "${CUDSS_LIBRARY}" DESTINATION "${CMAKE_INSTALL_PREFIX}/linear_solvers")
 
 message(STATUS "  cuDSS: ${CUDSS_LIBRARY} (includes: ${CUDSS_INCLUDE_DIR})")
 unset(_cudss_hint_dirs)

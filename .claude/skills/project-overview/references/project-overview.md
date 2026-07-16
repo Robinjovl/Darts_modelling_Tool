@@ -38,7 +38,7 @@ open-darts/
 │   └── tools/              # CLI, plotting, HDF5, fracture networks
 ├── engines/                # C++ engine source code
 ├── discretizer/            # C++ discretizer source
-├── solvers/                # openDARTS linear solvers (SuperLU, Hypre)
+├── linear_solvers/                # openDARTS linear solvers (SuperLU, Hypre)
 ├── thirdparty/             # pybind11, SuperLU, Hypre, IPhreeqc (git submodules)
 ├── models/                 # Example / regression-test models
 ├── tests/                  # Unit and integration tests

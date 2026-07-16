@@ -12,17 +12,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Configure runtime path for finding dynamic libraries.
 # $ORIGIN         -- a module resolves siblings in its own directory.
-# $ORIGIN/solvers -- the compiled solvers live in the darts/solvers/ subpackage,
+# $ORIGIN/linear_solvers -- the compiled solvers live in the darts/linear_solvers/ subpackage,
 #                    and so do the shared libs bundled next to them (libcudss.so.0,
-#                    libopendarts_solvers.so). A darts/ top-level extension such as
+#                    libopendarts_linear_solvers.so). A darts/ top-level extension such as
 #                    engines links the solvers statically and thereby inherits a
 #                    direct NEEDED on the *shared* libcudss.so.0 (cuDSS is linked
 #                    PUBLIC); engines sits in darts/, so plain $ORIGIN cannot reach
-#                    darts/solvers/. Adding $ORIGIN/solvers lets it (WITH_CUDSS GPU
+#                    darts/linear_solvers/. Adding $ORIGIN/linear_solvers lets it (WITH_CUDSS GPU
 #                    builds otherwise fail at `import darts.engines` with
 #                    "libcudss.so.0: cannot open shared object file"). Harmless for
-#                    non-GPU builds (the extra entry just points at darts/solvers/).
-set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/solvers")
+#                    non-GPU builds (the extra entry just points at darts/linear_solvers/).
+set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/linear_solvers")
 set(CMAKE_MACOSX_RPATH 1)
 
 # Set DARTS installation folder
@@ -145,7 +145,7 @@ if(${OPENDARTS_CONFIG} STREQUAL "ST")
 elseif(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
   # MT and GPU both build against the in-tree open-source solvers by default.
   # The in-tree block_csr_matrix now provides a real multi-threaded row
-  # partition (see solvers/include/omp_partition.hpp), so an MT build no longer
+  # partition (see linear_solvers/include/omp_partition.hpp), so an MT build no longer
   # depends on the proprietary multi-threaded bos_solvers. Pass
   # -D BOS_SOLVERS_DIR=<path> to link the proprietary bos_solvers instead.
   if (GPU_CONFIG)
@@ -547,7 +547,7 @@ endif()
 
 # openDARTS Linear solvers -----------------------------------------------------
 if(NOT ENABLE_BOS_SOLVERS)
-  add_subdirectory(solvers)
+  add_subdirectory(linear_solvers)
 endif()
 # ------------------------------------------------------------------------------
 

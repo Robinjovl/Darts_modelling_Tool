@@ -1,7 +1,7 @@
 """Adaptive linear-solver switching during a simulation run.
 
 An :class:`AdaptiveSolverSpec` holds an ordered list of candidate
-:class:`~darts.solvers.specs.LinearSolverSpec` objects and a policy. After every
+:class:`~darts.linear_solvers.specs.LinearSolverSpec` objects and a policy. After every
 timestep ``DartsModel`` evaluates the policy and, when it selects a different
 candidate, rebuilds and injects that solver -- so a run can, for example, start
 on HYPRE MGR and fall back to SuperLU if MGR fails to converge.

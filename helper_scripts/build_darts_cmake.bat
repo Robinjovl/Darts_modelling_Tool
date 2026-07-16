@@ -52,10 +52,10 @@ if not %config%==Release if not %config%==Debug if not %config%==RelWithDebInfo 
 
 REM The in-tree open-source build now supports OpenMP: the engines assemble the
 REM block_csr_matrix Jacobian in parallel over a real multi-threaded row partition
-REM (solvers\include\omp_partition.hpp), the interpolators evaluate in parallel,
+REM (linear_solvers\include\omp_partition.hpp), the interpolators evaluate in parallel,
 REM and the in-tree GMRES Krylov kernels (solvers\src\linsolv_gmres.cpp) run in
 REM parallel. The HYPRE preconditioner stages (CPR/MGR) still run sequentially.
-REM GPU builds default to the in-tree open-source solvers darts.solvers,
+REM GPU builds default to the in-tree open-source solvers darts.linear_solvers,
 REM including the GPU wrappers; pass -b ^<path^> to build against bos_solvers.
 if %iter_solvers%==false (
   if %GPU%==true (
@@ -81,11 +81,11 @@ REM ----------------------------------------------------------------
 
 REM Remove previously built Python extension modules and shared libraries.
 REM Build artifacts live both directly under darts\ and in subpackages such as
-REM darts\solvers\ (the compiled solvers module solvers.pyd and the shared
-REM library opendarts_solvers.dll); a flat darts\*.pyd glob misses the latter,
+REM darts\linear_solvers\ (the compiled linear_solvers module linear_solvers.pyd and the shared
+REM library opendarts_linear_solvers.dll); a flat darts\*.pyd glob misses the latter,
 REM leaving a stale library that shadows the fresh build, so clean recursively.
 REM On Windows the Python modules are .pyd and the shared libraries are .dll
-REM (opendarts_solvers.dll, IPhreeqc.dll, ...), all re-installed by CMake.
+REM (opendarts_linear_solvers.dll, IPhreeqc.dll, ...), all re-installed by CMake.
 del /s /q darts\*.pyd 2>NUL
 del /s /q darts\*.dll 2>NUL
 rmdir /s /q dist 2>NUL

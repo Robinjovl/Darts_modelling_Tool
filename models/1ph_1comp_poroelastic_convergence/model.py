@@ -36,7 +36,7 @@ class Model(THMCModel):
         # not an outer Krylov loop -- wrap it in GMRES to mirror the proprietary
         # path (bos_gmres + bos_fs_cpr).
         from darts.models.darts_model import DataTS
-        from darts.solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         if not hasattr(self, 'data_ts') or self.data_ts is None:
             self.data_ts = DataTS(self.physics.n_vars)
         mesh = self.reservoir.mesh
@@ -59,7 +59,7 @@ class Model(THMCModel):
         # proprietary_linear_type (bos_fs_cpr) to params.linear_type -- but only for
         # mech_discretizer; pm_discretizer keeps its mechanics multi-stage backend
         # (engine.ls_params), so its spec carries no proprietary fallback (None).
-        self.solver = GMRESSolverSpec(
+        self.linear_solver = GMRESSolverSpec(
             prec=fs_cpr,
             # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
             # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()

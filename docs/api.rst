@@ -10,17 +10,17 @@ Engines
 Linear Solvers
 ##############
 
-The :mod:`darts.solvers` package selects and configures the open-source linear
+The :mod:`darts.linear_solvers` package selects and configures the open-source linear
 solvers through typed, documented specification classes. ``spec.build(block_size)``
 produces a configured C++ solver through the solver registry -- the single,
 enum-free way to choose a linear solver from Python. An
-:class:`~darts.solvers.adaptive.AdaptiveSolverSpec` additionally switches the
+:class:`~darts.linear_solvers.adaptive.AdaptiveSolverSpec` additionally switches the
 solver mid-run according to a policy.
 
 Solver specifications
 *********************
 
-.. automodule:: darts.solvers.specs
+.. automodule:: darts.linear_solvers.specs
    :members:
    :undoc-members:
    :show-inheritance:
@@ -29,7 +29,7 @@ Solver specifications
 Python-resident solvers (PETSc / Pardiso)
 *****************************************
 
-.. automodule:: darts.solvers.python_solvers
+.. automodule:: darts.linear_solvers.python_solvers
    :members:
    :undoc-members:
    :show-inheritance:
@@ -38,7 +38,7 @@ Python-resident solvers (PETSc / Pardiso)
 Adaptive solver switching
 *************************
 
-.. automodule:: darts.solvers.adaptive
+.. automodule:: darts.linear_solvers.adaptive
    :members:
    :undoc-members:
    :show-inheritance:
@@ -47,7 +47,7 @@ Adaptive solver switching
 MGR configuration enums
 ***********************
 
-.. automodule:: darts.solvers.enums
+.. automodule:: darts.linear_solvers.enums
    :members:
    :undoc-members:
    :show-inheritance:

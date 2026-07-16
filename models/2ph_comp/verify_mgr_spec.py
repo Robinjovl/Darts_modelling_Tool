@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from darts.engines import redirect_darts_output, sim_params  # noqa: E402
 from model import Model  # noqa: E402
 
-from darts.solvers import (  # noqa: E402
+from darts.linear_solvers import (  # noqa: E402
     BCSRCPRSpec,
     BILU0Spec,
     LocalCorrectionSpec,
@@ -24,7 +24,7 @@ from darts.solvers import (  # noqa: E402
     MGRSolverSpec,
     PressureAMGSpec,
 )
-from darts.solvers.enums import (  # noqa: E402
+from darts.linear_solvers.enums import (  # noqa: E402
     BCSRCPRReduction,
     CoarseGrid,
     CompositeMode,
@@ -137,11 +137,11 @@ class ModelSpec(Model):
             enable_well_level=False,
             enable_composition_level=False,
         )
-        # Phase 3: assign the SPEC directly to self.solver. The unified base
+        # Phase 3: assign the SPEC directly to self.linear_solver. The unified base
         # _apply_solver(stage="pre") builds and injects it BEFORE engine.init --
         # the migration target for 2ph_comp. (Phase 1 instead built the object and
         # injected it post-init; this checks the pre-init spec path is equivalent.)
-        self.solver = self._solver_spec
+        self.linear_solver = self._solver_spec
         self.solver_label = "mgr (bcsr-cpr, spec)"
 
 

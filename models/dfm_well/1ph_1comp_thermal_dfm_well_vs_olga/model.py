@@ -42,10 +42,10 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        # Linear-solver settings live on self.solver (the LinearSolverSpec).
+        # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
         super().set_solver()  # platform default linear solver spec
-        self.solver.tolerance = 1e-4
-        self.solver.max_iterations = 10
+        self.linear_solver.tolerance = 1e-4
+        self.linear_solver.max_iterations = 10
 
     def set_reservoir(self):
         (nr, nz) = (2, 1)

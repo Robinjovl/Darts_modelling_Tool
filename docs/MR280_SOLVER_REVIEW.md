@@ -113,7 +113,7 @@ Status: **verified** = failure chain traced in code by hand; **empirical** = rep
   `solver_factories.cpp:196,227`. *(reported)*
 - GPU specs carry no configuration (enum-only); spec `tolerance`/`max_iterations` dead on engine-resident CPU
   solvers too (engine init overrides from `data_ts`). *(verified)*
-- `FSCPRSolverSpec` missing from `darts/solvers/__init__.py` exports. *(verified)*
+- `FSCPRSolverSpec` missing from `darts/linear_solvers/__init__.py` exports. *(verified)*
 - CHANGELOG "deterministic across thread counts" overstated — `dot()` fixed-order combine is reproducible per
   thread count, not across counts. *(verified)*
 - MGR subtree is a ported code island (GEOS-style CamelCase, `void*` init API, options plumbed through 3
@@ -143,7 +143,7 @@ no reallocation (`engine_base.h:192`); `AdaptiveSolverSpec` switches per-timeste
   applied next solve), warm (AMG/ILU shape: `force_rebuild_`, hierarchies rebuilt against the same bound
   matrices), structural (refused → switch path). Never touches matrix binding / csr_expansion / engine vectors.
 - **P2 `model.update_solver(...)`** (~100 lines): one entry point; in-place with transparent fallback to
-  rebuild; owns the `params`/`data_ts` override coupling; keeps `self.solver` authoritative.
+  rebuild; owns the `params`/`data_ts` override coupling; keeps `self.linear_solver` authoritative.
 - **P3 policy hooks** (~120 lines): context + `SolverAction(index, updates)` + `on_timestep_failed` hook so the
   dt-cut retry runs on the fallback solver (displaced_fault dynamic mode); ls_params vector deprecated;
   context/action/reward = contextual-bandit-ready.

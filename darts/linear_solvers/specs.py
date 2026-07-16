@@ -11,13 +11,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import ClassVar
 
-# The compiled ``solvers`` extension is absent in proprietary builds that
+# The compiled ``linear_solvers`` extension is absent in proprietary builds that
 # link the prebuilt ``darts-linear-solvers`` library; the spec classes
 # below still import (only their ``build()`` calls will fail at runtime).
 try:
-    from . import solvers
+    from . import linear_solvers
 except ImportError:
-    solvers = None  # type: ignore[assignment]
+    linear_solvers = None  # type: ignore[assignment]
 from .enums import (
     BCSRCPRReduction,
     CoarseGrid,
@@ -49,8 +49,8 @@ class LinearSolverSpec:
         def set_solver(self):
             self.set_sim_params(first_ts=..., tol_newton=1e-3)  # time-stepping / Newton
             super().set_solver()                                # platform default spec
-            self.solver.tolerance = 1e-6                        # linear knobs
-            self.solver.max_iterations = 40
+            self.linear_solver.tolerance = 1e-6                        # linear knobs
+            self.linear_solver.max_iterations = 40
 
     ``print_level`` is the generic verbosity knob; some engine-resident solvers also
     expose a solver-specific one (e.g. :attr:`MGRSolverSpec.log_level`).
@@ -63,7 +63,7 @@ class LinearSolverSpec:
     #: ``darts.engines.linear_solver_t`` enum the *engine factory* should select
     #: on builds without the open-source registry (proprietary ``-a`` build), where
     #: :meth:`build` is unavailable. This is the cross-build fallback that lets a
-    #: model declare its solver **only** through ``self.solver`` -- the base
+    #: model declare its solver **only** through ``self.linear_solver`` -- the base
     #: ``_apply_solver`` writes it to ``params.linear_type`` on the proprietary path.
     #: ``None`` => leave ``params.linear_type`` as ``init()`` set it (e.g. the engine
     #: default / GPU default). Ignored on the open-source CPU build (the spec drives).
@@ -72,9 +72,9 @@ class LinearSolverSpec:
     #: Name the solver is registered under in the C++ solver registry.
     registry_name: ClassVar[str] = ""
 
-    def _make_config(self) -> solvers.SolverConfig:
+    def _make_config(self) -> linear_solvers.SolverConfig:
         """Build the C++ configuration object for this spec."""
-        config = solvers.SolverConfig()
+        config = linear_solvers.SolverConfig()
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
         return config
@@ -83,13 +83,13 @@ class LinearSolverSpec:
         """Create the configured C++ linear solver for the given block size.
 
         :param block_size: number of equations per cell (matrix block size).
-        :returns: a ``solvers.LinearSolver`` handle.
+        :returns: a ``linear_solvers.LinearSolver`` handle.
         """
         if not self.registry_name:
             raise NotImplementedError(
                 f"{type(self).__name__} does not define a registry_name"
             )
-        return solvers.create_linear_solver(
+        return linear_solvers.create_linear_solver(
             self.registry_name, self._make_config(), block_size
         )
 
@@ -98,7 +98,7 @@ class LinearSolverSpec:
 class MGRLevelSpec:
     """Configuration of one HYPRE MGR reduction level.
 
-    The integer fields accept the :mod:`darts.solvers.enums` ``IntEnum`` values
+    The integer fields accept the :mod:`darts.linear_solvers.enums` ``IntEnum`` values
     (e.g. ``FRelaxation.DIRECT_INVERSE``) or plain ints.
     """
 
@@ -111,9 +111,9 @@ class MGRLevelSpec:
     smoother_type: int = GlobalSmoother.NONE
     smoother_iters: int = 0
 
-    def _to_cpp(self) -> solvers.MGRLevelConfig:
+    def _to_cpp(self) -> linear_solvers.MGRLevelConfig:
         """Convert to the C++ ``MGRLevelConfig``."""
-        cpp = solvers.MGRLevelConfig()
+        cpp = linear_solvers.MGRLevelConfig()
         cpp.keep_labels = [int(label) for label in self.keep_labels]
         cpp.frelax_type = int(self.frelax_type)
         cpp.frelax_iters = int(self.frelax_iters)
@@ -138,8 +138,8 @@ class BILU0Spec:
     fallback_shifted_max: float = 1.0e-4
     fallback_shifted_growth: float = 100.0
 
-    def _to_cpp(self) -> solvers.MGRBILU0Config:
-        cpp = solvers.MGRBILU0Config()
+    def _to_cpp(self) -> linear_solvers.MGRBILU0Config:
+        cpp = linear_solvers.MGRBILU0Config()
         cpp.pivot_shift = float(self.pivot_shift)
         cpp.fallback_strategy = int(self.fallback_strategy)
         cpp.fallback_diagonal_tolerance = float(self.fallback_diagonal_tolerance)
@@ -163,8 +163,8 @@ class LocalCorrectionSpec:
     quality_enabled: bool = False
     quality_min_alpha: float = 0.0
 
-    def _to_cpp(self) -> solvers.MGRLocalCorrectionConfig:
-        cpp = solvers.MGRLocalCorrectionConfig()
+    def _to_cpp(self) -> linear_solvers.MGRLocalCorrectionConfig:
+        cpp = linear_solvers.MGRLocalCorrectionConfig()
         cpp.alpha = float(self.alpha)
         cpp.adaptive_fallback_threshold = float(self.adaptive_fallback_threshold)
         cpp.adaptive_alpha = float(self.adaptive_alpha)
@@ -208,8 +208,8 @@ class BCSRCPRSpec:
     transpose_apply: bool | None = None
     forward_source: bool | None = None
 
-    def _to_cpp(self) -> solvers.MGRBCSRCPRConfig:
-        cpp = solvers.MGRBCSRCPRConfig()
+    def _to_cpp(self) -> linear_solvers.MGRBCSRCPRConfig:
+        cpp = linear_solvers.MGRBCSRCPRConfig()
         cpp.reduction_type = int(self.reduction_type)
         cpp.pressure_variable = int(self.pressure_variable)
         cpp.weight_max = float(self.weight_max)
@@ -266,8 +266,8 @@ class PressureAMGSpec:
     solve_max_iter: int = 1
     solve_tolerance: float = 0.0
 
-    def _to_cpp(self) -> solvers.MGRPressureAMGConfig:
-        cpp = solvers.MGRPressureAMGConfig()
+    def _to_cpp(self) -> linear_solvers.MGRPressureAMGConfig:
+        cpp = linear_solvers.MGRPressureAMGConfig()
         cpp.coarsen_type = int(self.coarsen_type)
         cpp.interp_type = int(self.interp_type)
         cpp.relax_type = int(self.relax_type)
@@ -323,8 +323,8 @@ class MGRSolverSpec(LinearSolverSpec):
     bcsr_cpr: BCSRCPRSpec | None = None
     pressure_amg: PressureAMGSpec | None = None
 
-    def _make_config(self) -> solvers.MGRSolverConfig:
-        config = solvers.MGRSolverConfig()
+    def _make_config(self) -> linear_solvers.MGRSolverConfig:
+        config = linear_solvers.MGRSolverConfig()
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
         config.kdim = self.kdim
@@ -406,8 +406,8 @@ class GMRESSolverSpec(LinearSolverSpec):
     restart: int = 30
     prec: LinearSolverSpec | None = None
 
-    def _make_config(self) -> solvers.GMRESSolverConfig:
-        config = solvers.GMRESSolverConfig()
+    def _make_config(self) -> linear_solvers.GMRESSolverConfig:
+        config = linear_solvers.GMRESSolverConfig()
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
         config.restart = self.restart
@@ -431,9 +431,9 @@ class GMRESSolverSpec(LinearSolverSpec):
                 "GMRESSolverSpec(prec=MGRSolverSpec(...)) is not supported: "
                 "MGR is an iterative solver, not a constant-operator "
                 "preconditioner, and the composition diverges (HYPRE NaNs). "
-                "Use MGRSolverSpec(...) directly as self.solver instead."
+                "Use MGRSolverSpec(...) directly as self.linear_solver instead."
             )
-        gmres = solvers.create_linear_solver(
+        gmres = linear_solvers.create_linear_solver(
             self.registry_name, self._make_config(), block_size
         )
         if self.prec is not None:
@@ -518,8 +518,8 @@ class CPRSolverSpec(LinearSolverSpec):
     adaptive_iter_threshold: int = 15
     adaptive_consecutive_bad: int = 2
 
-    def _make_config(self) -> solvers.CPRSolverConfig:
-        config = solvers.CPRSolverConfig()
+    def _make_config(self) -> linear_solvers.CPRSolverConfig:
+        config = linear_solvers.CPRSolverConfig()
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
         config.amg_max_iters = self.amg_max_iters
@@ -607,8 +607,8 @@ class FSCPRSolverSpec(LinearSolverSpec):
     u_var: int | None = None
     nc: int | None = None
 
-    def _make_config(self) -> solvers.FSCPRSolverConfig:
-        config = solvers.FSCPRSolverConfig()
+    def _make_config(self) -> linear_solvers.FSCPRSolverConfig:
+        config = linear_solvers.FSCPRSolverConfig()
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
         config.force_amg_asymmetric = self.force_amg_asymmetric
@@ -632,7 +632,7 @@ class PythonLinearSolverSpec(LinearSolverSpec):
     """Base spec for the Python-resident solvers (PETSc / Pardiso).
 
     Unlike the engine-resident specs, :meth:`build` returns a
-    :class:`~darts.solvers.python_solvers.PythonLinearSolver` -- a stateful
+    :class:`~darts.linear_solvers.python_solvers.PythonLinearSolver` -- a stateful
     object that runs the solve in the Python process and is owned by the model,
     not injected into the C++ engine. See ``SOLVER_REFACTORING_PLAN.md``
     section 13.
@@ -697,14 +697,14 @@ class GPUSolverSpec(LinearSolverSpec):
 
     GPU solvers are selected by the GPU engine factory through the
     ``params.linear_type`` (``darts.engines.linear_solver_t``) enum, NOT through
-    the open-source ``darts.solvers`` registry. A GPUSolverSpec therefore does not
+    the open-source ``darts.linear_solvers`` registry. A GPUSolverSpec therefore does not
     build a C++ solver -- it names the enum value via :attr:`linear_type_name`, and
     :meth:`darts.models.darts_model.DartsModel._apply_solver` translates
-    ``self.solver`` to ``params.linear_type`` on the GPU platform. :meth:`build`
+    ``self.linear_solver`` to ``params.linear_type`` on the GPU platform. :meth:`build`
     raises.
 
-    This keeps ``self.solver`` the single user-facing API on GPU too:
-    ``self.solver = AMGXCPRSolverSpec()`` selects the GPU solver, mirroring the way
+    This keeps ``self.linear_solver`` the single user-facing API on GPU too:
+    ``self.linear_solver = AMGXCPRSolverSpec()`` selects the GPU solver, mirroring the way
     a CPU spec selects a registry solver.
     """
 
@@ -794,7 +794,7 @@ def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:
 
     :class:`MGRSolverSpec` remains the recommended fallback for matrices
     where the CPR pressure extraction is a bad fit; set
-    ``self.solver = MGRSolverSpec()`` in the model's ``set_solver()`` to use it.
+    ``self.linear_solver = MGRSolverSpec()`` in the model's ``set_solver()`` to use it.
 
     :param platform: ``"cpu"`` or ``"gpu"``.
 
@@ -803,7 +803,7 @@ def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:
     mapping to ``linear_solver_t.gpu_gmres_cpr_amgx_ilu``. A :class:`GPUSolverSpec`
     does not build a C++ solver; it names the ``params.linear_type`` enum, which
     :meth:`DartsModel._apply_solver` sets on the GPU platform and the GPU engine
-    factory (``engine_base_gpu``) consumes. So ``self.solver`` is the single
+    factory (``engine_base_gpu``) consumes. So ``self.linear_solver`` is the single
     user-facing API on GPU too.
 
     :param platform: ``"cpu"`` or ``"gpu"``.

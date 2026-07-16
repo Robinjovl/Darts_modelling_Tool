@@ -14,8 +14,8 @@ change user results:
 |---|---|
 | **Default linear solver changed** — CPU: in-tree **FGMRES+CPR**; GPU: **AMGX-CPR** | Different LI/NI and timings; at loose tolerances the Newton path can differ. **Re-baseline references.** |
 | `set_sim_params(tol_linear=, it_linear=)` **removed** | `TypeError` — see §2 |
-| **`data_ts.linear_tol` / `linear_max_iter` / `linear_type` / `linear_print_level` removed** | Assignments become **silently inert** — the loudest trap here. Move them to `self.solver` (see §3) |
-| `set_solver_params()` removed, `data_ts.linear_solver` retired | Solver config now lives in `set_solver()` + `self.solver` |
+| **`data_ts.linear_tol` / `linear_max_iter` / `linear_type` / `linear_print_level` removed** | Assignments become **silently inert** — the loudest trap here. Move them to `self.linear_solver` (see §3) |
+| `set_solver_params()` removed, `data_ts.linear_solver` retired | Solver config now lives in `set_solver()` + `self.linear_solver` |
 | `linear_solver_t` enum **renumbered** (`CPU_GMRES_MGR` moved before the GPU block) | Only breaks code hardcoding *integer* enum values; symbolic names are safe |
 | GPU builds **always** build AMGX (`--amgx` removed, `WITH_AMGX=ON`) | GPU build requires the `thirdparty/AMGX` submodule (auto-initialised) |
 | PETSc/Pardiso now report failure on a non-finite solve | Previously-silent NaN solves now cut the timestep |
@@ -31,12 +31,12 @@ Newton only**. Linear settings live on the solver:
 def set_solver(self):
     self.set_sim_params(first_ts=..., tol_newton=1e-3, it_newton=20)  # time-stepping + Newton
     super().set_solver()                                              # platform default spec
-    self.solver.tolerance = 1e-6                                      # linear knobs
-    self.solver.max_iterations = 50
+    self.linear_solver.tolerance = 1e-6                                      # linear knobs
+    self.linear_solver.max_iterations = 50
 ```
 
 `super().set_solver()` materialises the platform-default spec (FGMRES+CPR on CPU, AMGX-CPR on GPU)
-and is idempotent, so a model that names its own solver (`self.solver = MGRSolverSpec(tolerance=…)`)
+and is idempotent, so a model that names its own solver (`self.linear_solver = MGRSolverSpec(tolerance=…)`)
 simply keeps it. All **37 shipped models were migrated** this way.
 
 ---
@@ -48,8 +48,8 @@ There were **three overlapping surfaces** for one concern — that is the root o
 | Surface | Was | **Now** |
 |---|---|---|
 | `data_ts` (`DataTS`) | time-stepping, Newton, **and** `linear_tol` / `linear_max_iter` / `linear_type` / `linear_print_level` | **time-stepping + Newton only** — all four `linear_*` fields **removed** |
-| `self.solver` (`LinearSolverSpec`) | solver + preconditioner choice, but its `tolerance` / `max_iterations` were **ignored** for engine-resident solvers (the engine re-applied `data_ts.linear_*` at `init()`) | **the single owner of every linear setting**: solver, preconditioner, `tolerance`, `max_iterations`, `print_level` |
-| `params` (`sim_params`, C++) | user-facing-ish mirror fed by `copy_data_ts_to_sim_params()` | **C++ mirror, not a user API** — time-stepping/Newton from `data_ts`, linear from `self.solver` |
+| `self.linear_solver` (`LinearSolverSpec`) | solver + preconditioner choice, but its `tolerance` / `max_iterations` were **ignored** for engine-resident solvers (the engine re-applied `data_ts.linear_*` at `init()`) | **the single owner of every linear setting**: solver, preconditioner, `tolerance`, `max_iterations`, `print_level` |
+| `params` (`sim_params`, C++) | user-facing-ish mirror fed by `copy_data_ts_to_sim_params()` | **C++ mirror, not a user API** — time-stepping/Newton from `data_ts`, linear from `self.linear_solver` |
 
 **One owner per concern.** `DartsModel._apply_solver()` now mirrors the spec into `sim_params`
 (`_sync_solver_to_sim_params()`: `tolerance` → `tolerance_linear`, `max_iterations` →
@@ -63,12 +63,12 @@ Defaults are unchanged (`DataTS.linear_tol` 1e-5 / `linear_max_iter` 50 == `Line
 THMC models (no `data_ts`; they drive `engine.ls_params` + `params` directly) and proprietary builds
 are explicitly left to the engine factory — `set_solver()` records whether the spec was *chosen* or
 merely defaulted (`_solver_is_default()`, identity-compared, so `super().set_solver()` followed by
-`self.solver = <Spec>` still counts as chosen), and `_apply_solver()` never acts on a spec the model
+`self.linear_solver = <Spec>` still counts as chosen), and `_apply_solver()` never acts on a spec the model
 did not ask for.
 
 **Migration:** assignments to `data_ts.linear_*` are now **silently inert** — grep for them. Models
 driven by case files can keep the knob in their own input data and apply it in `set_solver()`, which
-is what `cpg_sloping_fault` now does (`idata.sim.linear_tol` → `self.solver.tolerance`).
+is what `cpg_sloping_fault` now does (`idata.sim.linear_tol` → `self.linear_solver.tolerance`).
 
 ### Side-effect worth flagging: some spec tolerances were previously *decorative*
 
@@ -110,8 +110,8 @@ tell which one was live.
 print `"NOT IMPLEMENTED: …"` and return; they do nothing:
 
 ```
-solvers/src/linsolv_bos_gmres.cpp:45   std::cout << "NOT IMPLEMENTED: linsolv_bos_gmres::setup(...)"
-solvers/src/linsolv_bos_amg.cpp:68     std::cout << "NOT IMPLEMENTED: linsolv_bos_amg::setup"
+linear_solvers/src/linsolv_bos_gmres.cpp:45   std::cout << "NOT IMPLEMENTED: linsolv_bos_gmres::setup(...)"
+linear_solvers/src/linsolv_bos_amg.cpp:68     std::cout << "NOT IMPLEMENTED: linsolv_bos_amg::setup"
 ```
 
 They exist only so the **enum-driven engine factory** (`case sim_params::CPU_GMRES_CPR_AMG: new
@@ -149,10 +149,10 @@ polymorphically (including transposed device SpMV) is a `csr_matrix_base` virtua
 
 ## 6. `sparsity_pattern` vs `csr_expansion`; contiguity; conversion
 
-- **`sparsity_pattern`** (`solvers/include/sparsity_pattern.hpp`) — the **block** (BCSR) structure:
+- **`sparsity_pattern`** (`linear_solvers/include/sparsity_pattern.hpp`) — the **block** (BCSR) structure:
   `row_ptr`, `col_ind`, `diag_ind` over *blocks*. Shared (`shared_ptr`) by all matrices with the same
   sparsity, so the structure is stored **once**.
-- **`csr_expansion`** (`solvers/include/csr_expansion.hpp`) — the **scalar (point) CSR expansion** of
+- **`csr_expansion`** (`linear_solvers/include/csr_expansion.hpp`) — the **scalar (point) CSR expansion** of
   that block pattern: `csr_expansion(const sparsity_pattern&, int block_size)`. It is a pure function
   of (block pattern, block size), so it is computed **once** and **cached on the `sparsity_pattern`**.
 
@@ -192,7 +192,7 @@ Rule of thumb: **`dual_array` owns, a view borrows.**
 even explicitly specialised for scalar only:
 
 ```
-solvers/src/linsolv_hypre_amg.cpp:302  template<> void linsolv_hypre_amg<1>::csr_matrix_to_hypre_ij(...)
+linear_solvers/src/linsolv_hypre_amg.cpp:302  template<> void linsolv_hypre_amg<1>::csr_matrix_to_hypre_ij(...)
                               :307  // NOTE: This function works only for N_BLOCK_SIZE = 1
 ```
 

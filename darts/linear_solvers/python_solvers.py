@@ -4,7 +4,7 @@ PETSc (via :mod:`petsc4py`) and Pardiso (via :mod:`pypardiso` / Intel MKL) run
 inside the Python process and cannot be injected into the C++ engine the way the
 engine-resident solvers (``mgr``, ``superlu``, HYPRE, the GPU solvers) are. They
 are wrapped here as stateful :class:`PythonLinearSolver` objects so they still
-fit the unified :class:`~darts.solvers.specs.LinearSolverSpec` framework.
+fit the unified :class:`~darts.linear_solvers.specs.LinearSolverSpec` framework.
 
 The key idea (see ``SOLVER_REFACTORING_PLAN.md`` section 13) is the
 *setup-once / solve-many* split: the sparsity pattern is fixed for a whole run

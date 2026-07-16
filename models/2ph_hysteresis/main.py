@@ -98,7 +98,7 @@ def build_model(config: CaseConfig, platform: str = "cpu") -> Model:
         tol_newton=config.tol_newton,
         it_newton=config.it_newton)
     # Linear-solver settings (tolerance / max_iterations) are owned by
-    # Model.set_solver() -> self.solver; it runs at init() and is authoritative.
+    # Model.set_solver() -> self.linear_solver; it runs at init() and is authoritative.
     model.data_ts.eta[-1] = config.dt_eta
     model.init(platform=platform)
     model.set_output(output_folder=config.output_folder, all_phase_props=True)

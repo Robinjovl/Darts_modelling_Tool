@@ -36,7 +36,7 @@ roughly doubling preconditioner setup for forward-only runs.
 
 ### Fix (all in-tree, default-on, previous behaviour still selectable)
 
-`solvers/src/linsolv_cpr.cpp` + `linsolv_cpr.hpp`, `cpr_block_ilu0.hpp` (new),
+`linear_solvers/src/linsolv_cpr.cpp` + `linsolv_cpr.hpp`, `cpr_block_ilu0.hpp` (new),
 `solver_configs.hpp`, `solver_factories.cpp`, pybind + `CPRSolverSpec`:
 
 1. **BOS-mimic BoomerAMG profile as the default**, fully parameterised (16 new knobs on
@@ -79,8 +79,8 @@ every AMGX-CPR request with BiCGStab+ILU0.
 
 ### Fix
 
-1. **New `linsolv_gmres_gpu<N>`** (`solvers/include/linsolv_gmres_gpu.hpp` +
-   `solvers/src/linsolv_gmres_gpu.cpp`, compiled as CUDA): restarted right-preconditioned GMRES
+1. **New `linsolv_gmres_gpu<N>`** (`linear_solvers/include/linsolv_gmres_gpu.hpp` +
+   `linear_solvers/src/linsolv_gmres_gpu.cpp`, compiled as CUDA): restarted right-preconditioned GMRES
    with the Krylov basis on the device; SpMV through the `block_csr_matrix` device layer,
    BLAS-1/GEMV through cuBLAS, Hessenberg/Givens on the host. Orthogonalisation is CGS2 (two
    GEMV pairs) instead of i round-trip dots per iteration. Proprietary-parity semantics:
@@ -121,15 +121,15 @@ size-threshold caveat: it is the fastest CPU option on SPE10-class problems.
 
 ## Files changed
 
-- `solvers/include/solver_configs.hpp`, `solvers/include/linsolv_cpr.hpp`,
-  `solvers/src/linsolv_cpr.cpp` — CPR formulation + AMG profile + lazy adjoint + timers
-- `solvers/include/cpr_block_ilu0.hpp` — new in-tree block ILU(0)
-- `solvers/include/linsolv_gmres_gpu.hpp`, `solvers/src/linsolv_gmres_gpu.cpp` — new GPU GMRES
-- `solvers/src/solver_factories.cpp`, `solvers/src/pybind11/py_main.cpp`,
-  `darts/solvers/specs.py` — config plumbing (spec ↔ C++ 1:1)
-- `solvers/src/linsolv_gmres.cpp` — timer forwarding to the preconditioner
+- `linear_solvers/include/solver_configs.hpp`, `linear_solvers/include/linsolv_cpr.hpp`,
+  `linear_solvers/src/linsolv_cpr.cpp` — CPR formulation + AMG profile + lazy adjoint + timers
+- `linear_solvers/include/cpr_block_ilu0.hpp` — new in-tree block ILU(0)
+- `linear_solvers/include/linsolv_gmres_gpu.hpp`, `linear_solvers/src/linsolv_gmres_gpu.cpp` — new GPU GMRES
+- `linear_solvers/src/solver_factories.cpp`, `linear_solvers/src/pybind11/py_main.cpp`,
+  `darts/linear_solvers/specs.py` — config plumbing (spec ↔ C++ 1:1)
+- `linear_solvers/src/linsolv_gmres.cpp` — timer forwarding to the preconditioner
 - `engines/src/engine_base_gpu.h` — AMGX-CPR factory wiring, redirect removed
-- `solvers/src/CMakeLists.txt` — register the new GPU GMRES
+- `linear_solvers/src/CMakeLists.txt` — register the new GPU GMRES
 
 ## Findings-resolution round (after the two priorities)
 
@@ -178,9 +178,9 @@ frozen-partition fix that previously produced silent Jacobian corruption or out-
 ### Fixed — Python API / build
 
 `engine.linear_solver_error_last_dt` pybind-bound (SolverSwitchContext now sees real solver errors);
-`FSCPRSolverSpec` exported from `darts.solvers`; unknown GPU `linear_type_name` raises and a CPU
+`FSCPRSolverSpec` exported from `darts.linear_solvers`; unknown GPU `linear_type_name` raises and a CPU
 registry spec on `platform='gpu'` warns (both previously silent); a raw compiled solver on
-`self.solver` is honoured as documented (was silently replaced by the default);
+`self.linear_solver` is honoured as documented (was silently replaced by the default);
 `AdaptiveSolverSpec` rejects GPU / Python-resident candidates at construction (was a mid-run
 failure); the SuperLU >30k-cell warning fires for `SuperLUSolverSpec`; `_BlockToScalarExpander`
 structural pass vectorised (was an interpreted triple loop over nnz*b^2, verified bit-equivalent);

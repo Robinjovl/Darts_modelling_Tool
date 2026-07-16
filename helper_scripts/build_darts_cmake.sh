@@ -165,7 +165,7 @@ fi
 
 if [ "$iter_solvers" == false ]; then
   if [ "$GPU" == true ]; then
-    # GPU builds default to the in-tree open-source solvers (darts.solvers,
+    # GPU builds default to the in-tree open-source solvers (darts.linear_solvers,
     # including the GPU solver wrappers). Pass -b <path> to build against the
     # proprietary bos_solvers instead.
     echo -e '\n openDARTS GPU build using the in-tree open-source solvers (no bos_solvers).'
@@ -175,8 +175,8 @@ if [ "$iter_solvers" == false ]; then
     # partition, the interpolators evaluate in parallel, and the in-tree GMRES
     # Krylov kernels (SpMV, dot, axpy) run in parallel. The HYPRE-based
     # preconditioner stages (CPR/MGR BoomerAMG/ILU) still run sequentially. No
-    # bos_solvers needed -- see solvers/include/omp_partition.hpp and
-    # solvers/src/linsolv_gmres.cpp.
+    # bos_solvers needed -- see linear_solvers/include/omp_partition.hpp and
+    # linear_solvers/src/linsolv_gmres.cpp.
     echo -e '\n openDARTS multi-threaded (OpenMP) build using the in-tree open-source solvers (no bos_solvers).'
   fi
 fi
@@ -194,8 +194,8 @@ fi
 rm -rf dist
 # Remove previously built Python extension modules and shared libraries.
 # Build artifacts live both directly under darts/ (engines, discretizer, ...)
-# and in subpackages such as darts/solvers/ (the compiled solvers module and
-# libopendarts_solvers). A flat darts/*.so glob misses the latter, leaving a
+# and in subpackages such as darts/linear_solvers/ (the compiled linear_solvers module and
+# libopendarts_linear_solvers). A flat darts/*.so glob misses the latter, leaving a
 # stale solvers library that shadows the fresh build, so clean recursively.
 # Note: the unversioned *.so glob intentionally excludes the bundled
 # libstdc++.so.6 (a copied runtime dependency, re-installed by CMake).
@@ -311,7 +311,7 @@ if [[ "$skip_req" == false ]]; then
     #   * XSDK_INDEX_SIZE=32 keeps int_t == int. The C++ wrapper allocates int[]
     #     for perm_r/perm_c and passes opendarts::config::index_t (== int); 64-bit
     #     indexing would silently break those call sites.
-    #   * PIC ON + static so the archive embeds into the shared opendarts_solvers
+    #   * PIC ON + static so the archive embeds into the shared opendarts_linear_solvers
     #     Python extension.
     rm -rf build/superlu
     mkdir -p build/superlu

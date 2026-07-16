@@ -26,7 +26,7 @@ class Model(THMCModel):
         # sim_params.linear_type. FS-CPR is a PRECONDITIONER (single application),
         # not an outer Krylov loop -- wrap it in GMRES to mirror the proprietary
         # path (bos_gmres + bos_fs_cpr).
-        from darts.solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         mesh = self.reservoir.mesh
         n_blocks = mesh.n_blocks
         n_res_blks = mesh.n_res_blocks
@@ -47,7 +47,7 @@ class Model(THMCModel):
         # proprietary_linear_type (bos_fs_cpr) to params.linear_type -- but only for
         # mech_discretizer; pm_discretizer keeps its mechanics multi-stage backend
         # (engine.ls_params), so its spec carries no proprietary fallback (None).
-        self.solver = GMRESSolverSpec(
+        self.linear_solver = GMRESSolverSpec(
             prec=fs_cpr,
             # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
             # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()
@@ -271,9 +271,9 @@ class Model(THMCModel):
             self.idata.sim.time_steps = np.logspace(-3, np.log10(max_dt), nt)
 
         # optional: use PETSc / Pardiso linear solver (set in set_solver())
-        #   from darts.solvers import PETScSolverSpec, PardisoSolverSpec
-        #   self.solver = PETScSolverSpec(variant="fs")
-        #   self.solver = PardisoSolverSpec()
+        #   from darts.linear_solvers import PETScSolverSpec, PardisoSolverSpec
+        #   self.linear_solver = PETScSolverSpec(variant="fs")
+        #   self.linear_solver = PardisoSolverSpec()
         from darts.models.darts_model import DataTS
         self.idata.sim.DataTS = DataTS(n_vars=0)
 

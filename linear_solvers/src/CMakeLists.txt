@@ -286,7 +286,7 @@ od_emit_template_instantiations(
 )
 # ------------------------------------------------------------------------------
 
-# Define the unified linear_solvers library (STATIC, will be linked into shared opendarts_solvers)
+# Define the unified linear_solvers library (STATIC, will be linked into shared opendarts_linear_solvers)
 add_library(linear_solvers STATIC "")
 
 # Build as PIC so it can link into shared objects (Python extensions, etc.)

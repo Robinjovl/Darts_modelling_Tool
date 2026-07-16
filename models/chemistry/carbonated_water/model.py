@@ -185,8 +185,8 @@ class Model(CICDModel):
         # fracture_network model. A direct solve is robust for this small 1D model;
         # in the proprietary build the spec is ignored and the engine factory keeps
         # its iterative default. (Mirrors the long-standing `cpu_superlu` hint here.)
-        from darts.solvers import SuperLUSolverSpec
-        self.solver = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200)
+        from darts.linear_solvers import SuperLUSolverSpec
+        self.linear_solver = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200)
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,

@@ -540,7 +540,7 @@ void bind_unified_solver_api(py::module &m)
           py::arg("name"), py::arg("config"), py::arg("block_size"));
 }
 
-PYBIND11_MODULE(solvers, m)
+PYBIND11_MODULE(linear_solvers, m)
 {
     m.doc() = "openDARTS linear solvers module";
 

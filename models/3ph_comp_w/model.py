@@ -30,8 +30,8 @@ class Model(CICDModel):
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=100, tol_newton=1e-2,
                             it_newton=10, newton_type=sim_params.newton_local_chop)
         super().set_solver()  # platform default linear solver spec
-        self.solver.tolerance = 1e-3
-        self.solver.max_iterations = 50
+        self.linear_solver.tolerance = 1e-3
+        self.linear_solver.max_iterations = 50
 
     def set_reservoir(self):
         nx = 1000
