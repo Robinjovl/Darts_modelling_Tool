@@ -265,8 +265,12 @@ if [[ "$skip_req" == false ]]; then
     # Setup hypre build with no MPI support (we only use single processor)
     # MGR support is enabled by default in HYPRE (no special flag needed)
     # The MGR (Multiplicative Grid Reduction) solver is always built in HYPRE
-    # Request build of tests and examples just to be sure everything is fine in the build
+    # Tests/examples are never run, only the library is used, so don't build them
+    # (on Windows they also raced on CMake's generate.stamp under parallel MSBuild)
     # For debugging: -DHYPRE_ENABLE_PRINT
+    # NOTE: this branch pins a newer HYPRE (thirdparty/hypre 341f9089) whose CMake
+    # option is HYPRE_ENABLE_MPI (the pre-merge development tree used the older
+    # HYPRE_WITH_MPI spelling for its older pin).
     # Optionally build HYPRE with its own OpenMP threading (parallel BoomerAMG /
     # HYPRE_ILU smoothers + SpMV). Opt-in via HYPRE_OPENMP=1; it parallelises the
     # CPR/MGR preconditioner stages that otherwise run sequentially, but changes

@@ -51,7 +51,7 @@ test-linux-oahu-gpu:
     variables:
         CONDAPATH: /oahu/data/gitlabrunner/anaconda3
     before_script:
-        - module load cuda/23.5
+        - module load cuda/13.3
         - source ${CONDAPATH}/bin/activate
         - conda create -n ${CONDA_ENV} python=${PY_VER} --yes
         - conda activate ${CONDA_ENV}
