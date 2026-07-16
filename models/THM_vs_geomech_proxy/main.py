@@ -240,7 +240,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     print('Timers:')
     m.print_timers()
     #m.print_stat()
-
+    m.output.store_well_time_data(save_output_files=True)
     print('Output folder:', m.output_directory, 'Timesteps:', ith_step, 't=', m.physics.engine.t, 'days')
     print_allocated_memory()
 

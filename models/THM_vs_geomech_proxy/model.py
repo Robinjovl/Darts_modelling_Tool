@@ -126,7 +126,7 @@ class Model(THMCModel):
         return
 
 
-    def set_physics_dummy(self):
+    def set_physics(self):
         super().set_physics()
         if self.physics_type == 'single_phase':
             pass
@@ -138,7 +138,7 @@ class Model(THMCModel):
             # so the correlation always sees a physical absolute temperature
             # and returns a positive viscosity. See set_input_data() t_ref note.
             components = self.physics.components
-            property_container = self.regions[0]
+            property_container = self.physics.property_containers[0]
             property_container.viscosity_ev = dict([('wat', MaoDuan2009Shifted(components, t_abs0=373.15))])
             property_container.density_ev = dict([('wat', DensityBasicTdep(dens0=1000))])
         return
