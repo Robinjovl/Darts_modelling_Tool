@@ -34,10 +34,10 @@ def input_data_case_5():
     _set_wells(idata)
     _set_mesh_tags(idata)
     
-    idata.other.prod_well_coords = [idata.other.rsv_xy/2., idata.other.rsv_xy/2. + idata.other.doublet_shift,
+    idata.other.prod_well_coords = [idata.other.rsv_xy/2.+ idata.other.doublet_shift, idata.other.rsv_xy/2. ,
             idata.other.rsv_top, idata.other.rsv_bottom]  # [X, Y, Z1, Z2]
 
-    idata.other.inj_well_coords = [idata.other.rsv_xy/2., idata.other.rsv_xy/2. - idata.other.doublet_shift,
+    idata.other.inj_well_coords = [idata.other.rsv_xy/2.- idata.other.doublet_shift, idata.other.rsv_xy/2. ,
             idata.other.rsv_top, idata.other.rsv_bottom]  # [X, Y, Z1, Z2]
 
     idata.other.points_xy = []  # no black reference line for case_1
