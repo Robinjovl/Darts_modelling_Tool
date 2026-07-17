@@ -1,4 +1,4 @@
-# #.#.# [Future]
+# 1.5.1 [14-07-2026]
 - Breaking changes ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)):
   - **OBL grid API: the legacy bounds arguments are removed. Physics classes now take `axes_step` (required, per-axis cell size) and `axes_origin` (optional, per-axis grid origin) only.** Removed everywhere: `n_points`, `min_p`/`max_p`, `min_z`/`max_z`, `min_t`/`max_t`, `min_e`/`max_e`, `axes_min`/`axes_max`, `n_axes_points`, and `PhysicsBase.determine_obl_bounds()`. `epsilon_z` became a keyword argument (default `1e-9`). The grid is unbounded, so there is no `axes_max` or point count. Passing any removed argument raises `TypeError`. Affects `Compositional`, `Geothermal`, `ElementBasedReactiveFlow`, `Poroelasticity` and `PhysicsBase.create_interpolator` (see the migration guide below).
   - Physics instance fields renamed: read `physics.axes_origin` where you read `physics.axes_min`; `physics.axes_max`, `physics.n_axes_points`, `physics.PT_axes_min` and `physics.PT_axes_max` are gone (`physics.axes_step` gives the per-axis cell size; the P-T window lives in `physics.thermal_var_axes_origin` / `physics.thermal_var_axes_step`).

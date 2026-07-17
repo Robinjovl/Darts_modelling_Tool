@@ -253,6 +253,67 @@ int multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::evaluate_with
   cudaStreamSynchronize(hypercube_generation_stream);
   int new_hypercubes_generated = 0;
 
+  // ── Batch pre-pass ───────────────────────────────────────────────────────────
+  // Collect every UNIQUE missing supporting point across all missing hypercubes and
+  // evaluate them in a SINGLE evaluate_batch() call, then populate point_data. This is
+  // what the CPU adaptive interpolators do; it lets a ParallelEvaluator split the batch
+  // across worker processes (parallel_evaluation=True). Without it, generate_hypercube()
+  // below evaluates each missing point one at a time (get_point_data -> per-point
+  // evaluate), which cannot parallelize and dominates init time. After this pass every
+  // needed point is cached, so the generation loop is pure cache hits. Serial-safe: the
+  // default evaluate_batch just loops evaluate() in C++.
+  {
+    static const uint32_t NV_pp = (1u << N_DIMS);
+    std::unordered_set<key_t, key_hash_t> queued_pts;
+    std::unordered_set<key_t, key_hash_t> seen_hcs;
+    std::vector<key_t> missing_pts;
+    for (int i = 0; i < n_states_idxs; i++)
+    {
+      const key_t &hc_key = hypercubes_to_compute[i];
+      if (hc_key.idx[0] == INT32_MIN)             continue;  // sentinel: already cached
+      if (generated_hypercubes.count(hc_key))     continue;  // already generated earlier
+      if (!seen_hcs.insert(hc_key).second)        continue;  // duplicate within this batch
+      for (uint32_t v = 0; v < NV_pp; ++v)
+      {
+        key_t pt_key;
+        for (uint8_t d = 0; d < N_DIMS; ++d)
+        {
+          const int32_t bit = static_cast<int32_t>((v >> (N_DIMS - 1 - d)) & 1u);
+          pt_key.idx[d] = hc_key.idx[d] + bit;
+        }
+        if (point_data.find(pt_key) != point_data.end()) continue;  // already cached
+        if (!queued_pts.insert(pt_key).second)           continue;  // already queued
+        missing_pts.push_back(pt_key);
+      }
+    }
+    if (!missing_pts.empty())
+    {
+      const size_t n_missing = missing_pts.size();
+      std::vector<double> batch_coords(n_missing * N_DIMS);
+      for (size_t k = 0; k < n_missing; ++k)
+        for (uint8_t d = 0; d < N_DIMS; ++d)
+          batch_coords[k * N_DIMS + d] =
+              this->axes_origin[d] + this->axes_step[d] * static_cast<double>(missing_pts[k].idx[d]);
+      std::vector<double> batch_values(n_missing * N_OPS);
+      this->supporting_point_evaluator->evaluate_batch(
+          batch_coords, static_cast<int>(n_missing), batch_values, N_OPS);
+      for (size_t k = 0; k < n_missing; ++k)
+      {
+        point_data_t np;
+        for (int op = 0; op < N_OPS; op++)
+        {
+          np[op] = batch_values[k * N_OPS + op];
+          if (isnan(batch_values[k * N_OPS + op]))
+            printf("OBL generation warning: nan operator %d in batch-generated point\n", op);
+        }
+        point_data.emplace(missing_pts[k], np);
+        dirty_point_data.insert(missing_pts[k]);
+        dirty_point_epochs[missing_pts[k]] = eval_index;
+        this->n_points_used++;
+      }
+    }
+  }
+
   for (int i = 0, h = 0; i < n_states_idxs; i++)
   {
     const key_t &hc_key = hypercubes_to_compute[i];
@@ -269,6 +330,25 @@ int multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::evaluate_with
 
     if (h == HYPERCUBE_BUFFER_SIZE || (i == (n_states_idxs - 1) && h))
     {
+      // Ensure the map has room for THIS batch before inserting it. The other expansion
+      // check runs only once per interpolate() call (after this whole loop), so a single
+      // call that generates more hypercubes than the current capacity overflows the map:
+      // add_hypercubes_to_hashmap then hits its "hashmap overflow" branch and silently
+      // drops the excess, which later surfaces as "hypercube missing". Grow here, before
+      // the batch insert, keeping occupied + h under a 0.7 load factor.
+      {
+        gpu_hashmap_async::gpu_hash_map<value_t, N_VERTS * N_OPS> _hdr;
+        cudaMemcpy(&_hdr, hypercube_data_d, sizeof(_hdr), cudaMemcpyDeviceToHost);
+        bool _grew = false;
+        while (static_cast<long long>(_hdr.occupied) + h > static_cast<long long>(0.7 * _hdr.size))
+        {
+          hypercube_data_d = gpu_hashmap_async::expand_hashmap(hypercube_data_d, 2);
+          cudaMemcpy(&_hdr, hypercube_data_d, sizeof(_hdr), cudaMemcpyDeviceToHost);
+          _grew = true;
+        }
+        if (_grew)
+          cudaDeviceSynchronize();  // rehash (default stream) must finish before the batch insert
+      }
       thrust::copy(new_hypercube_data.begin(), new_hypercube_data.end(), new_hypercube_data_buffer.begin());
       thrust::copy(new_hypercube_index.begin(), new_hypercube_index.end(), new_hypercube_index_buffer.begin());
 
