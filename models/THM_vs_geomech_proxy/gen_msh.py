@@ -7,7 +7,7 @@ import copy
 import gmsh
 import sys
 
-
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : int, tags : dict, filename : str = None,
                     is_transfinite : bool = True, is_recombine : bool  = True, refinement_mult : bool = 1.0,
@@ -63,7 +63,7 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
         ny = len(y) - 1
         nz = len(z) - 1
         suffix = str(nx) + '_' + str(ny) + '_' + str(nz)
-        folder = os.path.join('meshes', suffix)
+        folder = os.path.join(BASE_DIR, 'meshes', suffix)
         os.makedirs(folder, exist_ok=True)
         filename = os.path.join(folder, 'mesh.msh')
 

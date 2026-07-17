@@ -7,7 +7,8 @@ import time
 from darts.engines import redirect_darts_output, timer_node
 from plot_vtk import plot_vtk_pyvista
 
-def run_python(m, days=0, restart_dt=0, init_step = False):
+def run_python(m, days=0, restart_dt=0, init_step = False,
+               save_well_data_after_run=True):
     if days:
         runtime = days
     else:
@@ -66,6 +67,9 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
 
     # update current engine time
     m.e.t = runtime
+    if save_well_data_after_run:
+        # save well data at every converged time step
+        m.output.save_data_to_h5(kind="well")
 
     print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (m.e.stat.n_timesteps_total, m.e.stat.n_timesteps_wasted,
                                                      m.e.stat.n_newton_total, m.e.stat.n_newton_wasted,
@@ -166,8 +170,18 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
             pass
 
     splitter = '-' * 100 + '\n'
+    
+    # Set up darts output to evaluate secondary properties (e.g. viscosity) from the
+    # primary variables via the property interpolator. all_phase_props=True registers the
+    # phase properties (incl. 'mu_<phase>') in output.properties and builds property_itor.
+    # THMCModel.init() does not set some attributes that DartsModel.init() sets but which
+    # set_output() reads (self.restart, self.has_dfm_well), so set them explicitly here.
+    m.restart = False
+    from darts.engines import ms_well
+    m.has_dfm_well = any(well.ms_type == ms_well.MS_Type.DFM for well in m.reservoir.wells)
+    m.set_output(output_folder=m.output_directory, all_phase_props=True, save_initial=False)
 
-    # For geomechanics quilibrium intialization, we initially run the simulation for a long time
+    # For geomechanics equilibrium intialization, we initially run the simulation for a long time
     # to get the equilibrium, then store that initial displacements internally.
     # Further-timestep displacements will be relative to the initial ones.
     print(splitter + 'compute initialization ...\n' + splitter)
@@ -192,15 +206,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
-    # Set up darts output to evaluate secondary properties (e.g. viscosity) from the
-    # primary variables via the property interpolator. all_phase_props=True registers the
-    # phase properties (incl. 'mu_<phase>') in output.properties and builds property_itor.
-    # THMCModel.init() does not set some attributes that DartsModel.init() sets but which
-    # set_output() reads (self.restart, self.has_dfm_well), so set them explicitly here.
-    m.restart = False
-    from darts.engines import ms_well
-    m.has_dfm_well = any(well.ms_type == ms_well.MS_Type.DFM for well in m.reservoir.wells)
-    m.set_output(output_folder=m.output_directory, all_phase_props=True, save_initial=False)
+  
     visc_key = f'mu_{m.physics.phases[0]}'  # state-dependent viscosity property key, e.g. 'mu_wat'
 
     m.timer.node["run_python"] = timer_node()
