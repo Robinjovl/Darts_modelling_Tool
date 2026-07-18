@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.physics.super.physics import Compositional
+from darts.physics.base.physics import PhysicsBase
 from darts.pipes.define_pipe_geometry import PipeGeometry
 
 
@@ -179,7 +179,7 @@ class RampUpRate:
             assert inj_fluid_props is None, (
                 "For outflow, inj_fluid_props must not be specified!"
             )
-            assert physics.state_spec == Compositional.StateSpecification.PH, (
+            assert physics.state_spec == PhysicsBase.StateSpecification.PH, (
                 "Thermal production only work with the PH formulation for multiphase flow accurately!"
             )
 

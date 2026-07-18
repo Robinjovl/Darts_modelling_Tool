@@ -12,8 +12,8 @@ try:
 except ImportError:
     pass
 from darts.engines import well_control_iface
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.basic import ConstFunc, CapillaryPressure, PhaseRelPerm
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
@@ -380,10 +380,10 @@ class Model(DartsModel):
 
         if temperature is None:  # if None, then thermal=True
             thermal = True
-            state_spec = Compositional.StateSpecification.PT
+            state_spec = PhysicsBase.StateSpecification.PT
         else:
             thermal = False
-            state_spec = Compositional.StateSpecification.P
+            state_spec = PhysicsBase.StateSpecification.P
 
         pres_in = 210 # (pressure at depth of well 1 will be 300 bar)
         # 1 p axis + (nc-1) z axes + optional T axis
@@ -393,7 +393,7 @@ class Model(DartsModel):
         if thermal:
             ax_step.append(0.1)
             ax_origin.append(273.15)
-        self.physics = Compositional(self.components, phases, timer=self.timer,
+        self.physics = PhysicsBase(self.components, phases, timer=self.timer,
                                      axes_step=ax_step, axes_origin=ax_origin,
                                      epsilon_z=self.zero / 10,
                                      state_spec=state_spec,
@@ -593,7 +593,7 @@ class Model(DartsModel):
                 depths = np.linspace(min_depth, max_depth, nb)
 
                 # zH2O = 1
-                from darts.physics.super.initialize import Initialize
+                from darts.physics.base.initialize import Initialize
                 init = Initialize(self.physics, aq_idx=0, h2o_idx=0)
                 nc = len(self.components)
 
