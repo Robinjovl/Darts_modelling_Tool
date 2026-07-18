@@ -168,6 +168,7 @@ if(CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusparse_ilu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusolv.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_cpr_gpu.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_mcsgs.cu
   )
   set(OD_GPU_SOLVERS_HEADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/gpu_tools.hpp
@@ -176,6 +177,7 @@ if(CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cusparse_ilu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cusolv.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_cpr_gpu.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_mcsgs.hpp
   )
   # csr_matrix.cpp and the .cpp GPU wrappers must be compiled as CUDA.
   set_source_files_properties(
@@ -233,7 +235,7 @@ file(MAKE_DIRECTORY ${_od_linsolv_gen_dir})
 # the block-CSR matrix container, and the default block preconditioners/solvers.
 foreach(_od_solver linsolv_gmres linsolv_cpr linsolv_mgr linsolv_superlu
                    linsolv_bicgstab linsolv_gmres_gpu linsolv_cusolv
-                   linsolv_cusparse_ilu linsolv_cudss linsolv_amgx
+                   linsolv_cusparse_ilu linsolv_cudss linsolv_amgx linsolv_mcsgs
                    linsolv_bos_bilu0 linsolv_bos_gmres csr_matrix)
   od_emit_template_instantiations(
     CLASS ${_od_solver}

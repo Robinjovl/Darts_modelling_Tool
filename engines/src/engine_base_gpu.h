@@ -29,6 +29,7 @@
 #ifdef WITH_CUDSS
 #include "linsolv_cudss.hpp"
 #endif
+#include "linsolv_mcsgs.hpp"
 #ifdef OPENDARTS_GPU_HAS_AMGX
 #include "linsolv_amgx.hpp"
 #include "linsolv_bos_cpr_gpu.hpp"
@@ -388,6 +389,10 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
           // scalar-expanded full system: well-row diagonals become invertible
           // scalars, which D^-1-based smoothers (Jacobi/DILU) require
           cpr->set_prec(new linsolv_amgx<N_VARS>(device_num, 1));
+        else if (stage2_env && std::string(stage2_env) == std::string("mcsgs"))
+          // opendarts multicolor symmetric block-Gauss-Seidel: latency-friendly
+          // stage-2 with identity fallback on singular (well-row) diagonals
+          cpr->set_prec(new linsolv_mcsgs<N_VARS>());
         else
           cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>());
         if (params->linear_type == sim_params::GPU_BICGSTAB_CPR_AMGX)

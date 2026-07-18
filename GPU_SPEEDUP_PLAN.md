@@ -227,3 +227,16 @@ launch campaign: not started (next round per plan).
   `max_levels=5` catastrophic (52.1s — DENSE_LU coarse solve explodes). The default AMG hierarchy
   shape is near-optimal; coarse-level launch overhead is hidden under concurrent work. Item closed —
   no further gains from stage-1 config surgery.
+
+### P2-10 first own-kernel implementation: linsolv_mcsgs (2026-07-18 session 4)
+Multicolor symmetric block-Gauss-Seidel stage-2 (`DARTS_CPR_STAGE2=mcsgs`,
+`DARTS_MCSGS_SWEEPS`, default off): greedy host coloring (3 colors on SPE10), Gauss-Jordan
+diagonal-block inversion with identity fallback on singular well rows, 2×n_colors kernel
+launches per apply (vs 363-wavefront trisolves). Measured:
+- 200d: **parity with ILU0** (sim 7.26 vs 7.3–7.4s; NI 43 identical, LI 777 vs 345, setup 2.03→0.79s).
+- 3650d: **loses** (29.4s vs 22.3s; LI 4554) — one SGS sweep is too weak at dt≈400d;
+  2 sweeps trade LI 2968 at doubled apply cost → 29.7s, no better.
+Conclusion: exact ILU0 remains the default. The remaining stage-2 upside at large dt needs a
+stronger latency-friendly smoother (multicolor block-ILU0 within colors, or an adaptive
+ILU0↔MCSGS switch on dt/LI) — the MCSGS class provides the scaffold (coloring, inv-diag,
+well-row guard) for that follow-up.
