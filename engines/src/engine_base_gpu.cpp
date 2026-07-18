@@ -44,14 +44,95 @@
 // if (tid == 0) g_odata[blockIdx.x] = sdata[0];
 // }
 
+namespace
+{
+// mirrors the file-local helper in engine_base.cpp
+inline value_t safe_denominator_gpu(value_t denom)
+{
+  value_t abs_denom = std::fabs(denom);
+  return abs_denom > value_t(0) ? abs_denom : std::numeric_limits<value_t>::min();
+}
+
+constexpr int NORM_MAX_VARS = 16;
+constexpr int NORM_BLOCK = 256;
+
+// per-variable sums over reservoir blocks: acc[c] = sum RHS^2, acc[n_vars+c] = sum (PV*op_vals)^2
+__global__ void newton_residual_l2_kernel(const value_t *RHS, const value_t *PV, const value_t *op_vals,
+                                          const index_t n_res_blocks, const int n_vars, const int n_ops,
+                                          value_t *acc)
+{
+  value_t res2[NORM_MAX_VARS], norm2[NORM_MAX_VARS];
+  for (int c = 0; c < n_vars; c++)
+    res2[c] = norm2[c] = 0;
+
+  for (index_t i = blockIdx.x * blockDim.x + threadIdx.x; i < n_res_blocks;
+       i += (index_t)gridDim.x * blockDim.x)
+  {
+    for (int c = 0; c < n_vars; c++)
+    {
+      const value_t r = RHS[i * n_vars + c];
+      const value_t nm = PV[i] * op_vals[i * n_ops + c];
+      res2[c] += r * r;
+      norm2[c] += nm * nm;
+    }
+  }
+
+  __shared__ value_t sh[NORM_BLOCK];
+  for (int c = 0; c < 2 * n_vars; c++)
+  {
+    sh[threadIdx.x] = (c < n_vars) ? res2[c] : norm2[c - n_vars];
+    __syncthreads();
+    for (int s = blockDim.x / 2; s > 0; s >>= 1)
+    {
+      if (threadIdx.x < s)
+        sh[threadIdx.x] += sh[threadIdx.x + s];
+      __syncthreads();
+    }
+    if (threadIdx.x == 0)
+      atomicAdd(&acc[c], sh[0]);
+    __syncthreads();
+  }
+}
+
+__global__ void average_operator_kernel(const value_t *op_vals, const index_t n_res_blocks, const int n_vars,
+                                        const int n_ops, value_t *acc)
+{
+  value_t sum[NORM_MAX_VARS];
+  for (int c = 0; c < n_vars; c++)
+    sum[c] = 0;
+  for (index_t i = blockIdx.x * blockDim.x + threadIdx.x; i < n_res_blocks;
+       i += (index_t)gridDim.x * blockDim.x)
+    for (int c = 0; c < n_vars; c++)
+      sum[c] += op_vals[i * n_ops + c];
+
+  __shared__ value_t sh[NORM_BLOCK];
+  for (int c = 0; c < n_vars; c++)
+  {
+    sh[threadIdx.x] = sum[c];
+    __syncthreads();
+    for (int s = blockDim.x / 2; s > 0; s >>= 1)
+    {
+      if (threadIdx.x < s)
+        sh[threadIdx.x] += sh[threadIdx.x + s];
+      __syncthreads();
+    }
+    if (threadIdx.x == 0)
+      atomicAdd(&acc[c], sh[0]);
+    __syncthreads();
+  }
+}
+} // namespace
+
 engine_base_gpu::~engine_base_gpu()
 {
+  for (void *p : pinned_host_ptrs)
+    cudaHostUnregister(p);
+  free_device_data(residual_scratch_d);
   free_device_data(X_d);
   free_device_data(Xn_d);
   free_device_data(dX_d);
   free_device_data(RHS_d);
   free_device_data(Xop_d);
-  free_device_data(RHS_wells_d);
   free_device_data(PV_d);
   free_device_data(mesh_tran_d);
   free_device_data(jac_wells_d);
@@ -106,6 +187,16 @@ int engine_base_gpu::evaluate_operators_d()
 
 int engine_base_gpu::post_newtonloop(value_t deltat, value_t time)
 {
+	// The converged path in engine_base::post_newtonloop consumes host
+	// op_vals_arr (ms_well::calc_rates, FIPS); the per-assembly host mirror is
+	// gone, so refresh it exactly when this step is about to be accepted
+	// (same predicate as the base implementation).
+	const double well_tolerance_coefficient = 1e2;
+	if (linear_solver_error_last_dt == 0 && newton_residual_last_dt < params->tolerance_newton &&
+		well_residual_last_dt <= well_tolerance_coefficient * params->tolerance_newton)
+	{
+		sync_op_vals_to_host();
+	}
 	int converged = engine_base::post_newtonloop(deltat, time);
 	if (!converged)
 	{
@@ -143,11 +234,77 @@ int engine_base_gpu::assemble_linear_system(value_t deltat)
 	timer->node["jacobian assembly"].stop_gpu();
 
 	timer->node["host<->device_overhead"].start_gpu();
+	// Host RHS mirror stays (well assembly and apply_rhs_flux contract); the
+	// 260MB-class op_vals_arr mirror is refreshed lazily instead: residual
+	// norms reduce on the device, converged-step consumers trigger
+	// sync_op_vals_to_host() from post_newtonloop.
 	copy_data_to_host(RHS, RHS_d);
-	copy_data_to_host(op_vals_arr, op_vals_arr_d);
 	timer->node["host<->device_overhead"].stop_gpu();
 
 	return 0;
+}
+
+void engine_base_gpu::sync_op_vals_to_host()
+{
+	timer->node["host<->device_overhead"].start_gpu();
+	copy_data_to_host(op_vals_arr, op_vals_arr_d);
+	timer->node["host<->device_overhead"].stop_gpu();
+}
+
+double engine_base_gpu::calc_newton_residual_L2()
+{
+	if (n_vars > NORM_MAX_VARS)
+	{
+		sync_op_vals_to_host();
+		return engine_base::calc_newton_residual_L2();
+	}
+	if (!residual_scratch_d)
+		allocate_device_data(&residual_scratch_d, 2 * NORM_MAX_VARS);
+	cudaMemset(residual_scratch_d, 0, 2 * n_vars * sizeof(value_t));
+	const int n_blocks_launch =
+		std::min<index_t>((mesh->n_res_blocks + NORM_BLOCK - 1) / NORM_BLOCK, 4096);
+	newton_residual_l2_kernel<<<n_blocks_launch, NORM_BLOCK>>>(
+		RHS_d, PV_d, op_vals_arr_d, mesh->n_res_blocks, n_vars, n_ops, residual_scratch_d);
+	std::vector<value_t> acc(2 * n_vars);
+	copy_data_to_host(acc.data(), residual_scratch_d, 2 * n_vars);
+
+	double residual = 0;
+	for (int c = 0; c < n_vars; c++)
+		residual = std::max(residual, sqrt(acc[c] / safe_denominator_gpu(acc[n_vars + c])));
+	return residual;
+}
+
+double engine_base_gpu::calc_newton_residual_L1()
+{
+	sync_op_vals_to_host();
+	return engine_base::calc_newton_residual_L1();
+}
+
+double engine_base_gpu::calc_newton_residual_Linf()
+{
+	sync_op_vals_to_host();
+	return engine_base::calc_newton_residual_Linf();
+}
+
+void engine_base_gpu::average_operator(std::vector<value_t> &av_op)
+{
+	if (n_vars > NORM_MAX_VARS)
+	{
+		sync_op_vals_to_host();
+		engine_base::average_operator(av_op);
+		return;
+	}
+	if (!residual_scratch_d)
+		allocate_device_data(&residual_scratch_d, 2 * NORM_MAX_VARS);
+	cudaMemset(residual_scratch_d, 0, n_vars * sizeof(value_t));
+	const int n_blocks_launch =
+		std::min<index_t>((mesh->n_res_blocks + NORM_BLOCK - 1) / NORM_BLOCK, 4096);
+	average_operator_kernel<<<n_blocks_launch, NORM_BLOCK>>>(
+		op_vals_arr_d, mesh->n_res_blocks, n_vars, n_ops, residual_scratch_d);
+	std::vector<value_t> acc(n_vars);
+	copy_data_to_host(acc.data(), residual_scratch_d, n_vars);
+	for (int c = 0; c < n_vars; c++)
+		av_op[c] = acc[c] / mesh->n_res_blocks;
 }
 
 int engine_base_gpu::solve_linear_equation()

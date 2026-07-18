@@ -17,6 +17,7 @@
 #if defined(WITH_GPU) && defined(WITH_AMGX)
 
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 
@@ -89,7 +90,33 @@ namespace opendarts
               }\
         }";
 
-        AMGX_config_create((AMGX_config_handle_struct **)&config, default_config);
+        // Adaptive hierarchy-reuse knobs (see linsolv_amgx.hpp): the config key
+        // makes AMGX_solver_setup reuse the coarsening/interpolation whenever
+        // the matrix was refreshed via replace_coefficients; the wrapper's
+        // setup() decides per-call whether to allow that or force a rebuild.
+        {
+          const char *v = std::getenv("DARTS_AMGX_REUSE");
+          reuse_max = v ? atoi(v) : 2;
+          if (reuse_max < 0)
+            reuse_max = 0;
+          const char *g = std::getenv("DARTS_AMGX_REUSE_GROWTH");
+          reuse_growth = g ? atof(g) : 1.5;
+        }
+        std::string config_str(default_config);
+        if (reuse_max > 0)
+        {
+          const size_t pos = config_str.find("\"solver\": \"AMG\"");
+          if (pos != std::string::npos)
+          {
+            // NOTE: -1 ("reuse all") is broken in this AMGX build (first hierarchy
+            // build already produces a diverging preconditioner); a large positive
+            // level count gives the intended reuse-all semantics.
+            config_str.insert(pos, "\"structure_reuse_levels\": 999,");
+            printf("AMGX: adaptive hierarchy reuse enabled (max %d consecutive reuses, growth %.2f)\n",
+              reuse_max, reuse_growth);
+          }
+        }
+        AMGX_config_create((AMGX_config_handle_struct **)&config, config_str.c_str());
         printf("AMGX: %s not found; default configuration applied\n", config_filename.c_str());
       }
 
@@ -159,6 +186,19 @@ namespace opendarts
       AMGX_vector_create((AMGX_vector_handle_struct **)&x, (AMGX_resources_handle)rsrc, (AMGX_Mode)AMGX_mode);
       AMGX_vector_create((AMGX_vector_handle_struct **)&b, (AMGX_resources_handle)rsrc, (AMGX_Mode)AMGX_mode);
 
+      // Fresh handles start with a fresh hierarchy.
+      reuse_count = 0;
+      li_baseline = li_last = -1;
+      force_rebuild_next = false;
+      return upload_matrix_full(A_input);
+    }
+
+    /** Full structure+values upload. Resets AMGX's is_matrix_setup flag, so the
+     *  next AMGX_solver_setup rebuilds the AMG hierarchy from scratch even when
+     *  structure_reuse_levels is set in the config. */
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_amgx<N_BLOCK_SIZE>::upload_matrix_full(opendarts::linear_solvers::csr_matrix_base *A_input)
+    {
       // bs1 expansion path: AMGX consumes a scalar-CSR device view. For the
       // legacy csr_matrix<N> Jacobian this is the in-place convert_to_ELL
       // pathway; for the unified block_csr_matrix it is the
@@ -203,36 +243,64 @@ namespace opendarts
       const std::string timer_key = "AMGX<" + std::to_string((int)N_BLOCK_SIZE) + ">";
       this->timer_setup->node[timer_key].start();
 
-      bool used_bs1 = false;
-      if (N_BLOCK_SIZE > 1 && convert_to_bs1)
+      // Adaptive hierarchy reuse: with structure_reuse_levels in the config,
+      // replace_coefficients keeps AMGX's is_matrix_setup flag and the next
+      // AMGX_solver_setup reuses the coarsening/interpolation. A full upload
+      // resets the flag and forces a from-scratch rebuild. Rebuild when reuse
+      // is disabled, after a failed solve, after reuse_max consecutive
+      // reuses, or when the outer iteration count degraded past
+      // reuse_growth x the count observed with the fresh hierarchy.
+      bool rebuild = (reuse_max <= 0) || force_rebuild_next || (reuse_count >= reuse_max);
+      if (!rebuild && li_baseline > 0 && li_last > (int)(reuse_growth * li_baseline))
+        rebuild = true;
+
+      if (rebuild)
       {
-        auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_input);
-        if (A_typed != nullptr)
+        if (upload_matrix_full(A_input) != 0)
         {
-          A_typed->convert_to_ELL();
-          AMGX_matrix_replace_coefficients((AMGX_matrix_handle)A, A_typed->n_rows * N_BLOCK_SIZE,
-            A_typed->rows_ptr[A_typed->n_rows] * N_BLOCK_SIZE * N_BLOCK_SIZE, A_typed->csrValC, 0);
-          used_bs1 = true;
+          this->timer_setup->node[timer_key].stop();
+          return -1;
         }
-        else
+        reuse_count = 0;
+        li_baseline = -1;
+        force_rebuild_next = false;
+      }
+      else
+      {
+        bool used_bs1 = false;
+        if (N_BLOCK_SIZE > 1 && convert_to_bs1)
         {
-          auto *A_block = dynamic_cast<opendarts::linear_solvers::block_csr_matrix *>(A_input);
-          if (A_block != nullptr)
+          auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_input);
+          if (A_typed != nullptr)
           {
-            if (A_block->build_scalar_csr_device() != 0)
-              return -1;
-            AMGX_matrix_replace_coefficients((AMGX_matrix_handle)A,
-              A_block->n_rows * N_BLOCK_SIZE,
-              static_cast<int>(A_block->scalar_csr_nnz()),
-              A_block->scalar_csr_values_device(), 0);
+            A_typed->convert_to_ELL();
+            AMGX_matrix_replace_coefficients((AMGX_matrix_handle)A, A_typed->n_rows * N_BLOCK_SIZE,
+              A_typed->rows_ptr[A_typed->n_rows] * N_BLOCK_SIZE * N_BLOCK_SIZE, A_typed->csrValC, 0);
             used_bs1 = true;
           }
+          else
+          {
+            auto *A_block = dynamic_cast<opendarts::linear_solvers::block_csr_matrix *>(A_input);
+            if (A_block != nullptr)
+            {
+              if (A_block->build_scalar_csr_device() != 0)
+                return -1;
+              AMGX_matrix_replace_coefficients((AMGX_matrix_handle)A,
+                A_block->n_rows * N_BLOCK_SIZE,
+                static_cast<int>(A_block->scalar_csr_nnz()),
+                A_block->scalar_csr_values_device(), 0);
+              used_bs1 = true;
+            }
+          }
         }
-      }
-      if (!used_bs1)
-      {
-        AMGX_matrix_replace_coefficients((AMGX_matrix_handle)A, A_input->n_rows,
-          A_input->get_rows_ptr()[A_input->n_rows], A_input->get_values_d(), 0);
+        if (!used_bs1)
+        {
+          AMGX_matrix_replace_coefficients((AMGX_matrix_handle)A, A_input->n_rows,
+            A_input->get_rows_ptr()[A_input->n_rows], A_input->get_values_d(), 0);
+        }
+        reuse_count++;
+        if (li_baseline < 0)
+          li_baseline = li_last; // outer-iteration quality of the fresh hierarchy
       }
       AMGX_solver_setup((AMGX_solver_handle)solver, (AMGX_matrix_handle)A);
       n_rows = A_input->n_rows;
@@ -247,15 +315,17 @@ namespace opendarts
       const std::string timer_key = "AMGX<" + std::to_string((int)N_BLOCK_SIZE) + ">";
       this->timer_solve->node[timer_key].start();
 
+      // x only needs to be sized: the solve below zeroes the initial guess, so
+      // uploading X's contents is pure transfer waste.
       if (!convert_to_bs1)
       {
         AMGX_vector_upload((AMGX_vector_handle)b, n_rows, N_BLOCK_SIZE, B);
-        AMGX_vector_upload((AMGX_vector_handle)x, n_rows, N_BLOCK_SIZE, X);
+        AMGX_vector_set_zero((AMGX_vector_handle)x, n_rows, N_BLOCK_SIZE);
       }
       else
       {
         AMGX_vector_upload((AMGX_vector_handle)b, n_rows * N_BLOCK_SIZE, 1, B);
-        AMGX_vector_upload((AMGX_vector_handle)x, n_rows * N_BLOCK_SIZE, 1, X);
+        AMGX_vector_set_zero((AMGX_vector_handle)x, n_rows * N_BLOCK_SIZE, 1);
       }
 
       AMGX_solver_solve_with_0_initial_guess((AMGX_solver_handle)solver, (AMGX_vector_handle)b,
@@ -270,6 +340,7 @@ namespace opendarts
       if (st == AMGX_SOLVE_FAILED || st == AMGX_SOLVE_DIVERGED)
       {
         printf("AMGX: solve %s\n", st == AMGX_SOLVE_FAILED ? "failed" : "diverged");
+        force_rebuild_next = true; // a possibly stale hierarchy must not survive a failure
         this->timer_solve->node[timer_key].stop();
         return -1;
       }

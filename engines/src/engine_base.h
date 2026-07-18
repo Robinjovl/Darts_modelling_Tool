@@ -504,6 +504,9 @@ public:
 	std::vector<value_t> op_vals_arr;	// [N_OPS * n_blocks] array of values of operators
 	std::vector<value_t> op_ders_arr;	// [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
 	std::vector<value_t> op_vals_arr_n; // [N_OPS * n_blocks] array of values of operators from the last timestep
+	// GPU engines keep op_vals_arr_n on the device (op_vals_arr_n_d) and skip the
+	// 260MB-class host mirror assignment in post_newtonloop.
+	bool keep_host_op_vals_n_mirror = true;
 
 	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
 	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components

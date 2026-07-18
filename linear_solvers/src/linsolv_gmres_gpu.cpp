@@ -319,6 +319,10 @@ namespace opendarts
       }
 
       n_iters = total_iters;
+      // Feed the iteration count back to the preconditioner so hierarchy-reuse
+      // policies can gate their next setup(); no-op without such a policy.
+      if (prec != nullptr)
+        prec->set_last_outer_iters(n_iters);
       {
         const double den2 = (b_norm > 1e-16) ? b_norm : 1.0;
         final_resid = res_norm / den2;
@@ -542,6 +546,10 @@ namespace opendarts
       }
 
       n_iters = total_iters;
+      // Feed the iteration count back to the preconditioner so hierarchy-reuse
+      // policies can gate their next setup(); no-op without such a policy.
+      if (prec != nullptr)
+        prec->set_last_outer_iters(n_iters);
       {
         const double den2 = (b_norm > 1e-16) ? b_norm : 1.0;
         final_resid = res_norm / den2;

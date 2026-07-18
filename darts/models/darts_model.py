@@ -1542,7 +1542,12 @@ class DartsModel:
             if self.has_dfm_well:
                 self.apply_dfm_well_lateral_heat_flux(dt, t)
 
-            if self.platform == "gpu":
+            # The device RHS is authoritative after assembly; re-upload only when a
+            # host-side flux modification actually touched the host mirror.
+            if self.platform == "gpu" and (
+                self.has_dfm_well
+                or type(self).set_rhs_flux is not DartsModel.set_rhs_flux
+            ):
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )
@@ -1829,7 +1834,11 @@ class DartsModel:
             self.apply_rhs_flux(dt, t)
             if self.has_dfm_well:
                 self.apply_dfm_well_lateral_heat_flux(dt, t)
-            if self.platform == "gpu":
+            # See run_timestep: re-upload only when host-side flux modified the RHS.
+            if self.platform == "gpu" and (
+                self.has_dfm_well
+                or type(self).set_rhs_flux is not DartsModel.set_rhs_flux
+            ):
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
                 )

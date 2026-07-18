@@ -107,9 +107,33 @@ namespace opendarts
 
       opendarts::config::mat_float get_residual() override;
 
+      /// outer-Krylov feedback for the adaptive hierarchy-reuse policy
+      void set_last_outer_iters(int n_iters) override { li_last = n_iters; }
+
       int device_num;
       int convert_to_bs1;
       int n_rows;
+
+      // Adaptive AMG hierarchy reuse (structure_reuse_levels): reuse the
+      // coarsening/interpolation for up to reuse_max consecutive setups, but
+      // rebuild as soon as the outer iteration count degrades vs the count
+      // observed right after the last rebuild, or after a failed solve.
+      // Controlled by DARTS_AMGX_REUSE (max consecutive reuses, 0 disables,
+      // default 2) and DARTS_AMGX_REUSE_GROWTH (default 1.5).
+      int reuse_max = 0;
+      double reuse_growth = 1.5;
+      int reuse_count = 0;
+      int li_last = -1;
+      int li_baseline = -1;
+      bool force_rebuild_next = false;
+      bool hierarchy_uploaded = false;
+
+    private:
+      /// full matrix upload: resets AMGX's is_matrix_setup, forcing the next
+      /// AMGX_solver_setup to rebuild the AMG hierarchy from scratch
+      int upload_matrix_full(opendarts::linear_solvers::csr_matrix_base *A_input);
+
+    public:
 
       // AMGX handles (AMGX_solver_handle, AMGX_config_handle, AMGX_matrix_handle,
       // AMGX_vector_handle). Kept as void* -- they are opaque pointers anyway.

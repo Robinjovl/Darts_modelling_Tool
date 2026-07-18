@@ -98,6 +98,14 @@ namespace opendarts
         return 0;
       }
 
+      /** Forward the outer Krylov iteration count to the pressure stage so its
+       *  hierarchy-reuse policy (AMGX structure reuse) can gate the next setup. */
+      void set_last_outer_iters(int n_iters) override
+      {
+        if (p_system_preconditioner)
+          p_system_preconditioner->set_last_outer_iters(n_iters);
+      }
+
       /** Pressure preconditioner for the TRANSPOSED apply (CPRA). AMGX has no
        *  transpose-solve API, so the adjoint path binds a second instance to
        *  the explicitly transposed pressure matrix P^T. Lazily initialised on

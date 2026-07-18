@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <cmath>
+#include <cstdlib>
+#include <string>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -90,6 +92,16 @@ public:
   virtual int assemble_linear_system(value_t deltat) override;
   virtual int solve_linear_equation() override;
   virtual int post_newtonloop(value_t deltat, value_t time) override;
+
+  // Device-resident residual norms: the per-assembly host mirror of op_vals_arr
+  // is gone, so the default (L2) norms reduce on the device. L1/Linf fall back
+  // to the host implementation after an explicit refresh.
+  virtual double calc_newton_residual_L2() override;
+  virtual double calc_newton_residual_L1() override;
+  virtual double calc_newton_residual_Linf() override;
+  virtual void average_operator(std::vector<value_t> &av_op) override;
+  /// refresh the host op_vals_arr mirror from the device (lazy consumers)
+  void sync_op_vals_to_host();
 
   virtual int test_assembly(int n_times, int kernel_number = 0, int dump_jacobian_rhs = 0) override;
 
@@ -191,7 +203,8 @@ public:
   // linear system
   value_t *X_d = nullptr, *Xn_d = nullptr, *dX_d = nullptr, *RHS_d = nullptr;      // [N_VARS * n_blocks] arrays for solution, previous timestep solution, update, and right hand side
   value_t *Xop_d = nullptr;                          // [(N_VARS + n_history) * n_blocks] extended OBL state for history-aware interpolation
-  value_t *RHS_wells_d = nullptr;                    // [N_VARS * n_blocks] temporary device storage for RHS_wells copied async from host while main assembly is done
+  value_t *residual_scratch_d = nullptr;             // [2 * NORM_MAX_VARS] accumulator for device-side residual norms / operator averages
+  std::vector<void *> pinned_host_ptrs;              // host buffers registered with cudaHostRegister (unpinned in the destructor)
   std::vector<value_t> jac_wells;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary host storage for well equations
   value_t *jac_wells_d = nullptr;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary device storage for well equations
   std::vector<index_t> jac_well_head_idxs;           // [n_wells] well head indexes in jacobian values array
@@ -362,7 +375,15 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
         cpr->p_solver_solve_gpu = 1;
         cpr->p_solver_requires_diag_first = 0;
         cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
-        cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>());
+        // Stage-2 experiment hook: DARTS_CPR_STAGE2=amgx swaps the exact
+        // (latency-bound) block-ILU(0) for a second AMGX instance on the full
+        // system; configure it via amgx_config_bs<N_VARS>.json in the run
+        // directory (e.g. a MULTICOLOR_DILU smoother).
+        const char *stage2_env = std::getenv("DARTS_CPR_STAGE2");
+        if (stage2_env && std::string(stage2_env) == std::string("amgx"))
+          cpr->set_prec(new linsolv_amgx<N_VARS>(device_num));
+        else
+          cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>());
         if (params->linear_type == sim_params::GPU_BICGSTAB_CPR_AMGX)
         {
           auto *bicgstab = new linsolv_bicgstab<N_VARS>();
@@ -634,7 +655,6 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   allocate_device_data(Xn, &Xn_d);
   allocate_device_data(Xn, &dX_d);
   allocate_device_data(RHS, &RHS_d);
-  allocate_device_data(RHS, &RHS_wells_d);
 
   allocate_device_data(PV, &PV_d);
   allocate_device_data(mesh->tran, &mesh_tran_d);
@@ -643,6 +663,20 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 
   allocate_device_data(op_vals_arr, &op_vals_arr_d);
   allocate_device_data(op_vals_arr, &op_vals_arr_n_d);
+  // previous-timestep operator values live on the device; skip the host mirror
+  keep_host_op_vals_n_mirror = false;
+
+  // Pin the per-Newton host transfer buffers: pageable copies run ~9 GB/s on
+  // this host class vs ~26 GB/s pinned. Registration is best-effort.
+  auto pin_host_buffer = [this](std::vector<value_t> &v)
+  {
+    if (!v.empty() && cudaHostRegister(v.data(), v.size() * sizeof(value_t), cudaHostRegisterDefault) == cudaSuccess)
+      pinned_host_ptrs.push_back(v.data());
+  };
+  pin_host_buffer(X);
+  pin_host_buffer(dX);
+  pin_host_buffer(RHS);
+  pin_host_buffer(op_vals_arr);
   allocate_device_data(&op_ders_arr_d, n_ops * n_vars * mesh->n_blocks);
   if (get_n_history() > 0)
   {

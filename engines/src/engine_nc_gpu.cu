@@ -386,12 +386,11 @@ int engine_nc_gpu<NC>::assemble_jacobian_array(value_t dt, std::vector<value_t> 
     i_w++;
   }
   copy_data_to_device(jac_wells, jac_wells_d);
-  copy_data_to_device(RHS, RHS_wells_d);
 
   i_w = 0;
   for (ms_well *w : wells)
   {
-    copy_data_within_device(RHS_d + N_VARS * w->well_head_idx, RHS_wells_d + N_VARS * w->well_head_idx, N_VARS);
+    copy_data_to_device(&RHS[N_VARS * w->well_head_idx], RHS_d + N_VARS * w->well_head_idx, N_VARS);
     copy_data_within_device(jacobian->get_values_d() + jacobian->get_rows_ptr()[w->well_head_idx] * N_VARS * N_VARS, jac_wells_d + 2 * N_VARS * N_VARS * i_w, 2 * N_VARS * N_VARS);
     i_w++;
   }

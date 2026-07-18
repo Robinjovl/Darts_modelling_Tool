@@ -3356,7 +3356,8 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 		}
 
 		Xn = X;
-		op_vals_arr_n = op_vals_arr;
+		if (keep_host_op_vals_n_mirror)
+			op_vals_arr_n = op_vals_arr;
 		t += dt;
 
 

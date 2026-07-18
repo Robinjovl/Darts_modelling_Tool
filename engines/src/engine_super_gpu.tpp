@@ -592,7 +592,10 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
 
     // [3] Additional diffusion code here:   (phi_p * S_p) * (rho_p * D_cp * Delta_x_cp)  or (phi_p * S_p) * (kappa_p * Delta_T)
     // Only if block connection is between reservoir and reservoir cells!
-    if (i < n_res_blocks && j < n_res_blocks)
+    // Every term below multiplies tranD[conn_idx], so a zero diffusive
+    // transmissibility contributes exact zeros -- skip the ~40% of loop load
+    // requests this block otherwise costs on diffusion-free models.
+    if (i < n_res_blocks && j < n_res_blocks && tranD[conn_idx] != 0)
     {
       // Add diffusion term to the residual:
       for (uint8_t p = 0; p < NP; p++)
@@ -974,12 +977,11 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     i_w++;
   }
   copy_data_to_device(jac_wells, jac_wells_d);
-  copy_data_to_device(RHS, RHS_wells_d);
 
   i_w = 0;
   for (ms_well *w : wells)
   {
-    copy_data_within_device(RHS_d + N_VARS * w->well_head_idx, RHS_wells_d + N_VARS * w->well_head_idx, N_VARS);
+    copy_data_to_device(&RHS[N_VARS * w->well_head_idx], RHS_d + N_VARS * w->well_head_idx, N_VARS);
     copy_data_within_device(jac_values_d() + jac_rows_ptr()[w->well_head_idx] * N_VARS * N_VARS, jac_wells_d + 2 * N_VARS * N_VARS * i_w, 2 * N_VARS * N_VARS);
     i_w++;
   }
