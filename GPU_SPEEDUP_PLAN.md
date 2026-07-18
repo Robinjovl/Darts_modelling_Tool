@@ -223,3 +223,7 @@ launch campaign: not started (next round per plan).
   ILU0 survives because elimination modifies its pivots. Study route: an opendarts multicolor-DILU
   stage-2 kernel with well rows special-cased (identity/direct) — for structured grids a geometric
   8-coloring makes this tractable — rather than fighting AMGX per-row semantics.
+- P2-13c config probes (3650d, reuse active): `min_coarse_rows=2048` exactly neutral (22.56s);
+  `max_levels=5` catastrophic (52.1s — DENSE_LU coarse solve explodes). The default AMG hierarchy
+  shape is near-optimal; coarse-level launch overhead is hidden under concurrent work. Item closed —
+  no further gains from stage-1 config surgery.
