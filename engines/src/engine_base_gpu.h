@@ -384,6 +384,10 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
         const char *stage2_env = std::getenv("DARTS_CPR_STAGE2");
         if (stage2_env && std::string(stage2_env) == std::string("amgx"))
           cpr->set_prec(new linsolv_amgx<N_VARS>(device_num));
+        else if (stage2_env && std::string(stage2_env) == std::string("amgx_bs1"))
+          // scalar-expanded full system: well-row diagonals become invertible
+          // scalars, which D^-1-based smoothers (Jacobi/DILU) require
+          cpr->set_prec(new linsolv_amgx<N_VARS>(device_num, 1));
         else
           cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>());
         if (params->linear_type == sim_params::GPU_BICGSTAB_CPR_AMGX)

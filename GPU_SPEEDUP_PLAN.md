@@ -207,3 +207,15 @@ launch campaign: not started (next round per plan).
   SPE10 stage-2 or semantically wrong through the C-API path (garbage/unscaled X). Next steps for
   the study: validate M^-1 b on a small case against a reference, and/or wrap the smoother in a
   1-level AMG shell; until then the exact cuSPARSE block-ILU(0) stays.
+
+### P2-10 discriminating tests (2026-07-18 session 3)
+- bs2 AMGX as a full **PBICGSTAB** stage-2: outer GMRES converges in 1–7 iterations → **the block
+  matrix upload is correct** (well-residual convergence issues remain from the variable-accuracy
+  inner solve; not a viable configuration, but a valid probe).
+- **Scalar-expanded** (`DARTS_CPR_STAGE2=amgx_bs1`, `convert_to_bs1`) MULTICOLOR_DILU: fails
+  identically to the block variant → NOT a well-diagonal-block singularity.
+- Net discriminator: SpMV-only solvers (BICGSTAB) work on this upload; diagonal/L-U-split
+  relaxations (Jacobi, DILU) return destabilizing applies in both block and scalar form.
+  **Prime suspect: DARTS row ordering (diag-first storage) vs AMGX relaxation solvers' sorted-column
+  L/U-split assumption.** Study entry point: validate M^-1 b on a tiny system, then test a
+  column-sorted upload copy.
