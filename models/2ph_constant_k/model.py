@@ -6,12 +6,12 @@ import numpy as np
 from scipy.interpolate import interp1d
 import os
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
-from darts.physics.super.initialize import Initialize
+from darts.physics.base.initialize import Initialize
 
 
 class Model(DartsModel):
@@ -274,7 +274,7 @@ class Model(DartsModel):
         """ Activate physics """
         max_p = 500.
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         if n_comps != 20:
             comp_axes_max = [1. - (n_comps - 1) * epsilon, 0.9]
             if n_comps > 3:
@@ -292,7 +292,7 @@ class Model(DartsModel):
         z_denom = max(self.obl_points - 1, 1)
         axes_step = [p_step] + [m / z_denom for m in comp_axes_max]
         axes_origin = [40.0] + [epsilon] * (n_comps - 1)
-        self.physics = Compositional(self.components, phases, self.timer, state_spec=state_spec,
+        self.physics = PhysicsBase(self.components, phases, self.timer, state_spec=state_spec,
                                      axes_step=axes_step, axes_origin=axes_origin,
                                      epsilon_z=epsilon, cache=False, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
@@ -310,7 +310,7 @@ class Model(DartsModel):
                                                                   input_distribution=input_distribution)
         else:
             # run initialization over depth with specified GOC, pure liquid above, pure vapour under
-            from darts.physics.super.initialize import Initialize
+            from darts.physics.base.initialize import Initialize
             init = Initialize(physics=self.physics, algorithm=self.itor_type, mode=self.itor_mode,
                               is_barycentric=self.is_barycentric)
 

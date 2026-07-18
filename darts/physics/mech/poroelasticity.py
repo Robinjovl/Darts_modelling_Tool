@@ -1,16 +1,16 @@
 import numpy as np
 
 from darts.engines import *
-from darts.physics.base.operators_base import (
+from darts.physics.base.operator_evaluator import *
+from darts.physics.base.operator_evaluator import (
     PropertyOperators,
     ThermalVarOperator,
     WellCtrlOperators,
 )
-from darts.physics.super.operator_evaluator import *
-from darts.physics.super.physics import Compositional, PhysicsBase
+from darts.physics.base.physics import PhysicsBase
 
 
-class Poroelasticity(Compositional):
+class Poroelasticity(PhysicsBase):
     """
     This is the Physics class for compositional poroelastic simulation.
 
@@ -31,19 +31,19 @@ class Poroelasticity(Compositional):
         epsilon_z: float = 1e-9,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
-        state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
+        state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
         discretizer: str = 'mech_discretizer',
     ):
         """
         Constructor of the Poroelasticity Physics class. Defines the OBL grid for P-z
-        or P-T-z compositional simulation via Compositional with mechanics added.
+        or P-T-z compositional simulation via PhysicsBase with mechanics added.
 
         :param components: List of components.
         :param phases: List of phases.
         :param timer: Timer object.
-        :param axes_step: Per-axis cell size (forwarded to Compositional).
-        :param axes_origin: Per-axis grid origin (defaults via Compositional).
+        :param axes_step: Per-axis cell size (forwarded to PhysicsBase).
+        :param axes_origin: Per-axis grid origin (defaults via PhysicsBase).
         :param epsilon_z: Composition axis offset (default 1e-9).
         :param sim_eps_multiplier: Multiplier on epsilon_z to obtain sim_eps.
         :param extrapolation_flag: Extrapolation logic for z[last] < 0 (nc >= 3).

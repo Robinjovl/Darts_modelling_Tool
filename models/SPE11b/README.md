@@ -192,7 +192,7 @@ Physics are defined in the ``DartsModel.physics`` object,
         ax_step.append(0.1)
         ax_origin.append(273.15)
 
-    self.physics = Compositional(self.components, phases, timer=self.timer,
+    self.physics = PhysicsBase(self.components, phases, timer=self.timer,
                                  axes_step=ax_step, axes_origin=ax_origin,
                                  epsilon_z=self.zero / 10,
                                  state_spec=state_spec,

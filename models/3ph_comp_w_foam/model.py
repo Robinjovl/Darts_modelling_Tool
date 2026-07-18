@@ -3,8 +3,8 @@ from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from properties import GasFoamRelPerm
@@ -70,12 +70,12 @@ class Model(CICDModel):
 
         """ Activate physics """
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         # 1 p + (nc-1) z
         nz = len(components) - 1
         ax_step = [1.0] + [1e-3] * nz
         ax_origin = [1.0] + [self.zero / 10] * nz
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=ax_step, axes_origin=ax_origin,
                                      epsilon_z=self.zero / 10)
         self.physics.add_property_region(property_container)

@@ -12,8 +12,8 @@ from set_case import set_input_data
 
 from dataclasses import dataclass
 from darts.engines import well_control_iface
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
@@ -83,12 +83,12 @@ class ModelCCS(Model_CPG):
         flash_params.eos_order = ["PR", "AQ"]
         phases = ["gas", "wat"]
 
-        state_spec = Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.P
 
         nz = len(self.components) - 1
         ax_step = [self.idata.obl.p_step] + [self.idata.obl.z_step] * nz
         ax_origin = [self.idata.obl.p_origin] + [self.idata.obl.z_origin] * nz
-        self.physics = Compositional(self.components, phases, timer=self.timer,
+        self.physics = PhysicsBase(self.components, phases, timer=self.timer,
                                      axes_step=ax_step, axes_origin=ax_origin,
                                      epsilon_z=self.idata.obl.epsilon_z,
                                      state_spec=state_spec, cache=False)
