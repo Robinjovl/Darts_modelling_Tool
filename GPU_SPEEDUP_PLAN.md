@@ -196,3 +196,14 @@ launch campaign: not started (next round per plan).
   item 7 — enable it at model level via `parallel_evaluation` for the remaining point-gen win.
 - P2-13 partially landed (`147b564bc`): prolongate/memset fusion + redundant CPR syncs; effects are
   within run-to-run noise at these sizes, as predicted (~0.1–0.2s class).
+
+### P2-10 experiment findings (2026-07-18 session 2)
+- The bs2 `linsolv_amgx` wrapper path executes mechanically (upload/setup/solve run; verified with a
+  BLOCK_JACOBI probe).
+- AMGX's **default MIN_MAX coloring hangs** on the 1.12M-row bs2 matrix — any multicolor stage-2
+  config must set `"matrix_coloring_scheme": "PARALLEL_GREEDY"` (+ `max_uncolored_percentage`).
+- With that, MULTICOLOR_DILU (and BLOCK_JACOBI) run but the outer GMRES stalls at max_iters with a
+  growing residual — the relaxation-as-outer-solver apply is either numerically insufficient for
+  SPE10 stage-2 or semantically wrong through the C-API path (garbage/unscaled X). Next steps for
+  the study: validate M^-1 b on a small case against a reference, and/or wrap the smoother in a
+  1-level AMG shell; until then the exact cuSPARSE block-ILU(0) stays.
