@@ -256,3 +256,22 @@ well-row guard) for that follow-up.
   for item P0-1 was fully captured by the per-Newton mirror removal; the per-accepted-step remainder
   is already amortized by pinning. Well-data parity of the variant was verified exact before revert
   (max diff within baseline run-to-run noise, 1e-10-class).
+
+### Stage-2 study, session 6: approximate ILU0 applies CLOSED (implemented, measured, kept env-gated)
+New experiment machinery in `linsolv_cusparse_ilu` (`DARTS_ILU0_JACOBI=k` or `kL:kU`, default 0 =
+exact path byte-identical): Jacobi-iterated triangular solves on the EXACT bsrilu02 factors —
+k data-parallel sweeps replace the two 363-wavefront level-scheduled bsrsv2 solves (potential apply
+5.3 → ~2k·0.35 ms). Measured on SPE10 200d:
+- k=3: first solve stalls `lin 50 (5.8e-2)`, Newton spirals;
+- k=12 is WORSE (`8.7e-1`): the classic **divergent Jacobi transient** — the strictly-triangular
+  iteration matrix is nilpotent but non-normal, and SPE10's 1e6 permeability contrast makes
+  ‖E^m‖ grow before the level-363 cutoff;
+- kL:kU = 1:2 (the optimal first-order Neumann truncation, ≡ pattern-ISAI
+  M_L = I−E, M_U = (I−F)D⁻¹): still stalls at `lin 50 (6.5e-2)`.
+**Conclusion:** together with MCSGS (parity at 200d, ×3.1 LI at 3650d) and the AMGX relaxation
+smoothers (raw singular well diagonals), every relaxation/truncation-class stage-2 is now closed by
+measurement. The exact ILU0 apply is *quality-load-bearing* for SPE10-class contrast; its 5.3 ms
+latency-bound cost is the price of convergence. Remaining (day-scale, uncertain) routes:
+extended-pattern ISAI(2) (setup cost grows), or a within-color exact block-ILU0 factorization on
+the MCSGS scaffold (different factorization — same quality risk class MCSGS exposed). Default path
+re-verified byte-identical after the changes (7.24 s, NI 44 / LI 345).

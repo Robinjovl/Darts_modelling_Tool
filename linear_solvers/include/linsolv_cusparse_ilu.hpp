@@ -146,6 +146,17 @@ namespace opendarts
 
       double *values_d_ilu;
 
+      // Jacobi-iterated triangular solves (DARTS_ILU0_JACOBI=k, 0 = exact):
+      // apply the exact ILU0 factors approximately with k relaxation sweeps
+      // per triangular solve. Trades a small, k-controlled preconditioner
+      // perturbation for launch-bound applies instead of the
+      // wavefront-latency-bound level-scheduled bsrsv2 (363 levels on an
+      // SPE10-class grid). Double-precision copy-mode only.
+      int jacobi_sweeps = 0;   // L-solve sweeps
+      int jacobi_sweeps_u = 0; // U-solve sweeps (kL:kU env syntax)
+      double *jac_y0 = nullptr, *jac_y1 = nullptr, *jac_z0 = nullptr;
+      double *inv_udiag_d = nullptr; // [mb * N^2] inverted U diagonal blocks
+
       // Single-precision ILU storage.
       float *values_d_ilu_sfp, *ilu_rhs, *ilu_sol, *d_z_sfp;
 

@@ -492,7 +492,30 @@ if(CUDA)
             message(STATUS "Building AMGX GPU solver support from ${_amgx_dir}")
             # AMGX is an MPI-optional library; openDARTS does not use its MPI path.
             set(AMGX_NO_RPATH ON CACHE BOOL "" FORCE)
+            # AMGX targets C++17. Its own CMakeLists forces that only for
+            # CUDA >= 13.1 (where Thrust/CCCL require it); under older
+            # toolkits (e.g. the CUDA 12.6 tahiti CI runner) it inherits this
+            # project's C++20, and GCC >= 11 then floods the build log with
+            # the on-by-default -Wdeprecated-enum-enum-conversion warning
+            # from AMGX's AMGX_Mode enum arithmetic -- megabytes of output,
+            # enough to overflow GitLab's 4 MB job-log limit and hide
+            # everything after it. add_subdirectory snapshots the calling
+            # scope, so pin the standard for the AMGX subtree only and
+            # restore ours afterwards. The extra nvcc flag silences the
+            # per-TU "sm_70 support will be removed" notice on Volta CI.
+            set(_od_saved_cxx_standard "${CMAKE_CXX_STANDARD}")
+            set(_od_saved_cuda_standard "${CMAKE_CUDA_STANDARD}")
+            set(_od_saved_cuda_flags "${CMAKE_CUDA_FLAGS}")
+            set(CMAKE_CXX_STANDARD 17)
+            set(CMAKE_CUDA_STANDARD 17)
+            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Wno-deprecated-gpu-targets")
             add_subdirectory(thirdparty/AMGX)
+            set(CMAKE_CXX_STANDARD "${_od_saved_cxx_standard}")
+            set(CMAKE_CUDA_STANDARD "${_od_saved_cuda_standard}")
+            set(CMAKE_CUDA_FLAGS "${_od_saved_cuda_flags}")
+            unset(_od_saved_cxx_standard)
+            unset(_od_saved_cuda_standard)
+            unset(_od_saved_cuda_flags)
             add_compile_definitions(WITH_AMGX)
             unset(_amgx_dir)
         endif()

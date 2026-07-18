@@ -16,6 +16,7 @@
 #ifdef WITH_GPU
 
 #include <cstdio>
+#include <cstdlib>
 
 #include <cuda_runtime.h>
 
@@ -34,6 +35,135 @@ namespace opendarts
 {
   namespace linear_solvers
   {
+    namespace ilu_jacobi
+    {
+      // Gauss-Jordan inversion of the U diagonal blocks of the combined
+      // bsrilu02 LU factors (descr_U is NON_UNIT: the diagonal block position
+      // holds U_ii). One thread per block row.
+      template <uint8_t N>
+      __global__ void invert_u_diag_kernel(const int mb, const int *diag_ind, const double *lu, double *inv_udiag)
+      {
+        const int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= mb)
+          return;
+        double a[N * N], inv[N * N];
+        const double *db = lu + (size_t)diag_ind[i] * N * N;
+        for (int k = 0; k < N * N; k++)
+        {
+          a[k] = db[k];
+          inv[k] = 0;
+        }
+        for (int k = 0; k < N; k++)
+          inv[k * N + k] = 1;
+        for (int col = 0; col < N; col++)
+        {
+          int piv = col;
+          double pv = fabs(a[col * N + col]);
+          for (int r = col + 1; r < N; r++)
+            if (fabs(a[r * N + col]) > pv)
+            {
+              pv = fabs(a[r * N + col]);
+              piv = r;
+            }
+          if (piv != col)
+            for (int c = 0; c < N; c++)
+            {
+              double t = a[col * N + c];
+              a[col * N + c] = a[piv * N + c];
+              a[piv * N + c] = t;
+              t = inv[col * N + c];
+              inv[col * N + c] = inv[piv * N + c];
+              inv[piv * N + c] = t;
+            }
+          const double d = 1.0 / a[col * N + col];
+          for (int c = 0; c < N; c++)
+          {
+            a[col * N + c] *= d;
+            inv[col * N + c] *= d;
+          }
+          for (int r = 0; r < N; r++)
+          {
+            if (r == col)
+              continue;
+            const double f = a[r * N + col];
+            if (f != 0)
+              for (int c = 0; c < N; c++)
+              {
+                a[r * N + c] -= f * a[col * N + c];
+                inv[r * N + c] -= f * inv[col * N + c];
+              }
+          }
+        }
+        double *out = inv_udiag + (size_t)i * N * N;
+        for (int k = 0; k < N * N; k++)
+          out[k] = inv[k];
+      }
+
+      // One Jacobi sweep of the block-unit-lower solve L y = r:
+      //   y_new_i = r_i - sum_{pos < diag(i)} LU_pos * y_old[col(pos)]
+      template <uint8_t N>
+      __global__ void l_sweep_kernel(const int mb, const int *rows_ptr, const int *cols_ind, const int *diag_ind,
+        const double *lu, const double *r, const double *y_old, double *y_new)
+      {
+        const int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= mb)
+          return;
+        double acc[N];
+        for (int c = 0; c < N; c++)
+          acc[c] = r[(size_t)i * N + c];
+        const int dj = diag_ind[i];
+        for (int pos = rows_ptr[i]; pos < dj; pos++)
+        {
+          const int col = cols_ind[pos];
+          const double *blk = lu + (size_t)pos * N * N;
+          for (int c = 0; c < N; c++)
+          {
+            double sum = 0;
+            for (int v = 0; v < N; v++)
+              sum += blk[c * N + v] * y_old[(size_t)col * N + v];
+            acc[c] -= sum;
+          }
+        }
+        for (int c = 0; c < N; c++)
+          y_new[(size_t)i * N + c] = acc[c];
+      }
+
+      // One Jacobi sweep of the block-upper solve U z = y:
+      //   z_new_i = invU_ii * (y_i - sum_{pos > diag(i)} LU_pos * z_old[col(pos)])
+      template <uint8_t N>
+      __global__ void u_sweep_kernel(const int mb, const int *rows_ptr, const int *cols_ind, const int *diag_ind,
+        const double *lu, const double *inv_udiag, const double *y, const double *z_old, double *z_new)
+      {
+        const int i = blockIdx.x * blockDim.x + threadIdx.x;
+        if (i >= mb)
+          return;
+        double acc[N];
+        for (int c = 0; c < N; c++)
+          acc[c] = y[(size_t)i * N + c];
+        const int row_end = rows_ptr[i + 1];
+        for (int pos = diag_ind[i] + 1; pos < row_end; pos++)
+        {
+          const int col = cols_ind[pos];
+          const double *blk = lu + (size_t)pos * N * N;
+          for (int c = 0; c < N; c++)
+          {
+            double sum = 0;
+            for (int v = 0; v < N; v++)
+              sum += blk[c * N + v] * z_old[(size_t)col * N + v];
+            acc[c] -= sum;
+          }
+        }
+        const double *Di = inv_udiag + (size_t)i * N * N;
+        for (int c = 0; c < N; c++)
+        {
+          double sum = 0;
+          for (int v = 0; v < N; v++)
+            sum += Di[c * N + v] * acc[v];
+          z_new[(size_t)i * N + c] = sum;
+        }
+      }
+    } // namespace ilu_jacobi
+
     template <uint8_t N_BLOCK_SIZE>
     linsolv_cusparse_ilu<N_BLOCK_SIZE>::linsolv_cusparse_ilu(int factorize_in_place_input, int single_precision_input)
       : factorize_in_place(factorize_in_place_input), single_precision(single_precision_input)
@@ -47,6 +177,29 @@ namespace opendarts
       mb = nnzb = 0;
       pBufferSize_M = pBufferSize_L = pBufferSize_U = pBufferSize = 0;
       structural_zero = numerical_zero = 0;
+      // Jacobi-iterated triangular solves (see header). Double copy-mode only:
+      // the sweeps read the factored copy values_d_ilu.
+      // "k" (both solves) or "kL:kU" (asymmetric; "1:2" is the first-order
+      // Neumann/ISAI truncation M_L = I - E, M_U = (I - F) D^-1 -- higher
+      // orders diverge transiently on ill-scaled high-contrast factors).
+      const char *jac_env = std::getenv("DARTS_ILU0_JACOBI");
+      jacobi_sweeps = 0;
+      jacobi_sweeps_u = 0;
+      if (jac_env)
+      {
+        jacobi_sweeps = atoi(jac_env);
+        const char *colon = strchr(jac_env, ':');
+        jacobi_sweeps_u = colon ? atoi(colon + 1) : jacobi_sweeps;
+      }
+      if (jacobi_sweeps < 0)
+        jacobi_sweeps = 0;
+      if (jacobi_sweeps_u < 0)
+        jacobi_sweeps_u = 0;
+      if (single_precision || factorize_in_place)
+        jacobi_sweeps = jacobi_sweeps_u = 0;
+      if (jacobi_sweeps > 0)
+        printf("ILU(0): Jacobi-iterated triangular solves enabled (%d L / %d U sweeps per solve)\n",
+          jacobi_sweeps, jacobi_sweeps_u);
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -69,6 +222,16 @@ namespace opendarts
         if (!factorize_in_place)
           cudaFree(values_d_ilu);
         values_d_ilu = nullptr;
+        if (jac_y0)
+          cudaFree(jac_y0);
+        if (jac_y1)
+          cudaFree(jac_y1);
+        if (jac_z0)
+          cudaFree(jac_z0);
+        if (inv_udiag_d)
+          cudaFree(inv_udiag_d);
+        jac_y0 = jac_y1 = jac_z0 = nullptr;
+        inv_udiag_d = nullptr;
       }
 
       cudaFree(pBuffer);
@@ -199,6 +362,14 @@ namespace opendarts
           }
         }
         cudaStat = cudaMalloc((void **)&d_z, sizeof(double) * A_matrix->n_rows * N_BLOCK_SIZE);
+        if (jacobi_sweeps > 0)
+        {
+          const size_t vec_bytes = sizeof(double) * (size_t)A_matrix->n_rows * N_BLOCK_SIZE;
+          cudaMalloc((void **)&jac_y0, vec_bytes);
+          cudaMalloc((void **)&jac_y1, vec_bytes);
+          cudaMalloc((void **)&jac_z0, vec_bytes);
+          cudaMalloc((void **)&inv_udiag_d, sizeof(double) * (size_t)A_matrix->n_rows * N_BLOCK_SIZE * N_BLOCK_SIZE);
+        }
         if (cudaStat != cudaSuccess)
         {
           printf("Error! Can't allocate device memory (linsolv_cusparse_ilu)\n");
@@ -343,6 +514,14 @@ namespace opendarts
         }
       }
 
+      if (jacobi_sweeps > 0 && !single_precision)
+      {
+        // Refresh the inverted U diagonal blocks for the Jacobi-iterated apply.
+        const int grid = (mb + 255) / 256;
+        ilu_jacobi::invert_u_diag_kernel<N_BLOCK_SIZE><<<grid, 256>>>(
+          mb, A_matrix->get_diag_ind_d(), values_d_ilu, inv_udiag_d);
+      }
+
       this->timer_setup->node["ILU(0)"].stop();
       return 0;
     }
@@ -373,13 +552,55 @@ namespace opendarts
       }
       else
       {
-        // step 6: solve L*z = x.
-        cusparseDbsrsv2_solve(handle, dir, trans_L, mb, nnzb, &alpha, descr_L, values_d_ilu,
-          d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_L, cur_rhs, d_z, policy_L, pBufferL);
+        if (jacobi_sweeps > 0 && jacobi_sweeps_u > 0)
+        {
+          // Jacobi-iterated triangular solves on the exact ILU0 factors:
+          // 2*k data-parallel sweeps replace the two wavefront-latency-bound
+          // level-scheduled solves. Each sweep's error contracts through the
+          // strictly-triangular (nilpotent) iteration matrix; k is the
+          // accuracy/cost knob (DARTS_ILU0_JACOBI).
+          const int *diag_ind_d = A_matrix->get_diag_ind_d();
+          const int grid = (mb + 255) / 256;
+          const size_t vec_bytes = sizeof(double) * (size_t)mb * N_BLOCK_SIZE;
 
-        // step 7: solve U*y = z.
-        cusparseDbsrsv2_solve(handle, dir, trans_U, mb, nnzb, &alpha, descr_U, values_d_ilu,
-          d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_U, d_z, sol, policy_U, pBufferU);
+          // L y = r, y^0 = r (exact when L is block-unit diagonal-only)
+          double *y_old = jac_y0, *y_new = jac_y1;
+          cudaMemcpyAsync(y_old, cur_rhs, vec_bytes, cudaMemcpyDeviceToDevice);
+          for (int sweep = 0; sweep < jacobi_sweeps; sweep++)
+          {
+            ilu_jacobi::l_sweep_kernel<N_BLOCK_SIZE><<<grid, 256>>>(
+              mb, d_bsrRowPtr, d_bsrColInd, diag_ind_d, values_d_ilu, cur_rhs, y_old, y_new);
+            double *t = y_old;
+            y_old = y_new;
+            y_new = t;
+          }
+          // U z = y, z^0 = 0 (the first sweep is then the block-diagonal
+          // solve invU_ii * y_i). Strict ping-pong between two scratch
+          // buffers keeps every sweep deterministic -- the apply must be a
+          // fixed linear operator under (non-flexible) GMRES.
+          double *z_old = jac_z0, *z_new = y_new; // y_new is free after the L loop
+          cudaMemsetAsync(z_old, 0, vec_bytes);
+          for (int sweep = 0; sweep < jacobi_sweeps_u; sweep++)
+          {
+            ilu_jacobi::u_sweep_kernel<N_BLOCK_SIZE><<<grid, 256>>>(
+              mb, d_bsrRowPtr, d_bsrColInd, diag_ind_d, values_d_ilu, inv_udiag_d, y_old, z_old, z_new);
+            double *t = z_old;
+            z_old = z_new;
+            z_new = t;
+          }
+          // result of the last sweep is in z_old after the final swap
+          cudaMemcpyAsync(sol, z_old, vec_bytes, cudaMemcpyDeviceToDevice);
+        }
+        else
+        {
+          // step 6: solve L*z = x.
+          cusparseDbsrsv2_solve(handle, dir, trans_L, mb, nnzb, &alpha, descr_L, values_d_ilu,
+            d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_L, cur_rhs, d_z, policy_L, pBufferL);
+
+          // step 7: solve U*y = z.
+          cusparseDbsrsv2_solve(handle, dir, trans_U, mb, nnzb, &alpha, descr_U, values_d_ilu,
+            d_bsrRowPtr, d_bsrColInd, N_BLOCK_SIZE, info_U, d_z, sol, policy_U, pBufferU);
+        }
       }
 
       this->timer_solve->node["ILU(0)"].stop();
