@@ -240,3 +240,19 @@ Conclusion: exact ILU0 remains the default. The remaining stage-2 upside at larg
 stronger latency-friendly smoother (multicolor block-ILU0 within colors, or an adaptive
 ILU0↔MCSGS switch on dt/LI) — the MCSGS class provides the scaffold (coloring, inv-diag,
 well-row guard) for that follow-up.
+
+### Session-5 closures (2026-07-18)
+- **P1-9 CLOSED (cProfile, ptrace blocked for py-spy):** after P0/P1 the formerly-unattributed
+  Python residue is gone (`calc_*_residual` 0.04s, Python loop ~0.3s). Exact remaining pools at
+  3650d: `solve_linear_equation` 16.65s, `assemble_linear_system` 2.99s cum — of which only 1.26s
+  is C++/GPU and **1.5s is Python OBL-evaluator callbacks** (7517 `operator_evaluator.evaluate`
+  calls ≈ 0.2ms each, pybind/numpy overhead dominated) — `apply_newton_update` 1.66s (P2-11 pool),
+  `post_newtonloop` 1.07s. P1-7 refined: the win needs either the model-side ParallelEvaluator
+  factory hook or a vectorized `evaluate_batch` in `PropertyOperators`; OMP is GIL-blocked.
+- **ACC-pack post_newtonloop refinement CLOSED as net-negative (implemented, measured, reverted):**
+  after P0-C pinning the full 260MB accepted-step sync costs only ~10ms/step (~0.3s at 3650d);
+  the pack+gather+host-scatter variant pays comparable host write-allocate traffic plus kernel
+  overhead and measured ~0.5s WORSE (23.0±0.2 vs 22.2±0.2s). The plan's original 4.8–5.0s estimate
+  for item P0-1 was fully captured by the per-Newton mirror removal; the per-accepted-step remainder
+  is already amortized by pinning. Well-data parity of the variant was verified exact before revert
+  (max diff within baseline run-to-run noise, 1e-10-class).
