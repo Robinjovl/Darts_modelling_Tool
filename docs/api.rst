@@ -10,25 +10,7 @@ Engines
 Physics
 #######
 
-.. autoclass:: darts.physics.base.physics_base.PhysicsBase
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :special-members: __init__
-
-Geothermal
-***********
-
-.. autoclass:: darts.physics.geothermal.physics.Geothermal
-   :members:
-   :undoc-members:
-   :show-inheritance:
-   :special-members: __init__
-
-Super
-******
-
-.. autoclass:: darts.physics.super.physics.Compositional
+.. autoclass:: darts.physics.base.physics.PhysicsBase
    :members:
    :undoc-members:
    :show-inheritance:
@@ -55,7 +37,7 @@ Poromechanics
 Properties
 ***********
 
-.. automodule:: darts.physics.super.property_container
+.. automodule:: darts.physics.base.property_container
    :members:
    :undoc-members:
    :show-inheritance:
@@ -127,7 +109,7 @@ Kinetics Properties
 Operators
 *********
 
-.. automodule:: darts.physics.super.operator_evaluator
+.. automodule:: darts.physics.base.operator_evaluator
    :members:
    :undoc-members:
    :show-inheritance:

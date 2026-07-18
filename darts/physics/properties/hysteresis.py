@@ -74,7 +74,7 @@ class HistoryAwareRelPerm(abc.ABC):
     """
     Abstract base for relative-permeability evaluators that consume OBL history variables.
 
-    :class:`~darts.physics.super.property_container.PropertyContainer` uses
+    :class:`~darts.physics.base.property_container.PropertyContainer` uses
     ``isinstance(..., HistoryAwareRelPerm)`` to decide whether to forward history values from
     the OBL state. All history variables the physics declared in ``history_fields`` are
     unpacked as keyword arguments into :meth:`evaluate`, so concrete subclasses can pick the
@@ -343,7 +343,7 @@ class _KilloughRelPermBase(HistoryAwareRelPerm):
 
         Accepts any extra history kwargs the physics may declare via ``history_fields`` (they
         are swallowed by ``**_``) so the generic
-        :class:`~darts.physics.super.property_container.PropertyContainer` dispatch stays
+        :class:`~darts.physics.base.property_container.PropertyContainer` dispatch stays
         forward-compatible.
 
         :param sat: Phase saturation in ``[0, 1]``

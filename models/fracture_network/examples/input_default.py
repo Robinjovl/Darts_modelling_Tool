@@ -1,5 +1,4 @@
 from darts.input.input_data import InputData
-from darts.physics.geothermal.geothermal import GeothermalIAPWSFluidProps
 
 def input_data_default():
     idata = InputData(type_hydr='thermal', type_mech='none', init_type='gradient')
@@ -78,7 +77,7 @@ def input_data_default():
     idata.rock.heat_capacity = 2200. # [kJ/m3/K]
     idata.rock.conductivity = 181.44  # [kJ/m/day/K]
 
-    idata.fluid = GeothermalIAPWSFluidProps()
+    # Fluid properties are wired directly in Model.set_iapws_physics via compositional + IAPWS.
 
     # well controls
     class InputDataWellControls():  # an empty class - to group custom well control input data
@@ -114,8 +113,11 @@ def input_data_default():
 
     idata.obl.p_step = 5.0
     idata.obl.p_origin = 0.5
-    idata.obl.e_step = 250.0
-    idata.obl.e_origin = 10.0
+    # PT flash: OBL temperature axis (K). t_origin sits at the IAPWS liquid
+    # floor (273.15 K) so sampling stays above the ice region; t_step reproduces
+    # the legacy ~128-point grid over [273.15, 575] K.
+    idata.obl.t_step = 2.377
+    idata.obl.t_origin = 273.15
 
     return idata
 

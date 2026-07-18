@@ -28,6 +28,47 @@
   {+ Now:    Geothermal(timer, axes_step=[(351-1)/255, (10000-1000)/255], axes_origin=[1.0, 1000.0]) +}
   \
   The Geothermal P-T `ThermalVarOperator` window (formerly the hardcoded `PT_axes_min`/`PT_axes_max`) is now the optional `thermal_var_axes_step` / `thermal_var_axes_origin` (defaults `[p_step, 1.0]` / `[p_origin, 273.15]`).
+- Breaking changes ([!318](https://gitlab.com/open-darts/open-darts/-/merge_requests/318)):
+  - **The `Geothermal` physics/engine is removed.** Single-component-water geothermal simulation (IAPWS-97, `[P, enthalpy]` state) is superseded by the compositional `PhysicsBase` engine driven by a DARTSFlash IAPWS-95 PT-flash. The primary unknowns change from `[P, enthalpy]` to `[P, temperature]`, so `engine.X` layout, the OBL grid axes (P-H → P-T), and any code reading the thermal variable change accordingly. The bundled former-geothermal models (`GeoRising`, `CoaxWell`, `cpg_sloping_fault`, `fracture_network`) were migrated; see the migration guide below.
+  - Unused engines removed: all `engine_nc*` except `engine_nc_nl`.
+  - `PropertyBase` was folded into `PropertyContainer`, and `operators_base.py` was merged into `operator_evaluator.py`. Import `OperatorsBase`, `WellCtrlOperators`, `ThermalVarOperator` and `PropertyOperators` from `darts.physics.base.operator_evaluator`; the `darts.physics.base.operators_base` and `darts.physics.base.property_base` modules no longer exist.
+  - The built-in IAPWS-IF97 property evaluators are removed together with the `Geothermal` physics they served: the `darts.physics.properties.iapws` subpackage (`iapws_property.py`, `iapws_property_vec.py`, `custom_rock_property.py`) no longer exists. Migrated models take water/steam properties from the DARTSFlash IAPWS-95 EoS instead (`EoSDensity`/`EoSEnthalpy` on the `IAPWS` mixture); the dead `compute_temperature` helpers built on `_Backward1_T_Ph_vec` were dropped from the models. The external `iapws` pip dependency is kept — `models/chemistry/carbonated_water` still uses its viscosity correlation directly.
+- Migration guide ([!318](https://gitlab.com/open-darts/open-darts/-/merge_requests/318)) — `Geothermal` → compositional `PhysicsBase` (`state_spec=PT`). A single-component-water geothermal model becomes a compositional model whose property evaluators are wired explicitly around an IAPWS-95 PT-flash:\
+  {- Before: self.physics = Geothermal(idata, timer) -}\
+  {+ Now:    self.physics = PhysicsBase(components, phases, timer, state_spec=PhysicsBase.StateSpecification.PT, axes_step=[p_step, t_step], axes_origin=[p_origin, t_origin], epsilon_z=eps) — with a hand-wired PropertyContainer (below) +}
+  ```python
+  from darts.physics.base.physics import PhysicsBase
+  from darts.physics.base.property_container import PropertyContainer
+  from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
+  from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+  from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+  from darts.physics.properties.viscosity import MaoDuan2009
+
+  components, phases, eps = ["H2O"], ["V", "L"], 1e-12       # 'V','L' (vapor, liquid) replace legacy 'steam','water'
+  comp_data = CompData(components=components, setprops=True)
+  pc = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw, eps_z=eps)
+
+  flash = IAPWS(iapws_ideal=True, ice_phase=False)           # IAPWS-95 EoS
+  flash.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
+  pc.flash_ev = flash
+  pc.density_ev      = {"V": EoSDensity(flash.eos["IAPWS"], comp_data.Mw, EoS.RootFlag.MAX),
+                        "L": EoSDensity(flash.eos["IAPWS"], comp_data.Mw, EoS.RootFlag.MIN)}
+  pc.enthalpy_ev     = {"V": EoSEnthalpy(flash.eos["IAPWS"], EoS.RootFlag.MAX),
+                        "L": EoSEnthalpy(flash.eos["IAPWS"], EoS.RootFlag.MIN)}
+  pc.viscosity_ev    = {"V": ConstFunc(0.01), "L": MaoDuan2009(components)}   # liquid µ must stay T/P-dependent
+  pc.rel_perm_ev     = {"V": PhaseRelPerm("gas", swc=0.0), "L": PhaseRelPerm("oil", swc=0.0)}
+  pc.conductivity_ev = {"V": ConstFunc(0.0), "L": ConstFunc(172.8)}           # kJ/m/day/K
+
+  self.physics = PhysicsBase(components, phases, timer,
+                             state_spec=PhysicsBase.StateSpecification.PT,
+                             axes_step=[p_step, t_step], axes_origin=[p_origin, t_origin], epsilon_z=eps)
+  self.physics.add_property_region(pc)
+  ```
+  Notes:
+  - **State layout** changes `[P, enthalpy]` → `[P, temperature]`: update any `engine.X` slicing, and switch the OBL input fields `idata.obl.e_step`/`e_origin` (enthalpy axis) to `t_step`/`t_origin` (temperature axis).
+  - **Keep the temperature `axes_origin` at ≥ `273.15` K** (the IAPWS liquid floor). With `ice_phase=False` the PT-flash returns NaN below it; because the OBL grid is unbounded it would otherwise sample the sub-freezing region and fail (singular CPR / timestep collapse).
+  - **Liquid viscosity** must be `MaoDuan2009(components)` (T/P-dependent), not a constant — a constant `µ` rescales well rates by `µ_ref/µ_const` under BHP control.
+  - IAPWS-97 → IAPWS-95 is a property-model change: well BHT/BHP shift by ≲ 0.2 %, so **regenerate reference solutions** for migrated models.
 - Add hysteresis support for OBL-based compositional simulations through per-cell history variables, including Killough scanning-curve handling; the feature is disabled by default and enabled only when history variables are explicitly declared in the physics setup ([!310](https://gitlab.com/open-darts/open-darts/-/merge_requests/310)).
 - Output:
   - output which was using `vtk` module, has been changed to use `meshio` (struct reservoir, cpg reservoir) and darts/tools/vtk_io.py (writing vtp files with dynamic results along well trajectories)

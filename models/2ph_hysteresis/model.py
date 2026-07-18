@@ -7,7 +7,7 @@ import numpy as np
 
 from darts.engines import value_vector
 from darts.models.cicd_model import CICDModel
-from darts.physics.base.physics_base import HistoryField, PhysicsBase
+from darts.physics.base.physics import PhysicsBase, HistoryField
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import ConstantK
@@ -15,8 +15,8 @@ from darts.physics.properties.hysteresis import (
     KilloughCapillaryPressureTable,
     KilloughRelPermTable,
 )
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
 from dartsflash.components import CompData
 from dartsflash.libflash import AQEoS, CubicEoS, FlashParams
@@ -309,7 +309,7 @@ class Model(CICDModel):
             else []
         )
 
-        self.physics = Compositional(
+        self.physics = PhysicsBase(
             components,
             phases,
             self.timer,
