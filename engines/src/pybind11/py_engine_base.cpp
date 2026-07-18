@@ -18,6 +18,9 @@ void pybind_engine_base (py::module &m)
 	   .def("test_spmv", &engine_base::test_spmv)  \
 	   .def("assemble_linear_system", &engine_base::assemble_linear_system, py::call_guard<py::gil_scoped_release>())  \
 	   .def("calc_newton_residual", &engine_base::calc_newton_residual, py::call_guard<py::gil_scoped_release>())  \
+	   .def("correct_obl_axes", &engine_base::correct_obl_axes, py::arg("axis_min"), py::arg("axis_max"), py::call_guard<py::gil_scoped_release>(), \
+			"Install persistent per-variable OBL axis bounds (size n_vars each) and clamp the current solution; " \
+			"subsequent Newton updates keep clamping against them (CPU and GPU)")  \
 	   .def("calc_well_residual", &engine_base::calc_well_residual, py::call_guard<py::gil_scoped_release>())  \
 	   .def("calc_coupled_well_reservoir_residual", &engine_base::calc_coupled_well_reservoir_residual, py::arg("method"), py::call_guard<py::gil_scoped_release>())  \
 	   .def("apply_newton_update", &engine_base::apply_newton_update, py::call_guard<py::gil_scoped_release>())  \

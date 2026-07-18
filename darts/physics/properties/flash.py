@@ -111,7 +111,21 @@ class SolidFlash(Flash):
         self.np_sol = np_sol
 
     def evaluate(self, pressure, temperature, zc):
-        """Evaluate flash normalized for solids"""
+        """Evaluate flash normalized for solids.
+
+        Normalizes the fluid part of ``zc`` (solids removed), evaluates the wrapped
+        fluid flash, then re-appends the solid phase fractions to ``nu``/``X``.
+
+        If the wrapped flash fails and leaves its phase compositions mis-shaped,
+        the fluid part of ``X`` is filled with NaN and the error count is
+        incremented instead of raising, so the caller (OBL point generation)
+        can detect the failed supporting point downstream.
+
+        :param pressure: Pressure at the evaluated point.
+        :param temperature: Temperature (may be None for isothermal physics).
+        :param zc: Overall composition including solid components.
+        :return: Number of flash errors encountered (0 on success).
+        """
         # Normalize compositions
         zc_sol = zc[self.nc_fl :]
         zc_sol_tot = np.sum(zc_sol)
@@ -126,6 +140,10 @@ class SolidFlash(Flash):
         except ValueError as e:
             print(e.args[0], pressure, temperature, zc)
             error_output += 1
+            # failed flash left X mis-shaped; keep going with NaN phase
+            # compositions so the error is detectable downstream instead of
+            # crashing on the undefined local
+            x = np.full((self.np_fl, self.nc_fl), np.nan)
 
         # Re-normalize solids and append to nu, x
         NU = np.zeros(self.np_fl + self.np_sol)

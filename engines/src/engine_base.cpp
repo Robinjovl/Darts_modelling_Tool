@@ -3049,6 +3049,21 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 		std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
 }
 
+void engine_base::correct_obl_axes(const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max)
+{
+	if (axis_min.size() != (size_t)n_vars || axis_max.size() != (size_t)n_vars)
+	{
+		std::cout << "OBL axis correction skipped: axis bounds size mismatch (expected " << (int)n_vars
+				  << " values per axis)" << std::endl;
+		return;
+	}
+	for (auto &region_bounds : op_axis_min)
+		region_bounds = axis_min;
+	for (auto &region_bounds : op_axis_max)
+		region_bounds = axis_max;
+	apply_obl_axis_local_correction(X, dX);
+}
+
 void engine_base::apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
 	double max_ratio = 0;

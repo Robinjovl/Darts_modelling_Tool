@@ -180,13 +180,21 @@ class Model(CICDModel):
         self.params.newton_type = sim_params.newton_local_chop
         # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
         self.params.newton_params[0] = 0.2
-        # Reactive-transport (PHREEQC) Jacobian: the default FGMRES+CPR struggles
-        # here (it_linear=200) and risks the same open-source-build hang as the DFM
-        # fracture_network model. A direct solve is robust for this small 1D model;
-        # in the proprietary build the spec is ignored and the engine factory keeps
-        # its iterative default. (Mirrors the long-standing `cpu_superlu` hint here.)
-        from darts.linear_solvers import SuperLUSolverSpec
-        self.linear_solver = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200)
+        # Platform-appropriate iterative solver for the 3D cases (the SuperLU
+        # direct solve above remains the right choice only for tiny 1D runs):
+        # GPU -> AMGX-CPR; CPU -> FGMRES + CPR/AMG. Guarded on platform so the
+        # same model runs under both.
+        tolerance = 1e-6
+        max_iterations = 500
+        if getattr(self, 'platform', 'cpu') == 'gpu':
+            from darts.linear_solvers import AMGXCPRSolverSpec
+            self.linear_solver = AMGXCPRSolverSpec(max_iterations=max_iterations, tolerance=tolerance)
+        else:
+            from darts.linear_solvers import CPRSolverSpec, GMRESSolverSpec
+            spec = GMRESSolverSpec(restart=50, prec=CPRSolverSpec())
+            spec.tolerance = tolerance
+            spec.max_iterations = max_iterations
+            self.linear_solver = spec
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,
@@ -474,7 +482,7 @@ class Model(CICDModel):
                                                 permx=perm, permy=perm, permz=perm, poro=1, depth=1)
                 self.inj_cells = self.domain_cells[0] * np.arange(self.domain_cells[1])
             else:
-                self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0,
+                self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0, cache=True,
                                                 mesh_file=mesh_filename, poro=1)
                 self.reservoir.physical_tags['matrix'] = [99991]
                 self.reservoir.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
@@ -521,7 +529,7 @@ class Model(CICDModel):
         elif self.domain == '3D':
             depth = 1
             mesh_file = mesh_filename
-            self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0,
+            self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0, cache=True,
                                                mesh_file=mesh_file, poro=1)
             self.reservoir.physical_tags['matrix'] = [99991]
             self.reservoir.physical_tags['boundary'] = [991, 992, 993]
@@ -640,7 +648,7 @@ class Model(CICDModel):
         if isinstance(self.reservoir, UnstructReservoir):
             for idx in self.prd_cells:
                 self.reservoir.add_perforation(well_name='P1', res_cell_idx=idx, ms_epm=False,
-                                               verbose=True, well_diameter=w_d, well_index=well_index,
+                                               verbose=False, well_diameter=w_d, well_index=well_index,
                                                well_indexD=well_index)
         elif isinstance(self.reservoir, StructReservoir):
             for idx in range(self.domain_cells[1]):

@@ -1,5 +1,5 @@
 import os, signal, sys
-os.environ["OMP_NUM_THREADS"] = "4"
+os.environ["OMP_NUM_THREADS"] = "16"
 import shutil
 from model import Model
 from darts.engines import redirect_darts_output
@@ -50,6 +50,14 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
     # Initialize model
     m.init(itor_type=interpolator, platform=platform, n_solid=len(minerals),
            parallel_evaluation=parallel_evaluation, n_workers=n_workers)
+
+    # Persistent OBL-axis box (MR327-equivalent correct_obl_axes): every Newton
+    # update is clamped into the parametrization region on CPU and GPU, which
+    # prevents excursions that trigger PHREEQC dilution fallbacks, wasted
+    # iterations and unbounded adaptive-cache growth.
+    from darts.engines import value_vector
+    m.physics.engine.correct_obl_axes(value_vector(list(map(float, m.axes_min))),
+                                      value_vector(list(map(float, m.axes_max))))
     m.set_output(output_folder=output_folder, sol_filename=f'nx{nx}.h5')
 
     # Initialization check
@@ -93,13 +101,17 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             init_days = 20.0
             num_time_iterations = 7
         else:
-            init_days = 150.0
-            num_time_iterations = 3
+            init_days = 365.0
+            num_time_iterations = 7
 
         rate = m.inj_rate
         m.inj_rate = 0.0
-        m.data_ts.dt_max = 0.05
+
+        m.data_ts.dt_max = 5.0
+        _n_good_ts_saved = m.n_good_ts
+        m.n_good_ts = 10**18      # disable dt_max growth -> hard 5-day ceiling during init
         m.run(days=init_days)
+        m.n_good_ts = _n_good_ts_saved
 
         # injection
         m.inj_rate = rate
@@ -145,13 +157,13 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             if report_timesteps is None:
                 # (upper_cum, n_steps) — extra refinement applied only in [1e-2, 1e-1]
                 segments = [
-                    (0.001, 2),
+                    (0.001, 1),
                     (0.005, 2),
                     (0.010, 2),
-                    (0.030, 8),   # refined (was 4)
-                    (0.050, 4),   # refined (was 2)
-                    (0.100, 4),   # refined (was 2)
-                    (0.300, 4),
+                    (0.030, 2),
+                    (0.050, 2),
+                    (0.100, 2),
+                    (0.300, 2),
                     (0.500, 2),
                 ]
                 base = build_report_timesteps(segments)

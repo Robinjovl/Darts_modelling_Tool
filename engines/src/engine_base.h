@@ -297,6 +297,18 @@ public:
 	// Here we make the same thing as inside interpolation, but during Newton update
 	// It is correct from architectural point of view - X should be changed by engine, not inside interpolator
 	virtual void apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
+	/// @brief Install persistent per-variable OBL axis bounds and clamp the current solution once.
+	///
+	/// Populates every region's op_axis_min/op_axis_max with the given bounds and applies
+	/// apply_obl_axis_local_correction immediately. The bounds PERSIST, so the size()>0 gate
+	/// in apply_newton_update keeps clamping the solution after every subsequent Newton update
+	/// (CPU and GPU -- the GPU engine reuses the host composite). Signature-compatible with the
+	/// nonlinear_refactoring (MR327) overload. If either vector's size differs from n_vars,
+	/// a warning is printed and nothing is installed.
+	///
+	/// @param axis_min lower bound per state variable, size n_vars
+	/// @param axis_max upper bound per state variable, size n_vars
+	virtual void correct_obl_axes(const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max);
 
 	// output routines
 
