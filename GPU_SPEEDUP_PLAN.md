@@ -216,6 +216,10 @@ launch campaign: not started (next round per plan).
   identically to the block variant → NOT a well-diagonal-block singularity.
 - Net discriminator: SpMV-only solvers (BICGSTAB) work on this upload; diagonal/L-U-split
   relaxations (Jacobi, DILU) return destabilizing applies in both block and scalar form.
-  **Prime suspect: DARTS row ordering (diag-first storage) vs AMGX relaxation solvers' sorted-column
-  L/U-split assumption.** Study entry point: validate M^-1 b on a tiny system, then test a
-  column-sorted upload copy.
+  Row-ordering suspicion REFUTED by code inspection: the Jacobian columns are sorted with the
+  diagonal in order (engine_base.cpp:95-150). **Corrected prime suspect: singular RAW well-head
+  diagonal entries** (e.g. zero dR/dz in a control row) — Jacobi/DILU invert raw diagonals and one
+  Inf corrupts the Krylov basis (hence 'residuals' of 1e7 from a residual-minimizing method), while
+  ILU0 survives because elimination modifies its pivots. Study route: an opendarts multicolor-DILU
+  stage-2 kernel with well rows special-cased (identity/direct) — for structured grids a geometric
+  8-coloring makes this tractable — rather than fighting AMGX per-row semantics.
