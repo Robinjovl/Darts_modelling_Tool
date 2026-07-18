@@ -3318,6 +3318,7 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 	}
 	else //convergence reached
 	{
+		sync_host_data_for_accepted_step();
 		stat.n_newton_total += n_newton_last_dt;
 		stat.n_linear_total += n_linear_last_dt;
 		stat.n_timesteps_total++;

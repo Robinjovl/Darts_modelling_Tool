@@ -185,18 +185,17 @@ int engine_base_gpu::evaluate_operators_d()
   return 0;
 }
 
+void engine_base_gpu::sync_host_data_for_accepted_step()
+{
+	// The accepted-step path consumes host op_vals_arr (ms_well::calc_rates,
+	// FIPS); the per-assembly host mirror is gone, so refresh it here -- the
+	// base calls this hook from inside the converged branch, so the refresh
+	// follows the convergence verdict wherever that logic lives.
+	sync_op_vals_to_host();
+}
+
 int engine_base_gpu::post_newtonloop(value_t deltat, value_t time)
 {
-	// The converged path in engine_base::post_newtonloop consumes host
-	// op_vals_arr (ms_well::calc_rates, FIPS); the per-assembly host mirror is
-	// gone, so refresh it exactly when this step is about to be accepted
-	// (same predicate as the base implementation).
-	const double well_tolerance_coefficient = 1e2;
-	if (linear_solver_error_last_dt == 0 && newton_residual_last_dt < params->tolerance_newton &&
-		well_residual_last_dt <= well_tolerance_coefficient * params->tolerance_newton)
-	{
-		sync_op_vals_to_host();
-	}
 	int converged = engine_base::post_newtonloop(deltat, time);
 	if (!converged)
 	{

@@ -102,6 +102,8 @@ public:
   virtual void average_operator(std::vector<value_t> &av_op) override;
   /// refresh the host op_vals_arr mirror from the device (lazy consumers)
   void sync_op_vals_to_host();
+  /// accepted-step hook from engine_base::post_newtonloop's converged branch
+  void sync_host_data_for_accepted_step() override;
 
   virtual int test_assembly(int n_times, int kernel_number = 0, int dump_jacobian_rhs = 0) override;
 

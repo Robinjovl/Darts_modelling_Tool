@@ -507,6 +507,12 @@ public:
 	// GPU engines keep op_vals_arr_n on the device (op_vals_arr_n_d) and skip the
 	// 260MB-class host mirror assignment in post_newtonloop.
 	bool keep_host_op_vals_n_mirror = true;
+	// Called at the start of the accepted-timestep path, before host op_vals_arr
+	// consumers (ms_well::calc_rates, FIPS). GPU engines refresh the host mirror
+	// here; keeping the hook inside the converged branch makes it follow the
+	// convergence verdict wherever that logic lives (C++ or the Python
+	// NonlinearSolver of the nonlinear refactoring).
+	virtual void sync_host_data_for_accepted_step() {}
 
 	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
 	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components
