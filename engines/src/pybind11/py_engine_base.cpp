@@ -13,6 +13,13 @@ void pybind_engine_base (py::module &m)
 	auto cls = py::class_<engine_base>(m, "engine_base", "Base simulator engine class");
 
 	cls.def("report", &engine_base::report)  \
+	   .def("set_op_axis_bounds", [](engine_base &e, int op_num, const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max) { \
+	          if (op_num < 0 || op_num >= (int)e.op_axis_min.size()) throw std::out_of_range("set_op_axis_bounds: op_num out of range"); \
+	          if (axis_min.size() != (size_t)e.n_vars || axis_max.size() != (size_t)e.n_vars) throw std::invalid_argument("set_op_axis_bounds: size != n_vars"); \
+	          e.op_axis_min[op_num].assign(axis_min.begin(), axis_min.end()); \
+	          e.op_axis_max[op_num].assign(axis_max.begin(), axis_max.end()); \
+	        }, py::arg("op_num"), py::arg("axis_min"), py::arg("axis_max"), \
+	        "Populate per-variable OBL axis bounds for op set op_num; enables the Newton-update clamp apply_obl_axis_local_correction (dormant while unset)")  \
 	   .def("print_stat", &engine_base::print_stat)  \
 	   .def("test_assembly", &engine_base::test_assembly)  \
 	   .def("test_spmv", &engine_base::test_spmv)  \

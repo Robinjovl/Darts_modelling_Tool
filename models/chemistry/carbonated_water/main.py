@@ -1,5 +1,5 @@
 import os, signal, sys
-os.environ["OMP_NUM_THREADS"] = "4"
+os.environ["OMP_NUM_THREADS"] = "16"
 import shutil
 from model import Model
 from darts.engines import redirect_darts_output
@@ -29,7 +29,9 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
                    inj_rate: float = None, perm_poro: str = 'power_8', platform: str = 'cpu',
                    ni_dt_increase_cutoff: int = 5, ni_dt_decrease_cutoff: int = 8, n_good_ts: int = 10, report_timesteps = None,
                    flash: str = 'phreeqc', database: str = 'phreeqc',
-                   parallel_evaluation: bool = False, n_workers: int = None):
+                   parallel_evaluation: bool = True, n_workers: int = 4,
+                   nested_kinetics: bool = False, n_obl_axis_mult: list = None,
+                   obl_axis_clamp: bool = False):
     # Make a folder
     if output_folder is None:
         output_folder = f'output_{domain}_{nx}_' + '_'.join(minerals) + \
@@ -43,7 +45,8 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
     m = Model(domain=domain, nx=nx, mesh_filename=mesh_filename, poro_filename=poro_filename,
               minerals=minerals, kinetic_mechanisms=kinetic_mechanisms, n_obl_mult=n_obl_mult,
               co2_injection=co2_injection, h2o_injection=h2o_injection, inj_rate=inj_rate,
-              perm_poro=perm_poro, flash=flash, database=database)
+              perm_poro=perm_poro, flash=flash, database=database,
+              nested_kinetics=nested_kinetics, n_obl_axis_mult=n_obl_axis_mult)
 
     m.verbose = m.VERBOSE_TIMERS
 
@@ -51,6 +54,9 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
     m.init(itor_type=interpolator, platform=platform, n_solid=len(minerals),
            parallel_evaluation=parallel_evaluation, n_workers=n_workers)
     m.set_output(output_folder=output_folder, sol_filename=f'nx{nx}.h5')
+    if obl_axis_clamp:
+        # clamp Newton updates to the OBL design box (see Model.enable_obl_axis_clamp)
+        m.enable_obl_axis_clamp()
 
     # Initialization check
     if platform == 'cpu':
@@ -93,13 +99,20 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             init_days = 20.0
             num_time_iterations = 7
         else:
-            init_days = 150.0
-            num_time_iterations = 3
+            init_days = 365.0
+            num_time_iterations = 7
 
         rate = m.inj_rate
         m.inj_rate = 0.0
-        m.data_ts.dt_max = 0.05
+        # Impose dt_max = 5 days for the INITIALIZATION run only (the injection phase below
+        # resets dt_max to max_ts). The adaptive controller otherwise grows dt_max past its
+        # set value once steps converge easily (model.py:917-918), so freeze that growth
+        # here (n_good_ts huge) to make 5 a hard ceiling; it is restored before injection.
+        m.data_ts.dt_max = 5.0
+        _n_good_ts_saved = m.n_good_ts
+        m.n_good_ts = 10**18      # disable dt_max growth -> hard 5-day ceiling during init
         m.run(days=init_days)
+        m.n_good_ts = _n_good_ts_saved
 
         # injection
         m.inj_rate = rate
@@ -145,13 +158,13 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             if report_timesteps is None:
                 # (upper_cum, n_steps) — extra refinement applied only in [1e-2, 1e-1]
                 segments = [
-                    (0.001, 2),
+                    (0.001, 1),
                     (0.005, 2),
                     (0.010, 2),
-                    (0.030, 8),   # refined (was 4)
-                    (0.050, 4),   # refined (was 2)
-                    (0.100, 4),   # refined (was 2)
-                    (0.300, 4),
+                    (0.030, 2),
+                    (0.050, 2),
+                    (0.100, 2),
+                    (0.300, 2),
                     (0.500, 2),
                 ]
                 base = build_report_timesteps(segments)
@@ -229,19 +242,30 @@ def run_test(args: dict, platform='cpu'):
 
 if __name__ == '__main__':
     # 1D
-    minerals = ['calcite', 'dolomite']#, 'magnesite']
+    minerals = ['calcite', 'dolomite', 'magnesite']
     nx = 200
-    n_obl_mult = 1
+    n_obl_mult = 9
     co2_injection = 0.1
     max_ts = 1.e-3
-    flash='phreeqc' # 'phreeqc' # 'reaktoro'
-    database = 'phreeqc' # 'phreeqc' # 'pitzer' # 'supcrtbl'
-    # of = f'output_1D_{nx}_' + '_'.join(minerals) + f'_{n_obl_mult}_{co2_injection}_ts_{max_ts}_{flash}_{database}'
+    inj_rate = 1e-4
+    flash='reaktoro' # 'phreeqc' # 'reaktoro'
+    database = 'supcrtbl' # 'phreeqc' # 'pitzer' # 'supcrtbl'
+    of = f'output_1D_{nx}_' + '_'.join(minerals) + f'_{inj_rate}_{n_obl_mult}_{co2_injection}_{flash}_{database}'
+    per_op_fine = 'kinetics'
+    per_op_coarsen = 4
 
     # phreeqc
-    run_simulation(domain='1D', nx=nx, perm_poro='power_8', n_obl_mult=n_obl_mult, minerals=minerals,
-                co2_injection=co2_injection, max_ts=max_ts, output=False, flash=flash, database=database,
-                parallel_evaluation=True, n_workers=8)
+    # run_simulation(domain='1D', nx=nx, perm_poro='power_8', n_obl_mult=n_obl_mult, minerals=minerals,
+    #             co2_injection=co2_injection, max_ts=max_ts, output=True, flash=flash, database=database,
+    #             inj_rate=inj_rate,
+    #             output_folder=of,
+    #             parallel_evaluation=True,
+    #             ni_dt_increase_cutoff=4,
+    #             ni_dt_decrease_cutoff=9,
+    #             n_good_ts=10,
+    #             n_workers=32,
+    #             per_op_fine=per_op_fine,
+    #             per_op_coarsen=per_op_coarsen)
 
     # reaktoro
     # minerals = ['calcite'] # , 'dolomite', 'magnesite']
@@ -254,33 +278,47 @@ if __name__ == '__main__':
     # 2D
     # run_simulation(domain='2D', nx=10, perm_poro='power_8', max_ts=1.5e-3)
     n_obl_mult = 9
-    inj_rate = 1e-3
-    nx = 50
-    minerals = ['calcite']#, 'dolomite', 'magnesite']
+    inj_rate = 1e-4
+    nx = 25
+    minerals = ['calcite', 'dolomite', 'magnesite']
     max_ts = 6.e-5 * 1e-4 / inj_rate
     max_ts = 1.e-6
+    flash='reaktoro'
+    database='supcrtbl'
     co2_injection = 0.1
-    # run_simulation(domain='2D', nx=nx, output=True, max_ts=max_ts,
-    #                 n_obl_mult=n_obl_mult,
-    #                 interpolator='multilinear',
-    #                 output_folder=f'output_2D_{nx}_' + '_'.join(minerals) + f'_{n_obl_mult}_{co2_injection}_ts_{max_ts}',
-    #                 #mesh_filename='input/wedge.msh',
-    #                 poro_filename='input/spherical_50_5.txt', #'input/wedge_0.009.txt',#'old_calculations/calcite_2D_50_100/spherical_50_5_1/porosity_8.txt',
-    #                 minerals=minerals,
-    #                 h2o_injection=1.1,
-    #                 co2_injection=co2_injection,
-    #                 #inj_rate=inj_rate,
-    #                 perm_poro='power_8',
-    #                 platform='cpu',
-    #                 ni_dt_increase_cutoff=4,
-    #                 ni_dt_decrease_cutoff=6,
-    #                 n_good_ts=15,
-    #                 report_timesteps=6 * [5e-6])
+    # Per-operator-resolution composite OBL interpolator:
+    #   'kinetics' -> KIN kinetic-rate block stays on the fine n_obl_mult grid;
+    #   per_op_coarsen -> the other operators use a coarser grid. None disables (single grid).
+    of = f'output_2D_{nx}_' + '_'.join(minerals) + f'_{inj_rate}_{n_obl_mult}_{co2_injection}_ts_{max_ts}'
+    # Validated nested-kinetics configuration (100x100 to breakthrough in ~69 min vs
+    # ~25 h direct+isotropic-multires; 45x fewer flashes; point generation 38% of sim;
+    # caches ~21 GB): add to the call below
+    #   nested_kinetics=True,
+    #   n_obl_axis_mult=[1, 1, 1, 1, n_obl_mult, n_obl_mult, n_obl_mult, n_obl_mult],
+    #   obl_axis_clamp=True,
+    run_simulation(domain='2D', nx=nx, output=True, max_ts=max_ts,
+                    n_obl_mult=n_obl_mult,
+                    interpolator='multilinear',
+                    output_folder=of,
+                    #mesh_filename='input/wedge.msh',
+                    poro_filename='input/spherical_25_2.txt', #'input/wedge_0.009.txt',#'old_calculations/calcite_2D_50_100/spherical_50_5_1/porosity_8.txt',
+                    minerals=minerals,
+                    h2o_injection=1.1,
+                    co2_injection=co2_injection,
+                    inj_rate=inj_rate,
+                    perm_poro='power_8',
+                    platform='cpu',
+                    flash=flash,
+                    database=database,
+                    ni_dt_increase_cutoff=4,
+                    ni_dt_decrease_cutoff=9,
+                    n_good_ts=10,
+                    n_workers=64)
 
     # 3D
-    case = '195k' # '60k' # '195k'
+    case = '474k' # '13k' # '60k' # '195k' # '474k'
     minerals = ['calcite']
-    n_obl_mult = 3
+    n_obl_mult = 9
     co2_injection = 0.1
     max_ts = 2.e-3
     platform = 'cpu'
@@ -294,7 +332,8 @@ if __name__ == '__main__':
     #                output_folder=of,
     #                platform=platform,
     #                mesh_filename=f'input/core_{case}.msh',
-    #                poro_filename=f'input/core_{case}_0.01.txt')
+    #                poro_filename=f'input/core_{case}_0.01.txt',
+    #                parallel_evaluation=True, n_workers=16)
     # run_simulation(domain='3D', max_ts=1.e-3, output=True,
     #                mesh_filename='input/core_60k.msh', poro_filename='input/core_60k_0.01.txt')
     # run_simulation(domain='3D', max_ts=8.e-4, output=True, perm_poro='power_8',
@@ -302,7 +341,7 @@ if __name__ == '__main__':
     #                mesh_filename='input/core_195k.msh', poro_filename='input/core_195k.txt')
 
 
-# paths = ['./100x100/data_ts3.vts',
+    # paths = ['./100x100/data_ts3.vts',
     #          './100x100/data_ts14.vts']
     # write_2d_output_for_paper(paths=paths)
     # paths = ['output_200/log.txt', 'output_2000_50000/log.txt',

@@ -261,3 +261,109 @@ class ConversionOperators(ReservoirOperators):
         values_np[: self.property.n_solid] = nu_m
 
         return 0
+
+
+class SmoothFieldsReservoirOperators(ReservoirOperators):
+    """
+    Nested-kinetics variant of :class:`ReservoirOperators`: the KIN operator slots
+    carry SMOOTH FIELDS instead of the sharp composed kinetic rates. The engine-facing
+    rates are reconstructed analytically (with exact chain-rule derivatives) by
+    ``kinetic_composition_cpu_interpolator`` after interpolation, so the sharp
+    ``(1 - SR^p)^q`` sign flip at SR = 1 never enters the interpolated set.
+
+    KIN block layout produced here (n_min = number of kinetic minerals, must satisfy
+    2 * n_min + 1 <= ne):
+
+    - slot KIN_OP + m             : SRb_m = min(SR_m, SR_threshold)
+    - slot KIN_OP + n_min + m     : A_m = sum_j k_arr_j(T) * act_j^{n_j}  (affinity-free
+                                    activity-weighted Arrhenius sum over mechanisms)
+    - slot KIN_OP + 2 * n_min     : rho_t = 1 / vol_sum  (total molar density, kmol/m3)
+    - remaining KIN slots         : 0
+
+    Exactness: kin_rate_m = -s_init * sat_m * (rho_s_m * 1000) * sum_j rate_j * 86.4 and
+    sat_m * rho_s_m = z_m / vol_sum = z_m * rho_t (z_m is the mineral's solid state entry),
+    so with mechanisms sharing (p, q) per mineral:
+    kin_rate_m == c_m * z_m * rho_t * A_m * (1 - SRb_m^p)^q with c_m = -s_init * 86400.
+
+    NOTE: requires all mechanisms of a mineral to share (p, q) (true for the
+    PalandriKharaka carbonates: p = q = 1). Checked at construction.
+    """
+
+    #: activity source per mechanism name (mirrors KineticRate.evaluate)
+    _ACT_KEYS = {'acidic': 'Act(H+)', 'neutral': None, 'carbonate': 'Act(CO2)'}
+
+    def __init__(self, property_container, thermal, extrapolation_flag=False, dz=None):
+        super().__init__(property_container, thermal, extrapolation_flag, dz)
+        prop = self.property
+        self.mineral_keys = list(prop.rock_compr_ev.keys())  # defines mineral order
+        n_min = len(self.mineral_keys)
+        if 2 * n_min + 1 > self.ne:
+            raise ValueError(
+                f"SmoothFieldsReservoirOperators: {n_min} minerals need "
+                f"{2 * n_min + 1} field slots > KIN block size ne={self.ne}"
+            )
+        # Per-mineral shared affinity exponents + composition constants; validate that
+        # the shared-affinity factorization holds (all mechanisms share p, q).
+        self.p_aff, self.q_aff, self.c_coeffs = [], [], []
+        for k in self.mineral_keys:
+            kr = prop.kinetic_rate_ev[k]
+            pq = {(mech.p, mech.q) for mech in kr.mechanisms}
+            if len(pq) > 1:
+                raise ValueError(
+                    f"SmoothFieldsReservoirOperators: mineral '{k}' mechanisms have "
+                    f"mixed affinity exponents {pq}; shared-affinity nesting requires "
+                    f"identical (p, q) per mineral"
+                )
+            p, q = next(iter(pq)) if pq else (1.0, 1.0)
+            self.p_aff.append(float(p))
+            self.q_aff.append(float(q))
+            # c_m = -s_init * (rho_s*1000 folded via rho_t identity) * 86400/1000 * 1000
+            self.c_coeffs.append(-kr.surface_area_ev.s_init * 1000.0 * 86400.0 / 1000.0)
+
+    def kin_field_slots(self):
+        """(SRb slots, A slots, rho_t slot) — layout consumed by the C++ composition."""
+        n_min = len(self.mineral_keys)
+        return (
+            list(range(self.KIN_OP, self.KIN_OP + n_min)),
+            list(range(self.KIN_OP + n_min, self.KIN_OP + 2 * n_min)),
+            self.KIN_OP + 2 * n_min,
+        )
+
+    def evaluate(self, state, values):
+        ret = super().evaluate(state, values)
+        if ret != 0:
+            return ret
+        values_np = values.to_numpy()
+        prop = self.property
+        kin_state = prop.kin_state
+        n_min = len(self.mineral_keys)
+
+        # rho_t = 1/vol_sum, recomputed exactly as property_container.evaluate's local
+        # (gas volume term included iff the gas phase is present: nu_v > 0 <=> nu[g] > 0)
+        idx_g, idx_a = prop.phase_idx['gas'], prop.phase_idx['aq']
+        vol_sum = (
+            prop.nu[idx_a] / prop.dens_m[idx_a]
+            + (prop.nu_solid / prop.dens_m_solid).sum()
+        )
+        if prop.nu[idx_g] > 0:
+            vol_sum += prop.nu[idx_g] / prop.dens_m[idx_g]
+
+        values_np[self.KIN_OP : self.KIN_OP + self.ne] = 0.0
+        T = prop.temperature
+        for m, k in enumerate(self.mineral_keys):
+            kr = prop.kinetic_rate_ev[k]
+            SR = kin_state['SR_' + kr.mineral]
+            SRb = SR
+            A = 0.0
+            for mech in kr.mechanisms:
+                SRb = min(SR, mech.SR_threshold)
+                act_key = self._ACT_KEYS[mech.name]
+                act = 1.0 if act_key is None else kin_state[act_key]
+                k_arr = mech.k * np.exp(
+                    (-mech.Ea / mech.R) * (1.0 / T - 1.0 / mech.temperature_ref)
+                )
+                A += k_arr * act**mech.n
+            values_np[self.KIN_OP + m] = SRb
+            values_np[self.KIN_OP + n_min + m] = A
+        values_np[self.KIN_OP + 2 * n_min] = 1.0 / vol_sum
+        return 0

@@ -127,9 +127,10 @@ class Model(CICDModel):
     def __init__(self, domain: str = '1D', nx: int = 200, mesh_filename: str = None,
                  poro_filename: str = None, minerals: list = ['calcite'],
                  kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
-                 n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1,
+                 n_obl_mult: int = 1, n_obl_axis_mult: list = None,
+                 co2_injection: float = 0.1, h2o_injection: float = 1.1,
                  inj_rate: float = None, perm_poro: str = 'power_8', flash: str = 'phreeqc',
-                 database: str = 'phreeqc'):
+                 database: str = 'phreeqc', nested_kinetics: bool = False):
         # Call base class constructor
         super().__init__()
 
@@ -138,6 +139,13 @@ class Model(CICDModel):
         self.minerals = minerals
         self.kinetic_mechanisms = kinetic_mechanisms
         self.n_obl_mult = n_obl_mult
+        # Optional per-axis OBL refinement multipliers (length n_vars). Overrides the
+        # scalar n_obl_mult per axis; None keeps the isotropic behavior. The validated
+        # nested-kinetics configuration refines only the fluid axes:
+        # n_obl_axis_mult=[1, 1, 1, 1, 9, 9, 9, 9] (p/solids at base, fluids x9) —
+        # KIN is exactly linear in the solid axes under nested_kinetics, so solid-axis
+        # refinement buys nothing there.
+        self.n_obl_axis_mult = n_obl_axis_mult
         self.n_solid = len(minerals)
         self.co2_injection = co2_injection
         self.h2o_injection = h2o_injection
@@ -146,6 +154,7 @@ class Model(CICDModel):
         self.perm_poro = perm_poro
         self.flash = flash
         self.database = database
+        self.nested_kinetics = nested_kinetics
 
         self.set_reservoir(domain=domain, nx=nx, mesh_filename=mesh_filename, poro_filename=poro_filename)
         self.set_physics()
@@ -153,7 +162,7 @@ class Model(CICDModel):
         # initialize wormhole propagation ratio
         self.reservoir.wh_propagation_ratio = 0.0
 
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, tol_linear=1e-6, it_newton=15, it_linear=200)
+        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, tol_linear=1e-6, it_newton=15, it_linear=500)
         self.params.newton_type = sim_params.newton_local_chop
         # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
         # self.params.linear_type = sim_params.cpu_superlu
@@ -191,6 +200,20 @@ class Model(CICDModel):
                                self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression,
                                compression_level, verbose)
 
+    def enable_obl_axis_clamp(self):
+        """Clamp Newton updates to the OBL design box (engine's
+        apply_obl_axis_local_correction, dormant unless op_axis_min is populated).
+        Prevents unbounded-extrapolation blow-ups (e.g. a bad linear solve stepping
+        pressure ~5e5 bar outside the sampled manifold, where the extrapolated
+        residual can spuriously pass the convergence test). Call after init().
+        A pure safety net: zero corrections observed when Newton stays in the box.
+        """
+        from darts.engines import value_vector
+        amin = value_vector([float(v) for v in self.axes_min])
+        amax = value_vector([float(v) for v in self.axes_max])
+        for i in range(len(self.physics.regions) + 1):  # region op sets + well alias
+            self.physics.engine.set_op_axis_bounds(i, amin, amax)
+
     def set_physics(self):
         # some properties
         self.temperature = 323.15           # K
@@ -226,7 +249,9 @@ class Model(CICDModel):
             self.fc_mask = np.array([False, True, True, True, True], dtype=bool)
             Mw = {'Solid_CaCO3': 100.0869, 'Ca': 40.078, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
 
-            self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 251, 251, 401], dtype=np.intp))
+            self.n_points = list(np.asarray(self.n_obl_axis_mult, dtype=np.intp) * np.array([n_obl_pressure, 201, 251, 251, 401], dtype=np.intp)) \
+                if self.n_obl_axis_mult is not None else \
+                list(self.n_obl_mult * np.array([n_obl_pressure, 201, 251, 251, 401], dtype=np.intp))
             self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, 0.2]
             self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.1, 0.1, 0.6]
             # Rate annihilation matrix
@@ -248,7 +273,9 @@ class Model(CICDModel):
             self.fc_mask = np.array([False, False, True, True, True, True, True], dtype=bool)
             Mw = {'Solid_CaCO3': 100.0869, 'Solid_CaMg(CO3)2': 184.401,
                     'Ca': 40.078, 'Mg': 24.305, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
-            self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 201, 101, 101, 101, 101], dtype=np.intp))
+            self.n_points = list(np.asarray(self.n_obl_axis_mult, dtype=np.intp) * np.array([n_obl_pressure, 201, 201, 101, 101, 101, 101], dtype=np.intp)) \
+                if self.n_obl_axis_mult is not None else \
+                list(self.n_obl_mult * np.array([n_obl_pressure, 201, 201, 101, 101, 101, 101], dtype=np.intp))
             if self.co2_injection < self.co2_injection_cutoff:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
                 self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.4, 0.01, 0.01, 0.02, 0.37]
@@ -278,7 +305,9 @@ class Model(CICDModel):
             self.fc_mask = np.array([False, False, False, True, True, True, True, True], dtype=bool)
             Mw = {'Solid_CaCO3': 100.0869, 'Solid_CaMg(CO3)2': 184.401, 'Solid_MgCO3': 84.31,
                     'Ca': 40.078, 'Mg': 24.305, 'C': 12.0096, 'O': 15.999, 'H': 1.007} # molar weights in kg/kmol
-            self.n_points = list(self.n_obl_mult * np.array([n_obl_pressure, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp))
+            self.n_points = list(np.asarray(self.n_obl_axis_mult, dtype=np.intp) * np.array([n_obl_pressure, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp)) \
+                if self.n_obl_axis_mult is not None else \
+                list(self.n_obl_mult * np.array([n_obl_pressure, 201, 201, 201, 101, 101, 101, 101], dtype=np.intp))
             if self.co2_injection < self.co2_injection_cutoff:
                 self.axes_min = [self.pressure_init - 1] + [self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, self.obl_min, 0.3]
                 self.axes_max = [p_obl_max] + [1 - self.obl_min, 0.4, 0.2, 0.01, 0.01, 0.02, 0.37]
@@ -369,6 +398,10 @@ class Model(CICDModel):
                                                 axes_step=axes_step, axes_origin=axes_origin,
                                                 epsilon_z=property_container.eps_z, extrapolation_flag=False,
                                                 cache=True)
+        # Nested kinetics (opt-in): tabulate smooth SR/activity/density fields instead of
+        # the sharp kinetic-rate operators and compose the rates analytically after
+        # interpolation (consumed by set_operators/set_interpolators at init time).
+        self.physics.nested_kinetics = self.nested_kinetics
         self.physics.add_property_region(property_container, output_property_container, 0)
 
         # Bound the in-memory derived hypercube cache so the adaptive 8-D OBL
