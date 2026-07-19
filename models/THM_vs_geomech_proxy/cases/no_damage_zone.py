@@ -47,7 +47,7 @@ def input_data_no_damage_zone():
     idata.other.set_props_by_tags = True
 
     rsv_poro = 0.2
-    rsv_perm = 100.0    # [mD]
+    rsv_perm = 10.0     # [mD]
 
     non_rsv_poro = 0.001
     non_rsv_perm = 0.001  # [mD]
@@ -65,4 +65,8 @@ def input_data_no_damage_zone():
     rcond_sand  = 3.0 * 86.4  # [kJ/m/day/K]
     rcond_shale = 2.2 * 86.4  # [kJ/m/day/K]
     idata.rock.thermal_conductivity = np.array([rcond_sand, rcond_shale, rcond_shale])
+    
+    idata.rock.E = 20.0 * 1e4   # [bars]
+    idata.rock.nu = 0.20  # Poisson ratio
+                              
     return idata

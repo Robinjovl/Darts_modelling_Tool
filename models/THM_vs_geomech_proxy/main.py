@@ -286,7 +286,8 @@ if __name__ == '__main__':
     #cases += ['case_3']
     #cases += ['case_4']
     #cases += ['case_5']
-    cases += ['no_damage_zone']
+    #cases += ['no_damage_zone']
+    cases += ['no_damage_zone_heter_mech_prop']
 
     #thermal = False
     thermal = True

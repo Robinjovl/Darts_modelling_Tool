@@ -1,6 +1,7 @@
 from cases.case_1 import input_data_case_1, input_data_case_2, input_data_case_3, input_data_case_4
 from cases.case_5 import input_data_case_5
 from cases.no_damage_zone import input_data_no_damage_zone
+from cases.no_damage_zone_heter_mech_prop import input_data_no_damage_zone_heter_mech_prop
 
 from cases.base import input_data_struct_like
 import os
@@ -27,6 +28,8 @@ def set_input_data(
             input_data = input_data_case_5()
         case "no_damage_zone":
             input_data = input_data_no_damage_zone()
+        case "no_damage_zone_heter_mech_prop":
+            input_data = input_data_no_damage_zone_heter_mech_prop()
         case _:  # default
             model_folder = os.path.basename(model_folder)
             os.makedirs(os.path.join(BASE_DIR, "meshes", model_folder), exist_ok=True)
