@@ -7,7 +7,7 @@ from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 import os
 
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic

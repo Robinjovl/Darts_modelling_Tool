@@ -6,8 +6,8 @@ from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
@@ -86,9 +86,9 @@ class Model(CICDModel):
         epsilon = self.zero / 10
 
         """ Define state specification and initialize physics object """
-        state_spec = Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.P
         # state_spec=P for 2-comp isothermal → axes [p, z]
-        self.physics = Compositional(components_names, phases_names, self.timer, state_spec=state_spec,
+        self.physics = PhysicsBase(components_names, phases_names, self.timer, state_spec=state_spec,
                                      axes_step=[0.05, 1e-4],  # p [bar], z
                                      axes_origin=[1.0, epsilon],
                                      epsilon_z=epsilon)

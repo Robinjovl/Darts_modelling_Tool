@@ -4,14 +4,14 @@ from darts.engines import sim_params, value_vector, operator_set_evaluator_iface
 import numpy as np
 from copy import deepcopy
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.kinetics import KineticBasic
 
-from darts.physics.super.operator_evaluator import ReservoirOperators
+from darts.physics.base.operator_evaluator import ReservoirOperators
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 import matplotlib.pyplot as plt
@@ -185,7 +185,7 @@ class Model(CICDModel):
 
         thermal = 0
         ne = nc + thermal
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
 
         """ properties correlations """
         if self.combined_ions:
@@ -222,7 +222,7 @@ class Model(CICDModel):
             mass_sources = [None,
                             MassSource(0, 1000, delta_volume, num_well_blocks),
                             MassSource(2, 200, delta_volume, num_well_blocks)]
-            self.physics = Compositional(components, phases, self.timer,
+            self.physics = PhysicsBase(components, phases, self.timer,
                                          axes_step=ax_step, axes_origin=ax_origin, epsilon_z=epsilon,
                                          state_spec=state_spec, cache=0, extrapolation_flag=True)
 
@@ -485,9 +485,9 @@ class MassSource:
         return self.rate / self.num_well_blocks / self.delta_volume * dens_m_pure, None
 
 
-class CustomPhysics(Compositional):
+class CustomPhysics(PhysicsBase):
     def __init__(self, components, phases, timer, axes_step, axes_origin=None, epsilon_z=1e-9,
-                 state_spec=Compositional.StateSpecification.P, cache=False, extrapolation_flag=True,
+                 state_spec=PhysicsBase.StateSpecification.P, cache=False, extrapolation_flag=True,
                  volume=0, num_wells=0):
 
         self.delta_volume = volume

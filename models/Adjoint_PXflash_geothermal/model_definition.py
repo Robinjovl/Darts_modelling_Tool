@@ -106,7 +106,7 @@ class Model(CICDModel, OptModuleSettings):
                                 pxflash_switch_ttol=1e-1, pxflash_ftol=1e-10)
 
             # Define PropertyContainer
-            from darts.physics.super.property_container import PropertyContainer
+            from darts.physics.base.property_container import PropertyContainer
             zero = 1e-10
             epsilon = 1e-11
             property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, eps_z=epsilon)
@@ -131,13 +131,13 @@ class Model(CICDModel, OptModuleSettings):
             property_container.output_props = {'temperature': lambda: property_container.temperature,
                                                'satAq': lambda: property_container.sat[0]}
 
-            from darts.physics.super.physics import Compositional
+            from darts.physics.base.physics import PhysicsBase
             # PH: [p, z_1, ..., z_{nc-1}, H]
             nz = len(components) - 1
             ax_step = [0.4] + [1e-3] * nz + [0.1]
             ax_origin = [1.0] + [epsilon] * nz + [273.15]
-            self.physics = Compositional(components, phases, self.timer,
-                                         state_spec=Compositional.StateSpecification.PH,
+            self.physics = PhysicsBase(components, phases, self.timer,
+                                         state_spec=PhysicsBase.StateSpecification.PH,
                                          axes_step=ax_step, axes_origin=ax_origin,
                                          epsilon_z=epsilon, cache=False, extrapolation_flag=True)
             self.physics.add_property_region(property_container)

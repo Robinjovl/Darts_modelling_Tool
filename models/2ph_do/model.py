@@ -3,8 +3,8 @@ from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector, sim_params, ms_well
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.nonlinear_solvers import NewtonSolver
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
@@ -59,8 +59,8 @@ class Model(CICDModel):
 
         # create physics
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=[2.5, 2.5e-3],  # p_step [bar], z_step
                                      axes_origin=[0.0, epsilon],
                                      epsilon_z=epsilon, extrapolation_flag=True)
