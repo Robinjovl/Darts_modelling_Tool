@@ -571,6 +571,11 @@ class DartsModel:
                 "available."
             )
         self.params.linear_type = enum_value
+        # Mineral-equation Schur elimination: the GPU engine factory wraps the
+        # selected chain in linsolv_schur_elim when this counter is set.
+        schur_elim = getattr(spec, "schur_elim_minerals", 0)
+        if schur_elim and hasattr(self.params, "schur_elim_minerals"):
+            self.params.schur_elim_minerals = int(schur_elim)
 
     def set_solver(self):
         """Configure the model's solver and time-stepping (override hook).

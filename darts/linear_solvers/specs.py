@@ -692,6 +692,86 @@ class PardisoSolverSpec(PythonLinearSolverSpec):
 
 
 @dataclass
+class SchurEliminationSpec(LinearSolverSpec):
+    """Exact mineral-equation Schur elimination wrapping an inner solver
+    (``linsolv_schur_elim``).
+
+    Chemistry block systems carry mineral balance equations without flux terms
+    (their block rows live only in the diagonal block). This wrapper eliminates
+    one such equation/unknown pair per cell by exact local static condensation
+    -- the reduced system is one variable smaller per cell with the SAME
+    sparsity -- and runs :attr:`inner` on it. The elimination is exact: outer
+    Newton behaviour is unchanged up to linear-solver tolerance. It both
+    shrinks all linear-solver work (vectors, SpMV, ILU blocks) and restores a
+    fluid balance as equation 0, which repairs the True-IMPES pressure
+    decoupling that a mineral-first equation ordering degrades.
+
+    Intended usage for a single-mineral chemistry model (block size N)::
+
+        self.linear_solver = SchurEliminationSpec(
+            inner=GMRESSolverSpec(prec=CPRSolverSpec(), tolerance=1e-6),
+        )
+
+    The inner spec is built one block size smaller (N-1) automatically.
+
+    :param inner: spec of the solver to run on the reduced system (required).
+    :param elim_col: eliminated unknown column within the block. Default 1 =
+        the mineral z (minerals-first ordering): the natural pairing, since the
+        mineral balance is the equation that determines the mineral unknown --
+        its small pivot is balanced by the equally small mineral column, so the
+        condensation stays bounded. -1 is an EXPERIMENTAL per-row max-magnitude
+        auto pivot; measurements on carbonated_water showed it can leave the
+        mineral unknown nearly decoupled in the reduced system (near-singular
+        setups), so prefer the default. Pressure (0) is never eliminable.
+    :param elim_row: preferred eliminated equation row (default 0 = the mineral
+        balance). Rows where no usable pivot exists (well heads) fall back to
+        another eliminable row automatically.
+    :param pivot_eps: pivots at or below this magnitude disqualify a candidate
+        during detection.
+    """
+
+    registry_name: ClassVar[str] = "schur_elim"
+
+    inner: LinearSolverSpec | None = None
+    elim_col: int = 1
+    elim_row: int = 0
+    pivot_eps: float = 0.0
+
+    def _make_config(self) -> linear_solvers.SchurElimSolverConfig:
+        config = linear_solvers.SchurElimSolverConfig()
+        config.tolerance = self.tolerance
+        config.max_iterations = self.max_iterations
+        config.elim_col = self.elim_col
+        config.elim_row = self.elim_row
+        config.pivot_eps = self.pivot_eps
+        return config
+
+    def build(self, block_size: int):
+        """Build the wrapper at ``block_size`` and the inner solver at
+        ``block_size - 1``, attaching it via ``set_prec``.
+
+        The built inner solver is stored on this spec so it outlives any local
+        reference at the call site -- the C++ wrapper holds a raw pointer.
+        """
+        if self.inner is None:
+            raise ValueError(
+                "SchurEliminationSpec requires an inner solver spec, e.g. "
+                "SchurEliminationSpec(inner=GMRESSolverSpec(prec=CPRSolverSpec()))."
+            )
+        if block_size < 3:
+            raise ValueError(
+                f"SchurEliminationSpec: block size {block_size} is too small to "
+                "eliminate a mineral equation and keep a meaningful reduced system."
+            )
+        wrapper = linear_solvers.create_linear_solver(
+            self.registry_name, self._make_config(), block_size
+        )
+        self._built_inner = self.inner.build(block_size - 1)
+        wrapper.set_prec(self._built_inner)
+        return wrapper
+
+
+@dataclass
 class GPUSolverSpec(LinearSolverSpec):
     """Base spec for GPU linear solvers.
 
@@ -710,6 +790,13 @@ class GPUSolverSpec(LinearSolverSpec):
 
     #: name of the ``darts.engines.sim_params`` ``linear_solver_t`` enum value
     linear_type_name: ClassVar[str] = ""
+
+    #: >0 wraps the GPU chain in an exact per-cell Schur elimination of that
+    #: many flux-free mineral equations (``linsolv_schur_elim``; only 1
+    #: supported). The chain is then built one block size smaller. Honoured by
+    #: the AMGX-CPR family of GPU solvers; mirrors ``SchurEliminationSpec``
+    #: on the CPU side.
+    schur_elim_minerals: int = 0
 
     def build(self, block_size: int):
         raise NotImplementedError(

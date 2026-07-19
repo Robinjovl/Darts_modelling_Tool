@@ -25,6 +25,7 @@
 #include "csr_matrix.hpp"
 #include "linear_solver.hpp"
 #include "linsolv_cpr.hpp"
+#include "linsolv_schur_elim.hpp"
 #include "linsolv_fs_cpr.hpp"
 #include "linsolv_gmres.hpp"
 #include "linsolv_hypre_amg.hpp"
@@ -257,6 +258,51 @@ namespace opendarts
         return build_cpr_for_block_size(block_size, cpr_config);
       }
 
+      // ---- Schur mineral elimination (linsolv_schur_elim) ------------------
+      //
+      // Wrapper: exact per-cell condensation of one flux-free mineral
+      // equation/unknown pair, then the inner solver (attached by the caller
+      // via set_prec, built for block size N-1) runs on the reduced system.
+
+      template <uint8_t N_BLOCK_SIZE>
+      solver_handle build_schur_elim(const opendarts::linear_solvers::schur_elim_solver_config &config)
+      {
+        return std::make_shared<opendarts::linear_solvers::linsolv_schur_elim<N_BLOCK_SIZE>>(
+            /*on_device=*/false, config.elim_col, (uint8_t)config.elim_row, config.pivot_eps);
+      }
+
+      solver_handle build_schur_elim_for_block_size(int block_size,
+          const opendarts::linear_solvers::schur_elim_solver_config &config)
+      {
+        switch (block_size)
+        {
+          case 2:  return build_schur_elim<2>(config);
+          case 3:  return build_schur_elim<3>(config);
+          case 4:  return build_schur_elim<4>(config);
+          case 5:  return build_schur_elim<5>(config);
+          case 6:  return build_schur_elim<6>(config);
+          case 7:  return build_schur_elim<7>(config);
+          case 8:  return build_schur_elim<8>(config);
+          case 9:  return build_schur_elim<9>(config);
+          case 10: return build_schur_elim<10>(config);
+          case 11: return build_schur_elim<11>(config);
+          case 12: return build_schur_elim<12>(config);
+          case 13: return build_schur_elim<13>(config);
+          default:
+            throw std::runtime_error("Schur elimination wrapper: unsupported block size " +
+                std::to_string(block_size) + " (supported: 2..13).");
+        }
+      }
+
+      // Factory registered under the name "schur_elim".
+      solver_handle make_schur_elim_solver(
+          const opendarts::linear_solvers::solver_config &config, int block_size)
+      {
+        const auto se_config =
+            resolve_config<opendarts::linear_solvers::schur_elim_solver_config>(config, "schur_elim");
+        return build_schur_elim_for_block_size(block_size, se_config);
+      }
+
       // ---- FS-CPR (4-block poromechanics CPR) -----------------------------
       //
       // Two-stage poromechanics CPR: HYPRE BoomerAMG correction on the
@@ -461,6 +507,7 @@ namespace opendarts
       register_solver("superlu", make_superlu_solver);
       register_solver("gmres", make_gmres_solver);
       register_solver("cpr", make_cpr_solver);
+      register_solver("schur_elim", make_schur_elim_solver);
       register_solver("fs_cpr", make_fs_cpr_solver);
     }
   } // namespace linear_solvers

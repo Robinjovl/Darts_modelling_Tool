@@ -317,6 +317,25 @@ namespace opendarts
       int u_var = -1;
       int nc    = -1;
     };
+
+    /** Configuration for the mineral-equation Schur elimination wrapper
+     *  (linsolv_schur_elim).
+     *
+     *  Exact per-cell static condensation of one flux-free (mineral balance)
+     *  equation/unknown pair per block before the attached inner solver runs on
+     *  the reduced (N-1)-sized system. The inner solver is attached by the
+     *  caller via set_prec() and must be built for block size N-1.
+     *  The Python counterpart is ``SchurEliminationSpec``.
+     */
+    struct schur_elim_solver_config : opendarts::linear_solvers::solver_config
+    {
+      int elim_col = 1;        // eliminated unknown column: the mineral z (natural pairing:
+                               // the mineral balance determines the mineral unknown; its small
+                               // pivot is balanced by the equally small mineral column).
+                               // -1 = experimental per-row max-magnitude auto pivot
+      int elim_row = 0;        // preferred eliminated equation row (mineral balance)
+      double pivot_eps = 0.0;  // pivots <= eps disqualify a candidate during detection
+    };
   } // namespace linear_solvers
 } // namespace opendarts
 

@@ -30,6 +30,7 @@
 #include "linsolv_cudss.hpp"
 #endif
 #include "linsolv_mcsgs.hpp"
+#include "linsolv_schur_elim.hpp"
 #ifdef OPENDARTS_GPU_HAS_AMGX
 #include "linsolv_amgx.hpp"
 #include "linsolv_bos_cpr_gpu.hpp"
@@ -38,6 +39,53 @@
 #include "linsolv_bicgstab.h"
 #endif
 #define KERNEL_BLOCK_SIZE 128
+
+#if defined(OPENDARTS_LINEAR_SOLVERS) && defined(OPENDARTS_GPU_HAS_AMGX)
+/// Build the in-tree GPU AMGX-CPR chain for block size NV: Krylov outer
+/// (GMRES or BiCGStab) around linsolv_bos_cpr_gpu with AMGX on the pressure
+/// system and cuSPARSE block-ILU(0) (or a DARTS_CPR_STAGE2 experiment hook)
+/// as the full-system stage. Factored out of engine_base_gpu::init_base so
+/// the mineral-elimination wrapper can build the same chain one block size
+/// smaller (see params->schur_elim_minerals).
+template <uint8_t NV>
+inline opendarts::linear_solvers::linsolv_iface *make_gpu_amgx_cpr_chain(
+    int device_num, bool use_bicgstab, std::string &linear_solver_type_str)
+{
+  using namespace opendarts::linear_solvers;
+  auto *cpr = new linsolv_bos_cpr_gpu<NV>;
+  cpr->p_solver_setup_gpu = 1;
+  cpr->p_solver_solve_gpu = 1;
+  cpr->p_solver_requires_diag_first = 0;
+  cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
+  // Stage-2 experiment hook: DARTS_CPR_STAGE2=amgx swaps the exact
+  // (latency-bound) block-ILU(0) for a second AMGX instance on the full
+  // system; configure it via amgx_config_bs<NV>.json in the run directory.
+  const char *stage2_env = std::getenv("DARTS_CPR_STAGE2");
+  if (stage2_env && std::string(stage2_env) == std::string("amgx"))
+    cpr->set_prec(new linsolv_amgx<NV>(device_num));
+  else if (stage2_env && std::string(stage2_env) == std::string("amgx_bs1"))
+    // scalar-expanded full system: well-row diagonals become invertible
+    // scalars, which D^-1-based smoothers (Jacobi/DILU) require
+    cpr->set_prec(new linsolv_amgx<NV>(device_num, 1));
+  else if (stage2_env && std::string(stage2_env) == std::string("mcsgs"))
+    // opendarts multicolor symmetric block-Gauss-Seidel: latency-friendly
+    // stage-2 with identity fallback on singular (well-row) diagonals
+    cpr->set_prec(new linsolv_mcsgs<NV>());
+  else
+    cpr->set_prec(new linsolv_cusparse_ilu<NV>());
+  if (use_bicgstab)
+  {
+    auto *bicgstab = new linsolv_bicgstab<NV>();
+    bicgstab->set_prec(cpr);
+    linear_solver_type_str = "GPU_BICGSTAB_CPR_AMGX_ILU";
+    return bicgstab;
+  }
+  auto *gmres = new linsolv_gmres_gpu<NV>();
+  gmres->set_prec(cpr);
+  linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
+  return gmres;
+}
+#endif // OPENDARTS_LINEAR_SOLVERS && OPENDARTS_GPU_HAS_AMGX
 
 #endif
 
@@ -373,41 +421,36 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
       // system). Mirrors the proprietary GPU_GMRES_CPR_AMGX_ILU wiring.
       if constexpr (N_VARS > 1)
       {
-        auto *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-        cpr->p_solver_setup_gpu = 1;
-        cpr->p_solver_solve_gpu = 1;
-        cpr->p_solver_requires_diag_first = 0;
-        cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
-        // Stage-2 experiment hook: DARTS_CPR_STAGE2=amgx swaps the exact
-        // (latency-bound) block-ILU(0) for a second AMGX instance on the full
-        // system; configure it via amgx_config_bs<N_VARS>.json in the run
-        // directory (e.g. a MULTICOLOR_DILU smoother).
-        const char *stage2_env = std::getenv("DARTS_CPR_STAGE2");
-        if (stage2_env && std::string(stage2_env) == std::string("amgx"))
-          cpr->set_prec(new linsolv_amgx<N_VARS>(device_num));
-        else if (stage2_env && std::string(stage2_env) == std::string("amgx_bs1"))
-          // scalar-expanded full system: well-row diagonals become invertible
-          // scalars, which D^-1-based smoothers (Jacobi/DILU) require
-          cpr->set_prec(new linsolv_amgx<N_VARS>(device_num, 1));
-        else if (stage2_env && std::string(stage2_env) == std::string("mcsgs"))
-          // opendarts multicolor symmetric block-Gauss-Seidel: latency-friendly
-          // stage-2 with identity fallback on singular (well-row) diagonals
-          cpr->set_prec(new linsolv_mcsgs<N_VARS>());
-        else
-          cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>());
-        if (params->linear_type == sim_params::GPU_BICGSTAB_CPR_AMGX)
+        const bool use_bicgstab = (params->linear_type == sim_params::GPU_BICGSTAB_CPR_AMGX);
+        if (params->schur_elim_minerals > 0)
         {
-          auto *bicgstab = new linsolv_bicgstab<N_VARS>();
-          bicgstab->set_prec(cpr);
-          linear_solver = bicgstab;
-          linear_solver_type_str = "GPU_BICGSTAB_CPR_AMGX_ILU";
+          // Mineral-equation Schur elimination: exact per-cell condensation of
+          // the flux-free mineral balance, with the SAME AMGX-CPR chain built
+          // one block size smaller as the inner solver.
+          if constexpr (N_VARS >= 3)
+          {
+            if (params->schur_elim_minerals != 1)
+              std::cout << "schur_elim_minerals=" << params->schur_elim_minerals
+                        << " not supported (only 1); eliminating 1 mineral equation" << std::endl;
+            auto *wrap = new opendarts::linear_solvers::linsolv_schur_elim<N_VARS>(
+                /*on_device=*/true);
+            wrap->set_prec(make_gpu_amgx_cpr_chain<N_VARS - 1>(device_num, use_bicgstab,
+                linear_solver_type_str));
+            linear_solver = wrap;
+            linear_solver_type_str += " + SCHUR_ELIM(1 mineral)";
+          }
+          else
+          {
+            std::cout << "schur_elim_minerals ignored: block size " << (int)N_VARS
+                      << " too small to eliminate a mineral equation" << std::endl;
+            linear_solver = make_gpu_amgx_cpr_chain<N_VARS>(device_num, use_bicgstab,
+                linear_solver_type_str);
+          }
         }
         else
         {
-          auto *gmres = new linsolv_gmres_gpu<N_VARS>();
-          gmres->set_prec(cpr);
-          linear_solver = gmres;
-          linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
+          linear_solver = make_gpu_amgx_cpr_chain<N_VARS>(device_num, use_bicgstab,
+              linear_solver_type_str);
         }
       }
       else

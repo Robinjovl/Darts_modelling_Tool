@@ -77,6 +77,7 @@ from .specs import (  # noqa: F401
     PETScSolverSpec,
     PressureAMGSpec,
     PythonLinearSolverSpec,
+    SchurEliminationSpec,
     SuperLUSolverSpec,
     default_linear_solver,
 )

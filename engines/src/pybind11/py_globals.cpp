@@ -122,6 +122,10 @@ void pybind_globals(py::module &m)
     .def_readwrite("well_tolerance_coefficient", &sim_params::well_tolerance_coefficient)
     .def_readwrite("stationary_point_tolerance", &sim_params::stationary_point_tolerance)
     .def_readwrite("assembly_kernel", &sim_params::assembly_kernel)
+    .def_readwrite("schur_elim_minerals", &sim_params::schur_elim_minerals,
+        "Wrap the GPU linear solver in an exact per-cell Schur elimination of this many "
+        "flux-free mineral equations (0 = off, 1 = single mineral; CPU chains use "
+        "SchurEliminationSpec instead)")
     .def_readwrite("finalize_mpi", &sim_params::finalize_mpi)
     .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance)
     .def_readwrite("line_search", &sim_params::line_search)

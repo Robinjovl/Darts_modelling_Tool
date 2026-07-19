@@ -109,6 +109,7 @@ set(OD_LINEAR_SOLVERS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cpr.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/matrix_slice.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_fs_cpr.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_schur_elim.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_registry.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/solver_factories.cpp
 )
@@ -142,6 +143,7 @@ set(OD_LINEAR_SOLVERS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cpr.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/matrix_slice.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_fs_cpr.hpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_schur_elim.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linear_solvers_data_types.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/mgr_linear_solver.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/MGRStrategy.hpp
@@ -180,12 +182,15 @@ if(CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_mcsgs.hpp
   )
   # csr_matrix.cpp and the .cpp GPU wrappers must be compiled as CUDA.
+  # linsolv_schur_elim.cpp carries CUDA kernels behind WITH_GPU and is listed in
+  # the always-built sources; in a GPU configuration it must go through nvcc too.
   set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/csr_matrix.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bicgstab.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_gmres_gpu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusparse_ilu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusolv.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_schur_elim.cpp
     PROPERTIES LANGUAGE CUDA
   )
   # AMGX is opt-in (-D WITH_AMGX=ON); it is the only GPU solver with a heavy
@@ -246,7 +251,9 @@ endforeach()
 
 # CPR solvers start at block size 2 — the constrained-pressure-residual split is
 # undefined for a 1x1 block (no non-pressure sub-block to decouple).
-foreach(_od_solver linsolv_bos_cpr linsolv_bos_cpr_gpu)
+# The Schur mineral-elimination wrapper also starts at 2 (it reduces N -> N-1,
+# so the smallest meaningful full block is 2x2).
+foreach(_od_solver linsolv_bos_cpr linsolv_bos_cpr_gpu linsolv_schur_elim)
   od_emit_template_instantiations(
     CLASS ${_od_solver}
     MIN_N 2

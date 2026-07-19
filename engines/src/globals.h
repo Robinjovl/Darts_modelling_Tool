@@ -140,6 +140,7 @@ public:
     // obl_min_fac = 10;
     sim_eps = 1e-12;
     assembly_kernel = 0;
+    schur_elim_minerals = 0;
 
     finalize_mpi = 1;
 
@@ -168,6 +169,11 @@ public:
   value_t obl_min_fac;         // factor used to determine z_min --> usually taken around 10, such that z_min = 10*z_OBL_min
   value_t sim_eps;             // offset from axes that solution should remain inside
   int assembly_kernel;         // select non-default assebly kernel (for GPU)
+  int schur_elim_minerals;     // >0: wrap the linear solver in an exact per-cell Schur
+                               // elimination of that many flux-free mineral equations
+                               // before preconditioning (currently only 1 supported;
+                               // consumed by the GPU engine solver factory; CPU chains
+                               // use SchurEliminationSpec instead). Default 0 = off.
 
   newton_solver_t newton_type;          // Newton solver type (more precisely, nonlinear update type - chopping strategies)
   linear_solver_t linear_type;          // Linear solver type

@@ -439,6 +439,17 @@ void bind_unified_solver_api(py::module &m)
         .def(py::init<>())
         .def_readwrite("restart", &gmres_solver_config::restart);
 
+    // Schur mineral-elimination wrapper configuration.
+    py::class_<schur_elim_solver_config, solver_config>(m, "SchurElimSolverConfig",
+        "Configuration for the Schur mineral-elimination wrapper "
+        "(linsolv_schur_elim): exact per-cell condensation of one flux-free "
+        "mineral equation/unknown pair per block; the inner solver (attached "
+        "via set_prec, built for block size N-1) runs on the reduced system.")
+        .def(py::init<>())
+        .def_readwrite("elim_col", &schur_elim_solver_config::elim_col)
+        .def_readwrite("elim_row", &schur_elim_solver_config::elim_row)
+        .def_readwrite("pivot_eps", &schur_elim_solver_config::pivot_eps);
+
     // Open-source CPR two-stage preconditioner configuration.
     py::class_<cpr_solver_config, solver_config>(m, "CPRSolverConfig",
         "Configuration for the open-source CPR two-stage preconditioner. "
