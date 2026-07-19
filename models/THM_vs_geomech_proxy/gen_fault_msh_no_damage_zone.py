@@ -251,4 +251,4 @@ if __name__ == '__main__':
     #                   used for post-processing (see fault.py)
     gen_fault_msh_no_damage_zone(fault=False)
     gen_fault_msh_no_damage_zone(fault=True)
-    gen_fault_msh_no_damage_zone(fault=True)
+

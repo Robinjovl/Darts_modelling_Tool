@@ -127,9 +127,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             self.init_uniform_properties(idata=idata)
         elif idata.other.set_props_by_tags:
             # per-tag rock properties via the parent class: set_props_tags builds self.props from
-            # idata.rock arrays (one value per matrix tag), and the parent's
-            # init_heterogeneous_properties applies them per cell using self.tags
-            self.set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
+            # idata.rock arrays (one value per matrix tag), and init_heterogeneous_properties
+            # applies them per cell using self.tags. This model specifies permeability as per-tag
+            # permx/permy/permz (leaving the 'perm' tensor unset), which the base handles.
+            super().set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
             super().init_heterogeneous_properties()
         else:  # don't use mesh tags, set by interpolation
             self.set_heterogeneous_props_by_interpolation(idata=idata, generate_mesh=generate_mesh)
@@ -371,7 +372,150 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         time = engine.t if ith_step > 0 else 0.0
         self.write_pvd_file(ith_step, time, output_directory)
 
+        # save hooke_forces-based fault traction for post-processing (see fault.py)
+        try:
+            self.save_fault_traction(output_directory, ith_step, engine, pressure)
+        except Exception as e:
+            print('[WARN] fault traction save skipped:', e)
+
         return 0
+
+    # ------------------------------------------------------------------
+    # Fault traction from the mechanical (Hooke) forces
+    # ------------------------------------------------------------------
+    def _setup_fault_mapping(self, fault_mesh_filename):
+        """
+        One-time setup: read the fault faces from the *_fault.msh companion mesh
+        and precompute, for every fault face, the directed mesh connection it
+        maps to (for hooke_forces) and the matrix cell it maps to (for pore
+        pressure). Geometry is fixed across timesteps, so this is done once.
+        """
+        self._fault_setup_done = True
+        self._fault_ok = False
+        if not os.path.exists(fault_mesh_filename):
+            print('[INFO] no fault mesh (%s); fault traction not saved' % fault_mesh_filename)
+            return
+
+        from scipy.spatial import cKDTree
+        from fault import read_fault_faces
+
+        centers, fault_normal, _ = read_fault_faces(fault_mesh_filename)
+        self.frac_points_x = np.ascontiguousarray(centers[:, 0])
+        self.frac_points_y = np.ascontiguousarray(centers[:, 1])
+        self.frac_points_z = np.ascontiguousarray(centers[:, 2])
+        self.fault_normal = fault_normal
+
+        cell_centers = np.array([np.array(c.values)
+                                 for c in self.discr_mesh.centroids[:self.n_matrix]])
+
+        # --- geometry from the discretizer connections (for area only) ---
+        adj = np.array(self.discr_mesh.adj_matrix)
+        conns = self.discr_mesh.conns
+        geom_centers = np.array([np.array(conns[int(adj[k])].c.values) for k in range(len(adj))])
+        geom_areas = np.array([conns[int(adj[k])].area for k in range(len(adj))])
+        gi = cKDTree(geom_centers).query(centers)[1]
+        self._fault_area = geom_areas[gi]
+
+        # --- force index from the ENGINE connections (aligned with hooke_forces) ---
+        # engine.hooke_forces is ordered like mesh.block_m/block_p (which include
+        # well connections), NOT like discr_mesh.adj_matrix. Map each fault face to
+        # the engine connection by its cell-pair midpoint so the force index is
+        # correct. Restrict to matrix-matrix connections (both cells < n_matrix).
+        block_m = np.array(self.mesh.block_m)
+        block_p = np.array(self.mesh.block_p)
+        self._n_directed = len(adj)
+        mm = (block_m < self.n_matrix) & (block_p < self.n_matrix)
+        eng_idx = np.where(mm)[0]
+        mids = 0.5 * (cell_centers[block_m[mm]] + cell_centers[block_p[mm]])
+        dist, k = cKDTree(mids).query(centers)
+        ej = eng_idx[k]                      # engine connection index per fault face
+        self._fault_engine_idx = ej
+        print('[fault-map] faces=%d  nearest-midpoint dist mean/max=%.3g/%.3g'
+              % (len(centers), dist.mean(), dist.max()))
+
+        # Orient each traction to a COMMON reference (+fault_normal): the engine
+        # connection is directed block_m -> block_p; use that direction's sign
+        # relative to the fault normal so the normal stress has a consistent sign.
+        dir_mp = cell_centers[block_p[ej]] - cell_centers[block_m[ej]]
+        s = np.sign(dir_mp @ fault_normal)
+        s[s == 0.0] = 1.0
+        self._fault_sign = s
+        self._fault_conn_normal = np.broadcast_to(fault_normal, (len(centers), 3)).copy()
+        # nearest matrix cell for each fault face (for pore pressure)
+        self._fault_cell_idx = cKDTree(cell_centers).query(centers)[1]
+        self._fault_ok = True
+
+    def save_fault_traction(self, output_directory, ith_step, engine, pressure):
+        """
+        Write results/<case>/fault<ith_step>.vtu with the Hooke-forces fault
+        traction (and pore pressure) at each fault-face center, for the
+        traction-based Mohr-Coulomb / FSP post-processing in fault.py.
+        """
+        base, ext = os.path.splitext(self.mesh_filename)
+        fault_mesh_filename = base + '_fault' + ext
+        if not getattr(self, '_fault_setup_done', False):
+            self._setup_fault_mapping(fault_mesh_filename)
+        if not getattr(self, '_fault_ok', False):
+            return
+
+        # Per directed connection, already multiplied by area (bars * m^2);
+        # size == n_directed * 3. hooke_forces is the elastic (Hooke) part; the
+        # TOTAL stress traction also needs the Biot (pressure) and thermal
+        # contributions. The lab models use hooke only; at reservoir scale the
+        # Biot/thermal parts are significant, so we save both.
+        ej = self._fault_engine_idx
+        # THM convention: compressive stresses are NEGATIVE. The lab mohr_coulomb
+        # expects compressive POSITIVE, so invert the sign of the forces after
+        # reading (the leading factor). _fault_sign orients every face to the
+        # common +fault_normal reference so the normal stress has a consistent sign.
+        sign_over_area = (self._fault_sign / self._fault_area)[:, None]
+
+        def _traction(force_attr):
+            arr = getattr(engine, force_attr, None)
+            if arr is None:
+                return None
+            # forces are connection-major: [fx,fy,fz] per connection, engine order
+            f = np.asarray(arr, copy=False).reshape(-1, 3)[ej]
+            return sign_over_area * f * 0.1  # bars -> MPa
+
+        hooke_tr = _traction('hooke_forces')
+        biot_tr = _traction('biot_forces')
+        thermal_tr = _traction('thermal_forces')
+
+        # One-time sanity check: the Biot force must be ~normal to the fault
+        # (biot*p*n). |tangential|/|normal| ~ 0 confirms the force<->connection
+        # mapping and array layout are correct.
+        if not getattr(self, '_fault_diag_done', False) and biot_tr is not None:
+            self._fault_diag_done = True
+            n = self.fault_normal
+            bn = np.abs(biot_tr @ n)
+            bt = np.linalg.norm(biot_tr - (biot_tr @ n)[:, None] * n, axis=1)
+            print('[fault-diag] biot |tangential|/|normal| = %.3f (should be ~0)'
+                  % (bt.mean() / max(bn.mean(), 1e-12)))
+
+        total_tr = hooke_tr.copy()
+        if biot_tr is not None:
+            total_tr += biot_tr
+        if thermal_tr is not None:
+            total_tr += thermal_tr
+
+        p_fault = pressure[self._fault_cell_idx] * 0.1  # bars -> MPa
+
+        # `fault_traction_*` is the TOTAL-stress traction (used by fault.py);
+        # `hooke_traction_*` keeps the elastic-only traction (lab convention).
+        data = {'fault_traction_x': np.ascontiguousarray(total_tr[:, 0]),
+                'fault_traction_y': np.ascontiguousarray(total_tr[:, 1]),
+                'fault_traction_z': np.ascontiguousarray(total_tr[:, 2]),
+                'hooke_traction_x': np.ascontiguousarray(hooke_tr[:, 0]),
+                'hooke_traction_y': np.ascontiguousarray(hooke_tr[:, 1]),
+                'hooke_traction_z': np.ascontiguousarray(hooke_tr[:, 2]),
+                'p': np.ascontiguousarray(p_fault)}
+
+        from pyevtk.hl import pointsToVTK
+        out = os.path.join(output_directory, 'fault%d' % ith_step)
+        pointsToVTK(out,
+                    self.frac_points_x.copy(), self.frac_points_y.copy(), self.frac_points_z.copy(),
+                    data=data)
 
     def set_heterogeneous_props_by_interpolation(self, idata, generate_mesh):
         # set different values in the reservoir and lateral surrounding+over/under-burden
