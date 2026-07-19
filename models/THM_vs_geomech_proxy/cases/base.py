@@ -201,15 +201,34 @@ def _set_mesh_tags(idata):
 
 
 def _set_obl(idata):
+    from tools import darts_version_ge
+
     n_points = 400
     idata.obl.zero = 1e-9
-    idata.obl.p_step = (1000.0 - 0.0) / (n_points - 1)
-    idata.obl.p_origin = 0.0
-    idata.obl.t_step = (50.0 - (-50.0)) / (n_points - 1)
-    idata.obl.t_origin = -50.0
-    idata.obl.z_step = (1.0 - 2.0 * idata.obl.zero) / (n_points - 1)
-    idata.obl.z_origin = idata.obl.zero
+    idata.obl.n_points = n_points
     idata.obl.epsilon_z = 1e-10
+
+    p_min, p_max = 0.0, 1000.0
+    t_min, t_max = -50.0, 50.0
+    z_min, z_max = idata.obl.zero, 1 - idata.obl.zero
+
+    if darts_version_ge((1, 5, 1)):
+        # OBL grid API (open-DARTS >= 1.5.1): origin + step per axis,
+        # axes_origin[i] = axes_min[i], axes_step[i] = (axes_max[i] - axes_min[i]) / (n_points - 1)
+        idata.obl.p_origin = p_min
+        idata.obl.p_step = (p_max - p_min) / (n_points - 1)
+        idata.obl.t_origin = t_min
+        idata.obl.t_step = (t_max - t_min) / (n_points - 1)
+        idata.obl.z_origin = z_min
+        idata.obl.z_step = (z_max - z_min) / (n_points - 1)
+    else:
+        # legacy OBL grid API (open-DARTS <= 1.5.0): min/max per axis
+        idata.obl.min_p = p_min
+        idata.obl.max_p = p_max
+        idata.obl.min_t = t_min
+        idata.obl.max_t = t_max
+        idata.obl.min_z = z_min
+        idata.obl.max_z = z_max
 
 
 def _xc_from_nx(nx):

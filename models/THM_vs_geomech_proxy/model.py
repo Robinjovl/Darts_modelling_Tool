@@ -372,11 +372,15 @@ def set_initial_conditions_from_depth_table(self, mesh, input_distribution: dict
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z=1e-11):
+    def __init__(self, phases_name, components_name, eps_z=1e-11):
         # Call base class constructor
         self.nph = len(phases_name)
         Mw = np.ones(self.nph)
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, min_z=min_z, temperature=None)
+        from tools import darts_version_ge
+        kwargs = dict(phases_name=phases_name, components_name=components_name, Mw=Mw, temperature=None)
+        # PropertyContainer renamed the small-composition floor min_z -> eps_z after 1.5.0
+        kwargs['eps_z' if darts_version_ge((1, 5, 1)) else 'min_z'] = eps_z
+        super().__init__(**kwargs)
 
     def evaluate(self, state):
         """
