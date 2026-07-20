@@ -10,28 +10,35 @@ This package is the single source of input parameters for the nonlinear
 - :mod:`darts.nonlinear_solvers.newton` — the Newton family of specs and the
   :class:`NewtonSolver` driver.
 
-Design (mirrors the linear-solver specs of MR280):
+Design (specified in ``set_solver()``, the same hook as the linear solver of MR280):
 
-- A model selects a nonlinear solver by assigning a spec to
-  ``DartsModel.nonlinear_solver`` inside an overridden ``set_solver()`` — the
-  same hook where the linear solver is specified (MR280)::
+- A model selects a nonlinear solver by assigning a solver *instance* to
+  ``DartsModel.nonlinear_solver`` inside an overridden ``set_solver()`` — either
+  by replacing it (``NewtonSolver`` accepts a :class:`NewtonSpec` positionally
+  or its keyword arguments)::
 
       def set_solver(self):
           super().set_solver()
-          self.nonlinear_solver.tolerance = 1e-4
-          self.nonlinear_solver.chop.factor = 0.2
+          self.nonlinear_solver = NewtonSolver(tolerance=1e-4,
+                                               chop=ChopSpec(mode='global'))
 
-  or by replacing the spec entirely::
+  or by tuning the spec of the default solver in place::
 
-      self.nonlinear_solver = NewtonSpec(tolerance=1e-4, chop=ChopSpec(mode='global'))
+      def set_solver(self):
+          super().set_solver()
+          self.nonlinear_solver.spec.tolerance = 1e-4
+          self.nonlinear_solver.spec.chop.factor = 0.2
 
-- The spec is materialized into a runtime solver object (``NewtonSolver``) by
-  ``DartsModel._apply_nonlinear()`` during ``init()``; the solver owns
-  ``run_timestep()`` — the nonlinear loop driving the C++ per-iteration kernels
-  (assembly, linear solve, update corrections, residual norms). Every iteration
-  is staged into ``pre_iteration`` (user routines + the dX-correction pipeline
-  assembled from the spec: composition correction, chopping, OBL-bounds
-  constraints), ``update`` and ``post_iteration``.
+- The solver instance (created in ``set_solver()`` / :func:`default_nonlinear_solver`)
+  is bound to the model by ``DartsModel._apply_nonlinear()`` during ``init()``. It
+  owns ``run_timestep()`` — the nonlinear loop driving the C++ per-iteration
+  kernels (assembly, linear solve, dX corrections, residual norms). Every
+  iteration is staged into ``pre_iteration`` (user routines), ``update`` (the
+  spec-assembled dX-correction pipeline — composition correction, chopping,
+  OBL-bounds constraints, thermal — followed by the plain Newton step) and
+  ``post_iteration`` (user routines); line-search trials reuse the same
+  ``update``. The input spec stays retrievable as ``nonlinear_solver.spec``
+  (serializable via ``.to_dict()``).
 
 - On divergence of the primary solver, the ordered ``spec.fallbacks``
   (:class:`FallbackSpec`) are tried on the same timestep — with extra

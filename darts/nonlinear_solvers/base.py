@@ -33,7 +33,11 @@ class Norm(Enum):
     LINF = "LINF"
 
 
-_NORM_TO_ENUM = {Norm.L1: 0, Norm.L2: 1, Norm.LINF: 2}  # engine.residual_norm_type
+# Map each Python Norm to the NAME of the canonical C++ enum member
+# (sim_params::nonlinear_norm_t). The integer values are taken from the compiled
+# enum at sync time (see sync_to_engine) so there is a single source of truth and
+# no hardcoded 0/1/2 that could silently desync if the C++ enum is reordered.
+_NORM_TO_CPP_ENUM = {Norm.L1: "L1", Norm.L2: "L2", Norm.LINF: "LINF"}
 
 
 # ------------------------------------------------------------------ sub-specs
@@ -56,9 +60,13 @@ class ChopSpec:
     log_transform: bool = False
 
     def __post_init__(self):
-        assert self.mode in (None, "local", "global"), (
-            f"Unknown chop mode '{self.mode}', expected None, 'local' or 'global'"
-        )
+        # explicit ValueError (not assert, which -O strips) — this validates user input
+        if self.mode not in (None, "local", "global"):
+            raise ValueError(
+                f"Unknown chop mode '{self.mode}', expected None, 'local' or 'global'"
+            )
+        if self.factor <= 0:
+            raise ValueError(f"ChopSpec.factor must be > 0, got {self.factor}")
 
 
 @dataclass
@@ -67,6 +75,12 @@ class LineSearchSpec:
 
     enabled: bool = False
     min_update: float = 1e-4
+
+    def __post_init__(self):
+        if not (0 < self.min_update < 1):
+            raise ValueError(
+                f"LineSearchSpec.min_update must lie in (0, 1), got {self.min_update}"
+            )
 
 
 @dataclass
@@ -89,6 +103,22 @@ class OBLBoundsSpec:
     mode: str | None = None
     axis_min: list | None = None
     axis_max: list | None = None
+
+    def __post_init__(self):
+        if self.mode not in (None, "obl_axes", "physical"):
+            raise ValueError(
+                f"Unknown OBL-bounds mode '{self.mode}', expected None, "
+                "'obl_axes' or 'physical'"
+            )
+        # element-wise lower <= upper where both are given (None = unbounded axis)
+        if self.axis_min is not None and self.axis_max is not None:
+            for j, (lo, hi) in enumerate(
+                zip(self.axis_min, self.axis_max, strict=False)
+            ):
+                if lo is not None and hi is not None and lo > hi:
+                    raise ValueError(
+                        f"OBLBoundsSpec axis {j}: axis_min ({lo}) > axis_max ({hi})"
+                    )
 
 
 @dataclass
@@ -160,6 +190,35 @@ class NonlinearSolverSpec:
     post_routines: list = field(default_factory=list)
     fallbacks: list = field(default_factory=list)
 
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self):
+        """Validate the convergence settings (called at construction and once per
+        timestep from the runtime solver, so post-construction mutation is caught
+        too). Explicit ValueError/TypeError — not ``assert`` (stripped by -O)."""
+        if not isinstance(self.norm, Norm):
+            raise TypeError(
+                f"NonlinearSolverSpec.norm must be a Norm, got {type(self.norm).__name__}"
+            )
+        if self.tolerance <= 0:
+            raise ValueError(f"tolerance must be > 0, got {self.tolerance}")
+        if self.well_tolerance_multiplier <= 0:
+            raise ValueError(
+                f"well_tolerance_multiplier must be > 0, got {self.well_tolerance_multiplier}"
+            )
+        if self.max_iterations < 1:
+            raise ValueError(f"max_iterations must be >= 1, got {self.max_iterations}")
+        if self.stationary_point_tolerance <= 0:
+            raise ValueError(
+                f"stationary_point_tolerance must be > 0, got {self.stationary_point_tolerance}"
+            )
+        if self.coupled_well_res_norm_method not in (1, 2):
+            raise ValueError(
+                "coupled_well_res_norm_method must be 1 or 2, got "
+                f"{self.coupled_well_res_norm_method}"
+            )
+
     def make_solver(self, model) -> "NonlinearSolver":
         """Materialize the runtime solver driving this spec."""
         raise NotImplementedError(
@@ -170,7 +229,28 @@ class NonlinearSolverSpec:
         """Write the kernel-level controls of this spec into the C++ engine.
         The engine owns only the raw kernel knobs; they are synced from the
         spec before every timestep solve."""
-        engine.residual_norm_type = _NORM_TO_ENUM[self.norm]
+        from darts.engines import sim_params
+
+        # canonical int comes from the compiled enum (single source of truth)
+        engine.residual_norm_type = int(
+            getattr(sim_params, _NORM_TO_CPP_ENUM[self.norm])
+        )
+
+    def to_dict(self) -> dict:
+        """Serialize this spec (and its nested sub-specs) to a plain dict for
+        input tracing / autospec (see :meth:`NonlinearSolver.to_spec`).
+
+        Uses :func:`dataclasses.asdict` today; if a spec is later migrated to a
+        Pydantic model this transparently delegates to its ``model_dump()``.
+        Note the dict retains :class:`Norm` enum members and routine callables,
+        so it is dict-serializable but not directly ``json.dumps``-able without
+        an enum/callable encoder."""
+        dump = getattr(self, "model_dump", None)
+        if callable(dump):  # Pydantic-forward-compatible
+            return dump()
+        from dataclasses import asdict
+
+        return asdict(self)
 
 
 @dataclass
@@ -250,14 +330,16 @@ class NonlinearSolver:
     The solver is the object a model assigns to ``DartsModel.nonlinear_solver``.
     It is constructed *detached* from its declarative :attr:`spec` (no model
     needed) and later :meth:`bind`\\ s to the model during ``init()``. The spec
-    it runs stays retrievable via :attr:`spec` / :meth:`to_spec` (Pydantic-ready)
-    for input tracing / serialization.
+    it runs stays retrievable via :attr:`spec` / :meth:`to_spec` (serializable via
+    :meth:`NonlinearSolverSpec.to_dict`, Pydantic-forward-compatible) for input
+    tracing / serialization.
 
     Subclasses implement :meth:`run_timestep` and :meth:`build_corrections`.
     The heavy kernels stay on the C++ engine; models can customize behaviour by
-    overriding the hooks :meth:`compute_residuals` and :meth:`on_iteration` in a
-    subclass, or by attaching routines to the spec's ``pre_routines`` /
-    ``post_routines``.
+    overriding the residual hooks :meth:`compute_reservoir_residual` /
+    :meth:`compute_well_residual` (both consumed by the Newton loop and line
+    search) and :meth:`on_iteration`, or by attaching routines to the spec's
+    ``pre_routines`` / ``post_routines``.
     """
 
     def __init__(self, spec: NonlinearSolverSpec, model=None):
@@ -278,8 +360,8 @@ class NonlinearSolver:
 
     def to_spec(self) -> NonlinearSolverSpec:
         """Return the specification this solver runs (the live config object the
-        model's ``data_ts``/constructor kwargs write into). Pydantic-ready, so
-        ``solver.to_spec().model_dump()`` traces the solver input (autospec)."""
+        constructor kwargs write into). Serializable via
+        ``solver.to_spec().to_dict()`` for input tracing (autospec)."""
         return self.spec
 
     @property
@@ -312,8 +394,15 @@ class NonlinearSolver:
         return converged
 
     def _make_fallback_solver(self, fallback: FallbackSpec) -> "NonlinearSolver":
-        spec = fallback.solver if fallback.solver is not None else self.spec
-        solver = spec.make_solver(self.model)  # constructed bound to this model
+        if fallback.solver is not None:
+            # explicit alternative spec -> build its own default runtime class
+            solver = fallback.solver.make_solver(self.model)
+        else:
+            # same-spec retry: preserve THIS runtime (sub)class so on_iteration/
+            # build_corrections/compute_* overrides survive the fallback rather
+            # than degrading to a plain NewtonSolver. Requires the subclass to
+            # keep a (spec, model=...)-compatible constructor.
+            solver = type(self)(self.spec, model=self.model)
         solver.stats = self.stats  # single cumulative statistics object
         solver.extra_pre_routines = list(fallback.pre_routines)
         solver.extra_post_routines = list(fallback.post_routines)
@@ -358,16 +447,30 @@ class NonlinearSolver:
 
     # -------- overridable hooks
 
-    def compute_residuals(self) -> tuple:
-        """Return ``(reservoir_residual, well_residual)`` for the current state."""
+    def compute_reservoir_residual(self) -> float:
+        """Reservoir (matrix) nonlinear residual for the current state. Override
+        to define a custom residual (e.g. the mechanics deviatoric norm) without
+        reimplementing the whole Newton loop; the loop and line search both call
+        this so an override reaches every residual evaluation."""
         engine = self.engine
         if self.model.has_dfm_well:
-            res = engine.calc_coupled_well_reservoir_residual(
+            return engine.calc_coupled_well_reservoir_residual(
                 self.spec.coupled_well_res_norm_method
             )
-        else:
-            res = engine.calc_newton_residual()
-        return res, engine.calc_well_residual()
+        return engine.calc_newton_residual()
+
+    def compute_well_residual(self) -> float:
+        """Well nonlinear residual for the current state (overridable)."""
+        return self.engine.calc_well_residual()
+
+    def compute_residuals(self) -> tuple:
+        """Return ``(reservoir_residual, well_residual)`` for the current state.
+        NOTE the main Newton loop calls :meth:`compute_reservoir_residual` and
+        :meth:`compute_well_residual` separately (the reservoir residual is
+        needed for stationary-point detection before the well residual is
+        computed); this composite is used where both are needed at once (line
+        search)."""
+        return self.compute_reservoir_residual(), self.compute_well_residual()
 
     def on_iteration(self, iteration: int, dt: float, t: float):
         """Hook called after residual evaluation of every nonlinear iteration."""
@@ -405,30 +508,21 @@ class NonlinearSolver:
         return f"FAILED TO CONVERGE WITH DT = {dt:.3f} ({reason}) \n"
 
     def _solve_linear(self) -> int:
-        """Solve the linearized system, routing to the Python-resident solvers
-        (PETSc/Pardiso) when selected; returns the solver return code."""
-        from darts.input.input_data import linear_solver_types
+        """Solve the linearized system via the model's backend-neutral dispatch
+        funnel and account the result uniformly for every backend.
 
-        linear_type = self.model.data_ts.linear_type
-        if isinstance(linear_type, linear_solver_types):
-            # solvers via Python interface
-            if linear_type in [
-                linear_solver_types.CPU_PETSC_CPR,
-                linear_solver_types.CPU_PETSC_FS,
-            ]:
-                self.model.petsc_solve_linear_equation()
-            elif linear_type in [linear_solver_types.CPU_PARDISO]:
-                self.model.pardiso_solve_linear_equation()
-            else:
-                raise Exception("Unknown linear solver type", linear_type)
-            return 0
-        # compile-time C++ linear solvers
-        engine = self.engine
-        rc = engine.solve_linear_equation()
+        The backend selection lives in :meth:`DartsModel._solve_linear_equation`,
+        which returns ``(rc, n_iters, residual)`` — ``rc`` is ``0`` on success,
+        ``1`` on setup failure, ``2`` on solve failure (Python PETSc/Pardiso
+        report failure via this same code, so a divergent solve now aborts the
+        Newton loop / triggers a fallback exactly like the C++ path). This split
+        is the seam the linear-solver refactoring (MR280) later replaces
+        wholesale, so the accounting stays backend-agnostic here."""
+        rc, n_iters, residual = self.model._solve_linear_equation()
         if rc == 0:
             status = self.status
-            status.n_linear += engine.get_last_linear_iters()
+            status.n_linear += n_iters
             write_to_log(
-                f"\t #{status.n_newton + 1:d} ({status.newton_residual:.4e}, {status.well_residual:.4e}): lin {engine.get_last_linear_iters():d} ({engine.get_last_linear_residual():.1e})\n"
+                f"\t #{status.n_newton + 1:d} ({status.newton_residual:.4e}, {status.well_residual:.4e}): lin {n_iters:d} ({residual:.1e})\n"
             )
         return rc

@@ -161,8 +161,11 @@ def run_timestep_python(m, dt, t):
         else: # compile-tyme C++ linear solvers
             r_code = self.e.solve_linear_equation()
             status.linear_solver_rc = r_code
-            if r_code == 0:
-                status.n_linear += self.e.get_last_linear_iters()
+            if r_code != 0:
+                # failed linear solve: do NOT apply a stale update; fail the timestep
+                converged = 0
+                break
+            status.n_linear += self.e.get_last_linear_iters()
 
         self.timer.node["newton update"].start()
         self.e.apply_newton_update(dt)

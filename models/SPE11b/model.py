@@ -894,8 +894,12 @@ class Model(DartsModel):
                     # compile-time C++ linear solvers
                     r_code = self.physics.engine.solve_linear_equation()
                     status.linear_solver_rc = r_code
-                    if r_code == 0:
-                        status.n_linear += self.physics.engine.get_last_linear_iters()
+                    if r_code != 0:
+                        # failed linear solve: do NOT apply a stale update; the
+                        # post-loop verdict reads status.linear_solver_rc -> fail
+                        self._linear_solver_rc_last = r_code
+                        break
+                    status.n_linear += self.physics.engine.get_last_linear_iters()
                 self.timer.node["newton update"].start()
                 self.physics.engine.apply_newton_update(dt)
                 self.timer.node["newton update"].stop()

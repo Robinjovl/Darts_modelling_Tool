@@ -20,8 +20,17 @@ from darts.nonlinear_solvers.base import (
     write_to_log,
 )
 
-# chop mode <-> engine.newton_chop_mode (sim_params::newton_solver_t)
-_CHOP_MODE_TO_ENUM = {None: 0, "global": 1, "local": 2}
+# Python chop mode -> NAME of the canonical C++ enum member
+# (sim_params::newton_solver_t). The integer written to engine.newton_chop_mode
+# is read from the compiled enum at sync time (single source of truth; robust to
+# a future C++ enum reordering).
+_CHOP_MODE_TO_CPP_ENUM = {
+    None: "newton_std",
+    "global": "newton_global_chop",
+    "local": "newton_local_chop",
+}
+# Reverse map (legacy int -> mode) used only by the set_sim_params(newton_type=..)
+# deprecation shim in darts_model.py.
 _ENUM_TO_CHOP_MODE = {0: None, 1: "global", 2: "local"}
 
 
@@ -43,6 +52,16 @@ class NewtonSpec(NonlinearSolverSpec):
     obl_bounds: OBLBoundsSpec = field(default_factory=OBLBoundsSpec)
     inexact: InexactNewtonSpec | None = None
 
+    def validate(self):
+        """Validate the base convergence fields and re-validate the sub-specs so
+        post-construction mutation (e.g. ``spec.chop.factor = -1``) is caught by
+        the per-timestep ``validate()`` call, not just at construction."""
+        super().validate()
+        # sub-spec __post_init__ bodies are pure validators (raise-or-pass)
+        self.chop.__post_init__()
+        self.line_search.__post_init__()
+        self.obl_bounds.__post_init__()
+
     def make_solver(self, model=None) -> "NewtonSolver":
         if self.inexact is not None:
             raise NotImplementedError(
@@ -57,7 +76,12 @@ class NewtonSpec(NonlinearSolverSpec):
     def sync_to_engine(self, engine):
         """Sync the residual norm (base) plus the Newton kernel controls."""
         super().sync_to_engine(engine)
-        engine.newton_chop_mode = _CHOP_MODE_TO_ENUM[self.chop.mode]
+        from darts.engines import sim_params
+
+        # canonical int comes from the compiled enum (single source of truth)
+        engine.newton_chop_mode = int(
+            getattr(sim_params, _CHOP_MODE_TO_CPP_ENUM[self.chop.mode])
+        )
         engine.newton_chop_factor = self.chop.factor
         engine.log_transform = 1 if self.chop.log_transform else 0
 
@@ -130,11 +154,22 @@ class NewtonSolver(NonlinearSolver):
     def build_corrections(self) -> list:
         """Newton dX-correction pipeline prescribed by the spec, mirroring the
         legacy C++ ``apply_newton_update`` composite: composition correction,
-        chop (per :class:`ChopSpec`), OBL-axes clamp (per :class:`OBLBoundsSpec`;
-        when the spec provides axis bounds they are passed to the C++ kernel,
-        otherwise the no-argument kernel is inert while the engine's op_axis
-        bounds are unset) and thermal-variable correction (self-guarded by the
-        state specification)."""
+        chop (per :class:`ChopSpec`), OBL-axes clamp (per :class:`OBLBoundsSpec`)
+        and thermal-variable correction (self-guarded by the state
+        specification).
+
+        OBL-axes behaviour by ``obl_bounds.mode``:
+
+        - ``None`` (default): NO OBL step is appended — the correction is
+          skipped entirely, so it never consults engine ``op_axis`` state. (The
+          legacy no-arg kernel was a no-op on a clean engine anyway, so default
+          models are byte-identical; this additionally prevents a prior bounded
+          solve — a fallback or live spec switch — from leaking its bounds into
+          a later unbounded solve.)
+        - ``'obl_axes'`` WITH ``axis_min``/``axis_max``: the bounds are pushed to
+          the C++ kernel (which writes the engine's per-region op_axis bounds).
+        - ``'obl_axes'`` WITHOUT bounds: the no-arg kernel is appended (reuse
+          whatever op_axis bounds the engine already holds)."""
         engine, spec = self.engine, self.spec
         steps = [engine.correct_composition]
         if spec.chop.mode == "global":
@@ -164,8 +199,10 @@ class NewtonSolver(NonlinearSolver):
             axis_min = value_vector([-inf if v is None else v for v in lo])
             axis_max = value_vector([inf if v is None else v for v in hi])
             steps.append(partial(engine.correct_obl_axes, axis_min, axis_max))
-        elif obl.mode is None or obl.mode == "obl_axes":
+        elif obl.mode == "obl_axes":
+            # 'obl_axes' without explicit bounds: reuse the engine's op_axis box
             steps.append(engine.correct_obl_axes)
+        # obl.mode is None -> append nothing (disabled; never touches engine state)
         steps.append(engine.correct_thermal)
         return steps
 
@@ -183,6 +220,8 @@ class NewtonSolver(NonlinearSolver):
         spec = self.spec
         verbose = model.verbose if verbose is None else verbose
         assert dt > 0, "Time step size must be a positive value!"
+        # revalidate the spec (catches post-construction mutation of any field)
+        spec.validate()
 
         max_newt = spec.max_iterations
         max_residual = np.zeros(max_newt + 1)
@@ -213,15 +252,8 @@ class NewtonSolver(NonlinearSolver):
 
                 copy_data_to_device(engine.RHS, engine.get_RHS_d())
 
-            if not model.has_dfm_well:
-                status.newton_residual = (
-                    engine.calc_newton_residual()
-                )  # calc norm of residual
-            else:
-                # Method is either 1 or 2
-                status.newton_residual = engine.calc_coupled_well_reservoir_residual(
-                    spec.coupled_well_res_norm_method
-                )
+            # reservoir residual (overridable via compute_reservoir_residual)
+            status.newton_residual = self.compute_reservoir_residual()
 
             max_residual[i] = status.newton_residual
             counter = 0
@@ -237,7 +269,8 @@ class NewtonSolver(NonlinearSolver):
                     print("Stationary point detected!")
                 break
 
-            status.well_residual = engine.calc_well_residual()
+            # well residual (overridable via compute_well_residual)
+            status.well_residual = self.compute_well_residual()
             residual_history.append(
                 (
                     status.newton_residual,  # matrix residual
@@ -264,12 +297,20 @@ class NewtonSolver(NonlinearSolver):
                 and i > 0
                 and residual_history[-1][0] > 0.9 * residual_history[-2][0]
             ):
+                # a line-search iteration is a full nonlinear iteration: fire the
+                # once-per-iteration hooks just like the plain-update branch
+                self.pre_iteration(dt, t, i)
                 coef = np.array([0.0, 1.0])
                 history = np.array([residual_history[-2], residual_history[-1]])
                 residual_history[-1] = self.line_search(
                     dt, t, coef, history, verbose, iter_counter=i
                 )
                 max_residual[i] = residual_history[-1][0]
+                # publish the accepted residuals so converged()/print/failure see
+                # the post-line-search state (not the stale pre-line-search one)
+                status.newton_residual = residual_history[-1][0]
+                status.well_residual = residual_history[-1][1]
+                self.post_iteration(dt, t, i)
 
                 # check stationary point after line search
                 counter = 0
@@ -339,8 +380,8 @@ class NewtonSolver(NonlinearSolver):
         :param verbose: Verbosity level; ``None`` inherits ``model.verbose``.
         :param iter_counter: Newton-Raphson iteration counter for the current time step. Used by DFM well velocity updates.
 
-        :return: Tuple containing the minimum residual achieved, a placeholder value (0.0), and the coefficient
-                 corresponding to the minimum residual.
+        :return: Tuple ``(reservoir_residual, well_residual, coefficient)`` at the
+                 accepted (minimum-reservoir-residual) trial.
         :rtype: tuple(float, float, float)
         """
         model = self.model
@@ -370,6 +411,7 @@ class NewtonSolver(NonlinearSolver):
                 + str(history[1][1])
             )
         res_history = np.array([history[0][0], history[1][0]])
+        well_res_history = np.array([history[0][1], history[1][1]])
 
         for _iter in range(5):
             if coef.size > 2:
@@ -427,19 +469,9 @@ class NewtonSolver(NonlinearSolver):
                 from darts.engines import copy_data_to_device
 
                 copy_data_to_device(engine.RHS, engine.get_RHS_d())
-            if model.has_dfm_well:
-                res = (
-                    engine.calc_coupled_well_reservoir_residual(
-                        self.spec.coupled_well_res_norm_method
-                    ),
-                    engine.calc_well_residual(),
-                )
-            else:
-                res = (
-                    engine.calc_newton_residual(),
-                    engine.calc_well_residual(),
-                )
+            res = self.compute_residuals()  # (reservoir, well); overridable hooks
             res_history = np.append(res_history, res[0])
+            well_res_history = np.append(well_res_history, res[1])
             if verbose:
                 print(
                     "LS: "
@@ -459,4 +491,4 @@ class NewtonSolver(NonlinearSolver):
             # Recompute DFM velocities and derivatives so stored well data matches the accepted state.
             model.update_dfm_well_vels_and_ders(dt, t, newton_iter_counter)
 
-        return res_history[final_id], 0.0, coef[final_id]
+        return res_history[final_id], well_res_history[final_id], coef[final_id]

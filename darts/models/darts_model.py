@@ -594,7 +594,7 @@ class DartsModel:
 
         ``self.nonlinear_solver`` holds the solver *instance* built from its
         declarative spec; the input spec stays retrievable as
-        ``self.nonlinear_solver.spec`` (Pydantic-ready, for tracing).
+        ``self.nonlinear_solver.spec`` (serializable via ``.to_dict()``, for tracing).
 
         The default implementation is idempotent and lazy: it keeps any solver a
         subclass already assigned and otherwise materializes the default.
@@ -637,10 +637,14 @@ class DartsModel:
         self.set_solver()
         if self._data_ts is None:
             self.data_ts = DataTS(self.physics.n_vars)
-            self.copy_data_ts_to_sim_params()
         # the structure may have been created pre-init with n_vars=0: size eta now
         if len(self._data_ts.eta) < self.physics.n_vars:
             self._data_ts.eta = 1e20 * np.ones(self.physics.n_vars)
+        # ALWAYS mirror the (possibly user-set) linear settings into sim_params —
+        # not only when data_ts was just created. Reading model.data_ts before
+        # init() materializes _data_ts, which previously skipped this copy and
+        # silently dropped a user's data_ts.linear_tol/linear_max_iter.
+        self.copy_data_ts_to_sim_params()
         # bind the (possibly detached) solver to this model
         self.nonlinear_solver.bind(self)
 
@@ -671,6 +675,7 @@ class DartsModel:
         runtime: float = 1000,
         tol_linear: float = None,
         it_linear: int = None,
+        **legacy,
     ):
         """
         Function to set the timestep and linear solver parameters.
@@ -681,6 +686,13 @@ class DartsModel:
 
             self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
                                                  chop=ChopSpec(mode='local', factor=0.2))
+
+        For one deprecation cycle the removed nonlinear keyword arguments
+        (``tol_newton``, ``it_newton``, ``newton_type``, ``newton_params``,
+        ``line_search``, ``coupled_well_res_norm_method``) are still accepted:
+        they emit a :class:`DeprecationWarning` and are mapped onto
+        ``self.nonlinear_solver.spec``. Any other unexpected keyword still raises
+        :class:`TypeError`.
 
         :param first_ts: First timestep
         :type first_ts: float
@@ -708,6 +720,10 @@ class DartsModel:
         # nonlinear settings are NOT set here — they live on self.nonlinear_solver
         self.set_solver()
 
+        # one-cycle migration: route any legacy nonlinear kwargs onto the spec
+        if legacy:
+            self._migrate_legacy_nonlinear_kwargs(legacy)
+
         # fresh timestep-control structure
         self.data_ts = DataTS(self.physics.n_vars)
         ts = self.data_ts
@@ -725,6 +741,55 @@ class DartsModel:
         self.runtime = runtime
 
         self.copy_data_ts_to_sim_params()
+
+    def _migrate_legacy_nonlinear_kwargs(self, legacy: dict):
+        """One-deprecation-cycle shim: map removed ``set_sim_params`` nonlinear
+        keyword arguments onto ``self.nonlinear_solver.spec`` and warn. Unknown
+        keys raise TypeError so genuine typos still fail loudly."""
+        from darts.nonlinear_solvers.newton import _ENUM_TO_CHOP_MODE
+
+        spec = self.nonlinear_solver.spec
+        handled = []
+        if "tol_newton" in legacy:
+            spec.tolerance = legacy.pop("tol_newton")
+            handled.append("tol_newton -> nonlinear_solver.spec.tolerance")
+        if "it_newton" in legacy:
+            spec.max_iterations = legacy.pop("it_newton")
+            handled.append("it_newton -> nonlinear_solver.spec.max_iterations")
+        if "line_search" in legacy:
+            spec.line_search.enabled = bool(legacy.pop("line_search"))
+            handled.append("line_search -> nonlinear_solver.spec.line_search.enabled")
+        if "coupled_well_res_norm_method" in legacy:
+            spec.coupled_well_res_norm_method = legacy.pop(
+                "coupled_well_res_norm_method"
+            )
+            handled.append(
+                "coupled_well_res_norm_method -> "
+                "nonlinear_solver.spec.coupled_well_res_norm_method"
+            )
+        if "newton_type" in legacy:
+            nt = legacy.pop("newton_type")
+            # accept the legacy int (0/1/2), the mode string, or None
+            spec.chop.mode = (
+                _ENUM_TO_CHOP_MODE.get(nt, nt) if isinstance(nt, int) else nt
+            )
+            spec.chop.__post_init__()  # validate the mapped mode
+            handled.append("newton_type -> nonlinear_solver.spec.chop.mode")
+        if "newton_params" in legacy:
+            np_val = legacy.pop("newton_params")
+            spec.chop.factor = np_val[0] if isinstance(np_val, list | tuple) else np_val
+            handled.append("newton_params[0] -> nonlinear_solver.spec.chop.factor")
+        if legacy:
+            raise TypeError(
+                f"set_sim_params() got unexpected keyword argument(s) {sorted(legacy)}"
+            )
+        warnings.warn(
+            "set_sim_params() nonlinear keyword arguments are removed; mapped for "
+            "this release only (" + "; ".join(handled) + "). Migrate to "
+            "self.nonlinear_solver = NewtonSolver(...) in set_solver().",
+            DeprecationWarning,
+            stacklevel=3,
+        )
 
     def copy_data_ts_to_sim_params(self):
         """Transitional: mirror the linear solver settings into the C++
@@ -1429,6 +1494,33 @@ class DartsModel:
 
         return mat_csr, rhs, sol
 
+    def _solve_linear_equation(self):
+        """Backend-neutral linear-solve dispatch funnel used by the nonlinear
+        solver (:meth:`darts.nonlinear_solvers.NonlinearSolver._solve_linear`).
+
+        Returns ``(rc, n_iters, residual)`` for every backend — ``rc`` is ``0``
+        on success, ``1`` on setup failure, ``2`` on solve failure. Centralizing
+        the dispatch here (rather than in the nonlinear solver) is also the seam
+        the linear-solver refactoring (MR280) replaces wholesale with
+        spec-driven routing, keeping the nonlinear driver backend-agnostic."""
+        from darts.input.input_data import linear_solver_types
+
+        linear_type = self.data_ts.linear_type
+        if isinstance(linear_type, linear_solver_types):
+            # Python-resident solvers
+            if linear_type in (
+                linear_solver_types.CPU_PETSC_CPR,
+                linear_solver_types.CPU_PETSC_FS,
+            ):
+                return self.petsc_solve_linear_equation()
+            elif linear_type in (linear_solver_types.CPU_PARDISO,):
+                return self.pardiso_solve_linear_equation()
+            raise Exception("Unknown linear solver type", linear_type)
+        # compile-time C++ linear solvers
+        engine = self.physics.engine
+        rc = engine.solve_linear_equation()
+        return rc, engine.get_last_linear_iters(), engine.get_last_linear_residual()
+
     def petsc_solve_linear_equation(self):
         print_level = self.data_ts.linear_print_level
 
@@ -1561,13 +1653,37 @@ class DartsModel:
 
         petsc_ksp.solve(petsc_rhs, petsc_sol)
 
+        reason = petsc_ksp.getConvergedReason()  # >0 converged, <0 diverged
+        n_iters = petsc_ksp.getIterationNumber()
+        residual = petsc_ksp.getResidualNorm()
+
         if print_level >= 1:
             print('PETSC: True residual =', np.linalg.norm(mat.dot(sol) - rhs))
 
-        # TODO check when solver fails https://petsc.org/main/petsc4py/reference/petsc4py.PETSc.KSP.html#petsc4py.PETSc.KSP.solve
+        # Treat only hard breakdowns / non-finite / preconditioner failures as
+        # a solver failure (rc=2 -> abort Newton / trigger fallback). Max-iter
+        # exhaustion (DIVERGED_ITS) is deliberately NOT fatal, mirroring the C++
+        # GMRES BOS-parity convention where a partial solve is accepted and the
+        # Newton residual gate decides.
+        fatal = {
+            PETSc.KSP.ConvergedReason.DIVERGED_NANORINF,
+            PETSc.KSP.ConvergedReason.DIVERGED_BREAKDOWN,
+            PETSc.KSP.ConvergedReason.DIVERGED_BREAKDOWN_BICG,
+            PETSc.KSP.ConvergedReason.DIVERGED_PC_FAILED,
+        }
+        rc = 2 if (reason in fatal or not np.isfinite(sol).all()) else 0
+        return rc, int(n_iters), float(residual)
 
     def pardiso_solve_linear_equation(self):
         import pypardiso
 
         mat, rhs, sol = self.get_linear_system()
-        sol[:] = pypardiso.spsolve(mat, rhs)
+        try:
+            sol[:] = pypardiso.spsolve(mat, rhs)
+        except Exception:
+            sol[:] = 0.0
+            return 2, 0, np.inf
+        # direct solve: count as one "iteration"; guard against a non-finite result
+        if not np.isfinite(sol).all():
+            return 2, 0, np.inf
+        return 0, 1, float(np.linalg.norm(mat.dot(sol) - rhs))

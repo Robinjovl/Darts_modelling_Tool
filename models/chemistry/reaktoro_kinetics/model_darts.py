@@ -355,8 +355,12 @@ class Model(CICDModel):
             else:  # compile-tyme C++ linear solvers
                 rc = self.physics.engine.solve_linear_equation()
                 status.linear_solver_rc = rc
-                if rc == 0:
-                    status.n_linear += self.physics.engine.get_last_linear_iters()
+                if rc != 0:
+                    # failed linear solve: do NOT apply a stale update; the
+                    # post-loop verdict reads status.linear_solver_rc -> fail
+                    self._linear_solver_rc_last = rc
+                    break
+                status.n_linear += self.physics.engine.get_last_linear_iters()
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()
