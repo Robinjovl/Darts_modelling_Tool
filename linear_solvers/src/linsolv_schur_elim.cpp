@@ -42,10 +42,23 @@ namespace opendarts
 #define OD_SE_HD
 #endif
 
+      // Finiteness check usable from both host and device code. CUDA device
+      // passes need the ::isfinite intrinsic, while strict host compilers
+      // (g++) only declare std::isfinite after <cmath>, so an unqualified call
+      // does not compile there.
+      OD_SE_HD inline bool se_isfinite(double v)
+      {
+#if defined(__CUDA_ARCH__)
+        return ::isfinite(v);
+#else
+        return std::isfinite(v);
+#endif
+      }
+
       // Dense K x K inverse with partial pivoting (host + device, K small).
       // Returns false if a pivot falls at/below `eps` (singular). Uses
-      // unqualified fabs/isfinite so it resolves to device intrinsics under
-      // nvcc and to the C library on the host.
+      // unqualified fabs so it resolves to device intrinsics under nvcc and
+      // to the C library on the host.
       template <uint8_t K>
       OD_SE_HD inline bool invert_kxk(const mat_float *a_in, mat_float *inv, double eps)
       {
@@ -65,7 +78,7 @@ namespace opendarts
             mat_float v = fabs(a[r * K + col]);
             if (v > pv) { pv = v; piv = r; }
           }
-          if (!(pv > eps) || !isfinite(pv))
+          if (!(pv > eps) || !se_isfinite(pv))
             return false;
           if (piv != col)
             for (int c = 0; c < K; c++)
