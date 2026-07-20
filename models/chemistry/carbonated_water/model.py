@@ -1021,11 +1021,19 @@ class GasViscosity:
         return 0.0278
 
 class LiquidViscosity:
+    # IAPWS validity envelope: outside it the correlation's exp() underflows to
+    # exactly 0.0 (seen at rho ~ 2280 kg/m3 from extreme single-phase-aq flash
+    # results at unreachable OBL corners), and mu = 0 turns the mobility operator
+    # kr/mu into +inf, silently poisoning the OBL point cache and every hypercube
+    # (and hence Jacobian) that touches it. Clamp the density into the correlation
+    # range and floor the result so mobility stays finite.
+    RHO_MAX = 1200.0   # kg/m3, upper edge of the IAPWS viscosity correlation range
+    MU_MIN = 1e-3      # cP, positive floor (gas-like); only hit on degenerate inputs
     def __init__(self):
         pass
     def evaluate(self, density, temperature):
-        visc = _Viscosity(rho=density, T=temperature)
-        return visc * 1000
+        visc = _Viscosity(rho=min(density, self.RHO_MAX), T=temperature)
+        return max(visc * 1000, self.MU_MIN)
 
 class PermPoroRelationship:
     def __init__(self, exp):

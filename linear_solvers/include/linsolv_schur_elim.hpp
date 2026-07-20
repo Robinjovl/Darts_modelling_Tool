@@ -172,6 +172,7 @@ namespace opendarts
       int reduce_rhs_host(const opendarts::config::mat_float *B);
       int backsub_host(const opendarts::config::mat_float *B, opendarts::config::mat_float *X);
       void refresh_chain_coeffs(const opendarts::config::mat_float *values_at, bool values_on_device);
+      void report_degenerate_cells(const opendarts::config::mat_float *values_h);
       void free_device();
 
       opendarts::linear_solvers::linsolv_iface *inner = nullptr;

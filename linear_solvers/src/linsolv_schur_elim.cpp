@@ -603,6 +603,55 @@ namespace opendarts
       }
     }
 
+    // Diagnostic for a degenerate pivot: identify the first few offending cells,
+    // their pivot blocks, and whether the block is non-finite (a NaN/Inf Jacobian,
+    // e.g. from a zero-viscosity kr/mu evaluation upstream) or has an exactly
+    // singular pivot pairing (state-dependent zero derivative).
+    template <uint8_t N_BLOCK_SIZE, uint8_t N_ELIM>
+    void linsolv_schur_elim<N_BLOCK_SIZE, N_ELIM>::report_degenerate_cells(const mat_float *values_h)
+    {
+      constexpr uint8_t N = N_BLOCK_SIZE;
+      const index_t *diag_ind = A_saved->get_diag_ind();
+      int reported = 0, n_bad = 0, n_nonfinite = 0;
+      for (index_t i = 0; i < n_rows && reported < 3; i++)
+      {
+        const mat_float *db = values_h + (size_t)diag_ind[i] * N * N;
+        const uint8_t *er = &e_rows[(size_t)i * K];
+        mat_float P[N_ELIM * N_ELIM], Pi[N_ELIM * N_ELIM];
+        bool finite = true;
+        for (int a = 0; a < N_ELIM; a++)
+          for (int b = 0; b < N_ELIM; b++)
+          {
+            P[a * N_ELIM + b] = db[er[a] * N + elim_cols[b]];
+            if (!std::isfinite(P[a * N_ELIM + b]))
+              finite = false;
+          }
+        if (invert_kxk<N_ELIM>(P, Pi, pivot_eps))
+          continue;
+        n_bad++;
+        if (!finite)
+          n_nonfinite++;
+        if (reported < 3)
+        {
+          printf("linsolv_schur_elim: degenerate pivot at block row %d (rows:", (int)i);
+          for (int a = 0; a < N_ELIM; a++) printf(" %d", (int)er[a]);
+          printf(", cols:");
+          for (int a = 0; a < N_ELIM; a++) printf(" %d", (int)elim_cols[a]);
+          printf("): P =");
+          for (int a = 0; a < N_ELIM * N_ELIM; a++) printf(" %.3e", (double)P[a]);
+          printf("%s\n", finite ? " (exactly singular)" : " (NON-FINITE: NaN/Inf Jacobian)");
+          reported++;
+        }
+      }
+      printf("linsolv_schur_elim: %d degenerate cell(s) (%d non-finite) on the current "
+             "Jacobian -- %s\n", n_bad, n_nonfinite,
+             n_nonfinite
+               ? "the Jacobian itself is corrupted (NaN/Inf from upstream property "
+                 "evaluation); elimination is not the root cause"
+               : "re-detection could not find a usable row pairing; disable local "
+                 "(Schur) elimination for this model/regime");
+    }
+
     // Host condensation: Pinv, Gm, reduced blocks, chain corrections; validates pivots.
     template <uint8_t N_BLOCK_SIZE, uint8_t N_ELIM>
     int linsolv_schur_elim<N_BLOCK_SIZE, N_ELIM>::condense_host(const mat_float *values_h)
@@ -644,9 +693,7 @@ namespace opendarts
       }
       if (bad)
       {
-        printf("linsolv_schur_elim: a K x K pivot block degenerated on the current "
-               "Jacobian (a row/column selected at first setup is no longer usable, "
-               "e.g. a well control switched); disable local (Schur) elimination\n");
+        report_degenerate_cells(values_h);
         return 1;
       }
 

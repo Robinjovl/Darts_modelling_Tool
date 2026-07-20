@@ -3307,6 +3307,13 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 	{
 		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (linear solver solve failed) \n", deltat);
 	}
+	else if (!std::isfinite(newton_residual_last_dt) || !std::isfinite(well_residual_last_dt))
+	{
+		// NaN/Inf residual: every ordered comparison below is FALSE for NaN, so
+		// without this branch a poisoned step would fall through to converged=1
+		// (fail-open) and bake a corrupted state into Xn.
+		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (non-finite newton residual) \n", deltat);
+	}
 	else if (newton_residual_last_dt >= params->tolerance_newton) // no reservoir convergence reached
 	{
 		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (newton residual reservoir) \n", deltat);
