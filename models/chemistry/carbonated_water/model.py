@@ -129,7 +129,7 @@ class Model(CICDModel):
                  kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
                  n_obl_mult: int = 1, co2_injection: float = 0.1, h2o_injection: float = 1.1,
                  inj_rate: float = None, perm_poro: str = 'power_8', flash: str = 'phreeqc',
-                 database: str = 'phreeqc', mineral_elim: bool = True):
+                 database: str = 'phreeqc'):
         # Call base class constructor
         super().__init__()
 
@@ -139,14 +139,6 @@ class Model(CICDModel):
         self.kinetic_mechanisms = kinetic_mechanisms
         self.n_obl_mult = n_obl_mult
         self.n_solid = len(minerals)
-        # Exact Schur pre-elimination of the (flux-free) mineral balance from the
-        # linear system before the CPR-type preconditioner (linsolv_schur_elim,
-        # 5x5 -> 4x4). Measured on the 60k core: large-dt phases (the multi-mineral
-        # equilibrations at dt_max=5, the coarse injection steps after the dt_max
-        # bump) speed up strongly (GPU: full 365 d equilibration 244 s -> 222 s
-        # COMPLETE vs 55 d reached without it; coarse injection -30%), while the
-        # small-dt calcite equilibration regresses -- hence an explicit toggle.
-        self.mineral_elim = mineral_elim
         self.co2_injection = co2_injection
         self.h2o_injection = h2o_injection
         self.co2_injection_cutoff = 0.4
@@ -188,30 +180,37 @@ class Model(CICDModel):
         self.params.newton_type = sim_params.newton_local_chop
         # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
         self.params.newton_params[0] = 0.2
-        # Platform-appropriate iterative solver for the 3D cases (the SuperLU
-        # direct solve above remains the right choice only for tiny 1D runs):
-        # GPU -> AMGX-CPR; CPU -> FGMRES + CPR/AMG. Guarded on platform so the
-        # same model runs under both.
+        # GPU -> AMGX-CPR; CPU -> FGMRES + CPR/AMG
         tolerance = 1e-6
         max_iterations = 500
-        elim = getattr(self, 'mineral_elim', False)
+        # Exact local (block-Schur) elimination of the mineral-balance equations
+        # is ON BY DEFAULT for every mineral present (they are the cell-local /
+        # diagonal-block-only equations here).
+        K = self.n_solid
+        n_vars = getattr(self.physics, 'n_vars', None)
+        elim = K > 0 and (n_vars is None or n_vars - K >= 2)
+        elim_rows = list(range(K))
+        elim_cols = list(range(1, K + 1))
         if getattr(self, 'platform', 'cpu') == 'gpu':
             from darts.linear_solvers import AMGXCPRSolverSpec
             if elim:
-                # Mineral elimination is INCOMPATIBLE with AMGX adaptive pressure-
-                # hierarchy reuse: the reduced (N-1) pressure system changes
-                # structure each step (condensation mixes in the evolving mineral
-                # dynamics), so a hierarchy reused from a previous timestep is
-                # stale -> AMGX setup fails -> wasted Newton -> dt cut. Measured on
-                # the 60k core: with reuse on, elimination is +12% (equilibration
-                # 5 s -> 376 s, 210 wasted Newtons); with reuse OFF it is -40%
-                # (full run 913 s -> 549 s, zero wasted Newtons). Force it off.
-                # (Reuse still benefits the non-eliminated baseline, so this is
-                # scoped to the elimination path only.)
-                os.environ['DARTS_AMGX_REUSE'] = '0'
-            self.linear_solver = AMGXCPRSolverSpec(
-                max_iterations=max_iterations, tolerance=tolerance,
-                schur_elim_minerals=1 if elim else 0)
+                # NOTE: local elimination is incompatible with AMGX adaptive
+                # hierarchy reuse (the reduced pressure COEFFICIENTS change every
+                # Newton/timestep as condensation folds in the evolving local-
+                # equation dynamics; a reused hierarchy goes stale -> AMGX setup
+                # fails -> wasted Newton -> dt cut; measured on the 60k core:
+                # reuse on made elimination +12% overall with 210 wasted Newtons,
+                # reuse off -40% with none). The engine chain builder disables
+                # reuse for the elimination chain's OWN AMGX instances (per-
+                # instance ctor override) -- no process-global environment
+                # mutation, other AMGX instances keep the default adaptive reuse.
+                self.linear_solver = AMGXCPRSolverSpec(
+                    max_iterations=max_iterations, tolerance=tolerance,
+                    schur_elim_count=K, schur_elim_rows=elim_rows,
+                    schur_elim_cols=elim_cols)
+            else:
+                self.linear_solver = AMGXCPRSolverSpec(
+                    max_iterations=max_iterations, tolerance=tolerance)
         else:
             from darts.linear_solvers import CPRSolverSpec, GMRESSolverSpec
             spec = GMRESSolverSpec(restart=50, prec=CPRSolverSpec())
@@ -219,7 +218,8 @@ class Model(CICDModel):
             spec.max_iterations = max_iterations
             if elim:
                 from darts.linear_solvers import SchurEliminationSpec
-                wrap = SchurEliminationSpec(inner=spec)
+                wrap = SchurEliminationSpec(inner=spec, elim_rows=elim_rows,
+                                            elim_cols=elim_cols)
                 wrap.tolerance = tolerance
                 wrap.max_iterations = max_iterations
                 spec = wrap

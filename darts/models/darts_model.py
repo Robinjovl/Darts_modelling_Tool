@@ -571,11 +571,37 @@ class DartsModel:
                 "available."
             )
         self.params.linear_type = enum_value
-        # Mineral-equation Schur elimination: the GPU engine factory wraps the
-        # selected chain in linsolv_schur_elim when this counter is set.
-        schur_elim = getattr(spec, "schur_elim_minerals", 0)
-        if schur_elim and hasattr(self.params, "schur_elim_minerals"):
-            self.params.schur_elim_minerals = int(schur_elim)
+        # Local (block-Schur) elimination: the GPU engine factory wraps the
+        # selected chain in linsolv_schur_elim<N,K> when this counter is set. The
+        # explicit eliminated (row, column) pairs are passed through params.
+        schur_elim = int(getattr(spec, "schur_elim_count", 0) or 0)
+        if hasattr(self.params, "schur_elim_count"):
+            # sim_params vector<int> members are opaque-bound (index_vector),
+            # so wrap the Python lists rather than assigning them directly.
+            from darts.engines import index_vector
+
+            if schur_elim:
+                rows = getattr(spec, "schur_elim_rows", None)
+                cols = getattr(spec, "schur_elim_cols", None)
+                if (
+                    not rows
+                    or not cols
+                    or len(rows) != schur_elim
+                    or len(cols) != schur_elim
+                ):
+                    raise ValueError(
+                        f"{type(spec).__name__}: schur_elim_count={schur_elim} requires "
+                        "schur_elim_rows and schur_elim_cols each of that length."
+                    )
+                self.params.schur_elim_count = schur_elim
+                self.params.schur_elim_rows = index_vector([int(r) for r in rows])
+                self.params.schur_elim_cols = index_vector([int(c) for c in cols])
+            else:
+                # ALWAYS clear: a solver re-selection (reset() with a new spec)
+                # must not inherit elimination from a previously applied spec.
+                self.params.schur_elim_count = 0
+                self.params.schur_elim_rows = index_vector([])
+                self.params.schur_elim_cols = index_vector([])
 
     def set_solver(self):
         """Configure the model's solver and time-stepping (override hook).

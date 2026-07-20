@@ -249,11 +249,20 @@ foreach(_od_solver linsolv_gmres linsolv_cpr linsolv_mgr linsolv_superlu
   )
 endforeach()
 
+# The mineral-elimination wrapper is a two-parameter template <N, K>; its
+# explicit instantiations live directly in linsolv_schur_elim.cpp (the single-
+# parameter emitter cannot express the second parameter). Pass the same block-
+# size ceiling as a compile define so its instantiation range stays in lock-step
+# with the per-N solvers (and thus covers every engine block size, N_VARS up to
+# MAX_NC+1) instead of a hardcoded 13 that would link-fail for OPENDARTS_MAX_DIMS>=13.
+set_source_files_properties(
+  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_schur_elim.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/solver_factories.cpp
+  PROPERTIES COMPILE_DEFINITIONS "OD_SE_NMAX=${_od_linsolv_max_n}")
+
 # CPR solvers start at block size 2 — the constrained-pressure-residual split is
 # undefined for a 1x1 block (no non-pressure sub-block to decouple).
-# The Schur mineral-elimination wrapper also starts at 2 (it reduces N -> N-1,
-# so the smallest meaningful full block is 2x2).
-foreach(_od_solver linsolv_bos_cpr linsolv_bos_cpr_gpu linsolv_schur_elim)
+foreach(_od_solver linsolv_bos_cpr linsolv_bos_cpr_gpu)
   od_emit_template_instantiations(
     CLASS ${_od_solver}
     MIN_N 2

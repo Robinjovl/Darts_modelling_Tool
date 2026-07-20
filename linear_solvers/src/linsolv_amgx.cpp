@@ -39,7 +39,7 @@ namespace opendarts
     static void *rsrc = nullptr;
 
     template <uint8_t N_BLOCK_SIZE>
-    linsolv_amgx<N_BLOCK_SIZE>::linsolv_amgx(int device_num_input, int convert_to_bs1_input)
+    linsolv_amgx<N_BLOCK_SIZE>::linsolv_amgx(int device_num_input, int convert_to_bs1_input, int reuse_max_override)
       : device_num(device_num_input), convert_to_bs1(convert_to_bs1_input)
     {
       // Register as the linear_solver_base behind the block interface.
@@ -95,10 +95,18 @@ namespace opendarts
         // the matrix was refreshed via replace_coefficients; the wrapper's
         // setup() decides per-call whether to allow that or force a rebuild.
         {
-          const char *v = std::getenv("DARTS_AMGX_REUSE");
-          reuse_max = v ? atoi(v) : 2;
-          if (reuse_max < 0)
-            reuse_max = 0;
+          // Per-instance override (>= 0) wins over the process default so a
+          // caller (e.g. the mineral-elimination chain) can disable reuse for
+          // one instance without a process-global environment mutation.
+          if (reuse_max_override >= 0)
+            reuse_max = reuse_max_override;
+          else
+          {
+            const char *v = std::getenv("DARTS_AMGX_REUSE");
+            reuse_max = v ? atoi(v) : 2;
+            if (reuse_max < 0)
+              reuse_max = 0;
+          }
           const char *g = std::getenv("DARTS_AMGX_REUSE_GROWTH");
           reuse_growth = g ? atof(g) : 1.5;
         }

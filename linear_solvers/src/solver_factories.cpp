@@ -258,39 +258,73 @@ namespace opendarts
         return build_cpr_for_block_size(block_size, cpr_config);
       }
 
-      // ---- Schur mineral elimination (linsolv_schur_elim) ------------------
+      // ---- Local (block-Schur) elimination (linsolv_schur_elim) ------------
       //
-      // Wrapper: exact per-cell condensation of one flux-free mineral
-      // equation/unknown pair, then the inner solver (attached by the caller
-      // via set_prec, built for block size N-1) runs on the reduced system.
+      // Wrapper: exact per-cell condensation of K cell-local (diagonal-block-
+      // only) equation/unknown pairs (block N -> N-K), then the inner solver
+      // (attached by the caller via set_prec, built for block size N-K) runs on
+      // the reduced system. The (row, column) pairs are supplied explicitly by
+      // the config.
 
-      template <uint8_t N_BLOCK_SIZE>
+      template <uint8_t N_BLOCK_SIZE, uint8_t N_ELIM>
       solver_handle build_schur_elim(const opendarts::linear_solvers::schur_elim_solver_config &config)
       {
-        return std::make_shared<opendarts::linear_solvers::linsolv_schur_elim<N_BLOCK_SIZE>>(
-            /*on_device=*/false, config.elim_col, (uint8_t)config.elim_row, config.pivot_eps);
+        return std::make_shared<opendarts::linear_solvers::linsolv_schur_elim<N_BLOCK_SIZE, N_ELIM>>(
+            /*on_device=*/false, config.elim_rows, config.elim_cols, config.pivot_eps);
       }
 
-      solver_handle build_schur_elim_for_block_size(int block_size,
+      // Dispatch on the number of eliminated pairs K (1..4, K < N).
+      template <uint8_t N_BLOCK_SIZE>
+      solver_handle build_schur_elim_k(int k, const opendarts::linear_solvers::schur_elim_solver_config &config)
+      {
+        switch (k)
+        {
+          case 1: if constexpr (N_BLOCK_SIZE > 1) return build_schur_elim<N_BLOCK_SIZE, 1>(config); break;
+          case 2: if constexpr (N_BLOCK_SIZE > 2) return build_schur_elim<N_BLOCK_SIZE, 2>(config); break;
+          case 3: if constexpr (N_BLOCK_SIZE > 3) return build_schur_elim<N_BLOCK_SIZE, 3>(config); break;
+          case 4: if constexpr (N_BLOCK_SIZE > 4) return build_schur_elim<N_BLOCK_SIZE, 4>(config); break;
+          default: break;
+        }
+        throw std::runtime_error("Schur elimination wrapper: unsupported eliminated-pair count K=" +
+            std::to_string(k) + " for block size " + std::to_string((int)N_BLOCK_SIZE) +
+            " (supported: 1 <= K <= min(4, N-1)).");
+      }
+
+      solver_handle build_schur_elim_for_block_size(int block_size, int k,
           const opendarts::linear_solvers::schur_elim_solver_config &config)
       {
+        // The case range must stay in lock-step with the explicit (N, K)
+        // instantiations in linsolv_schur_elim.cpp, both driven by OD_SE_NMAX
+        // (= max(OPENDARTS_MAX_DIMS+1, 13), set by linear_solvers CMake).
+#ifndef OD_SE_NMAX
+#define OD_SE_NMAX 13
+#endif
         switch (block_size)
         {
-          case 2:  return build_schur_elim<2>(config);
-          case 3:  return build_schur_elim<3>(config);
-          case 4:  return build_schur_elim<4>(config);
-          case 5:  return build_schur_elim<5>(config);
-          case 6:  return build_schur_elim<6>(config);
-          case 7:  return build_schur_elim<7>(config);
-          case 8:  return build_schur_elim<8>(config);
-          case 9:  return build_schur_elim<9>(config);
-          case 10: return build_schur_elim<10>(config);
-          case 11: return build_schur_elim<11>(config);
-          case 12: return build_schur_elim<12>(config);
-          case 13: return build_schur_elim<13>(config);
+          case 2:  return build_schur_elim_k<2>(k, config);
+          case 3:  return build_schur_elim_k<3>(k, config);
+          case 4:  return build_schur_elim_k<4>(k, config);
+          case 5:  return build_schur_elim_k<5>(k, config);
+          case 6:  return build_schur_elim_k<6>(k, config);
+          case 7:  return build_schur_elim_k<7>(k, config);
+          case 8:  return build_schur_elim_k<8>(k, config);
+          case 9:  return build_schur_elim_k<9>(k, config);
+          case 10: return build_schur_elim_k<10>(k, config);
+          case 11: return build_schur_elim_k<11>(k, config);
+          case 12: return build_schur_elim_k<12>(k, config);
+          case 13: return build_schur_elim_k<13>(k, config);
+#if OD_SE_NMAX >= 14
+          case 14: return build_schur_elim_k<14>(k, config);
+#endif
+#if OD_SE_NMAX >= 15
+          case 15: return build_schur_elim_k<15>(k, config);
+#endif
+#if OD_SE_NMAX >= 16
+          case 16: return build_schur_elim_k<16>(k, config);
+#endif
           default:
             throw std::runtime_error("Schur elimination wrapper: unsupported block size " +
-                std::to_string(block_size) + " (supported: 2..13).");
+                std::to_string(block_size) + " (supported: 2.." + std::to_string(OD_SE_NMAX) + ").");
         }
       }
 
@@ -300,7 +334,12 @@ namespace opendarts
       {
         const auto se_config =
             resolve_config<opendarts::linear_solvers::schur_elim_solver_config>(config, "schur_elim");
-        return build_schur_elim_for_block_size(block_size, se_config);
+        const int k = (int)se_config.elim_cols.size();
+        if (k < 1 || (int)se_config.elim_rows.size() != k)
+          throw std::runtime_error("schur_elim: elim_rows and elim_cols must be non-empty and equal length "
+              "(got " + std::to_string(se_config.elim_rows.size()) + "/" +
+              std::to_string(se_config.elim_cols.size()) + ").");
+        return build_schur_elim_for_block_size(block_size, k, se_config);
       }
 
       // ---- FS-CPR (4-block poromechanics CPR) -----------------------------

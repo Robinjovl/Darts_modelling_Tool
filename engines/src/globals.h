@@ -140,7 +140,9 @@ public:
     // obl_min_fac = 10;
     sim_eps = 1e-12;
     assembly_kernel = 0;
-    schur_elim_minerals = 0;
+    schur_elim_count = 0;
+    schur_elim_rows.clear();
+    schur_elim_cols.clear();
 
     finalize_mpi = 1;
 
@@ -169,11 +171,16 @@ public:
   value_t obl_min_fac;         // factor used to determine z_min --> usually taken around 10, such that z_min = 10*z_OBL_min
   value_t sim_eps;             // offset from axes that solution should remain inside
   int assembly_kernel;         // select non-default assebly kernel (for GPU)
-  int schur_elim_minerals;     // >0: wrap the linear solver in an exact per-cell Schur
-                               // elimination of that many flux-free mineral equations
-                               // before preconditioning (currently only 1 supported;
-                               // consumed by the GPU engine solver factory; CPU chains
-                               // use SchurEliminationSpec instead). Default 0 = off.
+  int schur_elim_count;     // K = number of cell-local (diagonal-block-only) equation/
+                               // unknown pairs to Schur-eliminate before preconditioning
+                               // (0 = off). Consumed by the GPU engine solver factory; CPU
+                               // chains use SchurEliminationSpec instead. The eliminated
+                               // (row, column) pairs are given explicitly by schur_elim_rows/
+                               // schur_elim_cols (each of length K); no built-in row/column
+                               // convention. (In a chemistry model these are the mineral
+                               // balances, but the transform is physics-agnostic.)
+  std::vector<int> schur_elim_rows;  // preferred eliminated equation rows (length K)
+  std::vector<int> schur_elim_cols;  // eliminated unknown columns (length K)
 
   newton_solver_t newton_type;          // Newton solver type (more precisely, nonlinear update type - chopping strategies)
   linear_solver_t linear_type;          // Linear solver type

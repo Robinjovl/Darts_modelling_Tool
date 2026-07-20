@@ -29,8 +29,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
                    inj_rate: float = None, perm_poro: str = 'power_8', platform: str = 'cpu',
                    ni_dt_increase_cutoff: int = 5, ni_dt_decrease_cutoff: int = 8, n_good_ts: int = 10, report_timesteps = None,
                    flash: str = 'phreeqc', database: str = 'phreeqc',
-                   parallel_evaluation: bool = False, n_workers: int = None,
-                   mineral_elim: bool = True):
+                   parallel_evaluation: bool = False, n_workers: int = None):
     # Make a folder
     if output_folder is None:
         output_folder = f'output_{domain}_{nx}_' + '_'.join(minerals) + \
@@ -44,7 +43,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
     m = Model(domain=domain, nx=nx, mesh_filename=mesh_filename, poro_filename=poro_filename,
               minerals=minerals, kinetic_mechanisms=kinetic_mechanisms, n_obl_mult=n_obl_mult,
               co2_injection=co2_injection, h2o_injection=h2o_injection, inj_rate=inj_rate,
-              perm_poro=perm_poro, flash=flash, database=database, mineral_elim=mineral_elim)
+              perm_poro=perm_poro, flash=flash, database=database)
 
     m.verbose = m.VERBOSE_TIMERS
 

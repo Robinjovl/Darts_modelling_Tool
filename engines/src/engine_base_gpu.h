@@ -45,28 +45,29 @@
 /// (GMRES or BiCGStab) around linsolv_bos_cpr_gpu with AMGX on the pressure
 /// system and cuSPARSE block-ILU(0) (or a DARTS_CPR_STAGE2 experiment hook)
 /// as the full-system stage. Factored out of engine_base_gpu::init_base so
-/// the mineral-elimination wrapper can build the same chain one block size
-/// smaller (see params->schur_elim_minerals).
+/// the local-elimination wrapper can build the same chain one block size
+/// smaller (see params->schur_elim_count).
 template <uint8_t NV>
 inline opendarts::linear_solvers::linsolv_iface *make_gpu_amgx_cpr_chain(
-    int device_num, bool use_bicgstab, std::string &linear_solver_type_str)
+    int device_num, bool use_bicgstab, std::string &linear_solver_type_str,
+    int amgx_reuse_override = -1)
 {
   using namespace opendarts::linear_solvers;
   auto *cpr = new linsolv_bos_cpr_gpu<NV>;
   cpr->p_solver_setup_gpu = 1;
   cpr->p_solver_solve_gpu = 1;
   cpr->p_solver_requires_diag_first = 0;
-  cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
+  cpr->set_p_system_prec(new linsolv_amgx<1>(device_num, 1, amgx_reuse_override));
   // Stage-2 experiment hook: DARTS_CPR_STAGE2=amgx swaps the exact
   // (latency-bound) block-ILU(0) for a second AMGX instance on the full
   // system; configure it via amgx_config_bs<NV>.json in the run directory.
   const char *stage2_env = std::getenv("DARTS_CPR_STAGE2");
   if (stage2_env && std::string(stage2_env) == std::string("amgx"))
-    cpr->set_prec(new linsolv_amgx<NV>(device_num));
+    cpr->set_prec(new linsolv_amgx<NV>(device_num, 1, amgx_reuse_override));
   else if (stage2_env && std::string(stage2_env) == std::string("amgx_bs1"))
     // scalar-expanded full system: well-row diagonals become invertible
     // scalars, which D^-1-based smoothers (Jacobi/DILU) require
-    cpr->set_prec(new linsolv_amgx<NV>(device_num, 1));
+    cpr->set_prec(new linsolv_amgx<NV>(device_num, 1, amgx_reuse_override));
   else if (stage2_env && std::string(stage2_env) == std::string("mcsgs"))
     // opendarts multicolor symmetric block-Gauss-Seidel: latency-friendly
     // stage-2 with identity fallback on singular (well-row) diagonals
@@ -84,6 +85,28 @@ inline opendarts::linear_solvers::linsolv_iface *make_gpu_amgx_cpr_chain(
   gmres->set_prec(cpr);
   linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
   return gmres;
+}
+
+/// Wrap the AMGX-CPR chain in the exact K-pair local (block-Schur) elimination
+/// (linsolv_schur_elim<NV, KELIM>): the inner chain is built at the reduced
+/// block size NV-KELIM. The eliminated (row, column) pairs are explicit.
+template <uint8_t NV, uint8_t KELIM>
+inline opendarts::linear_solvers::linsolv_iface *make_gpu_schur_elim_chain(
+    int device_num, bool use_bicgstab, const std::vector<int> &erows,
+    const std::vector<int> &ecols, std::string &tag)
+{
+  auto *wrap = new opendarts::linear_solvers::linsolv_schur_elim<NV, KELIM>(
+      /*on_device=*/true, erows, ecols, 0.0);
+  // The reduced pressure system's coefficients change every Newton/timestep
+  // (condensation folds in the evolving cell-local dynamics), which invalidates a
+  // reused AMGX hierarchy (measured: setup failures, wasted Newtons). Disable
+  // adaptive hierarchy reuse for THIS chain's AMGX instances only -- other
+  // AMGX instances in the process keep the default behaviour.
+  wrap->set_prec(make_gpu_amgx_cpr_chain<NV - KELIM>(device_num, use_bicgstab, tag,
+      /*amgx_reuse_override=*/0));
+  wrap->set_inner_owned(true);  // engine deletes only the top-level solver
+  tag += " + SCHUR_ELIM(K=" + std::to_string((int)KELIM) + ")";
+  return wrap;
 }
 #endif // OPENDARTS_LINEAR_SOLVERS && OPENDARTS_GPU_HAS_AMGX
 
@@ -422,30 +445,37 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
       if constexpr (N_VARS > 1)
       {
         const bool use_bicgstab = (params->linear_type == sim_params::GPU_BICGSTAB_CPR_AMGX);
-        if (params->schur_elim_minerals > 0)
+        if (params->schur_elim_count > 0)
         {
-          // Mineral-equation Schur elimination: exact per-cell condensation of
-          // the flux-free mineral balance, with the SAME AMGX-CPR chain built
-          // one block size smaller as the inner solver.
+          // Mineral-equation Schur elimination: exact per-cell condensation of K
+          // cell-local (diagonal-block-only) equations, with the SAME AMGX-CPR chain built at the
+          // reduced block size (N_VARS-K) as the inner solver. The reduced block
+          // must stay >= 2 for the CPR split, so K <= N_VARS-2.
+          const int Kelim = params->schur_elim_count;
+          const std::vector<int> &er = params->schur_elim_rows;
+          const std::vector<int> &ec = params->schur_elim_cols;
+          if ((int)er.size() != Kelim || (int)ec.size() != Kelim)
+            throw std::runtime_error("schur_elim: schur_elim_rows/cols length must equal "
+                "schur_elim_count (K)");
+          linear_solver = nullptr;
           if constexpr (N_VARS >= 3)
           {
-            if (params->schur_elim_minerals != 1)
-              std::cout << "schur_elim_minerals=" << params->schur_elim_minerals
-                        << " not supported (only 1); eliminating 1 mineral equation" << std::endl;
-            auto *wrap = new opendarts::linear_solvers::linsolv_schur_elim<N_VARS>(
-                /*on_device=*/true);
-            wrap->set_prec(make_gpu_amgx_cpr_chain<N_VARS - 1>(device_num, use_bicgstab,
-                linear_solver_type_str));
-            linear_solver = wrap;
-            linear_solver_type_str += " + SCHUR_ELIM(1 mineral)";
+            switch (Kelim)
+            {
+              case 1: if constexpr (N_VARS >= 3) linear_solver = make_gpu_schur_elim_chain<N_VARS, 1>(device_num, use_bicgstab, er, ec, linear_solver_type_str); break;
+              case 2: if constexpr (N_VARS >= 4) linear_solver = make_gpu_schur_elim_chain<N_VARS, 2>(device_num, use_bicgstab, er, ec, linear_solver_type_str); break;
+              case 3: if constexpr (N_VARS >= 5) linear_solver = make_gpu_schur_elim_chain<N_VARS, 3>(device_num, use_bicgstab, er, ec, linear_solver_type_str); break;
+              case 4: if constexpr (N_VARS >= 6) linear_solver = make_gpu_schur_elim_chain<N_VARS, 4>(device_num, use_bicgstab, er, ec, linear_solver_type_str); break;
+              default: break;
+            }
           }
-          else
-          {
-            std::cout << "schur_elim_minerals ignored: block size " << (int)N_VARS
-                      << " too small to eliminate a mineral equation" << std::endl;
-            linear_solver = make_gpu_amgx_cpr_chain<N_VARS>(device_num, use_bicgstab,
-                linear_solver_type_str);
-          }
+          if (!linear_solver)
+            // An EXPLICIT solver request must fail rather than silently running a
+            // different algorithm than the user configured.
+            throw std::runtime_error("schur_elim_count=" + std::to_string(Kelim) +
+                " unsupported for block size " + std::to_string((int)N_VARS) +
+                " (need 1 <= K <= N_VARS-2, K <= 4); disable local (Schur) elimination "
+                "or adjust K");
         }
         else
         {

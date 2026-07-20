@@ -439,15 +439,17 @@ void bind_unified_solver_api(py::module &m)
         .def(py::init<>())
         .def_readwrite("restart", &gmres_solver_config::restart);
 
-    // Schur mineral-elimination wrapper configuration.
+    // Local (block-Schur) elimination wrapper configuration.
     py::class_<schur_elim_solver_config, solver_config>(m, "SchurElimSolverConfig",
-        "Configuration for the Schur mineral-elimination wrapper "
-        "(linsolv_schur_elim): exact per-cell condensation of one flux-free "
-        "mineral equation/unknown pair per block; the inner solver (attached "
-        "via set_prec, built for block size N-1) runs on the reduced system.")
+        "Configuration for the local (block-Schur) elimination wrapper "
+        "(linsolv_schur_elim): exact per-cell condensation of K cell-local "
+        "(diagonal-block-only) equation/unknown pairs per block; the inner solver "
+        "(attached via set_prec, built for block size N-K) runs on the reduced "
+        "system. elim_rows and elim_cols are the explicit eliminated (row, column) "
+        "pairs (length K = number of eliminated equations); no built-in defaults.")
         .def(py::init<>())
-        .def_readwrite("elim_col", &schur_elim_solver_config::elim_col)
-        .def_readwrite("elim_row", &schur_elim_solver_config::elim_row)
+        .def_readwrite("elim_rows", &schur_elim_solver_config::elim_rows)
+        .def_readwrite("elim_cols", &schur_elim_solver_config::elim_cols)
         .def_readwrite("pivot_eps", &schur_elim_solver_config::pivot_eps);
 
     // Open-source CPR two-stage preconditioner configuration.

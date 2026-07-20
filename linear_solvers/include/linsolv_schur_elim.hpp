@@ -29,65 +29,84 @@ namespace opendarts
 {
   namespace linear_solvers
   {
-    /** @brief Exact per-cell Schur elimination of one flux-free equation/unknown
-        pair per block, wrapping an inner solver of block size N-1.
+    /** @brief Exact block-local Schur-complement elimination (static
+        condensation) of K cell-local equation/unknown pairs per block, wrapping
+        an inner solver of block size M = N - K.
 
-        Chemistry (reactive-transport) block systems carry mineral balance
-        equations that have no flux terms: their block rows are nonzero ONLY in
-        the diagonal block. Eliminating one unknown through such a row is a
-        purely local static condensation: the reduced (N-1)x(N-1) system has the
-        SAME block sparsity pattern, and the reduction/back-substitution are
-        exact (no approximation). The inner solver then works on a smaller
-        system whose first equation is a fluid balance -- which also repairs the
-        True-IMPES pressure decoupling of CPR-type preconditioners that the
-        mineral-first ordering degrades.
+        This is a general linear-algebra transform, not tied to any physics. It
+        applies to any block system that contains equations with a purely LOCAL
+        stencil: equations whose Jacobian row is nonzero ONLY in the cell's own
+        diagonal block (no coupling to neighbour cells / off-diagonal blocks).
+        Such an equation and one of its unknowns can be removed *exactly* and
+        *locally* by static condensation: the reduced (N-K) system keeps the
+        SAME block sparsity, and the reduction / back-substitution are
+        algebraically exact (the outer Newton iteration is unchanged to
+        linear-solver tolerance). Because the leading equations of the reduced
+        system are the retained (neighbour-coupled) ones, it also repairs the
+        CPR True-IMPES pressure decoupling that a local-equation-first ordering
+        would otherwise degrade.
 
-        Row selection: per block row i, the eliminated equation row r(i) is
-        auto-detected at the first setup (zero flux rows are a property of the
-        assembled values, not of the pattern):
-          - default: row ``elim_row`` (the mineral balance, row 0);
-          - fallback (well heads, where row 0 is the control equation): another
-            row with a usable pivot, preferring rows without off-diagonal
-            entries; a fallback row's off-diagonal entries (well-head state-copy
-            rows) form one-level dependency chains that are resolved exactly.
+        The motivating application is reactive-transport chemistry, where each
+        mineral balance is exactly such a local equation (a precipitated solid
+        does not flow, so its balance has no inter-cell flux term); but the same
+        machinery serves any model whose equations exhibit a diagonal-block-only
+        stencil.
 
-        Column selection (the pivot): default ``elim_col = 1`` eliminates the
-        mineral z (minerals-first ordering) -- the natural pairing, since the
-        mineral balance is the equation that determines the mineral unknown.
-        Although that pivot can be small in magnitude (kinetics-dominated
-        rows), it is balanced by the equally small mineral COLUMN, so the
-        condensation growth stays bounded. ``elim_col = -1`` is an EXPERIMENTAL
-        per-row max-magnitude auto pivot; measured on carbonated_water it can
-        leave the mineral unknown nearly decoupled in the reduced system
-        (near-singular preconditioner setups) -- prefer the default. The
-        pressure column (0) is always kept, so CPR-type inner preconditioners
-        are unaffected.
+        Per cell, with the K eliminated equation rows E and K eliminated unknown
+        columns C (the kept rows F / kept columns G being the complements):
 
-        Both a host (CPU, OpenMP) and a device (GPU, CUDA) path are provided;
-        the device path keeps the reduced matrix and all per-cell factors on
-        the GPU and matches the engine's device-pointer solve(B_d, X_d) call
-        convention. Single mineral only (one eliminated pair per block).
+          P_i  = D_i[E, C]                    (K x K pivot block)
+          Gm_i = P_i^-1 . D_i[E, keptCols]    (K x M)
+          S_kj = A_kj[keptRows(k), keptCols]  - A_kj[keptRows(k), C] . Gm_j
+          b_i  = b_i[keptRows] - sum_j A_ij[keptRows, C] . (P_j^-1 b_j[E])
+          x_i[C] = P_i^-1 b_i[E] - Gm_i . x_i[keptCols]    (back-substitution)
+
+        **Explicit selection, no hidden convention.** The eliminated rows and
+        columns are supplied by the caller (spec / engine params); this class
+        contains NO built-in assumption about which row/column is local (e.g. no
+        hardcoded "row 0 / column 1"). The eliminated COLUMNS are global (the
+        same K columns in every cell), so the kept-column map is global; only the
+        eliminated ROWS may vary per cell: at some cells the preferred rows have
+        no usable pivot (e.g. a well-head control equation), so a per-cell pivot
+        search selects an alternative row set whose K x K block is invertible
+        (typically the well-head state-copy rows). A selected row's off-diagonal
+        entries (e.g. well-head to well-body couplings) form one-level dependency
+        chains that are resolved exactly.
+
+        Robustness: the row/column selection and chain topology are detected
+        once (structural), but the pivot blocks and chain coefficients are
+        re-read and re-validated on every Newton iteration, so a pivot that
+        degenerates later (e.g. after a well control switch) fails the setup
+        loudly rather than silently dividing by ~0.
+
+        Both a host (CPU, OpenMP) and a device (GPU, CUDA) path are provided.
+
+        @tparam N_BLOCK_SIZE full block size N.
+        @tparam N_ELIM number of eliminated pairs K (1 <= K < N). M = N - K.
     */
-    template <uint8_t N_BLOCK_SIZE>
+    template <uint8_t N_BLOCK_SIZE, uint8_t N_ELIM>
     class linsolv_schur_elim : public opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE>,
                                public opendarts::linear_solvers::linear_solver_base
     {
     public:
-      static constexpr uint8_t M_BLOCK_SIZE = N_BLOCK_SIZE - 1; // reduced block size
+      static constexpr uint8_t K = N_ELIM;                     // eliminated pairs
+      static constexpr uint8_t M_BLOCK_SIZE = N_BLOCK_SIZE - N_ELIM; // reduced block size
+      static_assert(N_ELIM >= 1, "schur elimination needs at least one eliminated pair");
+      static_assert(N_ELIM < N_BLOCK_SIZE, "cannot eliminate the whole block");
 
-      /** @param on_device run the condensation and rhs/back-substitution on the
-              GPU and hand the inner solver a device-resident reduced matrix
-              (engine GPU path); false = host path (CPU chains).
-          @param elim_col eliminated unknown column within the block: default 1
-              = the mineral z (the natural pairing, see class docs); -1 selects,
-              per cell, the largest-magnitude pivot among the non-pressure
-              columns of the eliminated row (experimental; column 0 = pressure
-              is never eliminable).
-          @param elim_row preferred eliminated equation row (default 0 = the
-              mineral balance with minerals-first component ordering).
+      /** @param on_device run the condensation / rhs / back-substitution on the
+              GPU and hand the inner solver a device-resident reduced matrix.
+          @param elim_rows preferred eliminated equation rows (size K). The
+              i-th row is paired with the i-th eliminated column. At cells where
+              this pairing is singular a per-cell fallback selects other rows.
+          @param elim_cols eliminated unknown columns (size K), global. Must not
+              contain the pressure column if a CPR-type inner is used (it is
+              always kept so the pressure subsystem is preserved).
           @param pivot_eps pivots at or below this magnitude disqualify a
-              row/column candidate during detection. */
-      linsolv_schur_elim(bool on_device = false, int elim_col = 1, uint8_t elim_row = 0,
+              candidate during detection and fail setup during a later solve. */
+      linsolv_schur_elim(bool on_device,
+                         const std::vector<int> &elim_rows,
+                         const std::vector<int> &elim_cols,
                          double pivot_eps = 0.0);
 
       ~linsolv_schur_elim();
@@ -100,159 +119,134 @@ namespace opendarts
       //////////////////////
 
       int solve(opendarts::linear_solvers::csr_matrix_base * /*matrix*/,
-        opendarts::config::mat_float *v,
-        opendarts::config::mat_float *r) override
+        opendarts::config::mat_float *v, opendarts::config::mat_float *r) override
       {
         return solve(v, r);
       }
 
-      /// Build the reduced pattern from A's structure and init the inner solver
-      /// on the reduced matrix (structure only; values are condensed in setup).
       int init(opendarts::linear_solvers::csr_matrix_base *A,
         opendarts::config::index_t max_iters,
         opendarts::config::mat_float tolerance) override;
 
-      /// Condense A into the reduced matrix (detecting the per-row eliminated
-      /// row/column on the first call) and set up the inner solver on it.
       int setup(opendarts::linear_solvers::csr_matrix_base *A) override;
 
       //////////////////////
       // linsolv_iface
       //////////////////////
 
-      /// The inner solver operating on the reduced (N-1)-sized system. Must be
-      /// set BEFORE init(). NOT owned: registry-built inners are shared_ptr-owned
-      /// on the Python side, engine-built chains are never freed by convention.
+      /// Inner solver on the reduced (N-K)-sized system. Set BEFORE init().
+      /// Ownership is explicit: NOT owned by default (registry-built inners are
+      /// shared_ptr-owned on the Python side); the engine-built GPU chain calls
+      /// set_inner_owned(true) so the whole raw-pointer chain is released when
+      /// the engine deletes its top-level solver (matching linsolv_gmres_gpu,
+      /// which deletes its own preconditioner).
       int set_prec(opendarts::linear_solvers::linsolv_iface *prec_input) override
       {
         inner = prec_input;
         return 0;
       }
 
-      int init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input,
-        int max_iters,
-        double tolerance) override
+      /// Declare that this wrapper owns `inner` and must delete it (engine-built
+      /// raw-pointer chains). Default false (Python/shared_ptr-owned inners).
+      void set_inner_owned(bool owned) { inner_owned = owned; }
+
+      int init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input, int max_iters, double tolerance) override
       {
         return this->init(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A_input),
             static_cast<opendarts::config::index_t>(max_iters), static_cast<opendarts::config::mat_float>(tolerance));
       }
-
       int setup(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A_input) override
       {
         return this->setup(static_cast<opendarts::linear_solvers::csr_matrix_base *>(A_input));
       }
 
-      /// Reduce B, solve the condensed system with the inner solver, and
-      /// back-substitute the eliminated unknowns into X (full N-block layout).
-      /// Pointers are device pointers when constructed with on_device=true,
-      /// host pointers otherwise (matching the engine calling convention).
       int solve(opendarts::config::mat_float *B, opendarts::config::mat_float *X) override;
 
       int get_n_iters() override { return inner ? inner->get_n_iters() : 0; }
-
-      opendarts::config::mat_float get_residual() override
-      {
-        return inner ? inner->get_residual() : 0;
-      }
-
-      /// Forward the outer-iteration feedback (adaptive AMGX hierarchy reuse).
-      void set_last_outer_iters(int n_iters) override
-      {
-        if (inner)
-          inner->set_last_outer_iters(n_iters);
-      }
+      opendarts::config::mat_float get_residual() override { return inner ? inner->get_residual() : 0; }
+      void set_last_outer_iters(int n_iters) override { if (inner) inner->set_last_outer_iters(n_iters); }
 
     private:
-      // ---- host-side detection + condensation helpers ----
       int detect_rows(const opendarts::config::mat_float *values_h);
       int condense_host(const opendarts::config::mat_float *values_h);
       int reduce_rhs_host(const opendarts::config::mat_float *B);
       int backsub_host(const opendarts::config::mat_float *B, opendarts::config::mat_float *X);
-      void apply_chain_fixes(const opendarts::config::mat_float *values_at,
-        opendarts::config::mat_float *red_values_at, bool values_on_device);
-      // Re-read chain coefficients (ch.coeff) from the CURRENT values each setup:
-      // detection (row/column selection + chain topology) is structural and runs
-      // once, but the chain entry MAGNITUDES change with the Jacobian, so freezing
-      // them would make the reduction inexact for state-dependent well rows.
       void refresh_chain_coeffs(const opendarts::config::mat_float *values_at, bool values_on_device);
-      // Validate that every eliminated pivot is still usable on the current
-      // values (detection only checked the first setup). Returns false + prints
-      // if any |pivot| <= pivot_eps, so setup fails loudly instead of dividing by
-      // ~0 and feeding NaN to the inner solver.
-      bool check_pivots_host();
       void free_device();
 
       opendarts::linear_solvers::linsolv_iface *inner = nullptr;
+      bool inner_owned = false;  // see set_inner_owned()
       opendarts::linear_solvers::csr_matrix<M_BLOCK_SIZE> *reduced = nullptr;
       opendarts::linear_solvers::csr_matrix_base *A_saved = nullptr;
 
       bool on_device = false;
-      int elim_col;       // -1 = per-row auto pivot column; >=1 fixed column
-      uint8_t elim_row;   // preferred eliminated equation row
+      std::vector<uint8_t> elim_rows_pref;  // size K (spec preferred rows)
+      std::vector<uint8_t> elim_cols;       // size K (global)
+      std::vector<uint8_t> keep_cols;       // size M (global complement of elim_cols)
       double pivot_eps;
       bool detected = false;
 
       opendarts::config::index_t n_rows = 0;
       opendarts::config::index_t n_nnz = 0;
 
-      // per block row: selected eliminated equation row + column, kept-row and
-      // kept-column maps [M] (original index of each kept row/column)
-      std::vector<uint8_t> r_sel;
-      std::vector<uint8_t> c_sel;
-      std::vector<uint8_t> rmap; // n_rows * M
-      std::vector<uint8_t> cmap; // n_rows * M
+      // per block row: selected eliminated rows (K) and kept rows (M)
+      std::vector<uint8_t> e_rows;  // n_rows * K
+      std::vector<uint8_t> k_rows;  // n_rows * M
 
-      // per block row factors: pivot p_i = A_ii[r_sel, c_sel] and
-      // g_i[M] = A_ii[r_sel, cmap]/p_i
-      std::vector<opendarts::config::mat_float> pivot;
-      std::vector<opendarts::config::mat_float> g;
-      // solve-time affine constants h_eff[i] (built from B each solve)
-      std::vector<opendarts::config::mat_float> h_eff;
+      // per block row factors: Pinv (K x K) and Gm (K x M); solve-time h (K)
+      std::vector<opendarts::config::mat_float> Pinv;  // n_rows * K * K
+      std::vector<opendarts::config::mat_float> Gm;    // n_rows * K * M
+      std::vector<opendarts::config::mat_float> h_eff; // n_rows * K
 
-      // one-level chains: eliminated row of block-row i carries an entry o at
-      // column dep_col of neighbor dep (well-head state-copy rows). The entry
-      // references either dep's ELIMINATED unknown (dep_col == c_sel[dep]) or
-      // one of dep's KEPT unknowns (dep_pos = its position in cmap[dep]).
+      // one-level chains: eliminated row (cell i, local elim index e = 0..K-1)
+      // carries an off-diagonal entry o at column dep_col of neighbour dep.
       struct chain_t
       {
         opendarts::config::index_t row;      // chained block row i
         opendarts::config::index_t dep;      // dependency block row j
         opendarts::config::index_t blk;      // nnz index of the (i, j) block
-        opendarts::config::mat_float coeff;  // o = A_ij[r_sel(i), dep_col]
+        opendarts::config::mat_float coeff;  // o = A_ij[e_rows(i)[eidx], dep_col]
+        uint8_t eidx;                        // which eliminated row of i (0..K-1)
         uint8_t dep_col;                     // referenced column within dep's block
-        bool dep_eliminated;                 // dep_col == c_sel[dep]
-        uint8_t dep_pos;                     // kept-col position when !dep_eliminated
+        bool dep_eliminated;                 // dep_col is an eliminated col of dep
+        uint8_t dep_epos;                    // its index in elim_cols when eliminated
+        uint8_t dep_kpos;                    // its index in keep_cols when kept
       };
       std::vector<chain_t> chains;
-      // reduced-matrix corrections induced by chains, applied to block (k, dep)
-      // for every pattern block (k, chained row)
+      // encoded (blk*N + row)*N + col offsets of ALL recorded chain entries,
+      // sorted -- setup re-validates each Newton that no UNRECORDED nonzero has
+      // appeared in an eliminated row (topology is value-detected once; a
+      // structural entry that was 0.0 at detection and becomes nonzero later
+      // would otherwise be silently dropped from the condensation)
+      std::vector<unsigned long long> chain_offsets;
+      // unique block rows whose per-cell factors / reduced solution the chain
+      // handling touches (chain rows + dependencies): the GPU path copies ONLY
+      // these rows across PCIe, not the full n_rows arrays
+      std::vector<opendarts::config::index_t> chain_touched;
       struct chain_fix_t
       {
         opendarts::config::index_t src_blk;  // (k, i) block in A
         opendarts::config::index_t dst_blk;  // (k, dep) block in S
-        opendarts::config::index_t row_k;    // block row k (for its rmap)
+        opendarts::config::index_t row_k;    // block row k (for its k_rows)
         size_t chain_idx;                    // index into chains
       };
       std::vector<chain_fix_t> chain_fixes;
 
-      // host scratch for the reduced rhs / solution (host path)
-      std::vector<opendarts::config::mat_float> b_red;
+      std::vector<opendarts::config::mat_float> b_red;  // host scratch (host path)
       std::vector<opendarts::config::mat_float> x_red;
 
 #ifdef WITH_GPU
-      // device mirrors (GPU path)
-      uint8_t *r_sel_d = nullptr;
-      uint8_t *c_sel_d = nullptr;
-      uint8_t *rmap_d = nullptr;
-      uint8_t *cmap_d = nullptr;
-      opendarts::config::mat_float *pivot_d = nullptr;
-      opendarts::config::mat_float *g_d = nullptr;
+      uint8_t *e_rows_d = nullptr;
+      uint8_t *k_rows_d = nullptr;
+      uint8_t *elim_cols_d = nullptr;
+      uint8_t *keep_cols_d = nullptr;
+      opendarts::config::mat_float *Pinv_d = nullptr;
+      opendarts::config::mat_float *Gm_d = nullptr;
       opendarts::config::mat_float *h_eff_d = nullptr;
       opendarts::config::mat_float *b_red_d = nullptr;
       opendarts::config::mat_float *x_red_d = nullptr;
-      int *pivot_bad_d = nullptr;   // device flag: se_factors_kernel sets it if |pivot| <= eps
-      // host staging buffer for value download during detection; released once
-      // detection has run (it is only needed for the first setup)
+      int *flags_d = nullptr;             // [0] pivot degenerated, [1] unrecorded chain entry
+      unsigned long long *chain_offsets_d = nullptr;
       std::vector<opendarts::config::mat_float> values_h_staging;
 #endif
     };

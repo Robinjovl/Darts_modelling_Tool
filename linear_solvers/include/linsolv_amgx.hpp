@@ -52,8 +52,15 @@ namespace opendarts
     public:
       /** @param device_num - CUDA device AMGX should run on.
           @param convert_to_bs1 - expand block matrices to scalar CSR before
-              handing them to AMGX. */
-      linsolv_amgx(int device_num = 0, int convert_to_bs1 = 1);
+              handing them to AMGX.
+          @param reuse_max_override - per-instance override for the adaptive
+              hierarchy-reuse budget: -1 (default) keeps the process default
+              (DARTS_AMGX_REUSE env, default 2); >= 0 forces that budget for
+              THIS instance only (0 = rebuild every setup). Used by the mineral
+              Schur elimination chain, whose per-step-changing reduced pressure
+              coefficients invalidate a reused hierarchy, without touching the
+              behaviour of other AMGX instances in the process. */
+      linsolv_amgx(int device_num = 0, int convert_to_bs1 = 1, int reuse_max_override = -1);
 
       ~linsolv_amgx();
 
