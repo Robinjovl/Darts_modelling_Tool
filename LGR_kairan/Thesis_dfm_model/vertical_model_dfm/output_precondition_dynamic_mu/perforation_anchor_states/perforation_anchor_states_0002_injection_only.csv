@@ -1,3 +1,0 @@
-well,lgr_name,stage1_well_exists,planned_stage2_role,lgr_k,cell_index,time_days,time_years,pressure_bar,z_co2,temperature_K,satG,report_idx,stage_name
-I1,inj_lgr,True,injector_bottom_perforation,5,130,365.0,1.0,203.8167779456946,0.8251097642307476,312.2131285934066,0.9304069049504432,2,injection_only
-P1,prod_lgr,False,producer_top_perforation,1,139,365.0,1.0,198.4817116182985,1.0999999999999999e-07,356.15522484425503,0.0,2,injection_only
