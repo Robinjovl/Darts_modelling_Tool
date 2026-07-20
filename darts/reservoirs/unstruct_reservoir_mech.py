@@ -517,7 +517,11 @@ class UnstructReservoirMech:
             self.p_ref[:] = self.p_init
             if self.thermoporoelasticity:
                 self.t_ref[:] = self.t_init
-                self.th_expn_poro_arr[:] = idata.rock.th_expn_poro
+                if np.isscalar(idata.rock.th_expn_poro):
+                    self.th_expn_poro_arr[:] = idata.rock.th_expn_poro
+                else:
+                    print('warning: only the first th_expn_poro will be used')
+                    self.th_expn_poro_arr[:] = idata.rock.th_expn_poro[0]
         elif self.discretizer_name == 'pm_discretizer':
             self.volume[: self.unstr_discr.mat_cells_tot] = (
                 self.unstr_discr.volume_all_cells[self.unstr_discr.frac_cells_tot :]
@@ -808,7 +812,7 @@ class UnstructReservoirMech:
 
                 if self.thermoporoelasticity:
                     self.discr.heat_conductions.append(
-                        disc_matrix33(idata.rock.conductivity)
+                        disc_matrix33(idata.rock.thermal_conductivity)
                     )
                     self.discr.thermal_expansions.append(
                         disc_matrix33(idata.rock.th_expn)
@@ -829,14 +833,18 @@ class UnstructReservoirMech:
         self.porosity = idata.rock.porosity
         self.cs = idata.rock.compressibility
 
-    def set_props_tags(self, idata: InputData, matrix_tags: list):
+    def set_props_tags(
+        self, idata: InputData, matrix_tags: list, prop_list: list = None
+    ):
         # loop over idata.rock. objects and fill self.props, for example:
         # if idata.rock.poro=[0.2, 0.1], matrix_tags=[90,91]  =>  props = { 90: {'poro': 0.2}, 91: {'poro': 0.1}}
+        if prop_list is None:
+            prop_list = ['rock']
         self.props = {}
         for i, m in enumerate(matrix_tags):
             self.props[m] = dict()
             for k1 in idata.__dict__.keys():
-                if k1 not in ['rock', 'other']:
+                if k1 not in prop_list:
                     continue
                 sub_obj = idata.__getattribute__(k1)
                 for prop in sub_obj.__dict__.keys():
@@ -844,6 +852,8 @@ class UnstructReservoirMech:
                     if val is not None:
                         if np.isscalar(val):
                             self.props[m][prop] = val
+                        elif len(val) == 1:
+                            self.props[m][prop] = val[0]
                         else:
                             self.props[m][prop] = val[i]
                     else:
@@ -887,7 +897,7 @@ class UnstructReservoirMech:
                 poro = self.props[tag]['porosity']
                 if self.thermoporoelasticity:
                     hcap = self.props[tag]['heat_capacity']
-                    rcond = self.props[tag]['conductivity']
+                    rcond = self.props[tag]['thermal_conductivity']
                     th_expn = self.props[tag]['th_expn']
                 lam, mu = get_lambda_mu(E, nu)
 
@@ -1187,7 +1197,7 @@ class UnstructReservoirMech:
         return 0
 
     def get_props_over_output(self, property_array, ith_step, engine):
-        if self.discretizer_name == 'mesh_discretizer':
+        if self.discretizer_name == 'mech_discretizer':
             return None
         elif self.discretizer_name == 'pm_discretizer':
             n_vars = 4
@@ -1248,7 +1258,7 @@ class UnstructReservoirMech:
             return frac_data
 
     def get_fault_props(self, property_array, ith_step, engine):
-        if self.discretizer_name == 'mesh_discretizer':
+        if self.discretizer_name == 'mech_discretizer':
             return None
         elif self.discretizer_name == 'pm_discretizer':
             n_vars = 4
@@ -1691,7 +1701,7 @@ class UnstructReservoirMech:
                 if ith_geometry in available_fracture_geometries:
                     # fracture geometry
                     frac_ids = np.argwhere(
-                        np.in1d(
+                        np.isin(
                             self.unstr_discr.mesh_data.cell_data['gmsh:physical'][
                                 geom_id
                             ],
@@ -1721,7 +1731,7 @@ class UnstructReservoirMech:
 
                     # output geometry
                     out_ids = np.argwhere(
-                        np.in1d(
+                        np.isin(
                             self.unstr_discr.mesh_data.cell_data['gmsh:physical'][
                                 geom_id
                             ],

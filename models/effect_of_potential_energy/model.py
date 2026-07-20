@@ -2,9 +2,9 @@ import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
-from darts.physics.super.initialize import Initialize
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
+from darts.physics.base.initialize import Initialize
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
@@ -27,7 +27,7 @@ class Model(CICDModel):
         self.set_reservoir()
         self.reservoir.grav_acceleration_for_spe = 9.80665
         self.zero = 1e-10
-        self.set_physics(n_points=10001)
+        self.set_physics()
 
         self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5, tol_newton=1e-3,
                             tol_linear=1e-5, it_newton=10, it_linear=50,
@@ -54,7 +54,7 @@ class Model(CICDModel):
 
         return
 
-    def set_physics(self, n_points):
+    def set_physics(self):
         """Physical properties"""
         from dartsflash.libflash import EoS
         from dartsflash.components import CompData
@@ -103,9 +103,13 @@ class Model(CICDModel):
                                            "yH2O": lambda: property_container.x[1, 0]
                                            }
 
-        state_spec = Compositional.StateSpecification.PT
-        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=600, min_z=0., max_z=1.,
-                                     epsilon_z=epsilon, min_t=220, max_t=500, state_spec=state_spec, cache=False,
+        state_spec = PhysicsBase.StateSpecification.PT
+        # 1 p + (nc-1) z + 1 T
+        ax_step = [0.0599] + [1e-4] * (len(components) - 1) + [0.028]
+        ax_origin = [1.0] + [epsilon] * (len(components) - 1) + [220.0]
+        self.physics = PhysicsBase(components, phases, self.timer,
+                                     axes_step=ax_step, axes_origin=ax_origin,
+                                     epsilon_z=epsilon, state_spec=state_spec, cache=False,
                                      extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
@@ -154,7 +158,8 @@ class Model(CICDModel):
         inj_fluid_molar_enthalpy = - 2000
 
         inj_fluid_specific_potential_energy = self.reservoir.mesh.cell_spe[cell_idx]
-        inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * self.physics.property_containers[0].Mw[co2_idx]
+        Mw_avg = np.sum(self.physics.property_containers[0].Mw * inj_comp)
+        inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * Mw_avg
         inj_fluid_molar_energy = inj_fluid_molar_enthalpy + inj_fluid_molar_potential_energy
 
         injected_heat_rate = inj_rate * inj_fluid_molar_energy

@@ -11,6 +11,7 @@
 #include "mech/engine_super_elastic_cpu.hpp"
 #include "conn_mesh.h"
 
+
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
 #include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
@@ -27,7 +28,6 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -121,9 +121,11 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			break;
 		}
 #ifdef _WIN32
-#if 0 // can be enabled if amgdll.dll is available \
-	  // since we compile PIC code, we cannot link existing static library, which was compiled withouf fPIC flag.
-		case sim_params::CPU_GMRES_CPR_AMG1R5:
+#if 0
+		  // Can be enabled if amgdll.dll is available.
+		  // Since we compile PIC code, we cannot link the existing static library,
+		  // which was compiled without the fPIC flag.
+			case sim_params::CPU_GMRES_CPR_AMG1R5:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
 			linsolv_iface *cpr = new linsolv_bos_cpr<N_VARS>;
@@ -280,6 +282,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 
@@ -290,16 +294,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	z_var_idx = get_z_var_idx();
 	if (NC_ > 1)
 	{
-		if (params->log_transform == 0)
-		{
-			min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
-			max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
-		}
-		else if (params->log_transform == 1)
-		{
-			min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
-			max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
-		}
+		// Physical-simplex clipping; OBL window no longer constrains Newton — see engine_base.h
+		min_axis_z = 0.0;
+		max_axis_z = 1.0;
 		min_sim_z = min_axis_z + params->sim_eps;
 		max_sim_z = max_axis_z - params->sim_eps;
 	}
@@ -408,7 +405,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
-		w->initialize_control(X_init);
+		w->initialize_control_epm(X_init);
 	}
 
 	Xn = X = X_init;
@@ -421,14 +418,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	op_axis_max.resize(acc_flux_op_set_list.size());
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
+		// op_axis_min/op_axis_max left empty — disables apply_obl_axis_local_correction
 		block_idxs[r].clear();
-		op_axis_min[r].resize(nc + THERMAL);
-		op_axis_max[r].resize(nc + THERMAL);
-		for (int j = 0; j < nc + THERMAL; j++)
-		{
-			op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-			op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-		}
 	}
 
 	// create a block list for every operator set

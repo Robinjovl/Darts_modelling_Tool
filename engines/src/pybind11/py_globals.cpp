@@ -3,6 +3,7 @@
 #include "py_globals.h"
 #include "globals.h"
 #include "engines_build_info.h"
+#include <cctype>
 #include <iostream>
 #include <fstream>
 
@@ -23,11 +24,6 @@ using namespace opendarts::config;
 namespace py = pybind11;
 
 
-#if defined(__linux__) || defined(__APPLE__)
-  // declaration of stream test main function
-  // used to check the system bandwidth
-  int stream_main();
-#endif // defined(__linux__) || defined(__APPLE__)
 
 
 void redirect_darts_output(std::string file_name) {
@@ -82,82 +78,24 @@ void print_build_info()
   std::cout << "darts-engines built on " << ENGINES_BUILD_DATE << " by " << ENGINES_BUILD_MACHINE << " from " << ENGINES_BUILD_GIT_HASH << std::endl;
 }
 
+// Write a string to the darts standard output stream — i.e. the same destination
+// redirect_darts_output() points std::cout at (the log file, the terminal if not
+// redirected, or suppressed if redirected to ""). Lets Python helpers send text to the
+// redirected log instead of the Python-level stdout.
+void write_to_darts_output(std::string s)
+{
+  std::cout << s << std::flush;
+}
+
 void pybind_globals(py::module &m)
 {
   using namespace pybind11::literals;
 
-  // ---- begin uint128 binding ----
-  py::class_<__uint128_t>(m, "uint128", "128-bit unsigned integer")
-    .def(py::init<>())
-    .def(py::init([](py::int_ i){
-      const py::int_ two64 = py::int_(1) << 64;
-      const py::int_ hi_py = i / two64;
-      const py::int_ lo_py = i % two64;
-      // now cast each half to uint64_t
-      const uint64_t hi = hi_py.cast<uint64_t>();
-      const uint64_t lo = lo_py.cast<uint64_t>();
-      // rebuild the 128-bit value: (hi<<64) | lo
-      __uint128_t result = static_cast<__uint128_t>(hi);
-      result <<= 64;
-      result |= static_cast<__uint128_t>(lo);
-      return result;
-    }), "value"_a)
-
-  // conversion to Python int & use in slicing/indexing
-    .def("__int__", [](const __uint128_t& v) {
-#ifdef _MSC_VER
-      uint64_t lo = v._Word[0];
-      uint64_t hi = v._Word[1];
-#else
-      uint64_t lo = static_cast<uint64_t>(v);
-      uint64_t hi = static_cast<uint64_t>(v >> 64);
-#endif
-      py::int_ py_hi = py::int_(hi);
-      py::int_ py_lo = py::int_(lo);
-      return (py_hi << 64) | py_lo;
-    })
-    .def("__index__", [](const __uint128_t &v){
-#ifdef _MSC_VER
-      uint64_t lo = v._Word[0];
-      uint64_t hi = v._Word[1];
-#else
-      uint64_t lo = static_cast<uint64_t>(v);
-      uint64_t hi = static_cast<uint64_t>(v >> 64);
-#endif
-      py::int_ py_hi = py::int_(hi);
-      py::int_ py_lo = py::int_(lo);
-      return (py_hi << 64) | py_lo;
-    })
-    .def("__repr__", [](const __uint128_t &v){
-      std::ostringstream oss;
-      oss << "uint128(" << std::to_string(v) << ")";
-      return oss.str();
-    })
-
-    // make it picklable: store as two 64-bit words
-    .def(py::pickle(
-      /*__getstate__*/ [](const __uint128_t &v){
-#ifdef _MSC_VER
-        uint64_t lo = v._Word[0];
-        uint64_t hi = v._Word[1];
-#else
-        uint64_t lo = static_cast<uint64_t>(v);
-        uint64_t hi = static_cast<uint64_t>(v >> 64);
-#endif
-        return py::make_tuple(lo, hi);
-      },
-      /*__setstate__*/ [](py::tuple t){
-        if (t.size() != 2)
-          throw std::runtime_error("Invalid state for uint128");
-        uint64_t lo = t[0].cast<uint64_t>();
-        uint64_t hi = t[1].cast<uint64_t>();
-        __uint128_t result = static_cast<__uint128_t>(hi);
-        result <<= 64;
-        result |= static_cast<__uint128_t>(lo);
-        return result;
-      }
-    ));
-  // ---- end uint128 binding ----
+  // The uint128 Python binding was removed alongside __uint128_t support across the
+  // interpolators (which is what used to consume it for legacy mixed-radix
+  // hypercube enumeration in N_DIMS=20 grids). Adaptive storage now keys on a
+  // signed multi-index (cell_key_t), and the legacy point_data integer keys fit
+  // in uint64_t.
 
   py::class_<sim_params> sim_params(m, "sim_params", "Class simulation parameters");
 
@@ -239,15 +177,9 @@ void pybind_globals(py::module &m)
       .def_readwrite("n_timesteps_total", &sim_stat::n_timesteps_total)
       .def_readwrite("n_timesteps_wasted", &sim_stat::n_timesteps_wasted);
 
-  py::class_<timer_node>(m, "timer_node", "Timers tree structure")
-      .def(py::init<>())
-      .def("start", &timer_node::start)
-      .def("stop", &timer_node::stop)
-      .def("get_timer", &timer_node::get_timer)
-      .def("print", &timer_node::print)
-      .def("reset_recursive", &timer_node::reset_recursive)
-      //properties
-      .def_readwrite("node", &timer_node::node);
+  // timer_node is registered by darts.interpolators (imported at module init).
+  // Re-export it so that `from darts.engines import timer_node` still works.
+  m.attr("timer_node") = py::module_::import("darts.interpolators").attr("timer_node");
 
   m.def("redirect_darts_output", &redirect_darts_output, "Redirect darts standard output to a file. \n"
                                                          "If empty filename is specified, then no output will be produced.",
@@ -255,9 +187,11 @@ void pybind_globals(py::module &m)
 
   m.def("print_build_info", &print_build_info, "Print build information: date, user, machine, git hash");
 
-#ifdef defined(__linux__) || defined(__APPLE__)
-  m.def("stream", &stream_main, "Launch stream bandwidth test");
-#endif // defined(__linux__) || defined(__APPLE__)
+  m.def("write_to_darts_output", &write_to_darts_output,
+        "Write a string to the darts output stream (the file set by redirect_darts_output, "
+        "the terminal if not redirected, or nothing if redirected to an empty filename).",
+        "text"_a);
+
 
 #ifdef _OPENMP
   m.def("get_num_threads", &omp_get_num_threads, "Get the number of OpenMP threads to be used");
@@ -275,4 +209,6 @@ void pybind_globals(py::module &m)
 #endif
 
 }
+
+
 #endif //PYBIND11_ENABLED

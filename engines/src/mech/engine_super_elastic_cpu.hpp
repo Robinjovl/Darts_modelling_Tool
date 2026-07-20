@@ -24,7 +24,6 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -71,30 +70,30 @@ public:
   // number of operators: NE accumulation operators, NE*NP flux operators, NP density, NP up_constant, NE*NP gradient,
   //                      NE kinetic rate operators, 2*NP gravity and capillarity, 1 multiplier, NP phase mobility,
   //                      NP saturation, NP enthalpy, 2 temperature and pressure
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
-                               NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
-                               NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/ + 1 /*rock density*/;
+  const static uint16_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
+                                NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
+                                NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/ + 1 /*rock density*/;
 
 
   // order of operators:
-  const static uint8_t ACC_OP = 0;
-  const static uint8_t FLUX_OP = NE;
+  const static uint16_t ACC_OP = 0;
+  const static uint16_t FLUX_OP = NE;
   // diffusion
-  const static uint8_t DENS_OP = NE + NE * NP;
-  const static uint8_t UPSAT_OP = NE + NE * NP + NP;
-  const static uint8_t GRAD_OP = NE + NE * NP + NP + NP;
+  const static uint16_t DENS_OP = NE + NE * NP;
+  const static uint16_t UPSAT_OP = NE + NE * NP + NP;
+  const static uint16_t GRAD_OP = NE + NE * NP + NP + NP;
   // kinetic reaction
-  const static uint8_t KIN_OP = NE + NE * NP + NP + NP + NE * NP;
+  const static uint16_t KIN_OP = NE + NE * NP + NP + NP + NE * NP;
   // extra operators
-  const static uint8_t GRAV_OP = NE + NE * NP + NP + NP + NE * NP + NE;
-  const static uint8_t PC_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP;
-  const static uint8_t MULT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP;
-  const static uint8_t LAMBDA_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1;
-  const static uint8_t SAT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
-  const static uint8_t ENTH_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
-  const static uint8_t TEMP_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
-  const static uint8_t PRES_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
-  const static uint8_t ROCK_DENS = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 2;
+  const static uint16_t GRAV_OP = NE + NE * NP + NP + NP + NE * NP + NE;
+  const static uint16_t PC_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP;
+  const static uint16_t MULT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP;
+  const static uint16_t LAMBDA_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1;
+  const static uint16_t SAT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
+  const static uint16_t ENTH_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
+  const static uint16_t TEMP_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
+  const static uint16_t PRES_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
+  const static uint16_t ROCK_DENS = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 2;
 
   // mapping
   // from transmissibility order of unknowns
@@ -111,7 +110,7 @@ public:
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   uint8_t get_n_vars() const { return N_VARS; };
-  uint8_t get_n_ops() const  { return N_OPS; };
+  uint16_t get_n_ops() const  { return N_OPS; };
   uint8_t get_n_comps() const  { return NC; };
   uint8_t get_z_var_idx() const  { return Z_VAR; };
   uint8_t get_n_state() const { return N_STATE; };
@@ -145,6 +144,7 @@ public:
   int solve_linear_equation();
   //void apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
   int assemble_linear_system(value_t deltat);
+  using engine_base::post_newtonloop;
   int post_newtonloop(value_t deltat, value_t time, index_t converged);
 
   /// @brief vector of variables in the current timestep provided for operator evaluation

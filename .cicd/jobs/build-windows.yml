@@ -5,8 +5,13 @@
         - windows-shell
     needs: []
     variables:
-        CONDA_ENV: "darts-win-${CI_JOB_ID}"
+        CONDA_ENV: "darts-win"
         CONDA_BIN_PATH: 'D:\miniconda3\condabin'
+        # MINIMAL drops the linear adaptive interpolator from the compile set,
+        # cutting cc1plus / cl.exe memory enough that the windows CI runners do
+        # not OOM on the heavy py_operator_set_interpolator_*_part*.cpp TUs.
+        # build_darts_cmake.bat forwards OD_CMAKE_ARGS to cmake.
+        OD_CMAKE_ARGS: "-D OPENDARTS_INTERPOLATOR_PROFILE=MINIMAL"
     script:
         # Load MS Build Tools environment to the powershell
         - D:\BuildTools\build_vars.ps1
@@ -26,6 +31,14 @@
         - echo "ODLS:" $env:ODLS
         # Compile and make the wheel
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8 -p
+        # Check for warnings
+        - |
+          $match = Select-String -Path make_darts.log -Pattern 'OPENDARTS_WARNING_COUNT=(\d+)' | Select-Object -Last 1
+          $warnCount = if ($match) { [int]$match.Matches[0].Groups[1].Value } else { 0 }
+          if ($warnCount -gt 0 -and ($env:CI_COMMIT_BRANCH -eq "development" -or $env:CI_COMMIT_BRANCH -eq "main")) {
+            Write-Host "FAILED: $warnCount open-DARTS compilation warning(s) on $($env:CI_COMMIT_BRANCH) branch"
+            exit 1
+          }
     after_script:
         - if (-not ($env:PATH.Split(';') -contains $env:CONDA_BIN_PATH)) { $env:PATH = "$env:CONDA_BIN_PATH;$env:PATH" }`
         - $condaRoot = Split-Path $env:CONDA_BIN_PATH -Parent

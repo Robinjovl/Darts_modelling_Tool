@@ -5,8 +5,8 @@ import numpy as np
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from mesh_creator import mesh_creator
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.black_oil import *
 
@@ -122,10 +122,12 @@ class Model(CICDModel):
 
         """ Activate physics """
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=500, min_p=1, max_p=200, min_z=0., max_z=1., epsilon_z=epsilon,
-                                     extrapolation_flag=True)
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        nc = len(components)
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
+                                     axes_step=[0.399] + [2e-3] * (nc - 1),  # p [bar], z (3 components → 2 z axes)
+                                     axes_origin=[1.0] + [epsilon] * (nc - 1),
+                                     epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -147,44 +149,6 @@ class Model(CICDModel):
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=150.)
-
-    def run_custom(self, export_to_vtk=False):
-        if export_to_vtk:
-            X = np.array(self.engine.X, copy=False)
-            for ith_prop in range(self.physics.n_vars):
-                self.property_array[ith_prop, :] = X[ith_prop::self.physics.n_vars]
-
-        time_step = self.report_step
-        even_end = int(self.T / time_step) * time_step
-        time_step_arr = np.ones(int(self.T / time_step)) * time_step
-        if self.T - even_end > 0:
-            time_step_arr = np.append(time_step_arr, self.T - even_end)
-
-        from darts.engines import well_control_iface
-        for ith_step, ts in enumerate(time_step_arr):
-            # print("Running time: %d days" % ts)
-            for i, w in enumerate(self.reservoir.wells):
-                if 'I' in w.name:
-                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                                   is_inj=True, target=175., inj_composition=self.inj_composition)
-                else:
-                    self.physics.set_well_controls(well=w, is_control=True, control_type=well_control_iface.BHP,
-                                                   is_inj=False, target=125.)
-                    # w.control = self.physics.new_rate_water_prod(self.inj_prod_rate)
-
-            self.engine.run(ts)
-            self.engine.report()
-
-            if export_to_vtk:
-                X = np.array(self.engine.X, copy=False)
-                for ith_prop in range(self.physics.n_vars):
-                    self.property_array[ith_prop, :] = X[ith_prop::self.physics.n_vars]
-
-                self.property_array[-1, :] = _Backward1_T_Ph_vec(X[0::self.physics.n_vars] / 10,
-                                                                 X[1::self.physics.n_vars] / 18.015)  # calc temperature
-                self.reservoir.unstr_discr.write_to_vtk('vtk_data', self.property_array,
-                                                        ['pressure', 'enthalpy', 'temperature'], ith_step + 1)
-
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, pvt, eps_z=1e-11):

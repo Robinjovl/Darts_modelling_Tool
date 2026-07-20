@@ -10,12 +10,12 @@ from darts.engines import (
     value_vector,
 )
 from darts.models.darts_model import DartsModel
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import SinglePhase
-from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 
 
@@ -34,6 +34,7 @@ class THMCModel(DartsModel):
             exit()
 
         super().__init__()
+        self.timer.node["initialization"].start()
         self.set_input_data()
         self.set_physics()
         self.set_reservoir()
@@ -143,12 +144,11 @@ class THMCModel(DartsModel):
         # create physics
         if self.idata.type_mech == 'thermoporoelasticity':
             property_container.enthalpy_ev = dict(
-                [('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=0.0))]
+                [('wat', EnthalpyBasic(hcap=self.idata.fluid.heat_capacity, tref=0.0))]
             )
-            property_container.rock_energy_ev = EnthalpyBasic(
-                hcap=1.0, tref=0.0
-            )  # TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
-            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
+            property_container.conductivity_ev = dict(
+                [('wat', ConstFunc(self.idata.fluid.thermal_conductivity))]
+            )
 
             thermal = True
             state_spec = (
@@ -156,18 +156,25 @@ class THMCModel(DartsModel):
                 if thermal
                 else Poroelasticity.StateSpecification.P
             )
+            # Poroelasticity thermal: [p, z_1, ..., z_{nc-1}, T]
+            nz = len(components) - 1
+            ax_step = (
+                [self.idata.obl.p_step]
+                + [self.idata.obl.z_step] * nz
+                + [self.idata.obl.t_step]
+            )
+            ax_origin = (
+                [self.idata.obl.p_origin]
+                + [self.idata.obl.z_origin] * nz
+                + [self.idata.obl.t_origin]
+            )
             self.physics = Poroelasticity(
                 components,
                 phases,
                 self.timer,
-                n_points=self.idata.obl.n_points,
-                min_p=self.idata.obl.min_p,
-                max_p=self.idata.obl.max_p,
-                min_z=self.idata.obl.min_z,
-                max_z=self.idata.obl.max_z,
+                axes_step=ax_step,
+                axes_origin=ax_origin,
                 epsilon_z=self.idata.obl.epsilon_z,
-                min_t=self.idata.obl.min_t,
-                max_t=self.idata.obl.max_t,
                 state_spec=state_spec,
                 discretizer=self.discretizer_name,
                 extrapolation_flag=True,
@@ -179,15 +186,16 @@ class THMCModel(DartsModel):
                 if thermal
                 else Poroelasticity.StateSpecification.P
             )
+            # Poroelasticity isothermal: [p, z_1, ..., z_{nc-1}]
+            nz = len(components) - 1
+            ax_step = [self.idata.obl.p_step] + [self.idata.obl.z_step] * nz
+            ax_origin = [self.idata.obl.p_origin] + [self.idata.obl.z_origin] * nz
             self.physics = Poroelasticity(
                 components,
                 phases,
                 self.timer,
-                n_points=self.idata.obl.n_points,
-                min_p=self.idata.obl.min_p,
-                max_p=self.idata.obl.max_p,
-                min_z=self.idata.obl.min_z,
-                max_z=self.idata.obl.max_z,
+                axes_step=ax_step,
+                axes_origin=ax_origin,
                 epsilon_z=self.idata.obl.epsilon_z,
                 state_spec=state_spec,
                 discretizer=self.discretizer_name,
@@ -324,7 +332,8 @@ class THMCModel(DartsModel):
         perf_data['reservoir blocks'] = self.reservoir.mesh.n_blocks
 
         if is_last_ts:
-            perf_data['OBL resolution'] = list(self.physics.n_axes_points)
+            perf_data['OBL axes_step'] = list(self.physics.axes_step)
+            perf_data['OBL axes_origin'] = list(self.physics.axes_origin)
             perf_data['operators'] = self.physics.n_ops
             perf_data['timesteps'] = self.physics.engine.stat.n_timesteps_total
             perf_data['wasted timesteps'] = self.physics.engine.stat.n_timesteps_wasted

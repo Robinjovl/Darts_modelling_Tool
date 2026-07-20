@@ -6,9 +6,7 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import vtk
 import xarray as xr
-from vtk.util.numpy_support import numpy_to_vtk
 
 from darts.engines import (
     index_vector,
@@ -16,18 +14,130 @@ from darts.engines import (
     value_vector,
     well_control_iface,
 )
-from darts.physics.base.operators_base import PropertyOperators
-from darts.physics.base.physics_base import PhysicsBase
-from darts.physics.geothermal.physics import Geothermal
-from darts.physics.super.physics import Compositional
+from darts.physics.base.operator_evaluator import PropertyOperators
+from darts.physics.base.physics import PhysicsBase
 from darts.tools.hdf5_tools import load_hdf5_to_dict
+from darts.tools.vtk_io import write_lines_vtp, write_pvd
+
+# ── Picklable accessors for output-property dicts ─────────────────────────────
+# Replace the per-region lambdas used by set_phase_properties / filter_phase_props
+# with top-level callable classes so the resulting props dict can be shipped to a
+# multiprocessing worker (where it is rebuilt against the worker's own
+# property_container by OutputPropertyDescriptor.materialize).
+
+
+class _PhasePropAccessor:
+    """Zero-arg accessor returning ``container.phase_props[prop_label_idx][phase_idx]``."""
+
+    __slots__ = ('container', 'prop_label_idx', 'phase_idx')
+
+    def __init__(self, container, prop_label_idx: int, phase_idx: int):
+        self.container = container
+        self.prop_label_idx = prop_label_idx
+        self.phase_idx = phase_idx
+
+    def __call__(self):
+        return self.container.phase_props[self.prop_label_idx][self.phase_idx]
+
+
+class _MolarFractionAccessor:
+    """Zero-arg accessor returning ``container.x[phase_idx, comp_idx]``."""
+
+    __slots__ = ('container', 'phase_idx', 'comp_idx')
+
+    def __init__(self, container, phase_idx: int, comp_idx: int):
+        self.container = container
+        self.phase_idx = phase_idx
+        self.comp_idx = comp_idx
+
+    def __call__(self):
+        return self.container.x[self.phase_idx, self.comp_idx]
+
+
+class _TemperatureAccessor:
+    """Zero-arg accessor returning ``container.temperature``."""
+
+    __slots__ = ('container',)
+
+    def __init__(self, container):
+        self.container = container
+
+    def __call__(self):
+        return self.container.temperature
+
+
+class FilteredOutputPropertyDescriptor:
+    """
+    Picklable wrapper that restricts a base :class:`OutputPropertyDescriptor`'s
+    materialized dict to a fixed subset of keys. Used by
+    :meth:`OutputBase.filter_phase_props` so the worker-side evaluator produces
+    the same filtered key set as the parent.
+
+    :param base: the unfiltered :class:`OutputPropertyDescriptor`.
+    :param keep_keys: iterable of keys to retain (order preserved).
+    """
+
+    def __init__(self, base, keep_keys):
+        self.base = base
+        self.keep_keys = list(keep_keys)
+
+    def materialize(self, property_container) -> dict:
+        full = self.base.materialize(property_container)
+        return {k: full[k] for k in self.keep_keys if k in full}
+
+
+class OutputPropertyDescriptor:
+    """
+    Picklable specification of the output-property dict layout used by
+    :meth:`OutputBase.set_phase_properties` for ``Compositional`` / ``Geothermal``
+    physics. Stores only plain data (kind, labels, phase names); the actual
+    accessor instances are materialized fresh against a given property container
+    via :meth:`materialize`. This indirection lets the descriptor be shipped to
+    a multiprocessing worker which then materializes the dict against its own
+    reconstructed property container.
+
+    :param kind: ``'compositional'`` or ``'geothermal'``.
+    :param phase_props_labels: Ordered list of phase-property label prefixes
+        (e.g. ``['dens', 'densm', 'sat', 'mu', 'kr', 'pc', 'enthalpy', 'cond']``).
+    :param phases: Phase names (used to build keys like ``f'{label}_{phase}'``).
+    """
+
+    def __init__(self, kind: str, phase_props_labels, phases):
+        if kind not in ('compositional', 'geothermal'):
+            raise ValueError(f"unknown descriptor kind: {kind!r}")
+        self.kind = kind
+        self.phase_props_labels = list(phase_props_labels)
+        self.phases = list(phases)
+
+    def materialize(self, property_container) -> dict:
+        """Build the dict of zero-arg accessors against ``property_container``."""
+        d = {}
+        if self.kind == 'compositional':
+            for i, name in enumerate(self.phase_props_labels):
+                for j in range(len(property_container.phase_props[i])):
+                    d[f"{name}_{self.phases[j]}"] = _PhasePropAccessor(
+                        property_container, i, j
+                    )
+            for i in range(property_container.x.shape[1]):
+                for j in range(property_container.x.shape[0]):
+                    d[f"x_{self.phases[j]}_{property_container.components_name[i]}"] = (
+                        _MolarFractionAccessor(property_container, j, i)
+                    )
+        else:  # 'geothermal'
+            d['temperature'] = _TemperatureAccessor(property_container)
+            for i, name in enumerate(self.phase_props_labels):
+                for j in range(property_container.nph):
+                    d[f"{name}_{self.phases[j]}"] = _PhasePropAccessor(
+                        property_container, i, j
+                    )
+        return d
 
 
 class Output:
     """
-    This class handles simulation output including primary variables, secondary variables,
-    well reporting and visualizations (pyplots, .vtk files). All simulation output is saved
-    into HDF5 files. To view the contents of these HDF5 files users are recommended to use an HDF5 viewer.
+    This class handles simulation output including reservoir/well primary variables, secondary variables,
+    well time-series, and visualizations (pyplots, .vtk files). All simulation output is saved
+    into HDF5 files. To view the contents of these HDF5 files, users are recommended to use an HDF5 viewer.
     Alternatively, primary and secondary variables can also be processed into xarray format.
 
     * **Primary variables** (state/unknowns) for reservoir blocks and well blocks are written
@@ -69,7 +179,7 @@ class Output:
         has_dfm_well: bool = False,
     ):
         """
-        :param timer: timer object, measurs time spent saving data, and evaluating properties.
+        :param timer: timer object, measures time spent saving data, and evaluating properties.
         :param reservoir: reservoir object.
         :param physics: physics object.
         :param wells: dict of well objects if the DFM well is used
@@ -167,151 +277,189 @@ class Output:
 
     def set_phase_properties(self):
         """
-        This function constructs a predefined set of property operators for the compositional/geothermal physics class.
+        Build a predefined set of *output-only* property operators / interpolators
+        for the compositional physics. The result is written to
+        ``physics.output_property_operators[region]`` and
+        ``physics.output_property_itor[region]`` so the physics-managed
+        ``property_operators`` / ``property_itor`` (set by ``set_interpolators`` and
+        wrapped by ``ParallelEvaluator`` when ``parallel_evaluation=True``) are
+        left untouched.
 
         Notes
         -----
-        * The properties for the super engine class include phase properties (density, molar density, saturation, viscosity, relative permeability, capillary pressure, enthalpy and conductivity) and molar phase fractions.
-        * The properties for the geothermal engine class include phase properties (density, molar density, saturation, viscosity, relative permeability, capillary pressure, enthalpy) and temperature.
-        * The declared interpolator is adaptive multilinear.
+        * Output: phase properties (density, molar density, saturation, viscosity,
+          relative permeability, capillary pressure, enthalpy, conductivity) and
+          molar phase fractions.
+        * Interpolator: adaptive multilinear, double precision, CPU.
+        * If the physics was initialized with ``parallel_evaluation=True``, the
+          existing shared evaluator pool is extended in place with new keys
+          ``('output_property_operators', region)`` so the output interpolators
+          also benefit from parallel batch evaluation.
         """
 
-        if isinstance(self.physics, Compositional):
-            phase_props_labels = [
-                "dens",
-                "densm",
-                "sat",
-                "mu",
-                "kr",
-                "pc",
-                "enthalpy",
-                "cond",
-            ]
-            self.physics.property_itor = {}
+        if not isinstance(self.physics, PhysicsBase):
+            return
 
-            for (
-                region
-            ) in self.physics.regions:  # loop over the different sets of operators
-                pc = self.physics.property_containers[region]
-                temp_dict = {}  # output_properties dictionary
+        descriptor = OutputPropertyDescriptor(
+            kind='compositional',
+            phase_props_labels=[
+                'dens',
+                'densm',
+                'sat',
+                'mu',
+                'kr',
+                'pc',
+                'enthalpy',
+                'cond',
+            ],
+            phases=self.physics.phases,
+        )
+        thermal = self.thermal
+        extrapolation_flag = self.physics.extrapolation_flag
+        dz = self.physics.dz
 
-                # Loop through each property label and phase name
-                for i, name in enumerate(phase_props_labels):
-                    for j in range(len(pc.phase_props[i])):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i,
-                            jj=j,
-                            rr=region: self.physics.property_containers[rr].phase_props[
-                                ii
-                            ][jj]
-                        )
+        # Remember the descriptor (and its build args) so a parallel worker can
+        # reconstruct the same output PropertyOperators from a fresh model.
+        self.physics.output_property_descriptor = descriptor
+        self.physics.output_property_build_args = {
+            'thermal': thermal,
+            'extrapolation_flag': extrapolation_flag,
+            'dz': dz,
+        }
 
-                # Add molar phase fractions
-                for i in range(pc.x.shape[1]):
-                    for j in range(pc.x.shape[0]):
-                        temp_dict[
-                            f"x_{self.physics.phases[j]}_{pc.components_name[i]}"
-                        ] = (
-                            lambda ii=i,
-                            jj=j,
-                            rr=region: self.physics.property_containers[rr].x[jj, ii]
-                        )
+        self.physics.output_property_operators = {}
+        self.physics.output_property_itor = {}
+        n_ops = self.physics.n_ops
+        for region in self.physics.regions:
+            pc = self.physics.property_containers[region]
+            temp_dict = descriptor.materialize(pc)
 
-                self.physics.property_operators[region] = PropertyOperators(
-                    property_container=pc,
-                    thermal=self.thermal,
-                    props=temp_dict,
-                    extrapolation_flag=self.physics.extrapolation_flag,
-                    dz=self.physics.dz,
+            op = PropertyOperators(
+                property_container=pc,
+                thermal=thermal,
+                props=temp_dict,
+                extrapolation_flag=extrapolation_flag,
+                dz=dz,
+            )
+            self.physics.output_property_operators[region] = op
+            # Mirror the materialized dict into container.output_props so callers
+            # that introspect container.output_props (e.g. variable_units, property
+            # index lookup) see the expanded property set.
+            pc.output_props = temp_dict
+
+        # Optionally extend the shared evaluator pool with the new output-property
+        # keys and replace each output_property_operators[region] with a
+        # ParallelEvaluator wrapper backed by the same pool.
+        if (
+            getattr(self.physics, '_shared_evaluator_pool', None) is not None
+            and self._can_wrap_output_property_parallel()
+        ):
+            self._wrap_output_property_evaluators_parallel(descriptor)
+
+        # Build interpolators (after any wrapping, so the interpolator binds to
+        # the parallel wrapper rather than the bare PropertyOperators).
+        for region in self.physics.regions:
+            self.physics.output_property_itor[region], n_ops = (
+                self.physics.create_interpolator(
+                    self.physics.output_property_operators[region],
+                    n_ops=self.physics.n_ops,
+                    platform='cpu',
+                    algorithm='multilinear',
+                    mode='adaptive',
+                    precision='d',
+                    timer_name=f'output property {region:d} interpolation',
+                    region=str(region),
                 )
-                self.physics.property_itor[region], n_ops = (
-                    self.physics.create_interpolator(
-                        self.physics.property_operators[region],
-                        n_ops=self.physics.n_ops,
-                        axes_min=self.physics.axes_min,
-                        axes_max=self.physics.axes_max,
-                        platform='cpu',
-                        algorithm='multilinear',
-                        mode='adaptive',
-                        precision='d',
-                        timer_name=f'property {region:d} interpolation',
-                        region=str(region),
-                    )
-                )
-
-                # Assign the temporary dictionary to output_props for the region
-                self.physics.property_containers[region].output_props = temp_dict
-                self.n_ops = n_ops
-
-        elif isinstance(self.physics, Geothermal):
-            phase_props_labels = [
-                "dens",
-                "densm",
-                "sat",
-                "mu",
-                "kr",
-                "pc",
-                "enthalpy",
-            ]  # 'cond'
-            self.physics.property_itor = {}
-
-            for (
-                region
-            ) in self.physics.regions:  # loop over the different sets of operators
-                pc = self.physics.property_containers[region]
-                temp_dict = {}
-
-                # add temperature
-                temp_dict['temperature'] = lambda container=pc: container.temperature
-
-                # Loop through each property label and phase name
-                for i, name in enumerate(phase_props_labels):
-                    for j in range(self.physics.property_containers[region].nph):
-                        temp_dict[f"{name}_{self.physics.phases[j]}"] = (
-                            lambda ii=i,
-                            jj=j,
-                            rr=region: self.physics.property_containers[rr].phase_props[
-                                ii
-                            ][jj]
-                        )
-
-                self.physics.property_operators[region] = PropertyOperators(
-                    property_container=pc,
-                    thermal=False,
-                    props=temp_dict,
-                )
-                self.physics.property_itor[region], n_ops = (
-                    self.physics.create_interpolator(
-                        self.physics.property_operators[region],
-                        n_ops=self.physics.property_operators[region].n_ops,
-                        axes_min=self.physics.axes_min,
-                        axes_max=self.physics.axes_max,
-                        platform='cpu',
-                        algorithm='multilinear',
-                        mode='adaptive',
-                        precision='d',
-                        timer_name=f'property {region:d} interpolation',
-                        region=str(region),
-                    )
-                )
-
-                # Assign the temporary dictionary to output_props for the region
-                self.physics.property_containers[region].output_props = temp_dict
-                self.n_ops = n_ops
+            )
+        self.n_ops = n_ops
 
         # Update the properties list
         self.properties = list(self.physics.property_containers[0].output_props.keys())
 
         return
 
+    def _can_wrap_output_property_parallel(self) -> bool:
+        """
+        Return True if the model owning this Output exposes a picklable factory
+        for building output property operators in a worker. The default
+        :meth:`DartsModel.get_evaluator_factory` does, so the answer is True
+        whenever the physics has a live shared pool.
+        """
+        return True
+
+    def _wrap_output_property_evaluators_parallel(self, descriptor):
+        """
+        Extend ``physics._shared_evaluator_pool`` with new keys
+        ``('output_property_operators', region)`` and replace each
+        ``physics.output_property_operators[region]`` with a ParallelEvaluator
+        backed by the (rebuilt) shared pool.
+
+        The factory captures the model class + constructor args + descriptor;
+        on each worker call it reconstructs the model, runs ``set_operators``,
+        materializes the descriptor against the worker's own property container
+        and returns the resulting ``PropertyOperators``.
+
+        Model class and constructor args are sourced from an existing
+        :class:`ModelEvaluatorFactory` already registered in the shared pool
+        (set up by :meth:`PhysicsBase._wrap_evaluators_parallel`). If no such
+        factory is present, parallel wrapping is silently skipped.
+        """
+        from darts.physics.base.parallel_evaluator import (
+            ModelEvaluatorFactory,
+            OutputPropertyOperatorsFactory,
+        )
+
+        pool = self.physics._shared_evaluator_pool
+        # Find any existing ModelEvaluatorFactory to source model_cls/init args.
+        existing = next(
+            (
+                f
+                for f in pool._factories.values()
+                if isinstance(f, ModelEvaluatorFactory)
+            ),
+            None,
+        )
+        if existing is None:
+            return
+
+        build_args = self.physics.output_property_build_args
+
+        def factory_hook(attr, region):
+            return OutputPropertyOperatorsFactory(
+                model_cls=existing.model_cls,
+                init_args=existing.init_args,
+                init_kwargs=existing.init_kwargs,
+                region=region,
+                descriptor=descriptor,
+                thermal=build_args['thermal'],
+                extrapolation_flag=build_args['extrapolation_flag'],
+                dz=build_args['dz'],
+            )
+
+        targets = [
+            ('output_property_operators', region) for region in self.physics.regions
+        ]
+        self.physics._extend_parallel_wrap(targets, factory_hook)
+
     def filter_phase_props(self, new_prop_keys: list):
         """
-        Filter default list of properties to only evaluate desired properties listed in new_prop_keys.
+        Filter the output-property dict down to the listed keys. Like
+        :meth:`set_phase_properties`, this writes the resulting operators /
+        interpolators to ``physics.output_property_operators`` /
+        ``physics.output_property_itor`` so the physics-managed
+        ``property_operators`` / ``property_itor`` are not disturbed.
 
-        :param new_prop_keys: list of properties to keep
-        :type
-        :raises ValueError: If any key in `new_prop_keys` is not an available property.
+        :param new_prop_keys: list of property keys to keep
+        :raises ValueError: if any key in ``new_prop_keys`` is not an available property.
         """
+        # Ensure the source dict to filter from exists (populated either by a
+        # prior :meth:`set_phase_properties` call or by the physics class itself).
+        if not getattr(self.physics, 'output_property_operators', None):
+            # Defensive fallback: if set_phase_properties was never invoked,
+            # initialize the dicts so filtering still works against container.output_props.
+            self.physics.output_property_operators = {}
+            self.physics.output_property_itor = {}
+
         for region in self.physics.regions:
             output_dictionary = self.physics.property_containers[region].output_props
             prop_keys = list(output_dictionary.keys())
@@ -330,24 +478,38 @@ class Output:
 
             self.physics.property_containers[region].output_props = output_dictionary
 
-            self.physics.property_operators[region] = PropertyOperators(
+            self.physics.output_property_operators[region] = PropertyOperators(
                 property_container=self.physics.property_containers[region],
                 thermal=self.thermal,
                 props=output_dictionary,
                 extrapolation_flag=self.physics.extrapolation_flag,
                 dz=self.physics.dz,
             )
-            self.physics.property_itor[region], n_ops = (
+
+        # If a base descriptor was stored by a prior :meth:`set_phase_properties`
+        # call and the physics has a live shared pool, re-wrap the output
+        # property operators with a filtered descriptor so the worker-side
+        # evaluators produce the same filtered key set as the parent.
+        base_desc = getattr(self.physics, 'output_property_descriptor', None)
+        if (
+            base_desc is not None
+            and getattr(self.physics, '_shared_evaluator_pool', None) is not None
+            and self._can_wrap_output_property_parallel()
+        ):
+            filtered_desc = FilteredOutputPropertyDescriptor(base_desc, new_prop_keys)
+            self.physics.output_property_descriptor = filtered_desc
+            self._wrap_output_property_evaluators_parallel(filtered_desc)
+
+        for region in self.physics.regions:
+            self.physics.output_property_itor[region], n_ops = (
                 self.physics.create_interpolator(
-                    self.physics.property_operators[region],
+                    self.physics.output_property_operators[region],
                     n_ops=self.physics.n_ops,
-                    axes_min=self.physics.axes_min,
-                    axes_max=self.physics.axes_max,
                     platform='cpu',
                     algorithm='multilinear',
                     mode='adaptive',
                     precision='d',
-                    timer_name=f'property {region:d} interpolation',
+                    timer_name=f'output property {region:d} interpolation',
                     region=str(region),
                 )
             )
@@ -597,14 +759,11 @@ class Output:
                 f.write("-- State specification:\n")
                 f.write(f"{self.physics.state_spec}\n")
 
-                f.write("-- OBL axes minimums:\n")
-                f.write(f"{self.physics.axes_min[:]}\n")
+                f.write("-- OBL axes origin (per axis):\n")
+                f.write(f"{list(self.physics.axes_origin)}\n")
 
-                f.write("-- OBL axes maximums:\n")
-                f.write(f"{self.physics.axes_max[:]}\n")
-
-                f.write("-- OBL axes maximums:\n")
-                f.write(f"{self.physics.n_axes_points[:]}\n")
+                f.write("-- OBL axes step (per axis):\n")
+                f.write(f"{list(self.physics.axes_step)}\n")
 
                 f.write("-- Regions:\n")
                 f.write(f"{self.physics.regions}\n")
@@ -638,8 +797,6 @@ class Output:
         if hasattr(self.reservoir, "discretizer"):
             if hasattr(self.reservoir.discretizer, "centroids_all_cells"):
                 centroids = self.reservoir.discretizer.centroids_all_cells
-            elif hasattr(self.reservoir.discretizer, "centroid_all_cells"):
-                centroids = self.reservoir.discretizer.centroid_all_cells
 
         if centroids is None and hasattr(self.reservoir, "centroids_all_cells"):
             centroids = self.reservoir.centroids_all_cells
@@ -677,7 +834,12 @@ class Output:
         return centroids
 
     def configure_h5_output(
-        self, sol_filepath: str, cell_ids, description, add_static_data: bool = False
+        self,
+        sol_filepath: str,
+        cell_ids,
+        description,
+        add_static_data: bool = False,
+        extended_state: bool = True,
     ):
         """
         Create and initialize an HDF5 output file for simulation results.
@@ -685,13 +847,14 @@ class Output:
         :param sol_filepath: Path of the HDF5 file to create.
         :param cell_ids: Cell/block indices to include in the dynamic output.
         :param description: Text description stored as the file attribute ``description``.
-        :param add_static_data: If True, also write ``/static/block_m`` and ``/static/block_p``. Default is False.
+        :param add_static_data: If True, also write ``/static/block_m``, ``/static/block_p`` and
+            ``/static/grav_coef``. Default is False.
 
         .. rubric:: HDF5 layout
         **/static** (optional)
 
             - ``cell_centers``: ``(n_blocks, dim)`` float. Written only when ``cell_ids`` covers all reservoir blocks.
-            - ``block_m``, ``block_p``: arrays. Written when ``add_static_data=True``.
+            - ``block_m``, ``block_p``, ``grav_coef``: arrays. Written when ``add_static_data=True``.
 
         **/dynamic**
 
@@ -728,8 +891,10 @@ class Output:
             if add_static_data:
                 block_m = np.array(self.reservoir.mesh.block_m, copy=False)
                 block_p = np.array(self.reservoir.mesh.block_p, copy=False)
+                grav_coef = np.array(self.reservoir.mesh.grav_coef, copy=False)
                 static_group.create_dataset("block_m", data=block_m)
                 static_group.create_dataset("block_p", data=block_p)
+                static_group.create_dataset("grav_coef", data=grav_coef)
 
             # add dynamic data group
             dynamic_group = f.create_group("dynamic")
@@ -756,10 +921,24 @@ class Output:
                 )
                 cell_ids_dataset[:] = cell_ids
 
+            # Reservoir H5 stores extended state [X | Xhistory] so restart preserves history;
+            # well H5 accumulates only primary Newton state (n_vars-wide), so it stays
+            # primary-width regardless of history_fields.
+            if extended_state and hasattr(self.physics, "n_state"):
+                n_state = self.physics.n_state
+                var_labels = (
+                    self.physics.get_interpolator_state_labels()
+                    if hasattr(self.physics, "get_interpolator_state_labels")
+                    else list(self.physics.vars)
+                )
+            else:
+                n_state = self.physics.n_vars
+                var_labels = list(self.physics.vars)
+
             dynamic_group.create_dataset(
                 "X",
-                shape=(0, nb, self.physics.n_vars),
-                maxshape=(None, nb, self.physics.n_vars),
+                shape=(0, nb, n_state),
+                maxshape=(None, nb, n_state),
                 dtype=self.precision_map[self.precision],
                 compression=self.compression,
                 compression_opts=self.compression_level,
@@ -768,7 +947,7 @@ class Output:
             # add variable names
             datatype = h5py.special_dtype(vlen=str)  # dtype for variable-length strings
             dynamic_group.create_dataset(
-                "variable_names", data=np.array(self.physics.vars, dtype=datatype)
+                "variable_names", data=np.array(var_labels, dtype=datatype)
             )
 
             # write brief description
@@ -816,6 +995,7 @@ class Output:
                 cell_ids=self.id_well_data,
                 add_static_data=True,
                 description="Well data",
+                extended_state=False,
             )
 
         if hasattr(self, "output_configured"):
@@ -848,13 +1028,28 @@ class Output:
                 n_new = len(times)
             else:
                 times = np.array([self.physics.engine.t])
-                X = np.asarray(self.physics.engine.X)
-                reshaped = X.reshape(
-                    (self.reservoir.mesh.n_blocks, self.physics.n_vars)
-                )[cell_id]
+                # Dataset width drives whether we write the extended state [X | Xhistory] (reservoir
+                # H5, used for restart) or just the primary Newton state (well H5).
+                dataset_width = x_dataset.shape[2]
+                if dataset_width > self.physics.n_vars and hasattr(
+                    self.physics, "get_engine_interpolator_state"
+                ):
+                    full = np.asarray(
+                        self.physics.get_engine_interpolator_state(
+                            n_blocks=self.reservoir.mesh.n_blocks
+                        ),
+                        dtype=float,
+                    )
+                    reshaped = full.reshape(
+                        (self.reservoir.mesh.n_blocks, dataset_width)
+                    )[cell_id]
+                else:
+                    reshaped = np.asarray(self.physics.engine.X).reshape(
+                        (self.reservoir.mesh.n_blocks, self.physics.n_vars)
+                    )[cell_id]
                 data_array = np.expand_dims(
                     reshaped, axis=0
-                )  # shape (1, n_cells, n_vars)
+                )  # shape (1, n_cells, n_state)
                 cfl_values = np.array([self.physics.engine.CFL_max])
                 n_new = 1
 
@@ -1033,13 +1228,19 @@ class Output:
             # Get current time
             timesteps = np.array(self.physics.engine.t).reshape(1)
 
-            X = np.array(
-                self.physics.engine.X[
-                    : self.physics.n_vars * self.reservoir.mesh.n_res_blocks
-                ],
-                copy=True,
-            )  # reservoir solution at current time
-            var_names = self.physics.vars  # primary variable names
+            if hasattr(self.physics, "get_interpolator_state_labels"):
+                X = self.physics.get_engine_interpolator_state(
+                    n_blocks=self.reservoir.mesh.n_res_blocks
+                )
+                var_names = self.physics.get_interpolator_state_labels()
+            else:
+                X = np.array(
+                    self.physics.engine.X[
+                        : self.physics.n_vars * self.reservoir.mesh.n_res_blocks
+                    ],
+                    copy=True,
+                )
+                var_names = self.physics.vars
 
         n_vars = len(var_names)  # number of primary variables
         nb = self.reservoir.mesh.n_res_blocks  # number of reservoir blocks
@@ -1102,7 +1303,14 @@ class Output:
                 values_numpy = np.array(values, copy=False)
                 dvalues = value_vector(np.zeros(self.n_ops * nb * n_vars))
 
-                for region, prop_itor in self.physics.property_itor.items():
+                # Prefer the output-only property interpolators (built by
+                # set_phase_properties/filter_phase_props) when they exist.
+                prop_itor_dict = (
+                    self.physics.output_property_itor
+                    if getattr(self.physics, 'output_property_itor', None)
+                    else self.physics.property_itor
+                )
+                for region, prop_itor in prop_itor_dict.items():
                     block_idx = np.where(self.op_num == region)[0].astype(np.int32)
                     prop_itor.evaluate_with_derivatives(
                         state, index_vector(block_idx), values, dvalues
@@ -1616,12 +1824,12 @@ class Output:
         """
         Evaluate and store well primary and secondary variables of the ith step in vtp files
 
-        :param output_properties: List of properties to evaluate. Defaults to None, which considers only primary vars.
-        :type output_properties: list
         :param ith_step: ith reporting step for which you want to create vtp files for
         :type ith_step: int
+        :param output_properties: List of properties to evaluate. Defaults to None, which considers only primary vars.
+        :type output_properties: list
         :param output_directory: Directory of where to save vtp files
-        :type: str
+        :type output_directory: str
         """
         if not self.has_dfm_well:
             return
@@ -1638,6 +1846,11 @@ class Output:
         time, output_data = self.well_output_properties(
             output_properties=output_properties, ith_step=ith_step
         )
+
+        if not hasattr(self, "_vtp_time_series"):
+            self._vtp_time_series = {}
+        output_key = os.path.abspath(output_directory)
+        output_time_series = self._vtp_time_series.setdefault(output_key, {})
 
         # Store well primary and seconday props in vtp files
         for w_name in self.wells.keys():
@@ -1664,12 +1877,31 @@ class Output:
                 nodes_xyz=nodes_coords,
                 output_properties=output_data,
                 ith_step=ith_step,
-                time=time,
                 output_directory=output_directory,
             )
 
+            # Accumulate time-series entries for this well
+            entries = output_time_series.setdefault(w_name, [])
+            vtp_filename = f"solution_well_{w_name}_ts{ith_step:d}.vtp"
+            if not any(f == vtp_filename for _, f in entries):
+                entries.append((time, vtp_filename))
+
+        self._write_wells_pvd(output_directory, output_time_series)
+
         self.timer.node["vtp_output"].stop()
         self.timer.stop()
+
+    def _write_wells_pvd(self, output_directory: str, output_time_series: dict):
+        """
+        Write one PVD collection containing all DFM well VTP files.
+        """
+        pvd_entries = []
+        for part, (w_name, entries) in enumerate(output_time_series.items(), start=1):
+            for time, vtp_filename in entries:
+                pvd_entries.append((time, vtp_filename, f"well_{w_name}", part))
+
+        pvd_entries.sort(key=lambda entry: (entry[0], entry[3], entry[1]))
+        write_pvd(os.path.join(output_directory, "wells.pvd"), pvd_entries)
 
     def well_output_properties(
         self,
@@ -1756,7 +1988,14 @@ class Output:
             values_numpy = np.array(values, copy=False)
             dvalues = value_vector(np.zeros(self.n_ops * nb * n_vars))
 
-            for _region, prop_itor in self.physics.property_itor.items():
+            # Prefer the output-only property interpolators (built by
+            # set_phase_properties/filter_phase_props) when they exist.
+            prop_itor_dict = (
+                self.physics.output_property_itor
+                if getattr(self.physics, 'output_property_itor', None)
+                else self.physics.property_itor
+            )
+            for _region, prop_itor in prop_itor_dict.items():
                 block_idx = index_vector(np.arange(nb).astype(np.int32))
                 prop_itor.evaluate_with_derivatives(
                     state, index_vector(block_idx), values, dvalues
@@ -1774,12 +2013,10 @@ class Output:
         nodes_xyz: np.ndarray,
         output_properties: dict,
         ith_step: int,
-        time: float,
         output_directory: str,
-        active: bool = None,
     ):
         """
-        Write well trajectory as .vtp (VTK PolyData) with segment-based primary and secondary vars as CELL data.
+        Write well output as .vtp (VTK PolyData) with segment-based primary and secondary vars as CELL data.
 
         :param well_name: Name of the well
         :type well_name: str
@@ -1789,63 +2026,14 @@ class Output:
         :type output_properties: dict
         :param ith_step: i'th reporting step for which you want to create a .vtp file for
         :type ith_step: int
-        :param time: Current simulation time
-        :type time: float
         :param output_directory: Directory of where to save the vtp file
-        :type: str
-        :param active: Optional name of variable to set as active scalars
-        :type active: bool
+        :type output_directory: str
         """
-        coords = np.asarray(nodes_xyz, dtype=float)
-        npts = coords.shape[0]
-        nseg = npts - 1
-
-        # Points
-        vtk_points = vtk.vtkPoints()
-        vtk_points.SetNumberOfPoints(npts)
-        for i, (x, y, z) in enumerate(coords):
-            vtk_points.SetPoint(i, float(x), float(y), float(z))
-
-        # Lines
-        vtk_lines = vtk.vtkCellArray()
-        for i in range(nseg):
-            vtk_lines.InsertNextCell(2)
-            vtk_lines.InsertCellPoint(i)
-            vtk_lines.InsertCellPoint(i + 1)
-
-        poly = vtk.vtkPolyData()
-        poly.SetPoints(vtk_points)
-        poly.SetLines(vtk_lines)
-
-        # Add time
-        tarr = vtk.vtkDoubleArray()
-        tarr.SetName("TimeValue")
-        tarr.SetNumberOfTuples(1)
-        tarr.SetValue(0, float(time))
-        poly.GetFieldData().AddArray(tarr)
-
-        # Cell data (segment-based)
-        cd = poly.GetCellData()
-        for name, vals in output_properties.items():
-            arr = np.asarray(vals).reshape((-1, 1))
-            if arr.shape[0] != nseg:
-                raise ValueError(f"'{name}' length {arr.shape[0]} != Nseg {nseg}")
-            vtk_arr = numpy_to_vtk(arr.astype(float), deep=True)
-            vtk_arr.SetName(name)
-            cd.AddArray(vtk_arr)
-
-        if active is None and output_properties:
-            active = next(iter(output_properties.keys()))
-        if active is not None:
-            cd.SetActiveScalars(active)
-
-        # Write
-        writer = vtk.vtkXMLPolyDataWriter()
         output_file_name = f"solution_well_{well_name}_ts{ith_step:d}.vtp"
         output_file_path = os.path.join(output_directory, output_file_name)
-        writer.SetFileName(output_file_path)
-        writer.SetInputData(poly)
-        writer.Write()
+        write_lines_vtp(
+            output_file_path, nodes_xyz, output_properties=output_properties
+        )
 
     def store_well_time_data(
         self,
@@ -1911,13 +2099,6 @@ class Output:
         )
 
         for rate_type in rate_types:
-            # Since the geothermal engine supports only a single component, components rates are not needed.
-            if rate_type in (
-                "component_molar_rates",
-                "component_mass_rates",
-            ) and isinstance(self.physics, Geothermal):
-                continue
-
             # Compute perforation rates
             rates_perfs = self.calc_rates_at_conns(
                 h5_well_data,
@@ -2179,6 +2360,35 @@ class Output:
             time_data_dict[f"well_{well.name}_BHP"] = BHP
             time_data_dict[f"well_{well.name}_BHT"] = BHT
 
+    @staticmethod
+    def get_gravity_and_capillary_pressure_ops(
+        physics,
+        reservoir_operator,
+        reservoir_ops: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Return phase density and capillary-pressure operators for phase rate calculation.
+
+        Super engine operators expose explicit gravity and capillary-pressure
+        operators.
+        """
+        pc = physics.property_containers[0]
+
+        if hasattr(reservoir_operator, "GRAV_OP"):
+            grav_start = reservoir_operator.GRAV_OP
+            grav = reservoir_ops[:, grav_start : grav_start + pc.nph]
+
+            if hasattr(reservoir_operator, "PC_OP"):
+                pc_start = reservoir_operator.PC_OP
+                capillary = reservoir_ops[:, pc_start : pc_start + pc.nph]
+            else:
+                capillary = np.zeros_like(grav)
+            return grav, capillary
+
+        raise AttributeError(
+            "Reservoir operators must expose GRAV_OP/PC_OP for rate calculation."
+        )
+
     def calc_rates_at_conns(
         self,
         h5_well_data: dict,
@@ -2190,6 +2400,9 @@ class Output:
         """
         Calculate different types of rates at perforations or wellhead connections of wells.
         This function is used in the method store_well_time_data of the current class.
+
+        To calculate connection rates, gravity is included, while capillary pressure is ignored in this
+        postprocessing calculation.
 
         :param h5_well_data: Well data stored in the HDF5 file
         :type h5_well_data: dict
@@ -2235,30 +2448,76 @@ class Output:
                 "The model is isothermal, so advective heat rate cannot be calculated for it!"
             )
 
-        p = h5_well_data["dynamic"]["X"][:, :, p_idx]
-        dp = p[:, cell_p] - p[:, cell_m]
-        idx_upwind = np.where(dp < 0, cell_m, cell_p)
-
         # This adds a new axis, turning a 1D array into a 2D column vector
         time_idx = np.arange(n_ts)[:, None]
 
-        states = h5_well_data["dynamic"]["X"][time_idx, idx_upwind]
-
-        if self.precision == "s":
-            states = np.clip(
-                states,
-                np.array(physics.axes_min),
-                np.array(physics.axes_max),
-            )
-
         batch_size = n_ts * n_conns
-        n_well_ctrl_ops = physics.well_ctrl_operators.n_ops
+        # Use the actual interpolator size because fallback interpolators can pad the logical well ctrl operators.
+        n_well_ctrl_ops = getattr(
+            physics, "n_well_ctrl_itor_ops", physics.well_ctrl_operators.n_ops
+        )
         n_reservoir_ops = physics.reservoir_operators[0].n_ops
         n_vars = physics.n_vars
+        # The reservoir / well-control interpolators consume the full OBL state
+        # [primary | history] (n_state axes), but the well H5 stores only the primary
+        # Newton state (n_vars-wide). Pad the missing history columns with each field's
+        # default so evaluated states match the interpolator dimensionality — feeding a
+        # primary-only state to a history-aware interpolator reads past the buffer and
+        # corrupts memory. Gravity (the only reservoir operator used here) depends on
+        # phase densities, not on the history axes, so the defaults do not bias rates.
+        n_state = getattr(physics, "n_state", n_vars)
+        history_defaults = np.array(
+            [h.default for h in getattr(physics, "history_fields", [])],
+            dtype=float,
+        )
         block_idx = index_vector(np.arange(batch_size).astype(np.int32))
-        states_2d = states.reshape(batch_size, n_vars)
 
-        states_vec = value_vector(states_2d.ravel())
+        states_m = h5_well_data["dynamic"]["X"][time_idx, cell_m]
+        states_p = h5_well_data["dynamic"]["X"][time_idx, cell_p]
+
+        # State clipping to the OBL window has been removed — adaptive interpolators
+        # cache cells on demand wherever the solver lands.
+
+        states_m_2d = states_m.reshape(batch_size, n_vars)
+        states_p_2d = states_p.reshape(batch_size, n_vars)
+        if n_state > n_vars:
+            history_pad = np.tile(history_defaults, (batch_size, 1))
+            states_m_2d = np.concatenate([states_m_2d, history_pad], axis=1)
+            states_p_2d = np.concatenate([states_p_2d, history_pad], axis=1)
+
+        def evaluate_ops(states_2d, n_ops, evaluator):
+            values = value_vector(np.zeros(batch_size * n_ops))
+            dvalues = value_vector(np.zeros((batch_size * n_ops) * n_state))
+            evaluator.evaluate_with_derivatives(
+                value_vector(states_2d.ravel()), block_idx, values, dvalues
+            )
+            return np.asarray(values).reshape(batch_size, n_ops)
+
+        reservoir_ops_m = evaluate_ops(
+            states_m_2d, n_reservoir_ops, physics.acc_flux_itor[0]
+        )
+        reservoir_ops_p = evaluate_ops(
+            states_p_2d, n_reservoir_ops, physics.acc_flux_itor[0]
+        )
+
+        p = h5_well_data["dynamic"]["X"][:, :, p_idx]
+        dp = p[:, cell_p] - p[:, cell_m]
+
+        reservoir_operator = physics.reservoir_operators[0]
+        grav_m, _ = self.get_gravity_and_capillary_pressure_ops(
+            physics, reservoir_operator, reservoir_ops_m
+        )
+        grav_p, _ = self.get_gravity_and_capillary_pressure_ops(
+            physics, reservoir_operator, reservoir_ops_p
+        )
+        grav_m = grav_m.reshape(n_ts, n_conns, pc.nph)
+        grav_p = grav_p.reshape(n_ts, n_conns, pc.nph)
+
+        grav_coef = h5_well_data["static"]["grav_coef"]
+        grav_coef = np.asarray(grav_coef)[conn_idxs][None, :, None]
+
+        phase_p_diff = dp[:, :, None] + 0.5 * (grav_m + grav_p) * grav_coef
+        upwind_m = phase_p_diff.reshape(batch_size, pc.nph) < 0
 
         if rate_type in [
             "phase_molar_rates",
@@ -2266,46 +2525,50 @@ class Output:
             "phase_volumetric_rates",
             "advective_heat_rates",
         ]:
-            values = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
-            dvalues = value_vector(np.zeros((batch_size * n_well_ctrl_ops) * n_vars))
-
-            physics.well_ctrl_itor.evaluate_with_derivatives(
-                states_vec, block_idx, values, dvalues
+            well_ops_m = evaluate_ops(
+                states_m_2d, n_well_ctrl_ops, physics.well_ctrl_itor
             )
-
-            values_reshaped = np.asarray(values).reshape(batch_size, n_well_ctrl_ops)
-
-        elif rate_type in ["component_molar_rates", "component_mass_rates"]:
-            values = value_vector(np.zeros(batch_size * n_reservoir_ops))
-            dvalues = value_vector(np.zeros((batch_size * n_reservoir_ops) * n_vars))
-
-            physics.acc_flux_itor[0].evaluate_with_derivatives(
-                states_vec, block_idx, values, dvalues
+            well_ops_p = evaluate_ops(
+                states_p_2d, n_well_ctrl_ops, physics.well_ctrl_itor
             )
-
-            values_reshaped = np.asarray(values).reshape(batch_size, n_reservoir_ops)
-
-        else:
+        elif rate_type not in ["component_molar_rates", "component_mass_rates"]:
             raise Exception(
                 "The rate type is not entered correctly or is not supported!"
             )
 
         if rate_type == "phase_molar_rates":
             start = int(well_control_iface.MOLAR_RATE) * pc.nph
-            ops = values_reshaped[:, start : start + pc.nph]
+            ops = np.where(
+                upwind_m,
+                well_ops_m[:, start : start + pc.nph],
+                well_ops_p[:, start : start + pc.nph],
+            )
         elif rate_type == "phase_mass_rates":
             start = int(well_control_iface.MASS_RATE) * pc.nph
-            ops = values_reshaped[:, start : start + pc.nph]
+            ops = np.where(
+                upwind_m,
+                well_ops_m[:, start : start + pc.nph],
+                well_ops_p[:, start : start + pc.nph],
+            )
         elif rate_type == "phase_volumetric_rates":
             op_start = int(well_control_iface.VOLUMETRIC_RATE) * pc.nph
-            ops = values_reshaped[:, op_start : op_start + pc.nph]
+            ops = np.where(
+                upwind_m,
+                well_ops_m[:, op_start : op_start + pc.nph],
+                well_ops_p[:, op_start : op_start + pc.nph],
+            )
         elif rate_type == "component_molar_rates":
-            op_start = physics.reservoir_operators[0].FLUX_OP
-            flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
-            flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
+            op_start = reservoir_operator.FLUX_OP
+            flux_ops_m = reservoir_ops_m[:, op_start : op_start + ne * pc.nph]
+            flux_ops_p = reservoir_ops_p[:, op_start : op_start + ne * pc.nph]
+            flux_ops_m = flux_ops_m.reshape(batch_size, pc.nph, ne)
+            flux_ops_p = flux_ops_p.reshape(batch_size, pc.nph, ne)
+            flux_ops = np.where(upwind_m[:, :, None], flux_ops_m, flux_ops_p)
 
-            op_start = physics.reservoir_operators[0].LAMBDA_OP
-            lambda_op = values_reshaped[:, op_start : op_start + pc.nph]
+            op_start = reservoir_operator.LAMBDA_OP
+            lambda_op_m = reservoir_ops_m[:, op_start : op_start + pc.nph]
+            lambda_op_p = reservoir_ops_p[:, op_start : op_start + pc.nph]
+            lambda_op = np.where(upwind_m, lambda_op_m, lambda_op_p)
             lambda_op = lambda_op[:, :, np.newaxis]
 
             molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
@@ -2313,12 +2576,17 @@ class Output:
 
             ops = molar_ops
         elif rate_type == "component_mass_rates":
-            op_start = physics.reservoir_operators[0].FLUX_OP
-            flux_ops = values_reshaped[:, op_start : op_start + ne * pc.nph]
-            flux_ops = flux_ops.reshape(batch_size, pc.nph, ne)
+            op_start = reservoir_operator.FLUX_OP
+            flux_ops_m = reservoir_ops_m[:, op_start : op_start + ne * pc.nph]
+            flux_ops_p = reservoir_ops_p[:, op_start : op_start + ne * pc.nph]
+            flux_ops_m = flux_ops_m.reshape(batch_size, pc.nph, ne)
+            flux_ops_p = flux_ops_p.reshape(batch_size, pc.nph, ne)
+            flux_ops = np.where(upwind_m[:, :, None], flux_ops_m, flux_ops_p)
 
-            op_start = physics.reservoir_operators[0].LAMBDA_OP
-            lambda_op = values_reshaped[:, op_start : op_start + pc.nph]
+            op_start = reservoir_operator.LAMBDA_OP
+            lambda_op_m = reservoir_ops_m[:, op_start : op_start + pc.nph]
+            lambda_op_p = reservoir_ops_p[:, op_start : op_start + pc.nph]
+            lambda_op = np.where(upwind_m, lambda_op_m, lambda_op_p)
             lambda_op = lambda_op[:, :, np.newaxis]
 
             molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
@@ -2329,78 +2597,85 @@ class Output:
             ops = molar_ops * mw_tiled
         elif rate_type == "advective_heat_rates":
             op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-            ops = values_reshaped[:, op_start : op_start + pc.nph]
+            ops = np.where(
+                upwind_m,
+                well_ops_m[:, op_start : op_start + pc.nph],
+                well_ops_p[:, op_start : op_start + pc.nph],
+            )
 
-            # Calculate dead operators
+            # Calculate dead operators at standard surface conditions
             p_dead = 1.01325  # Dead pressure (1 atm)
             T_dead = 273.15 + 15  # Dead temperature (15 deg C)
-            if not (
-                self.physics.PT_axes_min[p_idx]
-                <= p_dead
-                <= self.physics.PT_axes_max[p_idx]
-            ):
-                warnings.warn(
-                    f"Dead pressure ({p_dead:.5f} bar) for well energy rate calculation is outside OBL bounds!",
-                    stacklevel=1,
-                )
-            if not (
-                self.physics.PT_axes_min[t_idx]
-                <= T_dead
-                <= self.physics.PT_axes_max[t_idx]
-            ):
-                warnings.warn(
-                    f"Dead temperature ({T_dead:.2f} K) for well energy rate calculation is outside OBL bounds!",
-                    stacklevel=1,
-                )
+            # The legacy PT-window bounds check was removed — adaptive interpolators
+            # cache the dead state on demand wherever it falls in state space.
 
-            states_2d[:, p_idx] = p_dead
-            states_2d[:, t_idx] = T_dead
-            states_vec_dead = value_vector(states_2d.ravel())
+            states_m_dead = states_m_2d.copy()
+            states_p_dead = states_p_2d.copy()
+            states_m_dead[:, p_idx] = p_dead
+            states_p_dead[:, p_idx] = p_dead
+            states_m_dead[:, t_idx] = T_dead
+            states_p_dead[:, t_idx] = T_dead
 
             # Calculate heat operators at the dead state (1 atm and 15 deg C)
             if physics.state_spec == physics.StateSpecification.PT:
-                values_dead = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
-                dvalues_dead = value_vector(
-                    np.zeros((batch_size * n_well_ctrl_ops) * n_vars)
+                values_dead_m = evaluate_ops(
+                    states_m_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
-
-                physics.well_ctrl_itor.evaluate_with_derivatives(
-                    states_vec_dead, block_idx, values_dead, dvalues_dead
+                values_dead_p = evaluate_ops(
+                    states_p_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-                values_reshaped_dead = np.asarray(values_dead).reshape(
-                    batch_size, n_well_ctrl_ops
+                ops_dead = np.where(
+                    upwind_m,
+                    values_dead_m[:, op_start : op_start + pc.nph],
+                    values_dead_p[:, op_start : op_start + pc.nph],
                 )
-                ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
             elif physics.state_spec == physics.StateSpecification.PH:
                 # Calculate enthalpy for the dead state with temperature as the thermal variable
                 n_thermal_var_op = physics.thermal_var_operator.n_ops
-                enthalpies_dead = value_vector(np.zeros(batch_size * n_thermal_var_op))
-                denthalpies_dead = value_vector(
+
+                enthalpies_dead_m = value_vector(
+                    np.zeros(batch_size * n_thermal_var_op)
+                )
+                denthalpies_dead_m = value_vector(
                     np.zeros((batch_size * n_thermal_var_op) * n_vars)
                 )
-
                 physics.thermal_var_itor.evaluate_with_derivatives(
-                    states_vec_dead, block_idx, enthalpies_dead, denthalpies_dead
+                    value_vector(states_m_dead.ravel()),
+                    block_idx,
+                    enthalpies_dead_m,
+                    denthalpies_dead_m,
+                )
+                enthalpies_dead_p = value_vector(
+                    np.zeros(batch_size * n_thermal_var_op)
+                )
+                denthalpies_dead_p = value_vector(
+                    np.zeros((batch_size * n_thermal_var_op) * n_vars)
+                )
+                physics.thermal_var_itor.evaluate_with_derivatives(
+                    value_vector(states_p_dead.ravel()),
+                    block_idx,
+                    enthalpies_dead_p,
+                    denthalpies_dead_p,
                 )
 
                 # Update the dead state array (containing temperatures) with calculated enthalpies
-                np.asarray(states_vec_dead)[t_idx::n_vars] = np.asarray(enthalpies_dead)
+                states_m_dead[:, t_idx] = np.asarray(enthalpies_dead_m)
+                states_p_dead[:, t_idx] = np.asarray(enthalpies_dead_p)
 
                 # Now pass the dead state array with enthalpies to the well control interpolator
-                values_dead = value_vector(np.zeros(batch_size * n_well_ctrl_ops))
-                dvalues_dead = value_vector(
-                    np.zeros((batch_size * n_well_ctrl_ops) * n_vars)
+                values_dead_m = evaluate_ops(
+                    states_m_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
-
-                physics.well_ctrl_itor.evaluate_with_derivatives(
-                    states_vec_dead, block_idx, values_dead, dvalues_dead
+                values_dead_p = evaluate_ops(
+                    states_p_dead, n_well_ctrl_ops, physics.well_ctrl_itor
                 )
                 op_start = int(well_control_iface.ADVECTIVE_HEAT_RATE) * pc.nph
-                values_reshaped_dead = np.asarray(values_dead).reshape(
-                    batch_size, n_well_ctrl_ops
+                ops_dead = np.where(
+                    upwind_m,
+                    values_dead_m[:, op_start : op_start + pc.nph],
+                    values_dead_p[:, op_start : op_start + pc.nph],
                 )
-                ops_dead = values_reshaped_dead[:, op_start : op_start + pc.nph]
 
             ops = ops - ops_dead
 
@@ -2417,8 +2692,11 @@ class Output:
             ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
 
         tran = trans[None, :, None]
-        dpr = dp[:, :, None]
-        rates = -ops_reshaped * tran * dpr
+        if rate_type in ["component_molar_rates", "component_mass_rates"]:
+            pressure_term = np.repeat(phase_p_diff, pc.nc_fl, axis=2)
+        else:
+            pressure_term = phase_p_diff
+        rates = -ops_reshaped * tran * pressure_term
 
         return rates
 

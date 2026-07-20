@@ -4,8 +4,8 @@ from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
@@ -111,10 +111,13 @@ class Model(CICDModel, OptModuleSettings):
 
         """ Activate physics """
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=200, min_p=1, max_p=300, min_z=0., max_z=1., epsilon_z=epsilon,
-                                     extrapolation_flag=True)
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        # [p, z_1, ..., z_{nc-1}]
+        nz = len(components) - 1
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
+                                     axes_step=[1.5] + [5e-3] * nz,
+                                     axes_origin=[1.0] + [epsilon] * nz,
+                                     epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -141,11 +144,7 @@ class Model(CICDModel, OptModuleSettings):
     def set_op_list(self):
         if self.customize_new_operator:
             customized_component_etor = customized_etor_specific_component()
-            axes_min = self.physics.axes_min
-            axes_max = self.physics.axes_max
             customized_component_itor, _ = self.physics.create_interpolator(customized_component_etor,
-                                                                         axes_min=self.physics.axes_min,
-                                                                         axes_max=self.physics.axes_max,
                                                                          n_ops=1,
                                                                          platform='cpu', algorithm='multilinear',
                                                                          mode='adaptive', precision='d',

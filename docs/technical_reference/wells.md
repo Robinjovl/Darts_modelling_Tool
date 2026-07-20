@@ -107,27 +107,25 @@ Examples:
 
 There is a `ms_epm` argument in `add_perforation` function.
 
-If `ms_epm = False`
+### If `ms_epm = False`
 
 When using multiple perforations with `ms_epm = False`, be cautious that the wellbore will consist of only **one segment**, and fluid flows between the wellbore segment and multiple reservoir cells through perforations.
 
-![image.png](images/wells/add_perf_mswell_false.png){width=913 height=81}
-
-If depths of reservoir cells are set correctly, there will be flow at perforations due to gravity, which does **not happen in reality**.
+If depths of reservoir cells are set correctly, there will be flow at perforations due to gravity as well, which does **not happen in reality**.
 
 An example is given below with two perforations:
 
-![image.png](images/wells/mswell_false.png)
+![image.png](images/wells/ms_epm_false_func.png)
+![image.png](images/wells/ms_epm_false_diagram.png)
 
 Therefore, to avoid flow due to gravity at perforations, it is better to always use `ms_epm = True`. In addition, the depths of the reservoir cells need to be specified correctly.
 
-If `ms_epm = True`
+### If `ms_epm = True`
 
 When using multiple perforations with `ms_epm = True`, the wellbore consists of **multiple segments** (one segment in front of each perforated reservoir cell), and this is a more accurate representation of fluid flow in the wellbore.
 Be careful to use the correct depths for reservoir cells; otherwise, fluid flow between the reservoir and wellbore will be inaccurate.
 
-![image.png](images/wells/add_perf_mswell_true.png){width=892 height=79}
-
 An example is given below with two perforations:
 
-![image.png](images/wells/mswell_true.png)
+![image.png](images/wells/ms_epm_true_func.png)
+![image.png](images/wells/ms_epm_true_diagram.png)

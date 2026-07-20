@@ -6,6 +6,11 @@
         - linux
     variables:
         CONDA_ENV: "darts-${CI_JOB_ID}"
+        # MINIMAL drops the linear adaptive interpolator from the compile set,
+        # cutting per-TU memory enough that the shared 8 GB docker runner does
+        # not OOM-kill cc1plus at -j 8 on the heavy
+        # py_operator_set_interpolator_*_part*.cpp translation units.
+        OD_CMAKE_ARGS: "-D OPENDARTS_INTERPOLATOR_PROFILE=MINIMAL"
     before_script:
         - echo 'before build-linux'
         - source /opt/conda/bin/activate
@@ -14,8 +19,17 @@
         - export PY_SUFFIX=`python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES[0])"`
         - python -m pip install --upgrade pip setuptools wheel
     script:
+        # Build open-darts
         - echo "build *.so on linux started with ODLS=$ODLS"
         - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 8 $ODLS -p
+        # Check for warnings
+        - |
+          WARN_COUNT=$(grep -oP 'OPENDARTS_WARNING_COUNT=\K[0-9]+' make_darts.log 2>/dev/null | tail -1)
+          WARN_COUNT=${WARN_COUNT:-0}
+          if [ "$WARN_COUNT" -gt 0 ] && { [ "$CI_COMMIT_BRANCH" = "development" ] || [ "$CI_COMMIT_BRANCH" = "main" ]; }; then
+            echo "FAILED: $WARN_COUNT open-DARTS compilation warning(s) on $CI_COMMIT_BRANCH branch"
+            exit 1
+          fi
     after_script:
         - source /opt/conda/bin/activate
         - conda env remove -n ${CONDA_ENV} --yes || true

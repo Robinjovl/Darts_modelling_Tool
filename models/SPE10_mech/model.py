@@ -7,7 +7,7 @@ from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 import os
 
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -85,8 +85,8 @@ class Model(THMCModel):
 
         self.idata.rock.th_expn = 9.0 * 1.E-7
         self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)
-        self.idata.rock.conductivity = 0.836 * 86400.0 / 1000  # [kJ/m/day/K]
-        self.idata.rock.heat_capacity = 167.2 * 1000.0  # [kJ/m3/K]
+        self.idata.rock.thermal_conductivity = 0.836 * 86400.0  # [kJ/m/day/K]
+        self.idata.rock.heat_capacity = 167.2  # [kJ/m3/K]
         self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
 
         # TODO: Only for a single-phase physics
@@ -94,6 +94,8 @@ class Model(THMCModel):
         self.idata.fluid.compressibility = 1.45e-5
         self.idata.fluid.viscosity = 1.0
         self.idata.fluid.density = 666.854632
+        self.idata.fluid.heat_capacity = 75. #[kJ/kmol/K]
+        self.idata.fluid.thermal_conductivity = 0. # it is not used in the mech. engines
 
         self.idata.initial.initial_temperature = 273.15 + 50  # [K]
         self.idata.initial.initial_pressure = p_init  # [bar]
@@ -111,14 +113,13 @@ class Model(THMCModel):
         bnd_tags['BND_Z+'] = 996
         self.idata.mesh.matrix_tags = [99991]
 
-        self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-9
-        self.idata.obl.min_p = 0.0
-        self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = 273.15 + 20
-        self.idata.obl.max_t = 273.15 + 200
-        self.idata.obl.min_z = 0.
-        self.idata.obl.max_z = 1.
+        self.idata.obl.p_step = 2.5
+        self.idata.obl.p_origin = 0.0
+        self.idata.obl.z_step = 2.5e-3
+        self.idata.obl.z_origin = self.idata.obl.zero / 10
+        self.idata.obl.t_step = 0.45
+        self.idata.obl.t_origin = 273.15 + 20
         self.idata.obl.epsilon_z = self.idata.obl.zero/10
         super().set_input_data()
 
@@ -162,9 +163,8 @@ class Model(THMCModel):
             # rock compressibility is treated inside engine
             property_container.rock_compr_ev = ConstFunc(1.0)
 
-            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=t_ref))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=t_ref)  #TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
-            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
+            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.fluid.heat_capacity, tref=t_ref))])
+            property_container.conductivity_ev = dict([('wat', ConstFunc(self.idata.fluid.thermal_conductivity))])
         elif self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
             components = ['w', 'o']
             phases = ['wat', 'oil']
@@ -183,16 +183,19 @@ class Model(THMCModel):
                                                    ('oil', EnthalpyBasic(hcap=0.035))])
             property_container.conductivity_ev = dict([('wat', ConstFunc(1.)),
                                                        ('oil', ConstFunc(1.))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
 
         property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
-        # create physics
+        # create physics: [p, z_1, ..., z_{nc-1}, T?]
         state_spec = Poroelasticity.StateSpecification.PT if self.thermal else Poroelasticity.StateSpecification.P
-        self.physics = Poroelasticity(components, phases, self.timer, state_spec=state_spec, n_points=self.idata.obl.n_points,
-                                      min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
-                                      min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
+        nz = len(components) - 1
+        ax_step = [self.idata.obl.p_step] + [self.idata.obl.z_step] * nz
+        ax_origin = [self.idata.obl.p_origin] + [self.idata.obl.z_origin] * nz
+        if self.thermal:
+            ax_step.append(self.idata.obl.t_step)
+            ax_origin.append(self.idata.obl.t_origin)
+        self.physics = Poroelasticity(components, phases, self.timer, state_spec=state_spec,
+                                      axes_step=ax_step, axes_origin=ax_origin,
                                       epsilon_z=self.idata.obl.epsilon_z,
-                                      min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
                                       discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
 

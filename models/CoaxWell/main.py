@@ -48,8 +48,8 @@ save_logx_plot(
 save_logx_plot(
     time_data_df,
     x='time',
-    y=['well_PRD_volumetric_rate_water_at_wh',
-       'well_PRD_volumetric_rate_steam_at_wh'],
+    y=['well_PRD_volumetric_rate_L_at_wh',
+       'well_PRD_volumetric_rate_V_at_wh'],
     outpath=m.output_folder + '/well_production_rates.png'
 )
 
@@ -57,7 +57,7 @@ save_logx_plot(
 save_logx_plot(
     time_data_df,
     x='time',
-    y=['well_INJ_volumetric_rate_water_at_wh',
-       'well_INJ_volumetric_rate_steam_at_wh'],
+    y=['well_INJ_volumetric_rate_L_at_wh',
+       'well_INJ_volumetric_rate_V_at_wh'],
     outpath=m.output_folder + '/well_injection_rates.png'
 )

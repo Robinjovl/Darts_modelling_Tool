@@ -1,5 +1,49 @@
 # Build libopendarts_linear_solvers --------------------------------------------
 
+# Auto-generated explicit template instantiations
+# ------------------------------------------------------------------------------
+# Solver classes parameterized by block size N (e.g. linsolv_superlu<N>) need an
+# explicit `template class linsolv_superlu<N>;` directive per N to emit out-of-
+# line definitions into the static archive. Hand-maintaining that list and
+# keeping it in sync with OPENDARTS_MAX_DIMS is error-prone; instead drive it
+# from CMake via od_emit_template_instantiations(). Same pattern can be applied
+# to other solvers (linsolv_bos_cpr, linsolv_bos_bilu0, linsolv_bos_gmres, ...)
+# as the need arises.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/od_emit_template_instantiations.cmake)
+
+# Shared block-size range for the per-N solver templates (linsolv_superlu,
+# linsolv_bos_bilu0, linsolv_bos_cpr, linsolv_bos_gmres). The +1 covers thermal
+# super-engine blocks (N_VARS = NC + 1) when the engines are built against the
+# open-source solvers (ODLS path). The floor of 13 satisfies the unit-test contract
+# — tests/cpp/unit/linear_solvers/{superlu,bos_cpr,bos_bilu0,bos_gmres}.cpp
+# instantiate up to block size 13 via test_member_functions<N>() — regardless of
+# OPENDARTS_MAX_DIMS (default 8 would otherwise leave N=10..13 unbound and the unit
+# tests fail to link).
+math(EXPR _od_linsolv_max_n "${OPENDARTS_MAX_DIMS} + 1")
+if(_od_linsolv_max_n LESS 13)
+  set(_od_linsolv_max_n 13)
+endif()
+set(_od_linsolv_gen_dir ${CMAKE_CURRENT_BINARY_DIR}/generated)
+file(MAKE_DIRECTORY ${_od_linsolv_gen_dir})
+
+# Solvers whose smallest meaningful block size is 1.
+foreach(_od_solver linsolv_superlu linsolv_bos_bilu0 linsolv_bos_gmres)
+  od_emit_template_instantiations(
+    CLASS ${_od_solver}
+    MAX_N ${_od_linsolv_max_n}
+    OUTPUT_FILE ${_od_linsolv_gen_dir}/${_od_solver}_instantiations.inc
+  )
+endforeach()
+
+# linsolv_bos_cpr starts at block size 2 — the constrained-pressure-residual split
+# is undefined for a 1x1 block (no non-pressure sub-block to decouple).
+od_emit_template_instantiations(
+  CLASS linsolv_bos_cpr
+  MIN_N 2
+  MAX_N ${_od_linsolv_max_n}
+  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_bos_cpr_instantiations.inc
+)
+
 # Set library files
 
 # First the source files (private headers should also go here)
@@ -50,7 +94,6 @@ target_link_libraries(linear_solvers
   PUBLIC
     opendarts_compiler_flags
     config
-    auxiliary
     SuperLU
     cblas
     HYPRE::HYPRE
@@ -61,7 +104,11 @@ target_link_libraries(linear_solvers
 target_include_directories(linear_solvers
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/interpolation/include>
     $<INSTALL_INTERFACE:include>
+  PRIVATE
+    # Auto-generated instantiation .inc files live here (see od_emit_template_instantiations).
+    $<BUILD_INTERFACE:${_od_linsolv_gen_dir}>
 )
 
 # Setup IDE directory structure for opendarts_linear_solvers
@@ -70,13 +117,13 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_LINEAR_SOLVERS_PUBLI
 
 if(ONLY_SOLVERS)
   # Install the library file of opendarts_linear_solvers
-  install(TARGETS linear_solvers 
-    CONFIGURATIONS RELEASE    
+  install(TARGETS linear_solvers
+    CONFIGURATIONS RELEASE RELWITHDEBINFO
     DESTINATION lib/unbundled
   )
 
   install(TARGETS linear_solvers
-    CONFIGURATIONS DEBUG     
+    CONFIGURATIONS DEBUG
     DESTINATION lib/unbundled/debug
   )
 
@@ -85,18 +132,18 @@ if(ONLY_SOLVERS)
           DESTINATION include
           COMPONENT header_files
           FILES_MATCHING PATTERN "*.hpp")
-          
+
   # Setup the bundled linear_solvers library
   # Single file for delivery
 
-  # These steps setup a single file 
-  # with all dependent libraries included in the same file 
-  # In the future with all components of opendarts integrated with cmake 
-  # this is no longer needed, for now it is done to simplify integration 
+  # These steps setup a single file
+  # with all dependent libraries included in the same file
+  # In the future with all components of opendarts integrated with cmake
+  # this is no longer needed, for now it is done to simplify integration
   # with engines.
 
-  # Generate the single library file and determine the include header files directories 
-  # This function takes linear_solvers library checks all dependencies, bundle them 
+  # Generate the single library file and determine the include header files directories
+  # This function takes linear_solvers library checks all dependencies, bundle them
   # all together and places the single .a file into <CMAKE_BINARY_DIR>/bundled_libs.
   # Additionally it returns:
   #   linear_solvers_bundled_filename: the full path to the single. a file
@@ -107,7 +154,7 @@ if(ONLY_SOLVERS)
   # Generate the single file library as an imported library
   add_library(linear_solvers_bundled STATIC IMPORTED GLOBAL)
   set_target_properties(linear_solvers_bundled
-    PROPERTIES 
+    PROPERTIES
     IMPORTED_LOCATION ${linear_solvers_bundled_filename}
     INTERFACE_INCLUDE_DIRECTORIES "${linear_solvers_bundled_header_files}"
   )
@@ -117,12 +164,12 @@ if(ONLY_SOLVERS)
   message(STATUS "-----------------------------------------------")
 
   install(FILES ${linear_solvers_bundled_filename}
-    CONFIGURATIONS RELEASE RELWITHDEBINFO ""    
+    CONFIGURATIONS RELEASE RELWITHDEBINFO ""
     DESTINATION lib
   )
 
   install(FILES ${linear_solvers_bundled_filename}
-    CONFIGURATIONS DEBUG    
+    CONFIGURATIONS DEBUG
     DESTINATION lib
     RENAME ${CMAKE_STATIC_LIBRARY_PREFIX}${bundled_tgt_file_name}_d${CMAKE_STATIC_LIBRARY_SUFFIX}
   )

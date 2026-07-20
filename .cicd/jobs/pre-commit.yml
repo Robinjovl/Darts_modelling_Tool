@@ -3,8 +3,13 @@ pre-commit:
     tags:
         - linux_tahiti_gpu
     variables:
-        PRE_COMMIT_HOME: ".cache/pre-commit"
+        PRE_COMMIT_HOME: "/data/gitlab-runner/.cache/pre-commit"
         CONDA_ENV: "precommit-${CI_JOB_ID}"
+        # Job-private conda package cache to avoid races on the shared
+        # /data/gitlab-runner/miniconda3/pkgs/ cache (concurrent jobs on the
+        # same runner have left half-extracted packages there, breaking
+        # later `conda create` with "Cannot link a source that does not exist").
+        CONDA_PKGS_DIRS: "${CI_PROJECT_DIR}/.conda-pkgs"
     before_script:
         - echo 'Setting up pre-commit on tahiti (conda env + cache)...'
         - spack env activate open_darts_gcc134
@@ -24,7 +29,7 @@ pre-commit:
           set -eu
           FILES="$(
             {
-              git ls-files -- 'darts' 'tests' 'helper_scripts' '.cicd' '.gitlab-ci.yml' '.pre-commit-config.yaml' 'pyproject.toml' 2>/dev/null || true
+              git ls-files -- 'darts' 'tests' 'helper_scripts' '.cicd' '.agents' '.gitlab-ci.yml' '.pre-commit-config.yaml' 'pyproject.toml' 2>/dev/null || true
             } | grep -E '\.(py|ya?ml|toml)$' || true
           )"
           echo $FILES

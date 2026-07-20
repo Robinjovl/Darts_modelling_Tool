@@ -36,8 +36,8 @@ if(ENABLE_VALGRIND)
     # Limit SIMD to SSE4.2 (supported by Valgrind 3.24) to avoid SIGILL on AVX-512
     # -mno-avx512f disables AVX-512 foundation instructions
     # -march=x86-64-v2 targets SSE4.2 level (compatible with Valgrind)
-    set(CMAKE_CXX_FLAGS_DEBUG     "${CMAKE_CXX_FLAGS_DEBUG} -g -O2 -march=x86-64-v2 -mno-avx512f")
-    set(CMAKE_C_FLAGS_DEBUG       "${CMAKE_C_FLAGS_DEBUG}   -g -O2 -march=x86-64-v2 -mno-avx512f")
+    set(CMAKE_CXX_FLAGS_DEBUG          "${CMAKE_CXX_FLAGS_DEBUG} -g -O2 -march=x86-64-v2 -mno-avx512f")
+    set(CMAKE_C_FLAGS_DEBUG            "${CMAKE_C_FLAGS_DEBUG}   -g -O2 -march=x86-64-v2 -mno-avx512f")
 endif()
 
 # Load cmake modules -----------------------------------------------------------
@@ -108,7 +108,6 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 
 # Determine the type of compiler we have and set compiler flags and other compiler
 # specific flags
-
 if(DEFINED BOS_SOLVERS_DIR)
   add_compile_definitions(WITH_HYPRE)
 endif()
@@ -154,7 +153,7 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   # Using LTO as it seems to reduce compile time
   # No need for manual optimization flag, CMake build types automatically handle it.
   # Debug: O0    Release: 03
-  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-std=c++20")
+  set(opendarts_cxx_compiler_flags "-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC;-fno-lto;-pipe;-std=c++20")
 
   # Linker flags
   set(opendarts_cxx_linker_flags "")
@@ -196,14 +195,85 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 
 endif()
 
+set(opendarts_cxx_warning_suppression_flags "")
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  set(opendarts_cxx_warning_suppression_flags
+    # --- Reasonable suppressions (keep permanently) ---
+    -Wno-attributes         # cross-platform attribute compatibility (pybind11, MSVC attributes)
+    -Wno-maybe-uninitialized # GCC false positives in optimized builds
+    -Wno-comment            # harmless nested comment warnings
+    -Wno-cast-function-type # common with pybind11 callback casts
+    # --- Tech debt: to be fixed incrementally (202+154+140+656+194 unique locations) ---
+    -Wno-unused-variable       # ~202 unique locations, mostly in engine template instantiations
+    -Wno-unused-but-set-variable # ~100 unique locations in engine templates
+    -Wno-unused-parameter      # ~50 unique locations, mostly in virtual method overrides
+    -Wno-shadow                # ~154 unique locations, needs per-location review
+    -Wno-sign-compare          # ~140 unique locations, int vs size_t in loops
+  )
+endif()
+
+list(APPEND opendarts_cxx_compiler_flags ${opendarts_cxx_warning_suppression_flags})
+
 message(STATUS "   Compiler flags: ${opendarts_cxx_compiler_flags}")
 message(STATUS "   Linker flags  : ${opendarts_cxx_linker_flags}")
+message(STATUS "   Warning suppressions: ${opendarts_cxx_warning_suppression_flags}")
 
 # Setup options
 option(ENABLE_TESTING "Build and copy testing stuff" OFF)  # by default tests are not built, to save time
 add_feature_info(ENABLE_TESTING ENABLE_TESTING "Build and copy testing stuff")  # add option as feature for pretty display
 option(ONLY_SOLVERS "Build only solvers" OFF) # by default all project is built
 add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
+
+# Interpolator compile profile -------------------------------------------------
+# Controls which (i_t, algorithm) interpolator variants are stamped per
+# (N_DIMS, N_OPS) pair. Reducing the variant count is the most effective lever
+# against the cc1plus OOM hit on heavy py_operator_set_interpolator_*_part*.cpp
+# translation units (~1.5–4 GB resident per TU at -O2/-O3 today).
+#   MINIMAL: multilinear_adaptive uint64 only. Drops linear; any model that
+#            explicitly sets itor_type='linear' must switch to 'multilinear'.
+#   FULL:    multilinear_adaptive uint64 + linear_adaptive uint64. No behaviour
+#            change vs. legacy other than removing the (compile-only) uint32
+#            multilinear specialisation; Python first-try at uint32 falls
+#            through to uint64 via the existing try/except (one-time cost at
+#            interpolator construction).
+set(OPENDARTS_INTERPOLATOR_PROFILE "FULL" CACHE STRING
+    "Interpolator compile profile: MINIMAL (multilinear uint64 only) or FULL (+linear uint64).")
+set_property(CACHE OPENDARTS_INTERPOLATOR_PROFILE PROPERTY STRINGS MINIMAL FULL)
+if(NOT OPENDARTS_INTERPOLATOR_PROFILE MATCHES "^(MINIMAL|FULL)$")
+    message(FATAL_ERROR "OPENDARTS_INTERPOLATOR_PROFILE must be MINIMAL or FULL (got '${OPENDARTS_INTERPOLATOR_PROFILE}').")
+endif()
+message(STATUS "  Interpolator profile: ${OPENDARTS_INTERPOLATOR_PROFILE}")
+
+# OPENDARTS_MAX_DIMS = N drives BOTH from one knob (kept equal):
+#   - MAX_DIMS (interpolation_config.h): OBL dimensions, N_DIMS in 1..N
+#   - MAX_NC   (engines/src/globals.h) : engine components, NC in 2..N
+# A model's OBL dimension is NC (isothermal) or NC+1 (thermal, +1 per history axis),
+# so MAX_NC = MAX_DIMS = N supports isothermal up to N components and thermal up to N-1.
+# Example (default N=8): isothermal up to 8 components, thermal up to 7; thermal at 8
+# components needs N_DIMS=9, which is not compiled and would fail -- bump N to 9 for that.
+# N is the dominant compile-time/RAM knob (interpolate_with_derivatives unrolls
+# O(2^N_DIMS) per instantiation), so raise it only when needed. Default 8 = historical value.
+set(OPENDARTS_MAX_DIMS "8" CACHE STRING
+    "Maximum number of OBL parameter-space dimensions and engine components (typical: 6–8). Drives both MAX_DIMS (interpolators) and MAX_NC (engines).")
+if(NOT OPENDARTS_MAX_DIMS MATCHES "^[1-9][0-9]*$")
+    message(FATAL_ERROR "OPENDARTS_MAX_DIMS must be a positive integer (got '${OPENDARTS_MAX_DIMS}').")
+endif()
+message(STATUS "  OBL max dimensions / engine max NC: ${OPENDARTS_MAX_DIMS}")
+
+# Engines library reads MAX_NC from globals.h (now #ifndef-guarded). Forward
+# the cmake variable globally so every engine TU and engine pybind exposer
+# sees a consistent value. Interpolators target picks up MAX_DIMS via its own
+# target_compile_definitions in interpolation/pybind11/CMakeLists.txt.
+add_compile_definitions(MAX_NC=${OPENDARTS_MAX_DIMS})
+# Cap the mechanical engines' compositional dimensionality independently of
+# OPENDARTS_MAX_DIMS. Super-elastic blocks reach N_VARS = NC + 1 + ND, which at
+# the global MAX_NC requires linsolv_bos_fs_cpr<N> template instantiations the
+# proprietary darts-linear-solvers archive doesn't carry. Fixing this at NC=3
+# keeps mech blocks within the existing fs_cpr<4..12> instantiation set (thermal
+# super-elastic at NC=3 → N_VARS=7) while still letting flow engines run at the
+# full OPENDARTS_MAX_DIMS.
+add_compile_definitions(MAX_NC_MECH=3)
+# ------------------------------------------------------------------------------
 
 
 # Report options for this build
@@ -258,18 +328,54 @@ if(CUDA)
 
     if(CUDAToolkit_FOUND)
         message(STATUS "CUDA found. Enabling CUDA support.")
-        enable_language(CUDA)
-        set(CMAKE_CUDA_STANDARD 20)
-        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
         cmake_minimum_required (VERSION 3.24)  # 3.24 is needed for architecture native
+        # Set architecture BEFORE enable_language(CUDA) so CMake can detect the compiler
         if(DEFINED CUDA_ARCH)
             message(STATUS "Using CUDA architecture(s): ${CUDA_ARCH}")
             set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH})
         else()
             set(CMAKE_CUDA_ARCHITECTURES native)
         endif()
+        # Use nvcc discovered by find_package(CUDAToolkit) when it is not in PATH
+        if(NOT DEFINED CMAKE_CUDA_COMPILER AND DEFINED CUDAToolkit_BIN_DIR)
+            find_program(_NVCC_PATH nvcc PATHS "${CUDAToolkit_BIN_DIR}" NO_DEFAULT_PATH)
+            if(_NVCC_PATH)
+                set(CMAKE_CUDA_COMPILER "${_NVCC_PATH}" CACHE FILEPATH "CUDA compiler")
+                message(STATUS "Using CUDA compiler: ${_NVCC_PATH}")
+            endif()
+        endif()
+        enable_language(CUDA)
+        set(CMAKE_CUDA_STANDARD 20)
+        set(CMAKE_CUDA_STANDARD_REQUIRED ON)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --ptxas-options=-v -allow-unsupported-compiler")
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --compiler-options='-march=native' --expt-relaxed-constexpr -allow-unsupported-compiler")
+        # Workaround for CUDA 13.2 + gcc 13 + CCCL ambiguity in cub/block/block_load_to_shared.cuh
+        # where unqualified data()/size() calls match both std:: and cuda::std:: overloads for
+        # cuda::std::span<char>. We ship a patched copy of the header that fully qualifies those
+        # calls, and prepend its directory to the nvcc include search path so it is picked up
+        # before the system CCCL one.
+        #
+        # The override is scoped narrowly so future CUDA releases can pick up upstream fixes:
+        #   1. Only engages for the exact CUDA toolkit versions known to carry the regression
+        #      (CUDA 13.2.x; 13.0/13.1 don't ship the offending header, 13.3+ is assumed fixed).
+        #   2. Only engages if the *system* CCCL header is actually present on this toolkit
+        #      (guarding against custom/minimal CUDA installs).
+        #   3. Only engages if the vendored patched copy is present (so deleting this directory
+        #      disables the workaround with no further changes).
+        # See cmake_patches/cccl_override/README.md for the full rationale and references.
+        set(_cccl_override_dir "${CMAKE_SOURCE_DIR}/cmake_patches/cccl_override")
+        set(_cccl_override_header "${_cccl_override_dir}/cub/block/block_load_to_shared.cuh")
+        set(_cccl_system_header "${CUDAToolkit_TARGET_DIR}/include/cccl/cub/block/block_load_to_shared.cuh")
+        if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "13.2"
+           AND CUDAToolkit_VERSION VERSION_LESS "13.3"
+           AND EXISTS "${_cccl_system_header}"
+           AND EXISTS "${_cccl_override_header}")
+            message(STATUS "Applying CCCL workaround for CUDA ${CUDAToolkit_VERSION} block_load_to_shared.cuh ambiguity")
+            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -I${_cccl_override_dir}")
+        endif()
+        unset(_cccl_override_dir)
+        unset(_cccl_override_header)
+        unset(_cccl_system_header)
         add_compile_definitions(WITH_GPU)
     else()
         message(FATAL_ERROR "CUDA requested but not found!")
@@ -302,6 +408,13 @@ target_link_options(opendarts_compiler_flags
 # openDARTS Linear solvers -----------------------------------------------------
 if(NOT DEFINED BOS_SOLVERS_DIR)
   add_subdirectory(solvers)
+endif()
+# ------------------------------------------------------------------------------
+
+
+# Interpolation ----------------------------------------------------------------
+if(NOT ONLY_SOLVERS)
+  add_subdirectory(interpolation)
 endif()
 # ------------------------------------------------------------------------------
 

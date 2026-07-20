@@ -1,16 +1,16 @@
 import numpy as np
 
 from darts.engines import *
-from darts.physics.base.operators_base import (
+from darts.physics.base.operator_evaluator import *
+from darts.physics.base.operator_evaluator import (
     PropertyOperators,
     ThermalVarOperator,
-    WellControlOperators,
+    WellCtrlOperators,
 )
-from darts.physics.super.operator_evaluator import *
-from darts.physics.super.physics import Compositional, PhysicsBase
+from darts.physics.base.physics import PhysicsBase
 
 
-class Poroelasticity(Compositional):
+class Poroelasticity(PhysicsBase):
     """
     This is the Physics class for compositional poroelastic simulation.
 
@@ -26,82 +26,42 @@ class Poroelasticity(Compositional):
         components: list,
         phases: list,
         timer: timer_node,
-        n_points: int,
-        min_p: float,
-        max_p: float,
-        min_z: float,
-        max_z: float,
-        epsilon_z: float,
+        axes_step: list[float],
+        axes_origin: list[float] = None,
+        epsilon_z: float = 1e-9,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
-        min_t: float = None,
-        max_t: float = None,
-        state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
+        state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
         discretizer: str = 'mech_discretizer',
-        axes_min=None,
-        axes_max=None,
-        n_axes_points=None,
     ):
         """
-        This is the constructor of the Compositional Physics class.
+        Constructor of the Poroelasticity Physics class. Defines the OBL grid for P-z
+        or P-T-z compositional simulation via PhysicsBase with mechanics added.
 
-        It defines the OBL grid for P-z or P-T-z compositional simulation.
-
-        :param components: List of components
-        :type components: list
-        :param phases: List of phases
-        :type phases: list
-        :param timer: Timer object
-        :type timer: :class:`darts.engines.timer_node`
-        :param n_points: Number of OBL points along axes
-        :type n_points: int
-        :param min_p, max_p: Minimum, maximum pressure
-        :type min_p, max_p: float
-        :param min_z, max_z: Minimum, maximum composition
-        :type min_z, max_z: float
-        :param min_t, max_t: Minimum, maximum temperature, default is None
-        :type min_t, max_t: float
-        :param epsilon_z: Epsilon value for composition OBL axes (min_axis_z, max_axis_z)
-        :type epsilon_z: float
-        :param sim_eps_multiplier: Multiplier to epsilon_z to obtain sim_eps (minimum offset of solution state from
-                                    OBL bounds, calculated as min_sim_z/max_sim_z in engine), default is 10
-        :type sim_eps_multiplier: float
-        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
-        :type extrapolation_flag: bool
-        :param state_spec: State specification - 0) P (default), 1) PT, 2) PH
-        :type state_spec: bool
-        :param cache: Switch to cache operator values
-        :type cache: bool
-        :param discretizer: Name of discretizer
-        :type discretizer: str
-        :param axes_min: Minimum bounds of OBL axes
-        :type axes_min: list or np.ndarray
-        :param axes_max: Maximum bounds of OBL axes
-        :type axes_max: list or np.ndarray
-        :param n_axes_points: Number of points over OBL axes
-        :type n_axes_points: list or np.ndarray
+        :param components: List of components.
+        :param phases: List of phases.
+        :param timer: Timer object.
+        :param axes_step: Per-axis cell size (forwarded to PhysicsBase).
+        :param axes_origin: Per-axis grid origin (defaults via PhysicsBase).
+        :param epsilon_z: Composition axis offset (default 1e-9).
+        :param sim_eps_multiplier: Multiplier on epsilon_z to obtain sim_eps.
+        :param extrapolation_flag: Extrapolation logic for z[last] < 0 (nc >= 3).
+        :param state_spec: P (default), PT, or PH.
+        :param cache: Cache supporting points to disk between runs.
+        :param discretizer: 'mech_discretizer' (default) or 'pm_discretizer'.
         """
-        # Define nc, nph and (iso)thermal
         super().__init__(
             components=components,
             phases=phases,
             timer=timer,
-            n_points=n_points,
-            min_p=min_p,
-            max_p=max_p,
-            min_z=min_z,
-            max_z=max_z,
+            axes_step=axes_step,
+            axes_origin=axes_origin,
             epsilon_z=epsilon_z,
             sim_eps_multiplier=sim_eps_multiplier,
             extrapolation_flag=extrapolation_flag,
-            min_t=min_t,
-            max_t=max_t,
             state_spec=state_spec,
             cache=cache,
-            axes_min=axes_min,
-            axes_max=axes_max,
-            n_axes_points=n_axes_points,
         )
 
         self.n_dim = 3
@@ -142,7 +102,7 @@ class Poroelasticity(Compositional):
     def set_operators(self):
         """
         Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well segments, :class:`WellControlOperators` for well control
+        :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
         if self.discretizer_name == "pm_discretizer":
@@ -186,12 +146,13 @@ class Poroelasticity(Compositional):
                 dz=self.dz,
             )
 
-        self.well_ctrl_operators = WellControlOperators(
+        self.well_ctrl_operators = WellCtrlOperators(
             self.property_containers[self.regions[0]],
             self.thermal,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
         )
+
         self.thermal_var_operator = ThermalVarOperator(
             self.property_containers[self.regions[0]],
             self.thermal,
@@ -204,13 +165,13 @@ class Poroelasticity(Compositional):
 
     def init_wells(self, wells):
         """ ""
-        Function to initialize the well rates for each well
-        Arguments:
-            -wells: well_object array
+        Function to initialize physics of wells for poromechanics
+
+        :param wells: List of :class:`ms_well` objects
         """
         for w in wells:
             assert isinstance(w, ms_well)
-            w.init_mech_rate_parameters(
+            w.init_mech_physics(
                 self.engine.N_VARS,
                 self.engine.P_VAR,
                 self.n_vars,

@@ -18,7 +18,7 @@
 #define OPENDARTS_LINEAR_SOLVERS_LINSOLV_IFACE_HPP
 //--------------------------------------------------------------------------
 
-#include "openDARTS/auxiliary/timer_node.hpp"
+#include "timer_node.h"
 #include "openDARTS/config/data_types.hpp"
 #include "openDARTS/linear_solvers/csr_matrix_base.hpp"
 
@@ -43,7 +43,7 @@ namespace opendarts
         (void)prec_input; // to suppress warning of unused parameter
         return 0;
       };
-      
+
       // TODO: this is problematic since A will have templated blocks and this is
       // unaware of it, I imagine they pass this info via the data member in csr_matrix_base
       // e.g., n_row_size which seems to be the block size
@@ -51,8 +51,8 @@ namespace opendarts
           opendarts::config::index_t max_iters,
           opendarts::config::mat_float tolerance) = 0;
 
-      void init_timer_nodes(opendarts::auxiliary::timer_node *timer_setup_input,
-          opendarts::auxiliary::timer_node *timer_solve_input)
+      void init_timer_nodes(::timer_node *timer_setup_input,
+          ::timer_node *timer_solve_input)
       {
         this->timer_setup = timer_setup_input;
         this->timer_solve = timer_solve_input;
@@ -66,8 +66,8 @@ namespace opendarts
 
       virtual opendarts::config::mat_float get_residual() = 0;
 
-      opendarts::auxiliary::timer_node *timer_setup;
-      opendarts::auxiliary::timer_node *timer_solve;
+      ::timer_node *timer_setup;
+      ::timer_node *timer_solve;
     };
   } // namespace linear_solvers
 } // namespace opendarts

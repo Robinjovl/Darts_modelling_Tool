@@ -5,7 +5,7 @@ import os
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
-from darts.physics.base.operators_base import PropertyOperators as props
+from darts.physics.base.operator_evaluator import PropertyOperators as props
 
 
 def plot_sol(n):
@@ -60,7 +60,7 @@ def run_darts(mode):
 
         if mode == 'wells':
             # compute well time data
-            time_data_dict = n.output.store_well_time_data()
+            time_data_dict = n.output.store_well_time_data(save_output_files=True)
 
             # plot well time data
             time_data_df = pd.DataFrame.from_dict(time_data_dict)

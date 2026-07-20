@@ -17,12 +17,11 @@
         # Select wheel matching current matrix python version (e.g. cp310, cp311)
         - export PY_TAG="cp${PY_VER/./}"
         - export WHEEL_PATH="$(ls ./dist/*${PY_TAG}*linux*.whl | head -n 1)"
-        - test -n "$WHEEL_PATH"
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
         # note: need to force here only for Windows actually, but lets be consistent and force for Linux too in case its behaviour will change
         - pip install --force-reinstall --no-deps "$WHEEL_PATH"
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
-        - pip install --upgrade --upgrade-strategy eager "$WHEEL_PATH"
+        - pip install --upgrade --upgrade-strategy eager "${WHEEL_PATH}[test]"
     script:
         # run simulation fot test models set
         - cd models
@@ -30,10 +29,13 @@
         - darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
-        # test interpolators
-        - cd tests/engines/src/interpolation
-        - darts test_interpolation.py
-        - cd ../../../..
+        # test interpolators from outside the checkout so Python imports the installed wheel
+        - |
+          PROJECT_DIR="${CI_PROJECT_DIR:-$PWD}"
+          INTERPOLATOR_TEST_WORKDIR="$(mktemp -d)"
+          cd "$INTERPOLATOR_TEST_WORKDIR" || exit
+          python -m pytest "$PROJECT_DIR/tests/interpolators" -v
+          cd "$PROJECT_DIR" || exit
         # test discretizer
         - cd discretizer/tests/compare_discretizers
         - darts main.py

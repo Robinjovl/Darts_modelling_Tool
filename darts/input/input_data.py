@@ -28,7 +28,7 @@ class RockProps:
 
         if type_hydr == 'thermal':  # thermal properties
             self.heat_capacity = None  # [kJ/m3/K]
-            self.conductivity = None  # thermal conductivity [kJ/m/day/K]
+            self.thermal_conductivity = None  # [kJ/m/day/K]
 
         if type_mech != 'none':  # geomechanical properties
             self.E = None  # Young modulus [bars]
@@ -61,6 +61,8 @@ class FluidProps:
         self.density = None  # Density at reference conditions, #TODO units
         self.viscosity = None  # TODO units
         self.Mw = None  # molar weight, [g/mol]
+        self.heat_capacity = None  # [kJ/kmol/K] - different unit than used for rock
+        self.thermal_conductivity = None  # [kJ/m/day/K] - the same unit as for rock
 
 
 class InitialSolution:
@@ -109,13 +111,11 @@ class WellControl:
         # bhp control
         self.bhp = None  # bars
         # rate control
-        self.rate = (
-            None  # m3/day for Geothermal physics ans kmol/day for Compositional physics
-        )
+        self.rate = None  # kmol/day for compositional physics
         self.bhp_constraint = None  # lower limit for bhp, bars
         # if thermal
         self.inj_bht = None  # K
-        # if Compositional
+        # if compositional
         self.phase_name = None  # phase name for well control, [str]
 
     def prod_rate_control(self, rate, rate_type, bhp_constraint=None, phase_name=None):
@@ -125,7 +125,7 @@ class WellControl:
         self.rate = rate
         self.rate_type = rate_type
         self.bhp_constraint = bhp_constraint
-        # if Compositional
+        # if compositional
         self.phase_name = phase_name  # produced phase name, [str]
 
     def prod_bhp_control(self, bhp):
@@ -151,7 +151,7 @@ class WellControl:
         self.bhp_constraint = bhp_constraint
         # if thermal
         self.inj_bht = temperature  # K
-        # if Compositional
+        # if compositional
         self.phase_name = phase_name  # injected phase name, [str]
         self.inj_composition = inj_composition  # 0 < injected composition < 1
 
@@ -164,7 +164,7 @@ class WellControl:
         self.bhp = bhp
         # if thermal
         self.inj_bht = temperature  # K
-        # if Compositional
+        # if compositional
         self.phase_name = phase_name  # injected phase name, [str]
         self.inj_composition = inj_composition  # 0 < injected composition < 1
 
@@ -371,7 +371,7 @@ class WellData:
         :param bhp: bottom hole pressure, can be None if rate-controlled
         :param bhp_constraint: bottom hole pressure constraint (min for prod and max for inj wells)
         :param inj_temp: injection temperature, [K]
-        :param phase_name # injected phase name, [str], for Compositional physics
+        :param phase_name # injected phase name, [str], for compositional physics
         :return:
         """
         self.wells[name].controls.append(
@@ -441,18 +441,22 @@ class WellData:
 
 class OBLParams:
     """
-    OBL range, number of points
+    OBL grid resolution + origin per axis.
+
+    With the multi-index-keyed adaptive interpolator the cache extends past the
+    prescribed window on demand; only (step, origin) per axis are load-bearing.
     """
 
     def __init__(self):
         self.zero = None
-        self.n_points = None
-        self.min_p = None
-        self.max_p = None
-        self.min_t = None
-        self.max_t = None
-        self.min_z = None
-        self.max_z = None
+        self.p_step = None
+        self.p_origin = None
+        self.z_step = None
+        self.z_origin = None
+        self.t_step = None
+        self.t_origin = None
+        self.e_step = None  # enthalpy step (geothermal P-H grid)
+        self.e_origin = None
         self.epsilon_z = None
 
 
@@ -506,12 +510,26 @@ class InputData:
             sub_obj = self.__getattribute__(k)
             if not hasattr(sub_obj, '__dict__'):
                 continue
-            if k in [
-                'initial',
-                'mesh',
-                'sim',
-                'other',
-            ]:  # do not check initial currently #TODO
+            if (
+                k
+                in [
+                    'initial',
+                    'mesh',
+                    'sim',
+                    'other',
+                    # OBLParams holds per-axis grid settings whose required subset
+                    # depends on the physics: enthalpy (e_step/e_origin) is only
+                    # used by Geothermal/PH state, temperature (t_step/t_origin)
+                    # only by thermal physics, composition (z_step/z_origin) only
+                    # by multi-component physics. The per-physics constructors
+                    # (BlackOil/DeadOil/Geothermal/Poroelasticity) and PhysicsBase
+                    # already assert on the fields they actually consume
+                    # (`axes_step must have N entries`), so a blanket "every OBL
+                    # field must be non-None" check here over-rejects legitimate
+                    # single-phase / isothermal / non-PH configurations.
+                    'obl',
+                ]
+            ):  # do not check these subobjects — their validity is enforced by their consumers
                 continue
             for k2 in sub_obj.__dict__.keys():  # loop over the attributes in sub object
                 value = sub_obj.__getattribute__(k2)

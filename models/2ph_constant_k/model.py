@@ -6,12 +6,12 @@ import numpy as np
 from scipy.interpolate import interp1d
 import os
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
-from darts.physics.super.initialize import Initialize
+from darts.physics.base.initialize import Initialize
 
 
 class Model(DartsModel):
@@ -258,7 +258,6 @@ class Model(DartsModel):
         K = [K_comps[c] for c in self.components]
 
         phases = ['gas', 'oil']
-        thermal = 0
 
         property_container = ModelProperties(phases_name=phases, components_name=self.components,
                                              Mw=Mw, eps_z=epsilon, temperature=1.)
@@ -274,31 +273,28 @@ class Model(DartsModel):
         property_container.output_props = {'satV': lambda: property_container.sat[0]}
         """ Activate physics """
         max_p = 500.
-        if n_comps != 20:
-            axes_max = [max_p, 1. - (n_comps-1) * epsilon, 0.9]
-            if n_comps > 3:
-                axes_max += [0.7]
-            if n_comps > 4:
-                axes_max += [0.5]
-            if n_comps > 5:
-                axes_max += (n_comps - 5) * [0.4]
-            assert(len(axes_max) == n_comps)
-        else:
-            axes_max = np.array([max_p, 1. - (n_comps-1) * epsilon, 0.240, 0.120, 0.090, 0.070, 0.070, 0.060, 0.060, 0.050, 0.045,
-                                 0.040, 0.035, 0.030, 0.025, 0.020, 0.015, 0.010, 0.007, 0.005])
-            axes_max[2:] *= 2
-            assert(axes_max.size == n_comps)
-
-        if self.reservoir_type != '1D' and self.reservoir_type != '2D':
-            max_p = 1.4 * np.max(self.p_init)
-            max_p = 500.0
-            axes_max[0] = max_p
-
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(self.components, phases, self.timer, state_spec=state_spec, n_points=self.obl_points,
-                                     min_p=40, max_p=max_p, min_z=0., max_z=1., epsilon_z=epsilon, cache=False,
-                                     axes_max=axes_max, extrapolation_flag=True)
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        if n_comps != 20:
+            comp_axes_max = [1. - (n_comps - 1) * epsilon, 0.9]
+            if n_comps > 3:
+                comp_axes_max += [0.7]
+            if n_comps > 4:
+                comp_axes_max += [0.5]
+            if n_comps > 5:
+                comp_axes_max += (n_comps - 5) * [0.4]
+        else:
+            comp_axes_max = [1. - (n_comps - 1) * epsilon]
+            comp_axes_max += [2. * m for m in [0.240, 0.120, 0.090, 0.070, 0.070, 0.060, 0.060, 0.050, 0.045,
+                                               0.040, 0.035, 0.030, 0.025, 0.020, 0.015, 0.010, 0.007, 0.005]]
+        assert len(comp_axes_max) == n_comps - 1
+        p_step = (max_p - 40.0) / max(self.obl_points - 1, 1)
+        z_denom = max(self.obl_points - 1, 1)
+        axes_step = [p_step] + [m / z_denom for m in comp_axes_max]
+        axes_origin = [40.0] + [epsilon] * (n_comps - 1)
+        self.physics = PhysicsBase(self.components, phases, self.timer, state_spec=state_spec,
+                                     axes_step=axes_step, axes_origin=axes_origin,
+                                     epsilon_z=epsilon, cache=False, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -314,7 +310,7 @@ class Model(DartsModel):
                                                                   input_distribution=input_distribution)
         else:
             # run initialization over depth with specified GOC, pure liquid above, pure vapour under
-            from darts.physics.super.initialize import Initialize
+            from darts.physics.base.initialize import Initialize
             init = Initialize(physics=self.physics, algorithm=self.itor_type, mode=self.itor_mode,
                               is_barycentric=self.is_barycentric)
 
@@ -365,7 +361,7 @@ class Model(DartsModel):
         injector = self.reservoir.get_well('I1')
         producer = self.reservoir.get_well('P1')
 
-        zero = self.physics.axes_min[1]
+        zero = self.physics.axes_origin[1]
         if self.reservoir_type == '1D':
             self.physics.set_well_controls(wctrl=injector.control, is_control=True, control_type=well_control_iface.MOLAR_RATE,
                                            is_inj=True, target=1., phase_name='gas', inj_composition=self.inj_composition)

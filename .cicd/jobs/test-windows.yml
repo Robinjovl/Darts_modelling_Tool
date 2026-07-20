@@ -29,17 +29,20 @@
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
         - pip install --force-reinstall --no-deps .\dist\$WHEEL_NAME
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
-        - pip install --upgrade --upgrade-strategy eager .\dist\$WHEEL_NAME
+        - pip install --upgrade --upgrade-strategy eager ".\dist\$WHEEL_NAME[test]"
     script:
         # run simulation fot test models set
         - cd models
         # passing additional argument to trigger verbose check performance
         - darts run_test_suite2.py LOG
-        - cd ..
-        # test interpolators
-        - cd tests\engines\src\interpolation
-        - python test_interpolation.py
-        - cd ..\..\..\..
+        # Run the interpolator tests from a scratch CWD outside the checkout so Python
+        # imports the installed wheel. From the repo root the in-source darts/ package
+        # (which has no compiled extensions on Windows) shadows the site-packages wheel,
+        # so `import darts.engines/interpolators` fails during collection. The tests
+        # write nothing to CWD, so a shared scratch dir is safe. Mirrors test-linux.yml.
+        - cd $env:TEMP
+        - python -m pytest "$env:CI_PROJECT_DIR\tests\interpolators" -v
+        - cd $env:CI_PROJECT_DIR
         # test discretizer
         - cd discretizer\tests\compare_discretizers
         - python main.py

@@ -16,6 +16,13 @@
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
         - ./helper_scripts/build_install_darts_gpu.sh -c -p -j 20
+        - |
+          WARN_COUNT=$(grep -oP 'OPENDARTS_WARNING_COUNT=\K[0-9]+' make_darts.log 2>/dev/null | tail -1)
+          WARN_COUNT=${WARN_COUNT:-0}
+          if [ "$WARN_COUNT" -gt 0 ] && { [ "$CI_COMMIT_BRANCH" = "development" ] || [ "$CI_COMMIT_BRANCH" = "main" ]; }; then
+            echo "FAILED: $WARN_COUNT open-DARTS compilation warning(s) on $CI_COMMIT_BRANCH branch"
+            exit 1
+          fi
     artifacts:
       paths:
         - './dist/*.whl'
@@ -31,7 +38,7 @@ build-linux-oahu-gpu:
         CONDAPATH: /oahu/data/gitlabrunner/anaconda3
         GSELINSOLVERSPATH: /oahu/data/gitlabrunner/darts-gitlab-runner-data/darts-linear-solvers-gpu-hypre
     before_script:
-        - module load cuda/23.5
+        - module load cuda/13.3
         - source ${CONDAPATH}/bin/activate
         - conda create -n ${CONDA_ENV} python=${PY_VER} --yes
         - conda activate ${CONDA_ENV}
@@ -104,6 +111,13 @@ build-linux-tahiti-image-gpu:
                 # _this_ is your real build
                 ./helper_scripts/build_install_darts_gpu.sh -c -p -j 16
             "
+        - |
+          WARN_COUNT=$(grep -oP 'OPENDARTS_WARNING_COUNT=\K[0-9]+' make_darts.log 2>/dev/null | tail -1)
+          WARN_COUNT=${WARN_COUNT:-0}
+          if [ "$WARN_COUNT" -gt 0 ] && { [ "$CI_COMMIT_BRANCH" = "development" ] || [ "$CI_COMMIT_BRANCH" = "main" ]; }; then
+            echo "FAILED: $WARN_COUNT open-DARTS compilation warning(s) on $CI_COMMIT_BRANCH branch"
+            exit 1
+          fi
     after_script:
         - |
             apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "

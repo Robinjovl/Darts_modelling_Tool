@@ -32,7 +32,7 @@ struct engine_super_elastic_exposer
 			(conn_mesh *, std::vector<ms_well*> &, std::vector<operator_set_gradient_evaluator_iface*> &, operator_set_gradient_evaluator_iface*, sim_params*, timer_node*)) &engine_super_elastic_cpu<NC, NP, THERMAL>::init, "Initialize simulator by mesh, tables and wells", py::keep_alive<1, 6>())
 			.def("calc_newton_dev", &engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev) \
 			.def("apply_newton_update", &engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update) \
-			.def("post_newtonloop", &engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop) \
+			.def("post_newtonloop", (int (engine_super_elastic_cpu<NC, NP, THERMAL>::*)(value_t, value_t, index_t)) &engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop) \
 			.def("set_discretizer", (void (engine_super_elastic_cpu<NC, NP, THERMAL>::*)
 			(typename engine_super_elastic_cpu<NC, NP, THERMAL>::DiscretizerType*)) &engine_super_elastic_cpu<NC, NP, THERMAL>::set_discretizer) \
 			.def("eval_stresses_and_velocities", &engine_super_elastic_cpu<NC, NP, THERMAL>::eval_stresses_and_velocities) \
@@ -89,28 +89,37 @@ struct engine_super_elastic_exposer
 
 void pybind_engine_super_elastic_cpu(py::module &m)
 {
+  // The mechanical super-elastic engine has block size N_VARS = NC + THERMAL + ND
+  // (ND = 3), and selects linsolv_bos_fs_cpr<N_VARS> as its CPR preconditioner.
+  // Capping the mech-side NC at MAX_NC_MECH (=3) keeps N_VARS ≤ 7, staying inside
+  // the fs_cpr<4..12> instantiations the proprietary darts-linear-solvers archive
+  // ships with — without restricting the flow engines, which run at full MAX_NC.
+  // Clamp by global MAX_NC so smaller-MAX_NC configs still build (recursion needs
+  // start ≤ end).
+  constexpr uint8_t MAX_NC_MECH_ = (MAX_NC < MAX_NC_MECH) ? MAX_NC : MAX_NC_MECH;
+
   // single-phase isothermal
-  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 1, false> re;
+  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC_MECH_, 1, false> re;
   re.expose(m);
 
   // two-phase isothermal
-  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 2, false> re1;
+  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC_MECH_, 2, false> re1;
   re1.expose(m);
 
   // three-phase isothermal
-  //recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 2, MAX_NC, 3, false> re2;
+  //recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 2, MAX_NC_MECH_, 3, false> re2;
   //re2.expose(m);
 
   // single-phase thermal
-  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 1, true> re3;
+  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC_MECH_, 1, true> re3;
   re3.expose(m);
 
   // two-phase thermal
-  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC, 2, true> re4;
+  recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 1, MAX_NC_MECH_, 2, true> re4;
   re4.expose(m);
 
   // three-phase thermal
-  //recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 2, MAX_NC, 3, true> re5;
+  //recursive_exposer_nc_np_t<engine_super_elastic_exposer, py::module, 2, MAX_NC_MECH_, 3, true> re5;
   //re5.expose(m);
 }
 

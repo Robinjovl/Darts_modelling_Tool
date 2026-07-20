@@ -2,8 +2,8 @@ from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import DartsModel
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
@@ -37,10 +37,11 @@ class Model(DartsModel):
 
         """Physical properties"""
         self.zero = 1e-12
+        epsilon = 1e-9
         components = ['brine', 'gas']
         phases = ['wat']
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, min_z=self.zero)
+        property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon)
 
         # Define property evaluators based on custom properties
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014))])
@@ -52,10 +53,11 @@ class Model(DartsModel):
 
         """Create physics"""
         thermal = True
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=0, max_p=1000, min_z=self.zero / 10, max_z=1-self.zero / 10,
-                                     min_t=273.15 + 20, max_t=273.15 + 200)
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
+                                     axes_step=[2.5, 2.5e-3, 0.45],  # p [bar], z, T [K]
+                                     axes_origin=[0.0, epsilon, 273.15 + 20],
+                                     epsilon_z=epsilon)
         self.physics.add_property_region(property_container)
         self.set_sim_params(first_ts=1e-4, mult_ts=2, max_ts=1)
 
@@ -90,11 +92,11 @@ class Model(DartsModel):
 
 # Simplified property evaluation for single-phase model`
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, min_z):
+    def __init__(self, phases_name, components_name, eps_z):
         # Call base class constructor
         nc = len(components_name)
         Mw = np.ones(nc)
-        super().__init__(phases_name, components_name, Mw, min_z=min_z, temperature=None)
+        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=None)
 
     def evaluate(self, state):
         """

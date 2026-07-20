@@ -11,7 +11,8 @@
 
 #include "engine_nc_nl_cpu.hpp"
 #include "conn_mesh.h"
-#include "mech/matrix.h"
+#include "matrix.h"
+
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
@@ -29,7 +30,6 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -248,6 +248,8 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 			break;
 		}
 #endif
+		default:
+			break;
 		}
 	}
 
@@ -255,16 +257,9 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	n_ops = get_n_ops();
 	nc = get_n_comps();
 	z_var_idx = get_z_var_idx();
-	if (params->log_transform == 0)
-	{
-		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
-		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
-	}
-	else if (params->log_transform == 1)
-	{
-		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
-		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
-	}
+	// Physical-simplex clipping; OBL window no longer constrains Newton — see engine_base.h
+	min_axis_z = 0.0;
+	max_axis_z = 1.0;
 	min_sim_z = min_axis_z + params->sim_eps;
 	max_sim_z = max_axis_z - params->sim_eps;
 
@@ -327,7 +322,7 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	// let wells initialize their state
 	for (ms_well *w : wells)
 	{
-		w->initialize_control(X_init);
+		w->initialize_control_epm(X_init);
 	}
 
 	Xn = X = X_init;
@@ -342,14 +337,8 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	// initialize arrays for every operator set
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
+		// op_axis_min/op_axis_max left empty — disables apply_obl_axis_local_correction
 		block_idxs[r].clear();
-		op_axis_min[r].resize(n_vars);
-		op_axis_max[r].resize(n_vars);
-		for (int j = 0; j < n_vars; j++)
-		{
-			op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-			op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-		}
 	}
 
 	// create a block list for every operator set
@@ -363,9 +352,19 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 		block_idxs[mesh->op_num[0]].emplace_back(idx++);
 	}
 
-	extract_Xop();
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+	if (get_n_history() > 0)
+	{
+		engine_base::build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+		project_xop_ders();
+	}
+	else
+	{
+		extract_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+	}
 	op_vals_arr_n = op_vals_arr;
 
 	time_data.clear();
@@ -415,12 +414,26 @@ int engine_nc_nl_cpu<NC>::assemble_linear_system(value_t deltat)
 	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start();
 
-	extract_Xop();
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+	if (get_n_history() > 0)
 	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
-		if (result < 0)
-			return 0;
+		engine_base::build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+			if (result < 0)
+				return 0;
+		}
+		project_xop_ders();
+	}
+	else
+	{
+		extract_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+		{
+			int result = acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr);
+			if (result < 0)
+				return 0;
+		}
 	}
 
 	timer->node["jacobian assembly"].node["interpolation"].stop();
@@ -483,7 +496,7 @@ int engine_nc_nl_cpu<NC>::assemble_jacobian_array_avgmpfa(value_t dt, std::vecto
 	index_t end = n_blocks;
 #endif //_OPENMP
 
-		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, upwd_jac_idx;
+		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, upwd_jac_idx = 0;
 		value_t buf, flux;
 		value_t mu[MATRIX];
 		value_t CFL_in[NC], CFL_out[NC];
@@ -686,7 +699,7 @@ int engine_nc_nl_cpu<NC>::assemble_jacobian_array_nltpfa(value_t dt, std::vector
 	index_t end = n_blocks;
 #endif //_OPENMP
 
-		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, conn_st, upwd_jac_idx, r_counter, cell_p_st_id;
+		index_t upwd, j, k, diag_idx, conn_id = 0, cur_conn_id, st_id = 0, jac_idx, conn_st_id = 0, conn_st, upwd_jac_idx = 0, r_counter, cell_p_st_id = 0;
 		value_t buf;
 		value_t flux, mu[MATRIX], R[MATRIX], dR[MATRIX][MATRIX], dmu[MATRIX][MATRIX][MATRIX];
 		value_t CFL_in[NC], CFL_out[NC];
@@ -1015,12 +1028,12 @@ int engine_nc_nl_cpu<NC>::solve_linear_equation()
 template <uint8_t NC>
 void engine_nc_nl_cpu<NC>::extract_Xop()
 {
+	// Non-hysteresis MPFA state build: reservoir unknowns followed by boundary unknowns.
+	// The hysteresis path is handled by engine_base::build_Xop in assemble_linear_system.
 	if (Xop.size() < (mesh->n_blocks + mesh->n_bounds) * NC_)
 	{
 		Xop.resize((mesh->n_blocks + mesh->n_bounds) * NC_);
 	}
-
-	// copy unknown variables
 	std::copy(X.begin(), X.end(), Xop.begin());
 	std::copy(mesh->pz_bounds.begin(), mesh->pz_bounds.end(), Xop.begin() + N_VARS * mesh->n_blocks);
 }

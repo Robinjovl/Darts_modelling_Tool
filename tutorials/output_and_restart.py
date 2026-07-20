@@ -13,7 +13,7 @@ import importlib.util
 
 from darts.tools.hdf5_tools import *
 from darts.engines import value_vector, redirect_darts_output
-from darts.physics.base.operators_base import PropertyOperators as props
+from darts.physics.base.operator_evaluator import PropertyOperators as props
 from darts.print_build_info import *
 
 #%%

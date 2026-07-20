@@ -9,6 +9,7 @@ fi
 CLEAN_FLAG=""
 PHREEQC_FLAG=""
 DEBUG_FLAG=""
+TEST_FLAG=""
 JOBS_ARG="-j20"
 
 # Scan all args, including -j for parallel jobs
@@ -17,6 +18,7 @@ while (( "$#" )); do
     -c) CLEAN_FLAG="-c"; shift ;;        # trigger clean
     -p) PHREEQC_FLAG="-p"; shift ;;      # enable IPhreeqc/Reaktoro support
     -d) DEBUG_FLAG="-d Debug"; shift ;;  # enable Debug configuration
+    -t) TEST_FLAG="-t"; shift ;;         # enable CTest and install test dependencies
     -r) REQUIREMENTS_FLAG="-r"; shift ;; # clean previous cmake configuration for third parties
     -j)
       if [[ -n "${2:-}" && "$2" =~ ^[0-9]+$ ]]; then
@@ -52,4 +54,5 @@ done
   $CLEAN_FLAG \
   $PHREEQC_FLAG \
   $DEBUG_FLAG \
-  $REQUIREMENTS_FLAG
+  $REQUIREMENTS_FLAG \
+  $TEST_FLAG

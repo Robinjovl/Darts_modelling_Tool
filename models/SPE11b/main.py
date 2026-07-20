@@ -9,7 +9,8 @@ import matplotlib.pyplot as plt
 import os
 import pickle
 
-from model_b import Model, PorPerm, Corey, layer_props
+# from model_b import Model, PorPerm, Corey, layer_props
+from model import Model
 from darts.engines import redirect_darts_output, sim_params
 from darts.engines import well_control_iface
 
@@ -36,11 +37,17 @@ def output(m, ts, property_data : int = None):
         time_vector, property_array = property_data[0], property_data[1]
     # m.output.output_to_vtk(ith_step = ts, output_data = [time_vector, property_array])
 
+    last_comp = m.physics.components[-1]
+    property_array[last_comp] = 1.
+    for name in m.physics.components[:-1]:
+        property_array[last_comp] -= property_array[name]
+
     # compute mass per component
     mass_per_component, mass_vapor, mass_aqueous = m.get_mass_components(property_array)
-    property_array['mass_CO2'] = mass_per_component['CO2'].reshape(1, m.reservoir.n) / 1e6
-    property_array['mass_aqueous_CO2'] = mass_aqueous['CO2'].reshape(1, m.reservoir.n) / 1e6
-    property_array['mass_vapor_CO2'] = mass_vapor['CO2'].reshape(1, m.reservoir.n) / 1e6
+    nb = m.reservoir.mesh.n_res_blocks
+    property_array['mass_CO2'] = mass_per_component['CO2'].reshape(1, nb) / 1e6
+    property_array['mass_aqueous_CO2'] = mass_aqueous['CO2'].reshape(1, nb) / 1e6
+    property_array['mass_vapor_CO2'] = mass_vapor['CO2'].reshape(1, nb) / 1e6
 
     # add units to unit dictionary for plotting purposes
     m.output.variable_units['mass_CO2'] = 'kt'
@@ -49,9 +56,7 @@ def output(m, ts, property_data : int = None):
 
     if m.specs['dispersion']:
         # store and plot phase velocities
-        darcy_velocities = np.asarray(m.physics.engine.darcy_velocities).reshape(m.reservoir.mesh.n_res_blocks,
-                                                                                 m.physics.nph,
-                                                                                 3)  # cell centered velocities
+        darcy_velocities = np.asarray(m.physics.engine.darcy_velocities).reshape(nb, m.physics.nph, 3)  # cell centered velocities
         for p, ph in enumerate(m.physics.phases): # per phase
             for v, orientation in enumerate(['x', 'y', 'z']): # per direction
                 property_array[f'vel_{ph}_{orientation}'] = darcy_velocities[:, p, v].reshape(1, nz * nx)
@@ -72,15 +77,18 @@ def output(m, ts, property_data : int = None):
                     for comp_idx, comp_name in enumerate(m.components):
                         i = phase_idx * m.physics.nc + comp_idx
                         property_array[f'diff_fluxes_{phase_name}_{comp_name}_{id_key}'] = diff[
-                            mult * m.ids_list[id_key] + i].reshape(-1, m.reservoir.n)
+                            mult * m.ids_list[id_key] + i].reshape(-1, nb)
                         property_array[f'darcy_fluxes_{phase_name}_{comp_name}_{id_key}'] = darcy[
-                            mult * m.ids_list[id_key] + i].reshape(-1, m.reservoir.n)
+                            mult * m.ids_list[id_key] + i].reshape(-1, nb)
                         property_array[f'disp_fluxes_{phase_name}_{comp_name}_{id_key}'] = disp[
-                            mult * m.ids_list[id_key] + i].reshape(-1, m.reservoir.n)
+                            mult * m.ids_list[id_key] + i].reshape(-1, nb)
 
             # m.plot_fluxes(property_array, time_vector, ts)  # plot fluxes
+    if m.specs['ny'] == 1:
+        m.plot_properties(property_array, time_vector, ts)  # plot properties
+    else:
+        pass
 
-    m.plot_properties(property_array, time_vector, ts)  # plot properties
     m.output.output_to_vtk(ith_step = ts, output_data = [time_vector, property_array])
 
     # save properties to HDF5 file
@@ -96,7 +104,6 @@ def post_process(m, specs):
     vtk_array = np.array(
         [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 36, 40, 45, 50, 75, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
     )  # years for which to export a .vtk file
-    props = m.physics.vars + m.output.properties
     output_props = m.physics.vars + m.output.properties
 
     time_vector, property_array = m.output.output_properties(
@@ -141,22 +148,22 @@ def post_process(m, specs):
         event2 = True
 
         if m.physics.engine.t < 25 * Dt:
-            m.inj_rate = [3024, 0]
+            m.inj_rate = [specs['inj_rate'], 0]
         elif m.physics.engine.t >= 25 * Dt and m.physics.engine.t < 50 * Dt:
-            m.inj_rate = [3024, 3024]
+            m.inj_rate = [specs['inj_rate'], specs['inj_rate']]
             event1 = False
         elif m.physics.engine.t >= 50 * Dt and event2:
             m.inj_rate = [0, 0]
             event2 = False
 
         if specs['RHS']:
-            event1, event2 = m.set_well_rhs(Dt, 3024, event1, event2)
+            event1, event2 = m.set_well_rhs(Dt, specs['inj_rate'], event1, event2)
         else:
-            event1, event2 = m.set_well_rates(Dt, 3024, event1, event2)
+            event1, event2 = m.set_well_rates(Dt, specs['inj_rate'], event1, event2)
 
         print(f'<<<<<<<<< Starting simulation at {m.physics.engine.t/365} with {m.inj_rate} >>>>>>>>>>>')
         start_ts = int(m.physics.engine.t//Dt)
-        for ts in range(start_ts, Nt + 1): # run model for an additional Nt number of years.
+        for ts in range(start_ts, Nt + 1):
 
             print(f'------------------- Simulate from year {(ts*Dt)/365} until year {((ts+1)*Dt)/365} ----------------------')
             m.run(Dt,
@@ -182,14 +189,15 @@ def post_process(m, specs):
                 output(m, ts + 1)
 
             if specs['RHS']:
-                event1, event2 = m.set_well_rhs(Dt, 3024, event1, event2)
+                event1, event2 = m.set_well_rhs(Dt, specs['inj_rate'], event1, event2)
             else:
-                event1, event2 = m.set_well_rates(Dt, 3024, event1, event2)
+                event1, event2 = m.set_well_rates(Dt, specs['inj_rate'], event1, event2)
 
     return
 
 def run(m, specs):
-    m.plot_reservoir()
+    if specs['ny'] == 1:
+        m.plot_reservoir()
 
     output_props = m.physics.vars + m.output.properties
     time_vector, property_array = m.output.output_properties(output_properties=output_props, ts_idx=0)
@@ -197,7 +205,7 @@ def run(m, specs):
 
     avg_rates = []
     if specs['check_rates']:
-        # time_vector, property_array = m.output.output_properties(output_properties=output_props, ts_idx=0)
+        # time_vector, property_array = m.output.output_properties(output_properties=output_props, timestep=0)
         # m.output.save_property_array(time_vector, property_array, 'property_array_ts0.h5')
         m.output.append_properties_to_reservoir(time_vector, property_array)
         mass_per_component, mass_vapor, mass_aqueous = m.get_mass_components(property_array)
@@ -215,7 +223,7 @@ def run(m, specs):
 
         print(f'----------------------------------- Simulate from year {(ts*Dt)/365} until year {((ts+1)*Dt)/365} -----------------------------------')
         m.run(Dt,
-              restart_dt = 1.0,
+              # restart_dt = Dt/10,
               save_reservoir_data = False,
               save_well_data = not m.specs['RHS'],
               save_well_data_after_run = not m.specs['RHS'],
@@ -241,9 +249,9 @@ def run(m, specs):
                 output(m, ts + 1)
 
         if specs['RHS']:
-            event1, event2 = m.set_well_rhs(Dt, 3024, event1, event2)
+            event1, event2 = m.set_well_rhs(Dt, specs['inj_rate'], event1, event2)
         else:
-            event1, event2 = m.set_well_rates(Dt, 3024, event1, event2)
+            event1, event2 = m.set_well_rates(Dt, specs['inj_rate'], event1, event2)
 
     return avg_rates
 
@@ -252,8 +260,8 @@ def run(m, specs):
 """Define realization ID"""
 Nt = 1
 Dt = 365
-nx = 840//10
-nz = 120//10
+nx = 840//5
+nz = 120//5
 zero = 1e-10
 
 if 0:
@@ -294,25 +302,33 @@ else:
     if os.getenv('TEST_GPU') != None and os.getenv('TEST_GPU') == '1':
        platform = 'gpu'
 
+    # ---- model specs
     # please read the README file for an explanation of the input parameters :
     model_specs = [
-        {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True,
-            'components': ['H2O', 'CO2'], 'inj_stream': [0.01, 0.99, 283.15],
-                'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': 'OUTPUT',
+        # SPE11b
+        {'check_rates': True, 'temperature': None, '1000years': 10, 'RHS': True,
+             'components': ['H2O', 'CO2'], 'inj_stream': [0.001, .999, 283.15], 'inj_rate': 3024,
+                 'nx': nx, 'nz': nz, 'ny': 1, 'dispersion': False, 'output_dir': 'output',
+                     'post_process': None, 'platform': platform},
+
+        # SPE11c (this model uses msh files compiled with the code made by the repo)
+        {'check_rates': False, 'temperature': None, '1000years': False, 'RHS': True,
+            'components': ['H2O', 'CO2'], 'inj_stream': [0., 1., 283.15], 'inj_rate': 50 * 24 * 60 * 60,
+                'nx': 50, 'nz': 50, 'ny': 10, 'dispersion': False, 'output_dir': 'output_SPE11c',
                     'post_process': None, 'platform': 'cpu'},
 
         # restart model
-        {'check_rates': True, 'temperature': None, '1000years': False, 'RHS': True,
-            'components': ['H2O', 'CO2'], 'inj_stream': [0.01, 0.99, 283.15],
-                'nx': nx, 'nz': nz, 'dispersion': True, 'output_dir': 'OUTPUT',
-                    'post_process': 'POST', 'platform': 'cpu'},
+        # {'check_rates': True, 'temperature': None, '1000years': None, 'RHS': True,
+        #         'components': ['H2O', 'CO2'], 'inj_stream': [0., 1., 283.15], 'inj_rate': 3024,
+        #             'nx': nx, 'nz': nz, 'ny': 1, 'dispersion': False, 'output_dir': 'OUTPUT',
+        #                 'post_process': 'POST', 'platform': platform},
     ]
 
 if __name__ == '__main__':
     for specs in model_specs:
 
         """ set up output directory """
-        from model_b import build_output_dir
+        from model import build_output_dir
         if specs['output_dir'] is None:
             specs["output_dir"] = build_output_dir(specs)
         else:
@@ -339,14 +355,18 @@ if __name__ == '__main__':
         m.print_darts()
 
         if specs['post_process'] is None:
-            """ RUN MODEL """
-            m.init(discr_type='tpfa', platform=m.platform)
+            # ---- RUN MODEL
+            m.init(discr_type='tpfa', platform=m.platform, verbose = True)
+
+            # if specs['reservoir_type'] == '11c':
+                # m.set_boundary_conditions_11c()
+
             m.print_stat()
             m.set_output(output_folder = m.output_dir, sol_filename = 'reservoir_solution.h5',
-                         save_initial = not specs['1000years'], precision = 'd', verbose = True)
+                         save_initial = not specs['1000years'], precision = 'd', verbose = False)
             # m.output.set_phase_properties()
-            m.output.set_units()
-            m.output.print_simulation_parameters()
+            m.output.set_units() # adds unit labels to the vtk files
+            # m.output.print_simulation_parameters()
 
             if specs['dispersion']:
                 m.init_dispersion()
@@ -360,10 +380,15 @@ if __name__ == '__main__':
                 for i in range(1, n_years + 1):
                     print(f"-------- Year {i}/{n_years} --------")
                     m.run(365, restart_dt=365,
-                          save_reservoir_data=False, save_well_data_after_run = False, save_well_data=False)
+                          save_reservoir_data=False,
+                          save_well_data_after_run = True,
+                          save_well_data=False
+                          )
                 m.physics.engine.t = 0.0
                 m.output.save_data_to_h5(kind="reservoir")
-                m.inj_rate = [3024, 0]
+                m.inj_rate = [specs['inj_rate'], 0]
+                if m.specs['RHS'] is False:
+                    m.set_well_controls()
             # m.output.verbose = False
 
             avg_rates = run(m, specs)
@@ -399,12 +424,12 @@ if __name__ == '__main__':
             m.init(discr_type = 'tpfa', platform = m.platform)
             m.set_output(output_folder = m.output_dir, sol_filename = 'reservoir_solution_PART2.h5',
                          save_initial=False, precision='d', verbose = False)
-            m.output.set_phase_properties()
-            new_prop_keys = ['dens_Aq', 'dens_V', 'sat_V', 'densm_Aq', 'enthalpy_V']
-            for ph in m.physics.phases:
-                for comp in m.physics.components:
-                    new_prop_keys.append(f'x_{ph}_{comp}')
-            m.output.filter_phase_props(new_prop_keys)
+            # m.output.set_phase_properties()
+            # new_prop_keys = ['dens_Aq', 'dens_V', 'sat_V', 'densm_Aq', 'enthalpy_V']
+            # for ph in m.physics.phases:
+            #     for comp in m.physics.components:
+            #         new_prop_keys.append(f'x_{ph}_{comp}')
+            # m.output.filter_phase_props(new_prop_keys)
             m.output.set_units()
             m.output.print_simulation_parameters()
 

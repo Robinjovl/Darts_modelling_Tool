@@ -4,7 +4,7 @@ from reservoir import UnstructReservoir
 import numpy as np
 from darts.engines import vector_linear_solver_params, linear_solver_params
 
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
@@ -33,7 +33,6 @@ class Model(THMCModel):
         self.fluid_viscosity = 1.
 
         self.zero = 1e-13
-        n_points = 501
         Mw = [18.015]
         components = ['H2O']
         phases = ['wat']
@@ -52,8 +51,9 @@ class Model(THMCModel):
 
         property_container.rock_density_ev = ConstFunc(self.rock_density0)
         # create physics
-        self.physics = Poroelasticity(components=components, phases=phases, timer=self.timer, n_points=n_points,
-                                      min_p=-10, max_p=1000, min_z=0., max_z=1, epsilon_z=self.zero/10, discretizer=self.discretizer_name)
+        self.physics = Poroelasticity(components=components, phases=phases, timer=self.timer,
+                                      axes_step=[2.0], axes_origin=[-10.],
+                                      epsilon_z=self.zero/10, discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
         self.physics.init_physics(discr_type=self.discretizer_name, platform='cpu')
 

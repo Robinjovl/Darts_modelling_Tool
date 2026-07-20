@@ -1,7 +1,112 @@
-# #.#.# [Future]
+# 1.5.1 [14-07-2026]
+- Breaking changes ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)):
+  - **OBL grid API: the legacy bounds arguments are removed. Physics classes now take `axes_step` (required, per-axis cell size) and `axes_origin` (optional, per-axis grid origin) only.** Removed everywhere: `n_points`, `min_p`/`max_p`, `min_z`/`max_z`, `min_t`/`max_t`, `min_e`/`max_e`, `axes_min`/`axes_max`, `n_axes_points`, and `PhysicsBase.determine_obl_bounds()`. `epsilon_z` became a keyword argument (default `1e-9`). The grid is unbounded, so there is no `axes_max` or point count. Passing any removed argument raises `TypeError`. Affects `Compositional`, `Geothermal`, `ElementBasedReactiveFlow`, `Poroelasticity` and `PhysicsBase.create_interpolator` (see the migration guide below).
+  - Physics instance fields renamed: read `physics.axes_origin` where you read `physics.axes_min`; `physics.axes_max`, `physics.n_axes_points`, `physics.PT_axes_min` and `physics.PT_axes_max` are gone (`physics.axes_step` gives the per-axis cell size; the P-T window lives in `physics.thermal_var_axes_origin` / `physics.thermal_var_axes_step`).
+  - `InputData` OBL fields renamed (`idata.obl`): `n_points`, `min_p`/`max_p`, `min_z`/`max_z`, `min_t`/`max_t`, `min_e`/`max_e` become `p_step`/`p_origin`, `z_step`/`z_origin`, `t_step`/`t_origin`, `e_step`/`e_origin` (`idata.obl.epsilon_z` and `idata.obl.zero` kept), with the same `(max - min)/(n_points - 1)` conversion.
+  - Shipped wheels and CI now build the `MINIMAL` interpolator profile, which does **not** include the linear adaptive interpolator. Models requesting `algorithm='linear'` must switch to `'multilinear'`, or build from source with `-D OPENDARTS_INTERPOLATOR_PROFILE=FULL`.
+  - Live PH-diagram: `plot_live` no longer auto-derives its axes from the (now unbounded) OBL grid — set `LivePlotConfig.p_bounds`, `h_bounds` and `n_points` before enabling `enable_ph_diagram`.
+  - Output / post-processing: `output.py` drops OBL-window single-precision state clipping and the P-T dead-operator guard, and the `body_path.txt` / output-header format changed from `n_points min max` to per-axis `origin step` with space-joined multi-index hypercube keys — update any parser of those files.
+  - The `darts.engines.uint128` Python binding and the 128-bit-index interpolator instantiations were removed (superseded by the multi-index storage); out-of-tree C++ engine subclasses overriding `get_n_ops()` must change the return type to `uint16_t` and be recompiled.
+  - The index-type template parameter was dropped from all interpolator classes — storage is keyed on the signed multi-index (`cell_key_t`, int32 per axis), never on a packed integer, and the linear family's vertex enumeration is now int32-native (a vertex converts to a cache key by a plain element copy; the standard-triangulation Kuhn walk from the shared hypercube corner is unchanged, and the static dense index uses `uint64_t`): `multilinear_adaptive_{cpu,gpu}_interpolator<index_t, value_t, N_DIMS, N_OPS>` become `<value_t, N_DIMS, N_OPS>`; `linear_{adaptive,static}_cpu_interpolator<index_t, N_DIMS, N_OPS>` become `<N_DIMS, N_OPS>`. Exposed Python class names lose the index-type letter accordingly:\
+  {- Before: darts.interpolators.multilinear_adaptive_cpu_interpolator_l_d_2_10 (and the _i_ uint32 GPU twin) -}\
+  {+ Now:    darts.interpolators.multilinear_adaptive_cpu_interpolator_d_2_10 (one class per precision/dims/ops) +}\
+  `PhysicsBase.create_interpolator` resolves the new names and still falls back to the legacy `_i_`/`_l_` names when running against an older compiled module, so models using `create_interpolator`/predefined physics need no change; only code instantiating `darts.interpolators.*_i_*`/`*_l_*` classes by name must switch. Cache files are unaffected (the cache signature never contained the class name).
+- Migration guide ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)) — OBL grid API. Per axis `i` (pressure, each composition, thermal):
+  ```
+  # axes_min[i], axes_max[i], n_points  ->  axes_origin[i], axes_step[i]
+  axes_origin[i] = axes_min[i]                             # grid floor; composition axes use epsilon_z (not 0)
+  axes_step[i]   = (axes_max[i] - axes_min[i]) / (n_points - 1)
+  ```
+  `axes_step`/`axes_origin` length = `1` pressure `+ (nc-1)` compositions `[+ 1` thermal `]`; for `extrapolation_flag=True` all composition steps must be equal. The formula above reproduces the previous grid; but since the grid is now unbounded, `axes_origin` is only the index-0 anchor, so a better choice is to set its pressure and thermal entries to the model's **initial conditions** (keep the `epsilon_z` floor on composition axes) — the initial state then lands exactly on a grid node and the grid grows around the operating point. It does not default to the initial state (physics is built before the initial conditions are set); `axes_origin` otherwise falls back to a fixed unit floor (1 bar / `epsilon_z` / 273.15 K). Worked examples:\
+  {- Before (isothermal, nc=3): Compositional(components, phases, timer, n_points=200, min_p=1, max_p=300, min_z=0., max_z=1., epsilon_z=eps, extrapolation_flag=True) -}\
+  {+ Now:    Compositional(components, phases, timer, axes_step=[(300-1)/199, (1-3*eps)/199, (1-3*eps)/199], axes_origin=[1.0, eps, eps], epsilon_z=eps, extrapolation_flag=True) +}
+  \
+  {- Before (P-T thermal, nc=1): Compositional(..., n_points=400, min_p=0, max_p=1000, min_t=273.15, max_t=473.15, epsilon_z=eps, state_spec=...PT) -}\
+  {+ Now:    Compositional(..., axes_step=[2.5, 0.5], axes_origin=[0.0, 273.15], epsilon_z=eps, state_spec=...PT) +}
+  \
+  {- Before (Geothermal P-H): Geothermal(timer, n_points=256, min_p=1, max_p=351, min_e=1000, max_e=10000) -}\
+  {+ Now:    Geothermal(timer, axes_step=[(351-1)/255, (10000-1000)/255], axes_origin=[1.0, 1000.0]) +}
+  \
+  The Geothermal P-T `ThermalVarOperator` window (formerly the hardcoded `PT_axes_min`/`PT_axes_max`) is now the optional `thermal_var_axes_step` / `thermal_var_axes_origin` (defaults `[p_step, 1.0]` / `[p_origin, 273.15]`).
+- Breaking changes ([!318](https://gitlab.com/open-darts/open-darts/-/merge_requests/318)):
+  - **The `Geothermal` physics/engine is removed.** Single-component-water geothermal simulation (IAPWS-97, `[P, enthalpy]` state) is superseded by the compositional `PhysicsBase` engine driven by a DARTSFlash IAPWS-95 PT-flash. The primary unknowns change from `[P, enthalpy]` to `[P, temperature]`, so `engine.X` layout, the OBL grid axes (P-H → P-T), and any code reading the thermal variable change accordingly. The bundled former-geothermal models (`GeoRising`, `CoaxWell`, `cpg_sloping_fault`, `fracture_network`) were migrated; see the migration guide below.
+  - Unused engines removed: all `engine_nc*` except `engine_nc_nl`.
+  - `PropertyBase` was folded into `PropertyContainer`, and `operators_base.py` was merged into `operator_evaluator.py`. Import `OperatorsBase`, `WellCtrlOperators`, `ThermalVarOperator` and `PropertyOperators` from `darts.physics.base.operator_evaluator`; the `darts.physics.base.operators_base` and `darts.physics.base.property_base` modules no longer exist.
+  - The built-in IAPWS-IF97 property evaluators are removed together with the `Geothermal` physics they served: the `darts.physics.properties.iapws` subpackage (`iapws_property.py`, `iapws_property_vec.py`, `custom_rock_property.py`) no longer exists. Migrated models take water/steam properties from the DARTSFlash IAPWS-95 EoS instead (`EoSDensity`/`EoSEnthalpy` on the `IAPWS` mixture); the dead `compute_temperature` helpers built on `_Backward1_T_Ph_vec` were dropped from the models. The external `iapws` pip dependency is kept — `models/chemistry/carbonated_water` still uses its viscosity correlation directly.
+- Migration guide ([!318](https://gitlab.com/open-darts/open-darts/-/merge_requests/318)) — `Geothermal` → compositional `PhysicsBase` (`state_spec=PT`). A single-component-water geothermal model becomes a compositional model whose property evaluators are wired explicitly around an IAPWS-95 PT-flash:\
+  {- Before: self.physics = Geothermal(idata, timer) -}\
+  {+ Now:    self.physics = PhysicsBase(components, phases, timer, state_spec=PhysicsBase.StateSpecification.PT, axes_step=[p_step, t_step], axes_origin=[p_origin, t_origin], epsilon_z=eps) — with a hand-wired PropertyContainer (below) +}
+  ```python
+  from darts.physics.base.physics import PhysicsBase
+  from darts.physics.base.property_container import PropertyContainer
+  from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
+  from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+  from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+  from darts.physics.properties.viscosity import MaoDuan2009
+
+  components, phases, eps = ["H2O"], ["V", "L"], 1e-12       # 'V','L' (vapor, liquid) replace legacy 'steam','water'
+  comp_data = CompData(components=components, setprops=True)
+  pc = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw, eps_z=eps)
+
+  flash = IAPWS(iapws_ideal=True, ice_phase=False)           # IAPWS-95 EoS
+  flash.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
+  pc.flash_ev = flash
+  pc.density_ev      = {"V": EoSDensity(flash.eos["IAPWS"], comp_data.Mw, EoS.RootFlag.MAX),
+                        "L": EoSDensity(flash.eos["IAPWS"], comp_data.Mw, EoS.RootFlag.MIN)}
+  pc.enthalpy_ev     = {"V": EoSEnthalpy(flash.eos["IAPWS"], EoS.RootFlag.MAX),
+                        "L": EoSEnthalpy(flash.eos["IAPWS"], EoS.RootFlag.MIN)}
+  pc.viscosity_ev    = {"V": ConstFunc(0.01), "L": MaoDuan2009(components)}   # liquid µ must stay T/P-dependent
+  pc.rel_perm_ev     = {"V": PhaseRelPerm("gas", swc=0.0), "L": PhaseRelPerm("oil", swc=0.0)}
+  pc.conductivity_ev = {"V": ConstFunc(0.0), "L": ConstFunc(172.8)}           # kJ/m/day/K
+
+  self.physics = PhysicsBase(components, phases, timer,
+                             state_spec=PhysicsBase.StateSpecification.PT,
+                             axes_step=[p_step, t_step], axes_origin=[p_origin, t_origin], epsilon_z=eps)
+  self.physics.add_property_region(pc)
+  ```
+  Notes:
+  - **State layout** changes `[P, enthalpy]` → `[P, temperature]`: update any `engine.X` slicing, and switch the OBL input fields `idata.obl.e_step`/`e_origin` (enthalpy axis) to `t_step`/`t_origin` (temperature axis).
+  - **Keep the temperature `axes_origin` at ≥ `273.15` K** (the IAPWS liquid floor). With `ice_phase=False` the PT-flash returns NaN below it; because the OBL grid is unbounded it would otherwise sample the sub-freezing region and fail (singular CPR / timestep collapse).
+  - **Liquid viscosity** must be `MaoDuan2009(components)` (T/P-dependent), not a constant — a constant `µ` rescales well rates by `µ_ref/µ_const` under BHP control.
+  - IAPWS-97 → IAPWS-95 is a property-model change: well BHT/BHP shift by ≲ 0.2 %, so **regenerate reference solutions** for migrated models.
+- Add hysteresis support for OBL-based compositional simulations through per-cell history variables, including Killough scanning-curve handling; the feature is disabled by default and enabled only when history variables are explicitly declared in the physics setup ([!310](https://gitlab.com/open-darts/open-darts/-/merge_requests/310)).
+- Output:
+  - output which was using `vtk` module, has been changed to use `meshio` (struct reservoir, cpg reservoir) and darts/tools/vtk_io.py (writing vtp files with dynamic results along well trajectories)
+- Package:
+  - removed `vtk` dependency ([!314](https://gitlab.com/open-darts/open-darts/-/merge_requests/314))
+  - added "viz" option to install `vtk` and `pyvista`; added "all" option to install "viz" and "solvers" groups. Usage pip install open-darts[viz].
+- Switched to Python 3.11 by default (CI/CD pipelines, ReadTheDocs build, `ruff` lint target, and the recommended developer environment); Python 3.10–3.13 remain supported and tested.
+- OBL, interpolation and supporting-point cache ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)):
+  - The adaptive OBL interpolators are now **unbounded**: hypercubes are keyed on a signed multi-index instead of a packed integer bounded by `(axes_min, axes_max)`, so the grid is defined only by a per-axis origin and step and grows on demand wherever the solver lands. Out-of-window queries return bit-exact linear extrapolation with no clamping. The engines correspondingly drop OBL-window state clipping; Newton now clips only to the physical simplex `[0, 1] ± sim_eps`. (Requires recompiling the C++/pybind interpolators and engines.)
+  - Rewrote the boundary-extrapolation support-point selection for robustness (rank-revealing modified-Gram–Schmidt selection with an `np.linalg.lstsq` fallback and a warning on singular supports, instead of silently least-squaring a singular system). `OperatorsBase.dz` may now be a scalar or a per-axis vector (stored as a NumPy array); uniform grids reproduce prior results exactly.
+  - New self-contained on-disk OBL cache format (`DRTSFC03`): a single page-aligned, memory-mapped open-addressing hash arena plus trailing delta/epoch frames, replacing the pickled supporting-point dictionary. Cold caches load in O(1) with no ~1e9-entry rebuild, and the resident map is file-backed / demand-paged instead of a multi-hundred-GB anonymous-RAM image. The `obl_point_data_<md5>.pkl` filename is kept for cache discovery; old pickles still load (legacy integer-keyed adaptive caches are detected, ignored and regenerated) and are rewritten as `DRTSFC03` on the next flush. Cross-platform: Linux/macOS via POSIX `mmap` and Windows via Win32 file mapping — the arena path is selected on interpolator capability, never on the OS. Set `OBL_CACHE_BUILD_MMAP=1` to force the memory-bounded arena builder.
+  - Bounded the in-memory OBL hypercube cache to cap peak RAM on large adaptive runs (`self.physics.hypercube_cap`; LRU on CPU, clear-on-overflow on GPU; `0`/unset keeps the legacy unbounded behaviour). Together with the mmap arena this removes the two dominant OBL RAM terms that could OOM large chemistry runs.
+  - Record the evaluation epoch (batch/Newton index) at which each supporting point was first materialized; readable offline via `PhysicsBase.load_point_epochs()` for OBL-space-growth analysis.
+  - Added a per-axis `int32` cell-index overflow guard with throttled reporting and saturation in both Debug and Release builds; the check is branch-light and keeps aggregation off the interpolation hot path.
+- Parallel operator evaluation and output ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)):
+  - Extended parallel operator evaluation from the reservoir operators only to all default physics evaluators (reservoir / property / well / well-control / thermal-var) through a single fixed-size `SharedEvaluatorPool`, so the total worker-process count stays at `n_workers` regardless of how many evaluators are wrapped.
+  - Output property interpolators are built and evaluated separately from the simulation property operators (`output_property_operators` / `output_property_itor`), so requesting extra output properties no longer overwrites the operators the simulation uses; output batches can run on the shared pool.
+- Chemistry ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)):
+  - The Reaktoro flash reuses a persistent solver/options/conditions object and warm-starts each OBL point from the previous converged speciation (falling back to a cold solve on failure), materially speeding up Reaktoro-driven flash at identical results.
+  - Reaktoro kinetic saturation ratios are resolved by name to the stable carbonate phases (`Calcite` / `Dolomite` / `Magnesite`) instead of the first formula match (which picked `Aragonite` / ordered dolomite in `supcrtbl`). This is a correctness fix and **changes computed SR values (and hence kinetic rates and results)** for reactive carbonate models; pass `mineral_sr_species={formula: species_name}` to override the mapping.
+- Build system ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)):
+  - New CMake variable `OPENDARTS_MAX_DIMS` (default `8`) drives the interpolator `MAX_DIMS`, the engine `MAX_NC`, and the linear-solver block-size instantiation range from a single knob; set `-D OPENDARTS_MAX_DIMS=<N>` to build isothermal cases with up to `N` components, or thermal cases with up to `N - 1` components because the thermal state adds one interpolation axis. `MAX_NC` is no longer silently defaulted; compiling an engine translation unit without `-DMAX_NC` is now a hard error.
+  - New CMake variable `OPENDARTS_INTERPOLATOR_PROFILE` (`MINIMAL` | `FULL`, default `FULL`) to cut per-translation-unit compiler memory. CI and the shipped wheels build `MINIMAL`, which compiles only the multilinear adaptive interpolator (see the breaking-changes note about `algorithm='linear'`).
+  - CI test jobs install the built package with the `test` extra instead of installing `pytest` separately; `helper_scripts/build_darts_cmake.{sh,bat}` and the GPU wrapper honor `-t` by installing `open-darts[test]`.
+  - Linear-solver explicit template instantiations (`superlu`, `bos_cpr`, `bos_bilu0`, `bos_gmres`) are generated from `OPENDARTS_MAX_DIMS` (with a floor at block size 13) instead of hand-written lists.
+  - Operator indices were widened from `uint8_t` to `uint16_t` across the engines and interpolators, raising the supported operator/component count (e.g. up to ~272 operators for 30 components, 3 phases, thermal). Geomechanics / super-elastic engines are capped at `NC <= 3` (`MAX_NC_MECH=3`), independent of `OPENDARTS_MAX_DIMS`.
+- Tests ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)):
+  - Added coverage for unbounded adaptive CPU interpolation, axes-step-only construction, cache round-trips, GPU smoke tests, convergence / linearity preservation, parallel evaluator consistency, mmap cache arena behaviour, and explicit hash-collision handling.
+- Models, tools and diagnostics ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)):
+  - `DartsModel` verbosity is now a single integer level (`self.verbose`, 0–3: silent / default / +timers / +per-worker evaluator output); booleans are still accepted. Level >= 2 prints the timer breakdown to the DARTS log after every `run()`.
+  - `models/chemistry/carbonated_water` is now a working reactive-transport example (batched OBL initialization through the parallel pool, cross-run persistent good-step counter, PHREEQC dilution-fallback Newton budget).
+  - Fixed two GPU teardown crashes triggered by a partially-initialized model (uninitialized device pointers passed to `cudaFree`; `PhysicsBase.__del__` raising when `__init__` failed before `self.cache` was set).
+
+# 1.5.0 [27-05-2026]
+- Fluid heat capacity is added into the input data for THM models ([!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270))
 - Support using the OBL method to calculate DFM well phase velocities. Direct method is still the default method since it is safer in terms of stability ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Add `x_mass` (mass composition of each phase) as a new property to `PropertyContainer` of the super engine because it is needed for evaluation of phase velocities in DFM wells using the OBL method ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
-- Make DFM velocity calculation independent of the order of the phases specified by the user, so now the order of the phases does not affect the performance of DFM wells, but the user needs to specify `"G"` and `"L"` as names of gas and liquid phases for two-phase flow and `"G"`, `"L_a"`, and `"L_b"` as names of gas and two liquid phases for three-phase flow  ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)).
+- Make DFM velocity calculation independent of the order of the phases specified by the user, so now the order of the phases does not affect the performance of DFM wells, but the user needs to specify `"G"` and `"L"` as names of gas and liquid phases for two-phase flow and `"G"`, `"L_a"`, and `"L_b"` as names of gas and two liquid phases for three-phase flow ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)).
 - Correct derivative of averaged density of the liquid phase for three-phase flow of gas and two liquid phases ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Improve storage and visualization of properties of DFM wells ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
   - Streamline storage and visualization of DFM well properties
@@ -10,10 +115,57 @@
 - Support live plotting ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
   - Live (real-time) plots for solver properties (time step size and number of Newton iterations) and tracking the state of a block on the PH diagram
   - Live (real-time) plots for profiles of DFM well properties
+  - Save live-plot snapshots and monitor a reservoir block
 - Align depth of perforated well segments with reservoir blocks ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Fix BHT calculation for PH formulation in the method `store_bhp_bht` in `output.py` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Store the arrays `time`, `n_newton_iters`, and `time_step_size` in the class `DartsModel` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Implement `engine_base::apply_thermal_var_correction` to improve the issue related to sharp enthalpy updates from the Newton-Raphson solver for the pressure-enthalpy (PH) formulation ([!289](https://gitlab.com/open-darts/open-darts/-/merge_requests/289))
+- Support well controls (rate and WHP) for DFM wells consistent with EPM wells. WHP is controlled for DFM wells and BHP is controlled for EPM wells ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Support total (mass, molar, volumetric, and advective heat) rate control for both EPM and DFM wells. If well rate is controlled and phase is not specified, total rate will be applied ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Fix the issue in the derivative of wellhead equation for rate control of EPM wells ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Fix bugs when using DFM wells for three-phase (gas + two liquid phases) fluid flow ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Enable pipe flow calculations in DARTS-well for systems containing immobile phases ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Enable line search in `darts_model.py` to work with models containing DFM wells ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Fix output perforation rates when `ms_epm` is `False` by considering the gravity component in `output.py` + store `mesh.grav_coef` in the h5 file + expose `mesh.grav_ceof` to Python ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))
+- Unstructured reservoir [!298](https://gitlab.com/open-darts/open-darts/-/merge_requests/298):
+	- fixed the order in store_depth_all_cells (could affect the initialization by gradient)
+	- vtk output is fixed for 3D meshes (order)
+	- separate vtk files for matrix and fracture data
+	- reservoir cache is fixed
+- Improve CI model tests by comparing generated well time-series reference files (`well_time_data.pkl`) and by extending performance-reference checks to include well primary variables in addition to reservoir primary variables ([!312](https://gitlab.com/open-darts/open-darts/-/merge_requests/312)).
+- Extracted interpolators into a standalone `darts.interpolators` Python module / shared library, decoupled from `darts.engines` at link time (header-only coupling via `interpolation_config.h`). Template instantiations split across multiple translation units to enable parallel compilation and cut per-TU memory (full build down to ~6 min on multi-core; valgrind job pre-builds at `-j NT/2` to avoid OOM). Interpolator tests moved to `tests/interpolators/`. Breaking change: interpolator types are no longer exposed under `darts.engines` — import from `darts.interpolators` ([!301](https://gitlab.com/open-darts/open-darts/-/merge_requests/301))
+- Parallel operator update ([!297](https://gitlab.com/open-darts/open-darts/-/merge_requests/297)): adaptive interpolators rewritten as a three-phase OpenMP update (discover / materialize / interpolate) governed by `OMP_NUM_THREADS`; new `evaluate_batch` interface and `ParallelEvaluator` that evaluates missing supporting points across a multiprocessing pool. Enable per model with `init(parallel_evaluation=True, n_workers=...)`; the default `DartsModel.get_evaluator_factory` (`ModelEvaluatorFactory`) needs no per-model code and works under both `fork` and `spawn`. `Chem_benchmark_new` runs on the parallel path in CI. See `docs/for_developers/parallel_operators.md`.
+- Physics / Wells:
+  - Generalize the potential-energy contribution in the energy equation to multi-component systems
+  - Add `Pipe` options to enable/disable the profile parameter and drift velocity in the DFM closure
+  - Unify EPM and DFM well-control operators into a single `WellCtrlOperators` class
+- Examples / Models:
+  - Add DFM-well validation scenarios against OLGA: `1ph_1comp_thermal_dfm_well_vs_olga`, `2ph_2comp_isothermal_dfm_vertical_well_vs_olga`, `2ph_2comp_isothermal_dfm_inclined_well_vs_olga`
+  - Add `2ph_dead_oil_coupled_well_reservoir` and a constant-rate gaseous-phase injection example
+  - Add a live-plotting example to the coupled well–reservoir model
+- Dependencies: bump minimum `open-darts-flash` to `>=0.12.1`
+- Breaking changes:
+  - Rock thermal conductivity was renamed in the input data for geomechanical models:
+  \
+  {- Before: idata.rock.conductivity -}\
+  {+ Now:    idata.rock.thermal_conductivity +}
+  \
+  - Equilibrium initialization function name was changed from version 1.3.2:
+  \
+  {- Before: init.solve() -}\
+  {+ Now:    init.solve_up_and_downwards() +}
+  \
+  - Geothermal `PropertyContainer` field `saturation` renamed to `sat` to match the super-engine container:
+  \
+  {- Before: property_container.saturation -}\
+  {+ Now:    property_container.sat +}
+  \
+  - In well outputs, `saturation` renamed to `volume_fraction`; well-side fields now use the same `pressure` and `temperature` names as the reservoir side
+  - DFM example scenarios were renamed:
+  \
+  {- Before: two_phase_isothermal_dfm_well_flow, single_phase_thermal_dfm_well_flow, coupled_dfm_well_reservoir -}\
+  {+ Now:    2ph_2comp_isothermal_dfm_vertical_well_vs_dwell, 1ph_1comp_thermal_dfm_well_vs_dwell, 2ph_1comp_coupled_dfm_well_reservoir +}
+  \
 
 # 1.4.0 [17-02-2026]
 - OBL and operators:

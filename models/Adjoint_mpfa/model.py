@@ -3,8 +3,8 @@ from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, ms_well
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -127,10 +127,13 @@ class Model(DartsModel, OptModuleSettings):
 
         # create physics
         thermal = True
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=0, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
-                                     min_t=273.15 + 20, max_t=273.15 + 200,  extrapolation_flag=True)
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        # [p, z_1, ..., z_{nc-1}, T]
+        nz = len(components) - 1
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
+                                     axes_step=[2.5] + [2.5e-3] * nz + [0.4511],
+                                     axes_origin=[0.0] + [epsilon] * nz + [273.15 + 20],
+                                     epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         self.runtime = 1000
@@ -175,8 +178,7 @@ class Model(DartsModel, OptModuleSettings):
             # customize your own operator, e.g. the Temperature
             temperature_etor = geothermal_customized_etor()
 
-            temperature_itor, _ = self.physics.create_interpolator(temperature_etor, axes_min=self.physics.axes_min,
-                                                                axes_max=self.physics.axes_max,
+            temperature_itor, _ = self.physics.create_interpolator(temperature_etor,
                                                                 timer_name="customized operator interpolation",
                                                                 n_ops=1, platform='cpu', algorithm='multilinear',
                                                                 mode='adaptive', precision='d')

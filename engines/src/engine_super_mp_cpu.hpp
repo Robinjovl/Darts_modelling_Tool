@@ -21,7 +21,6 @@
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::auxiliary;
 using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
@@ -48,29 +47,29 @@ public:
   // number of operators: NE accumulation operators, NE*NP flux operators, NP density, NP up_constant, NE*NP gradient,
   //                      NE kinetic rate operators, 2*NP gravity and capillarity, 1 multiplier, NP phase mobility,
   //                      NP saturation, NP enthalpy, 2 temperature and pressure
-  const static uint8_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
-                               NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
-                               NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/;
+  const static uint16_t N_OPS = NE /*acc*/ + NE * NP /*flux*/ + NP /*density*/ + NP /*UPSAT*/ + NE * NP /*gradient*/ +
+                                NE /*kinetic*/ + 2 * NP /*gravpc*/ + 1 /*multiplier*/ + NP /*phase mobility*/ +
+                                NP /*saturation*/ + NP /* enthalpy */ + 2 /*temperature and pressure*/;
 
 
   // order of operators:
-  const static uint8_t ACC_OP = 0;
-  const static uint8_t FLUX_OP = NE;
+  const static uint16_t ACC_OP = 0;
+  const static uint16_t FLUX_OP = NE;
   // diffusion
-  const static uint8_t DENS_OP = NE + NE * NP;
-  const static uint8_t UPSAT_OP = NE + NE * NP + NP;
-  const static uint8_t GRAD_OP = NE + NE * NP + NP + NP;
+  const static uint16_t DENS_OP = NE + NE * NP;
+  const static uint16_t UPSAT_OP = NE + NE * NP + NP;
+  const static uint16_t GRAD_OP = NE + NE * NP + NP + NP;
   // kinetic reaction
-  const static uint8_t KIN_OP = NE + NE * NP + NP + NP + NE * NP;
+  const static uint16_t KIN_OP = NE + NE * NP + NP + NP + NE * NP;
   // extra operators
-  const static uint8_t GRAV_OP = NE + NE * NP + NP + NP + NE * NP + NE;
-  const static uint8_t PC_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP;
-  const static uint8_t MULT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP;
-  const static uint8_t LAMBDA_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1;
-  const static uint8_t SAT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
-  const static uint8_t ENTH_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
-  const static uint8_t TEMP_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
-  const static uint8_t PRES_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
+  const static uint16_t GRAV_OP = NE + NE * NP + NP + NP + NE * NP + NE;
+  const static uint16_t PC_OP = NE + NE * NP + NP + NP + NE * NP + NE + NP;
+  const static uint16_t MULT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP;
+  const static uint16_t LAMBDA_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1;
+  const static uint16_t SAT_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP;
+  const static uint16_t ENTH_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP;
+  const static uint16_t TEMP_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP;
+  const static uint16_t PRES_OP = NE + NE * NP + NP + NP + NE * NP + NE + 2 * NP + 1 + NP + NP + NP + 1;
 
   // IMPORTANT: all constants above have to be in agreement with acc_flux_op_set
 
@@ -81,10 +80,9 @@ public:
   const static uint16_t N_VARS_SQ = N_VARS * N_VARS;
 
   uint8_t get_n_vars() const override { return N_VARS; };
-  uint8_t get_n_ops() const override { return N_OPS; };
+  uint16_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_comps() const override { return NC; };
   uint8_t get_z_var_idx() const override { return Z_VAR; };
-  uint8_t get_n_state() const { return N_STATE; };
 
   engine_super_mp_cpu()
   {
@@ -110,8 +108,6 @@ public:
 
   int init_jacobian_structure_mpfa(csr_matrix_base *jacobian);
 
-  /// @brief vector of variables in the current timestep provided for operator evaluation
-  std::vector<value_t> Xop;
   void extract_Xop();
 
   // vector of fluxes for every unknown per connection, assembled in jacobian assembly
