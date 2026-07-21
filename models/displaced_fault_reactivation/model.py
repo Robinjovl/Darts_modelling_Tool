@@ -109,11 +109,23 @@ class Model(THMCModel):
         n_res_blks = mesh.n_res_blocks
         n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
         n_fracs_mesh = getattr(self.reservoir, 'n_fracs', 0)
+        # engine_pm_cpu variable layout: displacement first (U_VAR=0), pressure at
+        # ND=3, no composition variable (Z_VAR=255). Without these overrides the
+        # FS-CPR splits the engine_super_elastic_cpu default layout (P_VAR=0) and
+        # mis-identifies the pressure/displacement subsystems -- a wrong
+        # preconditioner that stalls convergence (and hangs when GMRES can't
+        # compensate). Read the indices off the engine so this stays correct if
+        # the conventions change. NE = N_VARS - ND = NC for the isothermal cases.
+        engine = self.physics.engine
         fs_cpr = FSCPRSolverSpec(
             force_amg_asymmetric=True,
             n_res=n_matrix + n_fracs_mesh,
             n_fracs=0,
             n_wells=mesh.n_blocks - n_res_blks,
+            p_var=engine.P_VAR,
+            z_var=engine.Z_VAR,
+            u_var=engine.U_VAR,
+            nc=engine.N_VARS - 3,
         )
         # 1e-5 / 50 is what this model has always effectively run with: until !280 the
         # engine overwrote a spec's tolerance/max_iterations at init() with sim_params
