@@ -14,7 +14,8 @@ if pv is not None:
 def plot_slice_matplotlib(slice_plane, arr_name, tensor, component_index, scale,
                           arr_name_plot, contour, rsv_top, rsv_bottom,
                           well_markers, plot_points_xy,
-                          xmin_blk, xmax_blk, zmin_blk, zmax_blk, out_png):
+                          xmin_blk, xmax_blk, zmin_blk, zmax_blk, out_png,
+                          figure_dpi=500):
     '''
     Optional matplotlib backend for the XZ slice plot (selected via use_mtri=True).
     Gives a centered, evenly-labeled X/Z view with visible 'X, m.'/'Z, m.' titles, which the
@@ -50,7 +51,8 @@ def plot_slice_matplotlib(slice_plane, arr_name, tensor, component_index, scale,
     triang = mtri.Triangulation(xs, zs)
     fig, ax = plt.subplots(figsize=(10, 6))
     tpc = ax.tripcolor(triang, vals, shading='gouraud', cmap='viridis')
-    fig.colorbar(tpc, ax=ax, fraction=0.046, pad=0.02)
+    colorbar = fig.colorbar(tpc, ax=ax, fraction=0.046, pad=0.02)
+    colorbar.ax.tick_params(labelsize=14)
     if contour:
         ax.tricontour(triang, vals, levels=20, colors='black', linewidths=0.5)
 
@@ -70,17 +72,18 @@ def plot_slice_matplotlib(slice_plane, arr_name, tensor, component_index, scale,
     ax.set_xlabel('X, m.', fontsize=14)
     ax.set_ylabel('Z, m.', fontsize=14)
     ax.tick_params(labelsize=12)
-    ax.set_title(arr_name_plot, fontsize=13)
+    ax.set_title(arr_name_plot, fontsize=14)
     fig.tight_layout()
-    fig.savefig(out_png, dpi=100)
+    fig.savefig(out_png, dpi=figure_dpi)
     plt.close(fig)
 
 
 def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mesh_bounds=False,
-                     plot_contours=False, use_mtri=False):
+                     plot_contours=False, use_mtri=False, figure_dpi=500):
     '''
     Plot VTK results using PyVista.
-    saves 2D plots - xz slice - of specified arrays (vertic displ and stress) from the last timestep.
+    Saves 2D XZ, YZ, and XY slices of specified arrays from the selected timestep.
+    The YZ slice is taken at mid-X and the XY slice at the middle domain depth.
 
     idata : InputData
         reservoir/well geometry (top/bottom depths, well X positions, plot window,
@@ -95,6 +98,9 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
         if True, render the slice with matplotlib/tripcolor (plot_slice_matplotlib) instead of
         the default pyvista rendering. Gives centered axes with proper titles, but see the
         drawbacks documented on plot_slice_matplotlib.
+    figure_dpi : int
+        Output resolution for Matplotlib figures. PyVista screenshots use the
+        equivalent scale relative to their 100-DPI render-window dimensions.
     '''
 
     if pv is None:
@@ -248,13 +254,14 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
         zmin_blk = block.bounds[4]
         zmax_blk = block.bounds[5]
         y_slice = block.center[1]
-        out_png = os.path.join(output_dir_plots, arr_name_plot + "_slice.png")
+        out_png = os.path.join(output_dir_plots, arr_name_plot + "_slice_xz.png")
 
         if use_mtri:  # optional matplotlib backend (centered axes + titles; see its drawbacks)
             plot_slice_matplotlib(slice_plane, arr_name, tensor, component_index, scale,
                                   arr_name_plot, contour, rsv_top, rsv_bottom,
                                   well_markers, plot_points_xy,
-                                  xmin_blk, xmax_blk, zmin_blk, zmax_blk, out_png)
+                                  xmin_blk, xmax_blk, zmin_blk, zmax_blk, out_png,
+                                  figure_dpi)
             continue
 
         # --- default pyvista rendering ---
@@ -263,8 +270,25 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
         else:
             slice_plane[arr_name_plot] = slice_plane[arr_name] * scale
 
-        plot_w, plot_h = 1024, 768  # fixed window so the camera aspect (hence centering) is known
-        plotter = pv.Plotter(off_screen=True, window_size=(plot_w, plot_h)) # save without showing the GUI window
+        # Match the canvas to the slice aspect ratio so the data, axes and colorbar
+        # use the available space instead of leaving large empty side margins.
+        plot_h = 700
+        xz_aspect = (xmax_blk - xmin_blk) / (zmax_blk - zmin_blk)
+        plot_w = int(np.clip(plot_h * xz_aspect * 1.35 / 1.6, 900, 1600))
+        cx, cz = 0.5 * (xmin_blk + xmax_blk), 0.5 * (zmin_blk + zmax_blk)
+        aspect = plot_w / plot_h
+        parallel_scale = max(0.5 * (zmax_blk - zmin_blk) * 1.35,
+                             0.5 * (xmax_blk - xmin_blk) / aspect * 1.6)
+        half_w = parallel_scale * aspect
+        data_right = 0.5 + (min(xmax_blk, block.bounds[1]) - cx) / (2.0 * half_w)
+        scalar_bar_x = min(data_right + 0.025, 0.91)
+        scalar_bar_y = 0.5 + (cz - zmax_blk) / (2.0 * parallel_scale)
+        scalar_bar_height = (zmax_blk - zmin_blk) / (2.0 * parallel_scale)
+        image_scale = max(1, int(round(figure_dpi / 100)))
+        axis_name_bottom_offset = 0.13
+        axis_name_left_offset = 0.09
+        plotter = pv.Plotter(off_screen=True, window_size=(plot_w, plot_h),
+                             image_scale=image_scale) # save without showing the GUI window
 
         # to plot with the same color if values are almost the same everywhere
         plot_rel_diff_threshold = 0.001
@@ -273,8 +297,10 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
             slice_plane[arr_name_plot][:] = values.min()
 
         plotter.add_mesh(slice_plane, scalars=arr_name_plot, show_edges=False,
-                         scalar_bar_args={'vertical': True, 'position_x': 0.86, 'position_y': 0.25,
-                                          'width': 0.05, 'height': 0.5, 'title': ''})
+                         scalar_bar_args={'vertical': True, 'position_x': scalar_bar_x,
+                                          'position_y': scalar_bar_y, 'width': 0.04,
+                                          'height': scalar_bar_height, 'title': '',
+                                          'n_labels': 5, 'label_font_size': 14, 'fmt': '%.3g'})
 
         if contour:
             slice_plane_points = slice_plane.cell_data_to_point_data()
@@ -287,7 +313,7 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
         for z_ref in [rsv_top, rsv_bottom]:
             plotter.add_mesh(pv.Line(pointa=(xmin_blk, y_slice, z_ref),
                                      pointb=(xmax_blk, y_slice, z_ref)),
-                             color='white', line_width=0.5)
+                             color='#ffffff', line_width=1.2 * image_scale)
         # vertical lines at the wells (prod=red, inj=cyan) + black reference lines at idata.other.points_xy (if set)
         # well-line top: a bit above the visualized block top (10% of the visualized depth)
         z_well_top = zmin_blk - 0.1 * (zmax_blk - zmin_blk)
@@ -297,14 +323,10 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
         for x_well, z2, z1, clr, lw in well_lines:
             plotter.add_mesh(pv.Line(pointa=(x_well, y_slice, z1),
                                      pointb=(x_well, y_slice, z2)),
-                             color=clr, line_width=lw)
+                             color=clr, line_width=lw * image_scale)
         # Centered orthographic XZ view. Margins around the [xmin_blk,xmax_blk] x [zmin_blk,zmax_blk]
         # window leave clear space for the axis labels (left/bottom) and the colorbar (right), so
         # they do not overlap the figure. (view_xz auto-camera renders this planar slice off-center.)
-        cx, cz = 0.5 * (xmin_blk + xmax_blk), 0.5 * (zmin_blk + zmax_blk)
-        aspect = plot_w / plot_h
-        parallel_scale = max(0.5 * (zmax_blk - zmin_blk) * 1.35,   # vertical margin (X labels + titles)
-                             0.5 * (xmax_blk - xmin_blk) / aspect * 1.6)  # horizontal margin (Z labels + colorbar)
         plotter.enable_parallel_projection()
         plotter.camera.focal_point = (cx, y_slice, cz)
         plotter.camera.position = (cx, y_slice + 1000.0, cz)  # look from +Y: world +X to the right
@@ -347,17 +369,119 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
             plotter.add_text(f'{int(round(zt))}', position=(z_num_x, vp_y(zt) - 0.012),
                              font_size=12, viewport=True, color='black')
         # 'Z, m.' just left of the Z numbers (not stranded at the far window edge)
-        plotter.add_text('Z, m.', position=(max(z_num_x - 0.07, 0.0), 0.5),
+        plotter.add_text('Z, m.', position=(max(z_num_x - axis_name_left_offset, 0.0), 0.5),
                          font_size=14, viewport=True, color='black')
         for xt in x_ticks:
             s = f'{int(round(xt))}'
             plotter.add_text(s, position=(vp_x(xt) - 0.009 * len(s), data_bot - 0.055),
                              font_size=12, viewport=True, color='black')
-        plotter.add_text('X, m.', position=(0.46, data_bot - 0.115), font_size=14, viewport=True, color='black')
-        plotter.add_text(arr_name_plot, position=(0.5 - 0.007 * len(arr_name_plot), 0.92),
-                         font_size=14, viewport=True)  # caption / title
+        plotter.add_text('X, m.', position=(0.46, data_bot - axis_name_bottom_offset),
+                         font_size=14, viewport=True, color='black')
+        xz_title = arr_name_plot + ' (XZ slice)'
+        title_y = min(vp_y(zmin_blk) + 0.06, 0.95)
+        plotter.add_text(xz_title, position=(0.5 - 0.007 * len(xz_title), title_y),
+                         font_size=14, viewport=True, color='black')  # caption / title
         plotter.show(screenshot=out_png)
         plotter.close()
+
+        # Also plot the other central sections with the same camera, axes and
+        # annotation layout as the XZ plot above.
+        for plane_name, normal, h_axis, v_axis, h_label, v_label, depth_axis in [
+                ('yz', 'x', 1, 2, 'Y, m.', 'Z, m.', True),
+                ('xy', 'z', 0, 1, 'X, m.', 'Y, m.', False)]:
+            origin = block.center
+            other_slice = block.slice(normal=normal, origin=origin)
+            if tensor:
+                other_slice[arr_name_plot] = other_slice[arr_name][:, component_index] * scale
+            else:
+                other_slice[arr_name_plot] = other_slice[arr_name] * scale
+
+            hmin, hmax = other_slice.bounds[2 * h_axis:2 * h_axis + 2]
+            vmin, vmax = other_slice.bounds[2 * v_axis:2 * v_axis + 2]
+            hspan, vspan = hmax - hmin, vmax - vmin
+            other_h = 700
+            other_w = int(np.clip(other_h * hspan / vspan * 1.35 / 1.6, 900, 1600))
+            other_aspect = other_w / other_h
+            other_scale = max(0.5 * vspan * 1.35,
+                              0.5 * hspan / other_aspect * 1.6)
+            hc, vc = 0.5 * (hmin + hmax), 0.5 * (vmin + vmax)
+            half_width = other_scale * other_aspect
+            data_right = 0.5 + (hmax - hc) / (2.0 * half_width)
+            scalar_bar_x = min(data_right + 0.025, 0.91)
+            scalar_bar_y = 0.5 - vspan / (4.0 * other_scale)
+            scalar_bar_height = vspan / (2.0 * other_scale)
+
+            other_plotter = pv.Plotter(off_screen=True, window_size=(other_w, other_h),
+                                       image_scale=image_scale)
+            other_plotter.add_mesh(
+                other_slice, scalars=arr_name_plot, show_edges=False,
+                scalar_bar_args={'vertical': True, 'position_x': scalar_bar_x,
+                                 'position_y': scalar_bar_y, 'width': 0.04,
+                                 'height': scalar_bar_height, 'title': '',
+                                 'n_labels': 5, 'label_font_size': 14, 'fmt': '%.3g'})
+            other_plotter.enable_parallel_projection()
+            if plane_name == 'yz':
+                other_plotter.camera.focal_point = (origin[0], hc, vc)
+                other_plotter.camera.position = (origin[0] - 1000.0, hc, vc)
+                other_plotter.camera.up = (0, 0, -1)
+            else:
+                other_plotter.camera.focal_point = (hc, vc, origin[2])
+                other_plotter.camera.position = (hc, vc, origin[2] + 1000.0)
+                other_plotter.camera.up = (0, 1, 0)
+            other_plotter.camera.parallel_scale = other_scale
+
+            vp_h = lambda value: 0.5 + (value - hc) / (2.0 * half_width)
+            if depth_axis:
+                vp_v = lambda value: 0.5 + (vc - value) / (2.0 * other_scale)
+                data_bottom = vp_v(vmax)
+            else:
+                vp_v = lambda value: 0.5 + (value - vc) / (2.0 * other_scale)
+                data_bottom = vp_v(vmin)
+            data_left = vp_h(hmin)
+
+            h_ticks = [t for t in MaxNLocator(nbins=7, steps=[1, 2, 2.5, 5, 10]).tick_values(hmin, hmax)
+                       if hmin - 1 <= t <= hmax + 1]
+            v_ticks = [t for t in MaxNLocator(nbins=6, steps=[1, 2, 2.5, 5, 10]).tick_values(vmin, vmax)
+                       if vmin - 1 <= t <= vmax + 1]
+            tick_world_v = 0.04 * other_scale
+            tick_world_h = 0.04 * half_width
+            bottom_v = vmax if depth_axis else vmin
+            outside_v = bottom_v + tick_world_v if depth_axis else bottom_v - tick_world_v
+            for tick in h_ticks:
+                if plane_name == 'yz':
+                    p0, p1 = (origin[0], tick, bottom_v), (origin[0], tick, outside_v)
+                else:
+                    p0, p1 = (tick, bottom_v, origin[2]), (tick, outside_v, origin[2])
+                other_plotter.add_mesh(pv.Line(p0, p1), color='black', line_width=2.5)
+            for tick in v_ticks:
+                if plane_name == 'yz':
+                    p0, p1 = (origin[0], hmin - tick_world_h, tick), (origin[0], hmin, tick)
+                else:
+                    p0, p1 = (hmin - tick_world_h, tick, origin[2]), (hmin, tick, origin[2])
+                other_plotter.add_mesh(pv.Line(p0, p1), color='black', line_width=2.5)
+            for tick in h_ticks:
+                text_value = f'{int(round(tick))}'
+                other_plotter.add_text(text_value,
+                                       position=(vp_h(tick) - 0.009 * len(text_value), data_bottom - 0.055),
+                                       font_size=12, viewport=True, color='black')
+            number_x = max(data_left - 0.075, 0.04)
+            for tick in v_ticks:
+                other_plotter.add_text(f'{int(round(tick))}',
+                                       position=(number_x, vp_v(tick) - 0.012),
+                                       font_size=12, viewport=True, color='black')
+            other_plotter.add_text(h_label, position=(0.46, data_bottom - axis_name_bottom_offset),
+                                   font_size=14, viewport=True, color='black')
+            other_plotter.add_text(v_label,
+                                   position=(max(number_x - axis_name_left_offset, 0.0), 0.5),
+                                   font_size=14, viewport=True, color='black')
+            title = arr_name_plot + ' (' + plane_name.upper() + ' slice)'
+            data_top = vp_v(vmin) if depth_axis else vp_v(vmax)
+            title_y = min(data_top + 0.06, 0.95)
+            other_plotter.add_text(title, position=(0.5 - 0.007 * len(title), title_y),
+                                   font_size=14, viewport=True, color='black')
+            other_plotter.show(screenshot=os.path.join(
+                output_dir_plots, arr_name_plot + '_slice_' + plane_name + '.png'))
+            other_plotter.close()
 
         # Contour plot using matplotlib (resampling is done only when requested) ##########
         if plot_contours:
@@ -390,19 +514,21 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
 
             plt.figure(figsize=(8, 4))
             plt.contourf(x_coords, z_coords, values_2d, levels=30, cmap='viridis')
-            plt.colorbar()
+            colorbar = plt.colorbar()
+            colorbar.ax.tick_params(labelsize=16)
             for z_ref in [rsv_top, rsv_bottom]:
                 plt.axhline(y=z_ref, color='white', linestyle='--', linewidth=1)
             for x_well, clr in well_markers:
                 plt.axvline(x=x_well, color=clr, linestyle='--', linewidth=1)
             for p in plot_points_xy:  # black reference lines at idata.other.points_xy
                 plt.axvline(x=p[0], color='black', linestyle='--', linewidth=1)
-            plt.xlabel("X Axis")
-            plt.ylabel("Depth, m.")
+            plt.xlabel("X Axis", fontsize=14, labelpad=12)
+            plt.ylabel("Depth, m.", fontsize=14, labelpad=12)
             plt.ylim(zmin_blk, zmax_blk)
             plt.gca().invert_yaxis()
             plot_suffix = "_contour.png"
-            plt.savefig(os.path.join(output_dir_plots, arr_name_plot + plot_suffix))
+            plt.savefig(os.path.join(output_dir_plots, arr_name_plot + plot_suffix),
+                        dpi=figure_dpi)
             plt.close()
 
         # plot 1D #################################################################################
@@ -443,18 +569,21 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
                     else:
                         plt.plot(values, z, "-o", markersize=2, label=t_label)
                 arr_name_plot_1d = arr_name if len(values.shape) > 1 else arr_name_plot
-                plt.xlabel(arr_name_plot_1d)
-                plt.ylabel("Depth, m.")
+                plt.xlabel(arr_name_plot_1d, fontsize=14, labelpad=12)
+                plt.ylabel("Depth, m.", fontsize=14, labelpad=12)
                 plt.ylim(zmin_blk, zmax_blk)
                 plt.gca().invert_yaxis()
-                plt.title(f"Vertical profile of {arr_name_plot_1d} at x={x0}, y={y0}")
+                plt.title(f"Vertical profile of {arr_name_plot_1d} at x={x0}, y={y0}",
+                          fontsize=14)
                 plt.grid(True)
                 plt.minorticks_on()
                 plt.grid(which='major', linestyle='-', linewidth=0.8)
                 plt.grid(which='minor', linestyle=':', linewidth=0.5)
                 plt.tight_layout()
-                plt.legend(fontsize=7)
-                plt.savefig(os.path.join(output_dir_plots, arr_name_plot_1d + '_vertic_line_' + name + '.png'))
+                plt.legend(fontsize=14)
+                plt.savefig(os.path.join(output_dir_plots,
+                                         arr_name_plot_1d + '_vertic_line_' + name + '.png'),
+                            dpi=figure_dpi)
                 plt.close()
     print('Plotting from VTK is completed for', output_dir)
         ##################################################################################
