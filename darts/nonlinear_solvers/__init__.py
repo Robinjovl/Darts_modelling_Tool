@@ -67,6 +67,7 @@ from darts.nonlinear_solvers.base import (
     SolverStats,
     write_to_log,
 )
+from darts.nonlinear_solvers.mechanics import MechanicsNewtonSolver
 from darts.nonlinear_solvers.newton import (
     NewtonSolver,
     NewtonSpec,
@@ -96,6 +97,7 @@ __all__ = [
     # runtime
     "NonlinearSolver",
     "NewtonSolver",
+    "MechanicsNewtonSolver",
     "NonlinearStatus",
     "SolverStats",
     "write_to_log",

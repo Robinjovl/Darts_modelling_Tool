@@ -49,7 +49,7 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
             m.reservoir.update_trans(dt, m.physics.engine.X)
             m.timer.node["update"].stop()
 
-        converged = run_timestep_python(m, dt, t)
+        converged = m.nonlinear_solver.run_timestep(dt, t)
         if converged:
             t += dt
             ts = ts + 1
@@ -74,63 +74,6 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
     print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (stats.n_timesteps_total, stats.n_timesteps_wasted,
                                                      stats.n_newton_total, stats.n_newton_wasted,
                                                      stats.n_linear_total, stats.n_linear_wasted))
-def run_timestep_python(m, dt, t):
-    self = m
-    max_newt = self.nonlinear_solver.spec.max_iterations
-    solver = self.nonlinear_solver
-    status = solver.status
-    status.reset()
-    well_tolerance_coefficient = 1e2
-    self.timer.node['simulation'].start()
-    for i in range(max_newt + 1):
-        self.e.assemble_linear_system(dt)
-        res = self.e.calc_newton_dev()#self.e.calc_newton_residual()
-        self.e.dev_p = res[0]
-        self.e.dev_u = res[1]
-        dev_e = 0
-        if self.reservoir.thermoporoelasticity:
-            self.e.dev_e = res[2]
-            dev_e = res[2]
-
-        status.newton_residual = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + dev_e ** 2)        #status.newton_residual = self.e.calc_newton_residual()
-        status.well_residual = self.e.calc_well_residual()
-        print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + \
-                    're = ' + str(dev_e) + '\t' + 'rwell = ' + str(status.well_residual) + '\t' + 'CFL = ' + str(self.e.CFL_max))
-
-        status.n_newton = i
-        #  check tolerance if it converges
-        if ((self.e.dev_p < self.nonlinear_solver.spec.tolerance and self.e.dev_u < self.nonlinear_solver.spec.tolerance and dev_e < self.nonlinear_solver.spec.tolerance
-           and status.well_residual < well_tolerance_coefficient * self.nonlinear_solver.spec.tolerance )
-              or status.n_newton == self.nonlinear_solver.spec.max_iterations):
-            if (i > 0):  # min_i_newton
-                if i < max_newt:
-                    converged = 1
-                else:
-                    converged = 0
-                break
-
-        r_code = self.e.solve_linear_equation()
-        status.linear_solver_rc = r_code
-        if r_code != 0:
-            # failed linear solve: do NOT apply a stale update; fail the timestep
-            converged = 0
-            break
-        status.n_linear += self.e.get_last_linear_iters()
-        self.timer.node["newton update"].start()
-        self.e.apply_newton_update(dt)
-        self.timer.node["newton update"].stop()
-        if i < max_newt:
-            converged = 1
-
-    # End of newton loop
-    # NOTE: the old C++ pm/super_elastic post_newtonloop did not veto `converged`
-    # (its residual re-check only selected a failure message), so the Python
-    # verdict is passed through unchanged.
-    converged = self.e.post_newtonloop(dt, t, converged)
-    solver.stats.update(converged, status)
-    self.timer.node['simulation'].stop()
-    return converged
-
 def run(model_folder, physics_type, is_finalize=True):
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=False)
     m.params.finalize_mpi = is_finalize

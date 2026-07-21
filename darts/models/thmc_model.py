@@ -76,6 +76,13 @@ class THMCModel(DartsModel):
         spec.chop.mode = "global"
         spec.chop.factor = 0.2
         spec.max_iterations = 10
+        # geomechanics engines converge on a deviatoric per-component residual and
+        # apply the C++ apply_newton_update composite directly: swap the runtime to
+        # the shared MechanicsNewtonSolver (replaces the per-model copied loops).
+        from darts.nonlinear_solvers import MechanicsNewtonSolver
+
+        self.nonlinear_solver = MechanicsNewtonSolver(spec)
+        self.nonlinear_solver.bind(self)
 
         if self.discretizer_name == 'mech_discretizer':
             self.params.tolerance_linear = (

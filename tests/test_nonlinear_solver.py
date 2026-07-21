@@ -291,3 +291,63 @@ def test_set_sim_params_legacy_kwargs_map_and_warn():
     # a genuine typo still fails loudly
     with pytest.raises(TypeError):
         DartsModel._migrate_legacy_nonlinear_kwargs(m, {"bogus": 1})
+
+
+# --------------------------------------------- MechanicsNewtonSolver (F4 Tier2)
+def test_mechanics_per_component_convergence(make_mechanics):
+    # tol=1e-2 (default); dev components below tol -> converge; well 0 < 1e2*tol
+    solver, model, engine, _ = make_mechanics(
+        dev_seq=[(1e-3, 1e-3), (1e-9, 1e-9)], well_seq=[0.0, 0.0]
+    )
+    converged = solver.run_timestep(1.0, 0.0)
+    assert converged  # post_newtonloop passes the verdict through
+    assert engine.n_apply_update == 1  # one update at i=0, then i=1 converges
+    assert solver.status.n_newton == 1
+    assert "apply_newton_update" in engine.log  # C++ composite, not the Python update
+
+
+def test_mechanics_break_before_update_on_failed_solve(make_mechanics):
+    solver, model, engine, _ = make_mechanics(
+        dev_seq=[(1.0, 1.0)], well_seq=[0.0], solve_rcs=[1]
+    )
+    converged = solver.run_timestep(1.0, 0.0)
+    assert not converged
+    assert solver.status.linear_solver_rc == 1
+    assert model._linear_solver_rc_last == 1
+    assert engine.n_apply_update == 0  # no stale update after a failed solve
+
+
+def test_mechanics_early_break_and_finalize_hooks(make_mechanics):
+    from darts.nonlinear_solvers import MechanicsNewtonSolver
+
+    events = []
+
+    class FaultLike(MechanicsNewtonSolver):
+        def check_early_break(self, i):
+            events.append("early")
+            return True  # fail the timestep before the linear solve
+
+        def finalize_convergence(self, converged):
+            events.append("finalize")
+            return 0  # veto
+
+    solver, model, engine, _ = make_mechanics(
+        dev_seq=[(1.0, 1.0)], well_seq=[0.0], solver_cls=FaultLike
+    )
+    converged = solver.run_timestep(1.0, 0.0)
+    assert not converged
+    assert engine.n_apply_update == 0  # broke before the update
+    assert "early" in events and "finalize" in events
+    assert "solve_linear:0" not in engine.log  # never reached the solve
+
+
+def test_mechanics_thermal_third_component(make_mechanics):
+    model_thermo = True
+    solver, model, engine, _ = make_mechanics(
+        dev_seq=[(1e-9, 1e-9, 1.0), (1e-9, 1e-9, 1e-9)], well_seq=[0.0, 0.0]
+    )
+    model.reservoir.thermoporoelasticity = model_thermo
+    solver.run_timestep(1.0, 0.0)
+    # i=0: third=1.0 >= tol -> NOT converged (does an update); i=1: third tiny -> converge
+    assert engine.n_apply_update == 1
+    assert engine.dev_e == 1e-9  # thermal component recorded on the engine
