@@ -51,6 +51,7 @@ class Model(DartsModel):
             self.inj_comp = []
 
         self.set_sim_params(first_ts=1e-3, mult_ts=4, max_ts=dt_max, tol_newton=1e-2)
+        self.set_sim_params(first_ts=1e-5, mult_ts=4, max_ts=dt_max, tol_newton=1e-2)
 
         self.timer.node["initialization"].stop()
 
@@ -164,7 +165,7 @@ class Model(DartsModel):
 
         """ Activate physics """
         self.physics = Compositional(components, phases, self.timer,
-                                     n_points=n_points, min_p=1, max_p=450, min_z=0., max_z=1., epsilon_z=eps_z)
+                                     n_points=n_points, min_p=1, max_p=450, min_z=0., max_z=1., epsilon_z=zero)
         self.physics.add_property_region(property_container)
 
         return
@@ -197,7 +198,7 @@ class Model(DartsModel):
         thermal = False
         state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=n_points, min_p=1, max_p=500, min_z=0., max_z=1., epsilon_z=eps_z)
+                                     n_points=n_points, min_p=1, max_p=500, min_z=0., max_z=1., epsilon_z=zero)
         self.physics.add_property_region(property_container)
 
         return
@@ -239,7 +240,7 @@ class Model(DartsModel):
         """ Activate physics """
         state_spec = Compositional.StateSpecification.PT if pt else Compositional.StateSpecification.PH
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=n_points, min_p=1, max_p=500, min_z=0., max_z=1., epsilon_z=eps_z,
+                                     n_points=n_points, min_p=1, max_p=500, min_z=0., max_z=1., epsilon_z=zero,
                                      min_t=273.15, max_t=473.15)
         self.physics.add_property_region(property_container)
         return
@@ -282,7 +283,7 @@ class Model(DartsModel):
         """ Activate physics """
         state_spec = Compositional.StateSpecification.PT if pt else Compositional.StateSpecification.PH
         self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=n_points, min_p=1, max_p=500, min_z=0., max_z=1., epsilon_z=eps_z,
+                                     n_points=n_points, min_p=1, max_p=500, min_z=0., max_z=1., epsilon_z=zero,
                                      min_t=273.15, max_t=473.15)
         self.physics.add_property_region(property_container)
         return
