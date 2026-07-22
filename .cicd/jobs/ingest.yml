@@ -164,12 +164,29 @@ assemble-model-references-tahiti-gpu:
         MODEL_REFERENCES_OUT_DIR: "digest"
         MODEL_REFERENCE_PKL_PATTERNS: |
             */ref/*gpu*.pkl
+        # Model-local input decks that sit next to the *.json config and are
+        # referenced from it by a relative path — e.g. black-oil PVT tables via
+        # "pvt_path": "physics.in" (models/3ph_bo). Collected at model-dir depth
+        # ONLY (see the -mindepth 2 -maxdepth 2 find below): a recursive match
+        # would wrongly pull large/duplicate mesh decks (e.g. the multi-MB
+        # cpg_sloping_fault/meshes/*/grid.grdecl and *.in) and output noise.
+        MODEL_REFERENCE_INPUT_PATTERNS: |
+            *.in
+            *.grdecl
+        # Model source files (main.py / model.py / reservoir.py …) — the
+        # whole-model exemplars the D3 code-generation retrieval corpus grounds
+        # on. Depth-2 only, matching the JSON/deck rule (a recursive match would
+        # pull vendored/utility trees and inflate the artifact).
+        MODEL_REFERENCE_PY_PATTERNS: |
+            *.py
     script:
         - set -euo pipefail
         - mkdir -p "${MODEL_REFERENCES_OUT_DIR}/models"
         - PKL_MATCHES_FILE="$(mktemp)"
         - JSON_MATCHES_FILE="$(mktemp)"
-        - trap 'rm -f "${PKL_MATCHES_FILE}" "${JSON_MATCHES_FILE}"' EXIT
+        - INPUT_MATCHES_FILE="$(mktemp)"
+        - PY_MATCHES_FILE="$(mktemp)"
+        - trap 'rm -f "${PKL_MATCHES_FILE}" "${JSON_MATCHES_FILE}" "${INPUT_MATCHES_FILE}" "${PY_MATCHES_FILE}"' EXIT
         - |
           while IFS= read -r pattern; do
             [ -z "$pattern" ] && continue
@@ -179,8 +196,28 @@ assemble-model-references-tahiti-gpu:
           ${MODEL_REFERENCE_PKL_PATTERNS}
           EOF
         - find models -mindepth 2 -maxdepth 2 -type f -name "*.json" | sort -u > "${JSON_MATCHES_FILE}"
+        # Model-local input decks (e.g. models/3ph_bo/physics.in) — depth-2 only.
+        - |
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            [ "${pattern#\#}" != "$pattern" ] && continue
+            find models -mindepth 2 -maxdepth 2 -type f -name "$pattern"
+          done <<EOF | sort -u > "${INPUT_MATCHES_FILE}"
+          ${MODEL_REFERENCE_INPUT_PATTERNS}
+          EOF
+        # Model source files (D3 exemplars, e.g. models/2ph_do/model.py) — depth-2 only.
+        - |
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            [ "${pattern#\#}" != "$pattern" ] && continue
+            find models -mindepth 2 -maxdepth 2 -type f -name "$pattern"
+          done <<EOF | sort -u > "${PY_MATCHES_FILE}"
+          ${MODEL_REFERENCE_PY_PATTERNS}
+          EOF
         - GPU_PKL_COUNT="$(wc -l < "${PKL_MATCHES_FILE}")"
         - JSON_CONFIG_COUNT="$(wc -l < "${JSON_MATCHES_FILE}")"
+        - INPUT_DECK_COUNT="$(wc -l < "${INPUT_MATCHES_FILE}")"
+        - PY_FILE_COUNT="$(wc -l < "${PY_MATCHES_FILE}")"
         - |
           while IFS= read -r relpath; do
             [ -z "$relpath" ] && continue
@@ -194,9 +231,23 @@ assemble-model-references-tahiti-gpu:
             cp --parents -a "$relpath" "${MODEL_REFERENCES_OUT_DIR}" 2>/dev/null || cp -a "$relpath" "${MODEL_REFERENCES_OUT_DIR}/$relpath"
           done < "${JSON_MATCHES_FILE}"
         - |
-          cat "${PKL_MATCHES_FILE}" "${JSON_MATCHES_FILE}" | sort -u > "${MODEL_REFERENCES_OUT_DIR}/models/_collected-files.txt"
+          while IFS= read -r relpath; do
+            [ -z "$relpath" ] && continue
+            mkdir -p "${MODEL_REFERENCES_OUT_DIR}/$(dirname "$relpath")"
+            cp --parents -a "$relpath" "${MODEL_REFERENCES_OUT_DIR}" 2>/dev/null || cp -a "$relpath" "${MODEL_REFERENCES_OUT_DIR}/$relpath"
+          done < "${INPUT_MATCHES_FILE}"
+        - |
+          while IFS= read -r relpath; do
+            [ -z "$relpath" ] && continue
+            mkdir -p "${MODEL_REFERENCES_OUT_DIR}/$(dirname "$relpath")"
+            cp --parents -a "$relpath" "${MODEL_REFERENCES_OUT_DIR}" 2>/dev/null || cp -a "$relpath" "${MODEL_REFERENCES_OUT_DIR}/$relpath"
+          done < "${PY_MATCHES_FILE}"
+        - |
+          cat "${PKL_MATCHES_FILE}" "${JSON_MATCHES_FILE}" "${INPUT_MATCHES_FILE}" "${PY_MATCHES_FILE}" | sort -u > "${MODEL_REFERENCES_OUT_DIR}/models/_collected-files.txt"
           echo "Collected ${GPU_PKL_COUNT} GPU reference PKL files."
           echo "Collected ${JSON_CONFIG_COUNT} JSON model configs."
+          echo "Collected ${INPUT_DECK_COUNT} model input decks (*.in / *.grdecl)."
+          echo "Collected ${PY_FILE_COUNT} model source files (*.py)."
           test "${GPU_PKL_COUNT}" -gt 0
           test "${JSON_CONFIG_COUNT}" -gt 0
     rules:
