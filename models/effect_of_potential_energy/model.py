@@ -40,8 +40,8 @@ class Model(CICDModel):
                             runtime=50, # This runtime will be used when CI test is conducted without the main file
                             )
         super().set_solver()  # platform default linear solver spec
-        self.linear_solver.tolerance = 1e-5
-        self.linear_solver.max_iterations = 50
+        self.linear_solver.spec.tolerance = 1e-5
+        self.linear_solver.spec.max_iterations = 50
 
         return
 

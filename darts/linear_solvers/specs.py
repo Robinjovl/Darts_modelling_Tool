@@ -49,8 +49,8 @@ class LinearSolverSpec:
         def set_solver(self):
             self.set_sim_params(first_ts=..., tol_newton=1e-3)  # time-stepping / Newton
             super().set_solver()                                # platform default spec
-            self.linear_solver.tolerance = 1e-6                        # linear knobs
-            self.linear_solver.max_iterations = 40
+            self.linear_solver.spec.tolerance = 1e-6                        # linear knobs
+            self.linear_solver.spec.max_iterations = 40
 
     ``print_level`` is the generic verbosity knob; some engine-resident solvers also
     expose a solver-specific one (e.g. :attr:`MGRSolverSpec.log_level`).
@@ -78,6 +78,19 @@ class LinearSolverSpec:
         config.tolerance = self.tolerance
         config.max_iterations = self.max_iterations
         return config
+
+    def to_dict(self) -> dict:
+        """Serialize this spec (and nested sub-specs) to a plain dict for input
+        tracing, mirroring ``NonlinearSolverSpec.to_dict`` of
+        :mod:`darts.nonlinear_solvers`. Delegates to ``model_dump()`` if the spec
+        is later migrated to a Pydantic model.
+        """
+        dump = getattr(self, "model_dump", None)
+        if callable(dump):  # Pydantic-forward-compatible
+            return dump()
+        from dataclasses import asdict
+
+        return asdict(self)
 
     def build(self, block_size: int):
         """Create the configured C++ linear solver for the given block size.
@@ -903,7 +916,7 @@ class GPUCuSolverSpec(GPUSolverSpec):
     linear_type_name: ClassVar[str] = "gpu_cusolver"
 
 
-def default_linear_solver(platform: str = "cpu") -> LinearSolverSpec:
+def default_linear_solver_spec(platform: str = "cpu") -> LinearSolverSpec:
     """Return the default linear-solver spec for a platform.
 
     Single source of truth for the default solver. The CPU default is

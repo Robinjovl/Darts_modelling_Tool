@@ -133,7 +133,7 @@ class Model(CICDModel):
         else:
             self.linear_solver = SuperLUSolverSpec()
         super().set_solver()  # platform default when no spec was picked above
-        self.linear_solver.tolerance = 1e-5
+        self.linear_solver.spec.tolerance = 1e-5
 
     def print_range(self, time, part='cells'):
         depth = np.array(self.reservoir.mesh.depth, copy=True)

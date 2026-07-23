@@ -1,16 +1,31 @@
 """open-DARTS linear solvers.
 
-This package exposes:
+This package is the single source of input parameters for the linear solve and
+the home of the Python-side linear solver classes, mirroring the design of
+:mod:`darts.nonlinear_solvers` (!327):
 
+* the runtime :class:`~darts.linear_solvers.solver.LinearSolver` -- the instance
+  a model assigns to (and ``DartsModel.linear_solver`` always holds); constructed
+  detached, bound to the model during ``reset()``/``init()``, where its backend
+  (``handle`` / ``python_solver``) is materialized;
+* the declarative :mod:`~darts.linear_solvers.specs` configuration classes
+  (:class:`~darts.linear_solvers.specs.MGRSolverSpec`, ``SuperLUSolverSpec``, ...),
+  retrievable as ``linear_solver.spec`` (serializable via ``spec.to_dict()``);
 * the compiled ``linear_solvers`` extension -- the solver registry, the MGR API and
   the C++ configuration objects (flattened into the ``darts.linear_solvers``
   namespace so ``from darts import linear_solvers; linear_solvers.create_linear_solver(...)``
   works);
-* the Python :mod:`~darts.linear_solvers.specs` configuration classes
-  (:class:`~darts.linear_solvers.specs.MGRSolverSpec`, ``SuperLUSolverSpec``, ...);
 * the HYPRE :mod:`~darts.linear_solvers.enums` integer-code enumerations.
 
-Typical use::
+Model use (in ``set_solver()``, the shared hook of the linear and nonlinear solver)::
+
+    def set_solver(self):
+        self.linear_solver = MGRSolverSpec(tolerance=1e-4, kdim=50)  # auto-wrapped
+        # or tune the platform default (mirror of the nonlinear form):
+        super().set_solver()
+        self.linear_solver.spec.tolerance = 1e-6
+
+Standalone use (outside a model)::
 
     from darts.linear_solvers import MGRSolverSpec
     spec = MGRSolverSpec(tolerance=1e-4, kdim=50)
@@ -57,6 +72,17 @@ from .python_solvers import (  # noqa: F401
     PETScSolver,
     PythonLinearSolver,
 )
+
+# The runtime LinearSolver wrapper (the instance DartsModel.linear_solver holds,
+# mirror of darts.nonlinear_solvers.NonlinearSolver). Imported after the compiled
+# star-import above, so it deliberately shadows the compiled raw-handle class of
+# the same name in this package namespace; the raw pybind class stays reachable
+# as darts.linear_solvers.linear_solvers.LinearSolver (alias
+# LinearSolverInterface) and as the type of LinearSolver.handle.
+from .solver import (  # noqa: F401,E402
+    LinearSolver,
+    default_linear_solver,
+)
 from .specs import (  # noqa: F401
     AMGXCPRSolverSpec,
     BCSRCPRSpec,
@@ -79,5 +105,5 @@ from .specs import (  # noqa: F401
     PythonLinearSolverSpec,
     SchurEliminationSpec,
     SuperLUSolverSpec,
-    default_linear_solver,
+    default_linear_solver_spec,
 )

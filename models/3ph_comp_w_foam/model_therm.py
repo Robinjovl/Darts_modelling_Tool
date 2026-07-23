@@ -33,8 +33,8 @@ class Model_therm(CICDModel):
     def set_solver(self):
         # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
         super().set_solver()  # platform default linear solver spec
-        self.linear_solver.tolerance = 1e-3
-        self.linear_solver.max_iterations = 50
+        self.linear_solver.spec.tolerance = 1e-3
+        self.linear_solver.spec.max_iterations = 50
 
     def set_reservoir(self):
         nx = 1000

@@ -30,8 +30,8 @@ class Model(CICDModel):
         self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=2, runtime=2000,
                             tol_newton=1e-3, it_newton=10)
         super().set_solver()  # platform default linear solver spec
-        self.linear_solver.tolerance = 1e-3
-        self.linear_solver.max_iterations = 50
+        self.linear_solver.spec.tolerance = 1e-3
+        self.linear_solver.spec.max_iterations = 50
 
     def set_reservoir(self):
         """Reservoir"""

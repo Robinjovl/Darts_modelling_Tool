@@ -85,8 +85,8 @@ class Model(DartsModel):
                             # newton_params=value_vector([0.2]),  # Probably chop-criteria(?)
                             )
         super().set_solver()  # platform default linear solver spec
-        self.linear_solver.tolerance = 1e-6
-        self.linear_solver.max_iterations = 50
+        self.linear_solver.spec.tolerance = 1e-6
+        self.linear_solver.spec.max_iterations = 50
         # self.params.nonlinear_norm_type = self.params.L1
         # self.params.linear_type = self.params.cpu_superlu
 

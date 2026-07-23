@@ -35,7 +35,7 @@ class Model(CICDModel):
     def set_solver(self):
         # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
         super().set_solver()  # platform default linear solver spec
-        self.linear_solver.tolerance = 1e-6
+        self.linear_solver.spec.tolerance = 1e-6
 
     def set_initial_conditions(self):
         input_distribution = {self.physics.vars[0]: 89.22660,
