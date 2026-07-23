@@ -689,7 +689,7 @@ class DartsModel:
 
         For one deprecation cycle the removed nonlinear keyword arguments
         (``tol_newton``, ``it_newton``, ``newton_type``, ``newton_params``,
-        ``line_search``, ``coupled_well_res_norm_method``) are still accepted:
+        ``coupled_well_res_norm_method``) are still accepted:
         they emit a :class:`DeprecationWarning` and are mapped onto
         ``self.nonlinear_solver.spec``. Any other unexpected keyword still raises
         :class:`TypeError`.
@@ -756,9 +756,6 @@ class DartsModel:
         if "it_newton" in legacy:
             spec.max_iterations = legacy.pop("it_newton")
             handled.append("it_newton -> nonlinear_solver.spec.max_iterations")
-        if "line_search" in legacy:
-            spec.line_search.enabled = bool(legacy.pop("line_search"))
-            handled.append("line_search -> nonlinear_solver.spec.line_search.enabled")
         if "coupled_well_res_norm_method" in legacy:
             spec.coupled_well_res_norm_method = legacy.pop(
                 "coupled_well_res_norm_method"
@@ -1179,24 +1176,6 @@ class DartsModel:
                     raise TypeError(
                         f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!"
                     )
-
-    def line_search(
-        self,
-        dt: float,
-        t: float,
-        coef,
-        history,
-        verbose: int | None = None,
-        iter_counter: int = None,
-    ):
-        """
-        Perform a line search to find the optimal coefficient that minimizes residuals.
-
-        Delegates to the runtime nonlinear solver (see :mod:`darts.nonlinear_solvers`).
-        """
-        return self.nonlinear_solver.line_search(
-            dt, t, coef, history, verbose, iter_counter
-        )
 
     def do_after_step(self):
         """

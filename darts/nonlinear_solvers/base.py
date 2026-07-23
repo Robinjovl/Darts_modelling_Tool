@@ -3,11 +3,9 @@
 This module holds everything that is common to all nonlinear solution methods:
 
 - the residual :class:`Norm` enum,
-- the composable sub-specs (:class:`ChopSpec`, :class:`LineSearchSpec`,
-  :class:`OBLBoundsSpec`, :class:`InexactNewtonSpec`),
+- the composable sub-specs (:class:`ChopSpec`, :class:`OBLBoundsSpec`),
 - the divergence-fallback spec (:class:`FallbackSpec`),
-- the base solver spec :class:`NonlinearSolverSpec` (and the not-yet-implemented
-  :class:`PicardSpec`),
+- the base solver spec :class:`NonlinearSolverSpec`,
 - the runtime base classes :class:`NonlinearStatus`, :class:`SolverStats` and
   :class:`NonlinearSolver`, which stage every nonlinear iteration into
   ``pre_iteration`` / ``update`` / ``post_iteration`` and drive the
@@ -70,20 +68,6 @@ class ChopSpec:
 
 
 @dataclass
-class LineSearchSpec:
-    """Backtracking line search on the nonlinear update."""
-
-    enabled: bool = False
-    min_update: float = 1e-4
-
-    def __post_init__(self):
-        if not (0 < self.min_update < 1):
-            raise ValueError(
-                f"LineSearchSpec.min_update must lie in (0, 1), got {self.min_update}"
-            )
-
-
-@dataclass
 class OBLBoundsSpec:
     """Restraining of the nonlinear trajectory within predefined bounds.
 
@@ -119,21 +103,6 @@ class OBLBoundsSpec:
                     raise ValueError(
                         f"OBLBoundsSpec axis {j}: axis_min ({lo}) > axis_max ({hi})"
                     )
-
-
-@dataclass
-class InexactNewtonSpec:
-    """Placeholder: inexact Newton via a forcing sequence on the linear tolerance.
-
-    The forcing term is applied purely on the Python side by adapting the
-    linear solver tolerance per nonlinear iteration.
-
-    :ivar forcing: ``'constant'`` or the Eisenstat-Walker choices ``'EW1'``/``'EW2'``.
-    """
-
-    forcing: str = "constant"
-    eta0: float = 1e-1
-    eta_max: float = 1e-1
 
 
 # ------------------------------------------------------------------ solver specs
@@ -180,7 +149,7 @@ class NonlinearSolverSpec:
         solve diverges, before the timestep is cut.
     """
 
-    tolerance: float = 1e-2
+    tolerance: float = 1e-3
     well_tolerance_multiplier: float = 100.0
     max_iterations: int = 20
     stationary_point_tolerance: float = 1e-3
@@ -251,14 +220,6 @@ class NonlinearSolverSpec:
         from dataclasses import asdict
 
         return asdict(self)
-
-
-@dataclass
-class PicardSpec(NonlinearSolverSpec):
-    """Placeholder: Picard (fixed-point) iterations."""
-
-    def make_solver(self, model):
-        raise NotImplementedError("Picard iterations are not implemented yet")
 
 
 # ------------------------------------------------------------------ runtime status

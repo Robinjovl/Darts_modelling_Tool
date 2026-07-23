@@ -23,7 +23,6 @@ pytest.importorskip("darts.engines")
 from darts.nonlinear_solvers import (  # noqa: E402
     ChopSpec,
     FallbackSpec,
-    LineSearchSpec,
     NewtonSolver,
     NewtonSpec,
     Norm,
@@ -103,37 +102,6 @@ def test_linear_failure_aborts_and_marks_wasted(make_newton, rc, reason):
     assert engine.n_apply_update == 0  # never applied a stale update
     assert reason in solver._failure_message(1.0)
     assert solver.stats.n_timesteps_wasted == 1
-
-
-# ------------------------------------------------------- F6 line search fixes
-def test_line_search_returns_real_well_residual(make_newton):
-    """The accepted well residual must be tracked, not hardcoded to 0.0."""
-    solver, model, engine, _ = make_newton(
-        spec=NewtonSpec(line_search=LineSearchSpec(enabled=True)),
-        res_seq=[1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4],
-        well_seq=[7.0] * 20,
-    )
-    hist = np.array([[1.0, 7.0], [0.95, 7.0]])
-    res_mat, res_well, coef = solver.line_search(1.0, 0.0, np.array([0.0, 1.0]), hist)
-    assert res_well == pytest.approx(7.0)  # real well residual, not 0.0
-
-
-def test_line_search_fires_hooks_and_refreshes_status(make_newton):
-    fired = {"pre": 0, "post": 0}
-    spec = NewtonSpec(line_search=LineSearchSpec(enabled=True))
-    spec.pre_routines = [lambda s, dt, t, i: fired.__setitem__("pre", fired["pre"] + 1)]
-    spec.post_routines = [
-        lambda s, dt, t, i: fired.__setitem__("post", fired["post"] + 1)
-    ]
-    # i=0 update; i=1 residual barely drops (>0.9*prev) -> line search triggers
-    solver, model, engine, _ = make_newton(
-        spec=spec,
-        res_seq=[1.0, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95],
-        well_seq=[3.0] * 30,
-    )
-    solver.run_timestep(1.0, 0.0)
-    # pre/post fired on the plain i=0 update AND the i=1 line-search iteration
-    assert fired["pre"] >= 2 and fired["post"] >= 2
 
 
 # -------------------------------------------------------------- F2 OBL modes
@@ -223,9 +191,9 @@ def test_spec_validation_errors():
     with pytest.raises(TypeError):
         NewtonSpec(norm="L2")  # must be a Norm, not a str
     with pytest.raises(ValueError):
-        LineSearchSpec(min_update=1.5)
-    with pytest.raises(ValueError):
         OBLBoundsSpec(mode="obl_axes", axis_min=[1.0, 5.0], axis_max=[2.0, 3.0])
+    with pytest.raises(ValueError):
+        OBLBoundsSpec(mode="bogus")
 
 
 def test_validate_catches_post_construction_mutation():
@@ -277,7 +245,6 @@ def test_set_sim_params_legacy_kwargs_map_and_warn():
                 "it_newton": 7,
                 "newton_type": 1,  # legacy int -> 'global'
                 "newton_params": [0.25],
-                "line_search": True,
                 "coupled_well_res_norm_method": 2,
             },
         )
@@ -286,7 +253,6 @@ def test_set_sim_params_legacy_kwargs_map_and_warn():
     assert s.max_iterations == 7
     assert s.chop.mode == "global"
     assert s.chop.factor == 0.25
-    assert s.line_search.enabled is True
     assert s.coupled_well_res_norm_method == 2
     # a genuine typo still fails loudly
     with pytest.raises(TypeError):
@@ -295,9 +261,10 @@ def test_set_sim_params_legacy_kwargs_map_and_warn():
 
 # --------------------------------------------- MechanicsNewtonSolver (F4 Tier2)
 def test_mechanics_per_component_convergence(make_mechanics):
-    # tol=1e-2 (default); dev components below tol -> converge; well 0 < 1e2*tol
+    # default tol=1e-3; i=0 not converged (does an update), i=1 all components
+    # below tol and well 0 < well_mult*tol -> converge
     solver, model, engine, _ = make_mechanics(
-        dev_seq=[(1e-3, 1e-3), (1e-9, 1e-9)], well_seq=[0.0, 0.0]
+        dev_seq=[(1.0, 1.0), (1e-9, 1e-9)], well_seq=[0.0, 0.0]
     )
     converged = solver.run_timestep(1.0, 0.0)
     assert converged  # post_newtonloop passes the verdict through

@@ -850,59 +850,32 @@ class Model(DartsModel):
                 if i > 0:  # min_i_newton
                     break
 
-            # line search
-            if (
-                self.nonlinear_solver.spec.line_search.enabled
-                and i > 0
-                and residual_history[-1][0] > 0.9 * residual_history[-2][0]
-            ):
-                coef = np.array([0.0, 1.0])
-                history = np.array([residual_history[-2], residual_history[-1]])
-                residual_history[-1] = self.line_search(
-                    dt, t, coef, history, verbose, iter_counter=i
-                )
-                max_residual[i] = residual_history[-1][0]
-
-                # check stationary point after line search
-                counter = 0
-                for j in range(i):
-                    denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
-                    if (
-                        abs(max_residual[i] - max_residual[j]) / denom
-                        < self.nonlinear_solver.spec.stationary_point_tolerance
-                    ):
-                        counter += 1
-                if counter > 2:
-                    if verbose:
-                        print("Stationary point detected!")
-                    break
-            else:
-                if isinstance(self.data_ts.linear_type, linear_solver_types):
-                    # solvers via Python interface
-                    if self.data_ts.linear_type in [
-                        linear_solver_types.CPU_PETSC_CPR,
-                        linear_solver_types.CPU_PETSC_FS,
-                    ]:
-                        self.petsc_solve_linear_equation()
-                    elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                        self.pardiso_solve_linear_equation()
-                    else:
-                        raise Exception(
-                            "Unknown linear solver type", self.data_ts.linear_type
-                        )
+            if isinstance(self.data_ts.linear_type, linear_solver_types):
+                # solvers via Python interface
+                if self.data_ts.linear_type in [
+                    linear_solver_types.CPU_PETSC_CPR,
+                    linear_solver_types.CPU_PETSC_FS,
+                ]:
+                    self.petsc_solve_linear_equation()
+                elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
+                    self.pardiso_solve_linear_equation()
                 else:
-                    # compile-time C++ linear solvers
-                    r_code = self.physics.engine.solve_linear_equation()
-                    status.linear_solver_rc = r_code
-                    if r_code != 0:
-                        # failed linear solve: do NOT apply a stale update; the
-                        # post-loop verdict reads status.linear_solver_rc -> fail
-                        self._linear_solver_rc_last = r_code
-                        break
-                    status.n_linear += self.physics.engine.get_last_linear_iters()
-                self.timer.node["newton update"].start()
-                self.physics.engine.apply_newton_update(dt)
-                self.timer.node["newton update"].stop()
+                    raise Exception(
+                        "Unknown linear solver type", self.data_ts.linear_type
+                    )
+            else:
+                # compile-time C++ linear solvers
+                r_code = self.physics.engine.solve_linear_equation()
+                status.linear_solver_rc = r_code
+                if r_code != 0:
+                    # failed linear solve: do NOT apply a stale update; the
+                    # post-loop verdict reads status.linear_solver_rc -> fail
+                    self._linear_solver_rc_last = r_code
+                    break
+                status.n_linear += self.physics.engine.get_last_linear_iters()
+            self.timer.node["newton update"].start()
+            self.physics.engine.apply_newton_update(dt)
+            self.timer.node["newton update"].stop()
 
         # End of newton loop: convergence verdict previously made by the C++
         # post_newtonloop (linear solver rc + residual re-check), now in Python.

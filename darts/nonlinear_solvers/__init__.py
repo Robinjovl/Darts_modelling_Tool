@@ -56,14 +56,11 @@ flow and convergence decisions live here.
 from darts.nonlinear_solvers.base import (
     ChopSpec,
     FallbackSpec,
-    InexactNewtonSpec,
-    LineSearchSpec,
     NonlinearSolver,
     NonlinearSolverSpec,
     NonlinearStatus,
     Norm,
     OBLBoundsSpec,
-    PicardSpec,
     SolverStats,
     write_to_log,
 )
@@ -71,8 +68,6 @@ from darts.nonlinear_solvers.mechanics import MechanicsNewtonSolver
 from darts.nonlinear_solvers.newton import (
     NewtonSolver,
     NewtonSpec,
-    QuasiNewtonSpec,
-    TrustRegionNewtonSpec,
     default_nonlinear_solver,
     default_nonlinear_spec,
 )
@@ -82,16 +77,11 @@ __all__ = [
     "Norm",
     # sub-specs
     "ChopSpec",
-    "LineSearchSpec",
     "OBLBoundsSpec",
-    "InexactNewtonSpec",
     "FallbackSpec",
     # solver specs
     "NonlinearSolverSpec",
     "NewtonSpec",
-    "QuasiNewtonSpec",
-    "TrustRegionNewtonSpec",
-    "PicardSpec",
     "default_nonlinear_solver",
     "default_nonlinear_spec",
     # runtime

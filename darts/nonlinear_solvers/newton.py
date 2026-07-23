@@ -1,9 +1,7 @@
-"""Newton-Raphson nonlinear solver: specs and runtime driver.
+"""Newton-Raphson nonlinear solver: spec and runtime driver.
 
-Holds the Newton family of specifications (:class:`NewtonSpec` and the
-not-yet-implemented :class:`QuasiNewtonSpec` / :class:`TrustRegionNewtonSpec`)
-and the :class:`NewtonSolver` that drives the C++ per-iteration kernels
-(assembly, linear solve, dX corrections, residual norms).
+Holds :class:`NewtonSpec` and the :class:`NewtonSolver` that drives the C++
+per-iteration kernels (assembly, linear solve, dX corrections, residual norms).
 """
 
 from dataclasses import dataclass, field
@@ -12,8 +10,6 @@ import numpy as np
 
 from darts.nonlinear_solvers.base import (
     ChopSpec,
-    InexactNewtonSpec,
-    LineSearchSpec,
     NonlinearSolver,
     NonlinearSolverSpec,
     OBLBoundsSpec,
@@ -42,15 +38,11 @@ class NewtonSpec(NonlinearSolverSpec):
     """Newton-Raphson solver with the full analytic (OBL-derivative) Jacobian.
 
     :ivar chop: chopping strategy of the nonlinear update (:class:`ChopSpec`).
-    :ivar line_search: backtracking line search (:class:`LineSearchSpec`).
     :ivar obl_bounds: restraining of the Newton trajectory (:class:`OBLBoundsSpec`).
-    :ivar inexact: optional inexact-Newton forcing sequence (not implemented yet).
     """
 
     chop: ChopSpec = field(default_factory=ChopSpec)
-    line_search: LineSearchSpec = field(default_factory=LineSearchSpec)
     obl_bounds: OBLBoundsSpec = field(default_factory=OBLBoundsSpec)
-    inexact: InexactNewtonSpec | None = None
 
     def validate(self):
         """Validate the base convergence fields and re-validate the sub-specs so
@@ -59,14 +51,9 @@ class NewtonSpec(NonlinearSolverSpec):
         super().validate()
         # sub-spec __post_init__ bodies are pure validators (raise-or-pass)
         self.chop.__post_init__()
-        self.line_search.__post_init__()
         self.obl_bounds.__post_init__()
 
     def make_solver(self, model=None) -> "NewtonSolver":
-        if self.inexact is not None:
-            raise NotImplementedError(
-                "Inexact Newton (forcing sequences) is not implemented yet"
-            )
         if self.obl_bounds.mode == "physical":
             raise NotImplementedError(
                 "Physical per-axis Newton bounds are not implemented yet"
@@ -84,28 +71,6 @@ class NewtonSpec(NonlinearSolverSpec):
         )
         engine.newton_chop_factor = self.chop.factor
         engine.log_transform = 1 if self.chop.log_transform else 0
-
-
-@dataclass
-class QuasiNewtonSpec(NewtonSpec):
-    """Placeholder: quasi-Newton (lagged/frozen Jacobian) variant.
-
-    :ivar jacobian_lag: number of iterations the Jacobian is reused for
-        (1 = full Newton).
-    """
-
-    jacobian_lag: int = 1
-
-    def make_solver(self, model):
-        raise NotImplementedError("Quasi-Newton is not implemented yet")
-
-
-@dataclass
-class TrustRegionNewtonSpec(NewtonSpec):
-    """Placeholder: trust-region Newton tracking inflection points of the flux operators."""
-
-    def make_solver(self, model):
-        raise NotImplementedError("Trust-region Newton is not implemented yet")
 
 
 def default_nonlinear_spec() -> NewtonSpec:
@@ -291,51 +256,16 @@ class NewtonSolver(NonlinearSolver):
                 if i > 0:
                     break
 
-            # line search
-            if (
-                spec.line_search.enabled
-                and i > 0
-                and residual_history[-1][0] > 0.9 * residual_history[-2][0]
-            ):
-                # a line-search iteration is a full nonlinear iteration: fire the
-                # once-per-iteration hooks just like the plain-update branch
-                self.pre_iteration(dt, t, i)
-                coef = np.array([0.0, 1.0])
-                history = np.array([residual_history[-2], residual_history[-1]])
-                residual_history[-1] = self.line_search(
-                    dt, t, coef, history, verbose, iter_counter=i
-                )
-                max_residual[i] = residual_history[-1][0]
-                # publish the accepted residuals so converged()/print/failure see
-                # the post-line-search state (not the stale pre-line-search one)
-                status.newton_residual = residual_history[-1][0]
-                status.well_residual = residual_history[-1][1]
-                self.post_iteration(dt, t, i)
-
-                # check stationary point after line search
-                counter = 0
-                for j in range(i):
-                    denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
-                    if (
-                        abs(max_residual[i] - max_residual[j]) / denom
-                        < spec.stationary_point_tolerance
-                    ):
-                        counter += 1
-                if counter > 2:
-                    if verbose:
-                        print("Stationary point detected!")
-                    break
-            else:
-                rc = self._solve_linear()
-                if rc != 0:
-                    # Abort the Newton loop on a failed linear solve without
-                    # burning the full max_newt budget on stale dX updates.
-                    status.linear_solver_rc = rc
-                    model._linear_solver_rc_last = rc
-                    break
-                self.pre_iteration(dt, t, i)
-                self.update(dt)
-                self.post_iteration(dt, t, i)
+            rc = self._solve_linear()
+            if rc != 0:
+                # Abort the Newton loop on a failed linear solve without
+                # burning the full max_newt budget on stale dX updates.
+                status.linear_solver_rc = rc
+                model._linear_solver_rc_last = rc
+                break
+            self.pre_iteration(dt, t, i)
+            self.update(dt)
+            self.post_iteration(dt, t, i)
 
         # End of newton loop: the convergence decision is made here and the
         # engine only commits (converged) or rolls back (failed) its state.
@@ -360,135 +290,3 @@ class NewtonSolver(NonlinearSolver):
 
         self.timer.node["simulation"].stop()
         return converged
-
-    def line_search(
-        self,
-        dt: float,
-        t: float,
-        coef: np.ndarray,
-        history: list | np.ndarray,
-        verbose: int | None = None,
-        iter_counter: int = None,
-    ):
-        """
-        Perform a line search to find the optimal coefficient that minimizes residuals.
-
-        :param dt: Time step for the update process.
-        :param t: Current time.
-        :param coef: Array of current coefficients used in the line search.
-        :param history: Historical residuals, where each entry contains residuals for 'r_mat' and 'r_well'.
-        :param verbose: Verbosity level; ``None`` inherits ``model.verbose``.
-        :param iter_counter: Newton-Raphson iteration counter for the current time step. Used by DFM well velocity updates.
-
-        :return: Tuple ``(reservoir_residual, well_residual, coefficient)`` at the
-                 accepted (minimum-reservoir-residual) trial.
-        :rtype: tuple(float, float, float)
-        """
-        model = self.model
-        engine = self.engine
-        verbose = model.verbose if verbose is None else verbose
-        newton_iter_counter = (
-            self.status.n_newton if iter_counter is None else iter_counter
-        )
-
-        if verbose:
-            print(
-                "LS: "
-                + str(coef[0])
-                + "\t"
-                + "r_mat = "
-                + str(history[0][0])
-                + "\tr_well = "
-                + str(history[0][1])
-            )
-            print(
-                "LS: "
-                + str(coef[1])
-                + "\t"
-                + "r_mat = "
-                + str(history[1][0])
-                + "\tr_well = "
-                + str(history[1][1])
-            )
-        res_history = np.array([history[0][0], history[1][0]])
-        well_res_history = np.array([history[0][1], history[1][1]])
-
-        for _iter in range(5):
-            if coef.size > 2:
-                idx_min = res_history.argmin()
-                closest_left = np.where(coef < coef[idx_min])[0]
-                closest_right = np.where(coef > coef[idx_min])[0]
-                if closest_left.size and closest_right.size:
-                    left = closest_left[coef[closest_left].argmax()]
-                    right = closest_right[coef[closest_right].argmin()]
-                    if res_history[left] < res_history[idx_min]:
-                        coef = np.append(coef, (coef[idx_min] + coef[left]) / 2)
-                    elif res_history[right] < res_history[idx_min]:
-                        coef = np.append(coef, (coef[idx_min] + coef[right]) / 2)
-                    else:
-                        if res_history[left] < res_history[right]:
-                            coef = np.append(
-                                coef, coef[idx_min] - (coef[idx_min] - coef[left]) / 4
-                            )
-                        else:
-                            coef = np.append(
-                                coef, coef[idx_min] + (coef[right] - coef[idx_min]) / 4
-                            )
-                elif closest_left.size:
-                    left = closest_left[coef[closest_left].argmax()]
-                    if res_history[left] < res_history[idx_min]:
-                        coef = np.append(coef, (coef[idx_min] + coef[left]) / 2)
-                    else:
-                        coef = np.append(
-                            coef, coef[idx_min] + (coef[idx_min] - coef[left]) / 2
-                        )
-                elif closest_right.size:
-                    right = closest_right[coef[closest_right].argmin()]
-                    if res_history[right] < res_history[idx_min]:
-                        coef = np.append(coef, (coef[idx_min] + coef[right]) / 2)
-                    else:
-                        coef = np.append(
-                            coef, coef[idx_min] - (coef[right] - coef[idx_min]) / 2
-                        )
-                if coef[-1] <= 0:
-                    coef[-1] = self.spec.line_search.min_update
-                if coef[-1] >= 1:
-                    coef[-1] = 1.0 - self.spec.line_search.min_update
-            else:
-                coef = np.append(coef, coef[-1] / 2)
-
-            engine.newton_update_coefficient = coef[-1] - coef[-2]
-            self.update(dt)
-            if model.has_dfm_well:
-                model.update_dfm_well_vels_and_ders(dt, t, newton_iter_counter)
-            engine.assemble_linear_system(dt)
-            model.apply_rhs_flux(dt, t)
-            if model.has_dfm_well:
-                model.apply_dfm_well_lateral_heat_flux(dt, t)
-            if model.platform == "gpu":
-                from darts.engines import copy_data_to_device
-
-                copy_data_to_device(engine.RHS, engine.get_RHS_d())
-            res = self.compute_residuals()  # (reservoir, well); overridable hooks
-            res_history = np.append(res_history, res[0])
-            well_res_history = np.append(well_res_history, res[1])
-            if verbose:
-                print(
-                    "LS: "
-                    + str(coef[-1])
-                    + "\t"
-                    + "r_mat = "
-                    + str(res[0])
-                    + "\tr_well = "
-                    + str(res[1])
-                )
-
-        final_id = res_history.argmin()
-        engine.newton_update_coefficient = coef[final_id] - coef[-1]
-        self.update(dt)
-        if model.has_dfm_well:
-            # The accepted line-search coefficient can differ from the last tested coefficient.
-            # Recompute DFM velocities and derivatives so stored well data matches the accepted state.
-            model.update_dfm_well_vels_and_ders(dt, t, newton_iter_counter)
-
-        return res_history[final_id], well_res_history[final_id], coef[final_id]
