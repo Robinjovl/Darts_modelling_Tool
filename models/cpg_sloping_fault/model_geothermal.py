@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from darts.engines import value_vector, sim_params, well_control_iface
+from darts.engines import value_vector, well_control_iface
 
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.base.property_container import PropertyContainer
@@ -19,12 +19,14 @@ class ModelGeothermal(Model_CPG):
     def __init__(self, iapws_physics: bool = True):
         self.iapws_physics = iapws_physics
         super().__init__()
+
+    def set_solver(self):
+        super().set_solver()
         # The OBL grid is unbounded (no axes_max) in this branch, so a producer
         # well-control switch can push the well-block enthalpy outside the IAPWS-valid
         # range in a single Newton step -> singular CPR system -> NaN runaway -> crash.
         # Enable the global Newton chop (caps the per-step relative change of all
         # variables) to damp that transient.
-        self.set_solver()
         self.nonlinear_solver.spec.chop.mode = 'global'
         self.nonlinear_solver.spec.chop.factor = 0.2
 

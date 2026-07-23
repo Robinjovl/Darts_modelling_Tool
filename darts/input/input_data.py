@@ -465,6 +465,10 @@ class Simulation:
 
     def __init__(self):
         self.time_steps = None
+        # Nonlinear (Newton) convergence tolerance. ``None`` keeps the
+        # nonlinear-solver spec default; a model's ``set_solver()`` reads this
+        # and applies it to ``self.nonlinear_solver.spec.tolerance``.
+        self.newton_tolerance = None
 
 
 class OtherProps:
