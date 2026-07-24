@@ -363,7 +363,7 @@ class OutputPropertyOperatorsFactory:
         self.dz = dz
 
     def __call__(self):
-        from darts.physics.base.operators_base import PropertyOperators
+        from darts.physics.base.operator_evaluator import PropertyOperators
 
         model = self.model_cls(*self.init_args, **self.init_kwargs)
         model.physics.set_operators()

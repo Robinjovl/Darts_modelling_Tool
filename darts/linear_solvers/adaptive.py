@@ -21,7 +21,7 @@ class SolverSwitchContext:
 
     :ivar current_index: index of the candidate currently in use.
     :ivar timestep_converged: whether the just-finished timestep converged.
-    :ivar linear_solver_error: ``engine.linear_solver_error_last_dt``
+    :ivar linear_solver_error: ``NonlinearSolver.status.linear_solver_rc``
         (0 = ok, 1 = setup failed, 2 = solve failed).
     :ivar linear_iterations: linear iterations in the last timestep.
     :ivar newton_iterations: Newton iterations in the last timestep.

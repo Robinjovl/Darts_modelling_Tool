@@ -23,6 +23,7 @@ from darts.physics.properties.kinetics import (
 from darts.physics.properties.phreeqc import Flash as PhreeqcFlash, PhreeqcFlashError
 from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
 from darts.physics.properties.flash_exceptions import FlashError
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec, Norm
 
 from iapws._iapws import _Viscosity
 from conversions import convert_composition, correct_composition, calculate_injection_stream, \
@@ -176,10 +177,13 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, it_newton=15)
-        self.params.newton_type = sim_params.newton_local_chop
+        self.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
+            chop=ChopSpec(mode='local', factor=0.2))
+        self.nonlinear_solver.spec.chop.mode = 'local'
         # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
-        self.params.newton_params[0] = 0.2
+        self.nonlinear_solver.spec.chop.factor = 0.2
         # GPU -> AMGX-CPR; CPU -> FGMRES + CPR/AMG
         tolerance = 1e-6
         max_iterations = 500
@@ -743,7 +747,7 @@ class Model(CICDModel):
             # Mirror the base method's per-step history bookkeeping for the failed step.
             try:
                 self.time.append(t)
-                self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
+                self.n_newton_iters.append(self.nonlinear_solver.status.n_newton)
                 self.time_step_size.append(dt)
             except Exception:
                 pass
@@ -870,6 +874,7 @@ class Model(CICDModel):
             xn = np.array(self.physics.engine.Xn, copy=True)[:nb * nc]  # need to copy since Xn will be updated Xn = X
             overhead.stop()
             converged = self.run_timestep(dt, t, verbose)
+            status = self.nonlinear_solver.status
 
             overhead.start()
             if converged:
@@ -888,7 +893,7 @@ class Model(CICDModel):
                 if verbose:
                     max_dx_str = '[' + ', '.join(f'{v:.1e}' for v in max_dx) + ']'
                     print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tdX=%s"
-                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt,
+                          % (ts, t, dt, status.n_newton, status.n_linear,
                              dt_mult_new, max_dx_str))
 
                 if dt_truncated:
@@ -896,12 +901,12 @@ class Model(CICDModel):
                     # dt_max is sustainable, so leave the streak untouched (neither
                     # increment nor reset).
                     pass
-                elif fabs(dt - data_ts.dt_max) < 1.e-10 and self.physics.engine.n_newton_last_dt < self.ni_dt_increase_cutoff:
+                elif fabs(dt - data_ts.dt_max) < 1.e-10 and status.n_newton < self.ni_dt_increase_cutoff:
                     self._n_good_steps += 1
                 else:
                     self._n_good_steps = 0
 
-                if self.physics.engine.n_newton_last_dt > self.ni_dt_decrease_cutoff:
+                if status.n_newton > self.ni_dt_decrease_cutoff:
                     data_ts.dt_max /= 2 * data_ts.dt_mult
                     self._n_good_steps = 0
 
@@ -991,10 +996,11 @@ class Model(CICDModel):
             self.timer.node["cache I/O"].stop()
 
         if verbose:
+            stats = self.nonlinear_solver.stats
             print(
-                f"----- TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), "
-                f"NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), "
-                f"LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d}) -----"
+                f"----- TS = {stats.n_timesteps_total:d}({stats.n_timesteps_wasted:d}), "
+                f"NI = {stats.n_newton_total:d}({stats.n_newton_wasted:d}), "
+                f"LI = {stats.n_linear_total:d}({stats.n_linear_wasted:d}) -----"
             )
 
         # At higher verbosity, print the timer breakdown at the end of every run()

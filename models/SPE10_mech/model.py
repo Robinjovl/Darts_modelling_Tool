@@ -7,7 +7,7 @@ from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 import os
 
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -80,12 +80,12 @@ class Model(THMCModel):
             proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
         )
 
-        self.params.first_ts = 0.0001
-        self.params.mult_ts = 2
-        self.params.max_ts = 5
-        self.params.tolerance_newton = 1e-6
+        self.data_ts.dt_first = 0.0001
+        self.data_ts.dt_mult = 2
+        self.data_ts.dt_max = 5
+        self.nonlinear_solver.spec.tolerance = 1e-6
         self.params.tolerance_linear = 1e-8
-        self.params.max_i_newton = 20
+        self.nonlinear_solver.spec.max_iterations = 20
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, fluid_vars=self.physics.vars,

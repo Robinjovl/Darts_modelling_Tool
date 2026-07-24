@@ -132,7 +132,8 @@ class PythonLinearSolver:
         """Refresh the matrix values and solve ``A x = rhs`` into ``sol``.
 
         Return status contract (mirrors the C++ ``linsolv_iface::solve``):
-        ``0`` on success -- including a plain max-iterations / rtol miss, which
+        ``(rc, n_iters, residual)``; ``rc`` is ``0`` on success -- including a
+        plain max-iterations / rtol miss, which
         the outer inexact-Newton loop rides via its residual gate (bos parity,
         cf. ``linsolv_gmres.cpp``); nonzero on a HARD failure (a non-finite
         solution from breakdown / PC failure / NaN), so the Newton loop cuts
@@ -146,7 +147,7 @@ class PythonLinearSolver:
 
         :returns: ``0`` on success, nonzero on a hard linear-solver failure
             (see :meth:`solve`). The engine mirrors this into
-            ``linear_solver_error_last_dt`` so the Newton loop / adaptive
+            ``NonlinearSolver.status.linear_solver_rc`` so the Newton loop / adaptive
             fallback can react.
         """
         rows, cols, vals, rhs, sol, block_size = _extract_block_csr(engine)
@@ -326,11 +327,11 @@ class PETScSolver(PythonLinearSolver):
         if self.print_level >= 4:
             ksp.view()
         ksp.solve(petsc_rhs, petsc_sol)
+        n_iters = int(ksp.getIterationNumber())
+        residual = float(ksp.getResidualNorm())
         if self.print_level >= 1:
             print(
-                f"PETSc {self.variant}: solved, "
-                f"its={ksp.getIterationNumber()}, "
-                f"rnorm={ksp.getResidualNorm():.3e}",
+                f"PETSc {self.variant}: solved, its={n_iters}, rnorm={residual:.3e}",
                 flush=True,
             )
         # mat / ksp are persistent (destroyed with the solver); only the
@@ -344,7 +345,8 @@ class PETScSolver(PythonLinearSolver):
         # Newton residual gate then decides whether to accept or cut. Without
         # this a diverged NaN solve would drive newton_residual to NaN, whose
         # comparisons are all false, and be silently accepted as converged.
-        return 0 if np.isfinite(sol).all() else 2
+        rc = 0 if np.isfinite(sol).all() else 2
+        return rc, n_iters, residual
 
 
 class PardisoSolver(PythonLinearSolver):
@@ -386,4 +388,6 @@ class PardisoSolver(PythonLinearSolver):
         # loop cuts the timestep) for parity with the C++ direct-solver checks.
         self._pardiso.factorize(mat)
         sol[:] = self._pardiso.solve(mat, rhs)
-        return 0 if np.isfinite(sol).all() else 2
+        # Direct solve: report a single "iteration" and no iterative residual,
+        # matching the (rc, n_iters, residual) contract of the nonlinear driver.
+        return (0 if np.isfinite(sol).all() else 2), 1, 0.0

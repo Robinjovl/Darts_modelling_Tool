@@ -1,7 +1,12 @@
 from darts.engines import value_vector, sim_params, well_control_iface
-from darts.physics.geothermal.geothermal import Geothermal
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 from darts.models.cicd_model import CICDModel
-from darts.physics.properties.iapws.iapws_property_vec import enthalpy_to_temperature
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
+from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
+from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+from darts.physics.properties.viscosity import MaoDuan2009
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from darts.engines import ms_well
 import os
@@ -102,7 +107,10 @@ class Model(CICDModel):
         # initialize physics
         self.cell_property = ['pressure', 'enthalpy', 'temperature']
 
-        self.physics = Geothermal(self.idata, self.timer)
+        self.set_iapws_physics(p_step=self.idata.obl.p_step,
+                               p_origin=self.idata.obl.p_origin,
+                               t_step=self.idata.obl.t_step,
+                               t_origin=self.idata.obl.t_origin)
 
         # Time-stepping / Newton / linear-solver settings live in set_solver(),
         # called from the base reset() (see DartsModel.set_solver).
@@ -110,11 +118,63 @@ class Model(CICDModel):
         # End timer for model initialization:
         self.timer.node["initialization"].stop()
 
+    def set_iapws_physics(self, p_step, p_origin, t_step, t_origin, cache=False):
+        """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PT-flash.
+        Single-component water; phases are vapor ('V') and liquid ('L').
+        State spec is PT so engine.X layout is [P, T, ...] and the OBL grid is sampled on (P, T).
+        The adaptive interpolator is defined by per-axis step + origin and extends on demand.
+        """
+        components = ["H2O"]
+        phases = ['V', 'L']
+        zero = 1e-12
+        comp_data = CompData(components=components, setprops=True)
+
+        pc = PropertyContainer(phases_name=phases, components_name=components,
+                               Mw=comp_data.Mw, eps_z=zero)
+
+        flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
+        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
+        pc.flash_ev = flash_ev
+
+        pc.density_ev = {
+            'V': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),
+            'L': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN),
+        }
+        pc.viscosity_ev = {
+            'V': ConstFunc(0.01),         # cP, steam
+            'L': MaoDuan2009(components),  # cP, liquid water (pressure/temperature-dependent)
+        }
+        pc.enthalpy_ev = {
+            'V': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
+            'L': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
+        }
+        pc.rel_perm_ev = {
+            'V': PhaseRelPerm("gas", swc=0.0),
+            'L': PhaseRelPerm("oil", swc=0.0),
+        }
+        pc.conductivity_ev = {
+            'V': ConstFunc(0.0),
+            'L': ConstFunc(172.8),       # kJ/m/day/K, matches geothermal default
+        }
+        # output_props exposes derived T (K) via the property interpolator
+        pc.output_props = {'temperature': lambda: pc.temperature}
+
+        self.physics = PhysicsBase(
+            components, phases, self.timer,
+            state_spec=PhysicsBase.StateSpecification.PT,
+            axes_step=[p_step, t_step],
+            axes_origin=[p_origin, t_origin],
+            epsilon_z=zero,
+            cache=cache,
+        )
+        self.physics.add_property_region(pc)
+        return pc
+
     def set_solver(self):
         # Time-stepping and Newton tuning.
-        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_newton=1e-4)
-        self.params.newton_type = sim_params.newton_local_chop  # chopping strategy
-        self.params.newton_params = value_vector([0.2])         # chop criterion
+        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60 )
+        self.nonlinear_solver.spec.chop.mode = 'local'  # chopping strategy
+        self.nonlinear_solver.spec.chop.factor = 0.2         # chop criterion
 
         # Linear solver: this is a Geothermal DFM (discrete fracture matrix) model.
         # The default FGMRES+CPR (and MGR) stall on its wide, strongly-coupled
@@ -197,7 +257,7 @@ class Model(CICDModel):
                 else:
                     # Rate Control
                     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
-                                                   is_inj=True, target=inj_rate, phase_name='water', inj_composition=[], inj_temp=inj_temp)
+                                                   is_inj=True, target=inj_rate, phase_name='L', inj_composition=[], inj_temp=inj_temp)
                     # BHP Constraint
                     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                    is_inj=True, target=wctrl.inj_bhp_constraint, inj_composition=[],
@@ -210,7 +270,7 @@ class Model(CICDModel):
                 else:
                     # Rate Control
                     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.VOLUMETRIC_RATE,
-                                                   is_inj=False, target=-np.abs(prod_rate), phase_name='water')
+                                                   is_inj=False, target=-np.abs(prod_rate), phase_name='L')
                     # BHP Constraint
                     self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                    is_inj=False, target=wctrl.prod_bhp_constraint)
@@ -243,10 +303,12 @@ class Model(CICDModel):
         return P
 
     def get_temperature(self, part='cells'):
+        # State spec is PT, so engine.X layout is [P, T, P, T, ...] (n_vars=2).
+        # Temperature is the second variable; just take stride-2 starting at offset 1.
         nvars = 2
         start, end = self.get_mat_frac_range(part)
         Xn = np.array(self.physics.engine.X, copy=True)
-        T = enthalpy_to_temperature(Xn[nvars*start:nvars*end])
+        T = Xn[nvars*start + 1:nvars*end:nvars]
         return T
 
     def calc_well_loc(self):

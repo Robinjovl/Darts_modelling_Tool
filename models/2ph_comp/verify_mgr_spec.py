@@ -14,6 +14,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(__file__))
 
 from darts.engines import redirect_darts_output, sim_params  # noqa: E402
+from darts.nonlinear_solvers import ChopSpec, NewtonSolver  # noqa: E402
 from model import Model  # noqa: E402
 
 from darts.linear_solvers import (  # noqa: E402
@@ -44,9 +45,13 @@ class ModelSpec(Model):
     def set_solver(self):
         # Base Model.set_solver() now owns set_sim_params(); replicate it here since
         # this override does not call super().
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
-                            tol_newton=1e-3, it_newton=20,
-                            newton_type=sim_params.newton_local_chop)
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000)
+        super().set_solver()  # platform default nonlinear + linear solvers
+        # must mirror Model.set_solver()'s nonlinear settings exactly -- this
+        # harness compares the raw MGR build against the spec build, so any
+        # nonlinear difference would show up as a bogus iteration-count divergence
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=20,
+                                             chop=ChopSpec(mode='local'))
         self.params.linear_print_level = 0
         block_size = self.physics.n_vars
         mesh = getattr(self.reservoir, "mesh", None)
@@ -151,7 +156,7 @@ def run_and_collect(model_cls, log):
     n.init()
     n.set_output()
     n.run(1000)
-    st = n.physics.engine.stat
+    st = n.nonlinear_solver.stats
     stats = {
         "n_timesteps_total": st.n_timesteps_total,
         "n_timesteps_wasted": st.n_timesteps_wasted,

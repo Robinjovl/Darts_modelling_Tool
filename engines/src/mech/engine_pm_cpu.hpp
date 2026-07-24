@@ -108,6 +108,8 @@ public:
   std::vector<value_t> calc_newton_dev();
   int apply_newton_update(value_t dt);
   value_t dev_u, dev_p, dev_g, dev_u_prev, dev_p_prev, dev_g_prev, well_residual_prev_dt;
+  // well residual of the current timestep (engine-internal convergence tracking)
+  value_t well_residual_last_dt;
   int output_counter;
 
   std::vector<pm::contact> contacts;

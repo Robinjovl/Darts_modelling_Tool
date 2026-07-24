@@ -1,12 +1,12 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import DartsModel
-from darts.physics.properties.iapws.iapws_property_vec import _Backward1_T_Ph_vec
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 from darts.physics.properties.black_oil import *
+from darts.nonlinear_solvers import NewtonSolver
 
 class Model(DartsModel):
     def __init__(self, physics: str = 'geo'):
@@ -57,7 +57,9 @@ class Model(DartsModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-3, mult_ts=4, max_ts=self.dt_max, tol_newton=1e-2)
+        self.set_sim_params(first_ts=1e-3, mult_ts=4, max_ts=self.dt_max )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2)
 
     def set_reservoir(self):
         (nx, ny, nz) = (60, 60, 3)
@@ -113,7 +115,7 @@ class Model(DartsModel):
         self.physics.init_physics()
 
     def set_do_physics(self, zero):
-        from darts.physics.super.physics import Compositional
+        from darts.physics.base.physics import PhysicsBase
         # create pre-defined physics for geothermal
         epsilon = zero / 10
         components = ["w", "o"]
@@ -130,9 +132,9 @@ class Model(DartsModel):
 
         # create physics
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         # 2 components → 1 z axis
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=[3.92, 3.92e-3], axes_origin=[0.0, epsilon],
                                      epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
@@ -140,7 +142,7 @@ class Model(DartsModel):
         return
 
     def set_bo_physics(self, zero):
-        from darts.physics.super.physics import Compositional
+        from darts.physics.base.physics import PhysicsBase
 
         """Physical properties"""
         # Create property containers:
@@ -171,7 +173,7 @@ class Model(DartsModel):
 
         """ Activate physics """
         # Black oil: 3 components → 2 z axes
-        self.physics = Compositional(components, phases, self.timer,
+        self.physics = PhysicsBase(components, phases, self.timer,
                                      axes_step=[1.76, 3.92e-3, 3.92e-3], axes_origin=[1.0, zero, zero],
                                      epsilon_z=zero)
         self.physics.add_property_region(property_container)
@@ -179,7 +181,7 @@ class Model(DartsModel):
         return
 
     def set_comp_physics(self, zero):
-        from darts.physics.super.physics import Compositional
+        from darts.physics.base.physics import PhysicsBase
         from darts.physics.properties.flash import ConstantK
         """Physical properties"""
         # Create property containers:
@@ -204,10 +206,10 @@ class Model(DartsModel):
 
         """ Activate physics """
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         # 4 components → 3 z axes
         nz = len(components) - 1
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=[2.0] + [3.92e-3] * nz,
                                      axes_origin=[1.0] + [zero] * nz,
                                      epsilon_z=zero)
@@ -216,7 +218,7 @@ class Model(DartsModel):
         return
 
     def set_vl_physics(self, components):
-        from darts.physics.super.physics import Compositional
+        from darts.physics.base.physics import PhysicsBase
         from dartsflash.mixtures import DARTSFlash, CompData, EoS, VL
 
         from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
@@ -250,19 +252,19 @@ class Model(DartsModel):
 
 
         """ Activate physics """
-        state_spec = Compositional.StateSpecification.PT if pt else Compositional.StateSpecification.PH
+        state_spec = PhysicsBase.StateSpecification.PT if pt else PhysicsBase.StateSpecification.PH
         # [p, z_1, ..., z_{nc-1}, T] (PT) or [p, z_1, ..., z_{nc-1}, H] (PH)
         nz = nc - 1
         ax_step = [2.0] + [5e-3] * nz + [0.8]
         ax_origin = [1.0] + [zero] * nz + [273.15]
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=ax_step, axes_origin=ax_origin,
                                      epsilon_z=zero)
         self.physics.add_property_region(property_container)
         return
 
     def set_iapws_physics(self):
-        from darts.physics.super.physics import Compositional
+        from darts.physics.base.physics import PhysicsBase
         from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
 
         from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
@@ -297,9 +299,9 @@ class Model(DartsModel):
 
 
         """ Activate physics """
-        state_spec = Compositional.StateSpecification.PT if pt else Compositional.StateSpecification.PH
+        state_spec = PhysicsBase.StateSpecification.PT if pt else PhysicsBase.StateSpecification.PH
         # IAPWS: H2O only → no z axes. [p, T or H]
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=[2.0, 0.8], axes_origin=[1.0, 273.15],
                                      epsilon_z=zero)
         self.physics.add_property_region(property_container)
@@ -330,12 +332,7 @@ class Model(DartsModel):
                                                is_inj=False, target=170)
 
 
-    def compute_temperature(self, X):
-        nb = self.reservoir.mesh.n_res_blocks
-        temp = _Backward1_T_Ph_vec(X[0:2 * nb:2] / 10, X[1:2 * nb:2] / 18.015)
-        return temp
-
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.property_container import PropertyContainer
 
 class CompProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, eps_z=1e-11):

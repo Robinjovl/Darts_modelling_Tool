@@ -4,6 +4,7 @@ import os
 
 from dataclasses import dataclass
 from darts.models.darts_model import DartsModel
+from darts.nonlinear_solvers import Norm, NewtonSolver, ChopSpec
 from darts.engines import value_vector
 from math import fabs
 try:
@@ -11,8 +12,8 @@ try:
 except ImportError:
     pass
 from darts.engines import well_control_iface
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.basic import ConstFunc, CapillaryPressure, PhaseRelPerm
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
@@ -107,11 +108,8 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_newton=1e-3, it_newton=12,
-                            newton_type=sim_params.newton_local_chop,
-                            newton_params=value_vector([0.01]))
+        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365  )
         # self.data_ts.eta = np.ones(self.physics.n_vars)
-        self.params.nonlinear_norm_type = self.params.L2 # linf if you use m.set_rhs() for injection
 
         """ Define reservoir """
         self.set_reservoir()
@@ -267,7 +265,10 @@ class Model(DartsModel):
 
     def set_solver(self):
         # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
-        super().set_solver()  # platform default linear solver spec
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=12,
+            chop=ChopSpec(mode='local', factor=0.01),
+            norm=Norm.L2)  # Norm.LINF if you use m.set_rhs() for injection
         self.linear_solver.spec.tolerance = 1e-4
         self.linear_solver.spec.max_iterations = 50
 
@@ -384,10 +385,10 @@ class Model(DartsModel):
 
         if temperature is None:  # if None, then thermal=True
             thermal = True
-            state_spec = Compositional.StateSpecification.PT
+            state_spec = PhysicsBase.StateSpecification.PT
         else:
             thermal = False
-            state_spec = Compositional.StateSpecification.P
+            state_spec = PhysicsBase.StateSpecification.P
 
         pres_in = 210 # (pressure at depth of well 1 will be 300 bar)
         # 1 p axis + (nc-1) z axes + optional T axis
@@ -397,7 +398,7 @@ class Model(DartsModel):
         if thermal:
             ax_step.append(0.1)
             ax_origin.append(273.15)
-        self.physics = Compositional(self.components, phases, timer=self.timer,
+        self.physics = PhysicsBase(self.components, phases, timer=self.timer,
                                      axes_step=ax_step, axes_origin=ax_origin,
                                      epsilon_z=self.zero / 10,
                                      state_spec=state_spec,
@@ -597,7 +598,7 @@ class Model(DartsModel):
                 depths = np.linspace(min_depth, max_depth, nb)
 
                 # zH2O = 1
-                from darts.physics.super.initialize import Initialize
+                from darts.physics.base.initialize import Initialize
                 init = Initialize(self.physics, aq_idx=0, h2o_idx=0)
                 nc = len(self.components)
 
@@ -768,9 +769,12 @@ class Model(DartsModel):
         """
         assert dt > 0, "Time step size must be a positive value!"
 
-        max_newt = self.data_ts.newton_max_iter
+        max_newt = self.nonlinear_solver.spec.max_iterations
         max_residual = np.zeros(max_newt + 1)
-        self.physics.engine.n_linear_last_dt = 0
+        solver = self.nonlinear_solver
+        status = solver.status
+        status.reset()
+        self.nonlinear_solver.spec.well_tolerance_multiplier = 1e2
         self.timer.node["simulation"].start()
 
         residual_history = []
@@ -806,24 +810,24 @@ class Model(DartsModel):
                 )
 
             if not self.has_dfm_well:
-                self.physics.engine.newton_residual_last_dt = (
+                status.newton_residual = (
                     self.physics.engine.calc_newton_residual()
                 )  # calc norm of residual
-            elif self.has_dfm_well:
+            else:
                 # Method is either 1 or 2
-                self.physics.engine.newton_residual_last_dt = (
+                status.newton_residual = (
                     self.physics.engine.calc_coupled_well_reservoir_residual(
-                        self.data_ts.coupled_well_res_norm_method
+                        self.nonlinear_solver.spec.coupled_well_res_norm_method
                     )
                 )
 
-            max_residual[i] = self.physics.engine.newton_residual_last_dt
+            max_residual[i] = status.newton_residual
             counter = 0
             for j in range(i):
                 denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
                 if (
                     abs(max_residual[i] - max_residual[j]) / denom
-                    < self.data_ts.newton_tol_stationary
+                    < self.nonlinear_solver.spec.stationary_point_tolerance
                 ):
                     counter += 1
             if counter > 2:
@@ -831,76 +835,52 @@ class Model(DartsModel):
                     print("Stationary point detected!")
                 break
 
-            self.physics.engine.well_residual_last_dt = (
-                self.physics.engine.calc_well_residual()
-            )
+            status.well_residual = self.physics.engine.calc_well_residual()
             residual_history.append(
                 (
-                    self.physics.engine.newton_residual_last_dt,  # matrix residual
-                    self.physics.engine.well_residual_last_dt,  # well residual
+                    status.newton_residual,  # matrix residual
+                    status.well_residual,  # well residual
                     1.0,
                 )
             )  # Newton update coefficient
 
-            self.physics.engine.n_newton_last_dt = i
+            status.n_newton = i
             #  check tolerance if it converges
             if (
-                self.physics.engine.newton_residual_last_dt < self.data_ts.newton_tol
-                and self.physics.engine.well_residual_last_dt
-                < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult
-            ) or self.physics.engine.n_newton_last_dt == max_newt:
+                status.newton_residual < self.nonlinear_solver.spec.tolerance
+                and status.well_residual
+                < self.nonlinear_solver.spec.tolerance * self.nonlinear_solver.spec.well_tolerance_multiplier
+            ) or status.n_newton == max_newt:
                 if i > 0:  # min_i_newton
                     break
 
-            # line search
-            if (
-                self.data_ts.line_search
-                and i > 0
-                and residual_history[-1][0] > 0.9 * residual_history[-2][0]
-            ):
-                coef = np.array([0.0, 1.0])
-                history = np.array([residual_history[-2], residual_history[-1]])
-                residual_history[-1] = self.line_search(
-                    dt, t, coef, history, verbose, iter_counter=i
-                )
-                max_residual[i] = residual_history[-1][0]
+            # Unified spec-driven dispatch (!280): routes to the Python-resident
+            # solver (PETSc / Pardiso spec) or the C++ engine solver and returns
+            # the (rc, n_iters, residual) contract of !327.
+            r_code, n_lin, _ = self._solve_linear_equation()
+            status.linear_solver_rc = r_code
+            if r_code != 0:
+                # failed linear solve: do NOT apply a stale update; the
+                # post-loop verdict reads status.linear_solver_rc -> fail
+                self._linear_solver_rc_last = r_code
+                break
+            status.n_linear += n_lin
+            self.timer.node["newton update"].start()
+            self.physics.engine.apply_newton_update(dt)
+            self.timer.node["newton update"].stop()
 
-                # check stationary point after line search
-                counter = 0
-                for j in range(i):
-                    denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
-                    if (
-                        abs(max_residual[i] - max_residual[j]) / denom
-                        < self.data_ts.newton_tol_stationary
-                    ):
-                        counter += 1
-                if counter > 2:
-                    if verbose:
-                        print("Stationary point detected!")
-                    break
-            else:
-                # Unified dispatch (self.linear_solver = LinearSolverSpec):
-                # _solve_linear_equation() routes to the Python-resident solver
-                # (PETSc / Pardiso spec) or the C++ engine solver and returns the
-                # engine's return code (0 for the Python path). Replaces the former
-                # data_ts.linear_type / linear_solver_types dispatch (removed in !280).
-                rc = self._solve_linear_equation()
-                if rc != 0:
-                    # Abort the Newton loop on a failed linear solve so that
-                    # post_newtonloop sees linear_solver_error_last_dt != 0 and
-                    # returns converged=0 without burning the full max_newt
-                    # budget on stale dX updates.
-                    self._linear_solver_rc_last = rc
-                    break
-                self.timer.node["newton update"].start()
-                self.physics.engine.apply_newton_update(dt)
-                self.timer.node["newton update"].stop()
-
-        # End of newton loop
-        converged = self.physics.engine.post_newtonloop(dt, t)
+        # End of newton loop: convergence verdict previously made by the C++
+        # post_newtonloop (linear solver rc + residual re-check), now in Python.
+        converged = not (
+            status.linear_solver_rc != 0
+            or status.newton_residual >= self.nonlinear_solver.spec.tolerance
+            or status.well_residual > 1e2 * self.nonlinear_solver.spec.tolerance
+        )
+        converged = self.physics.engine.post_newtonloop(dt, t, converged)
+        solver.stats.update(converged, status)
 
         self.time.append(t)
-        self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
+        self.n_newton_iters.append(status.n_newton)
         self.time_step_size.append(dt)
 
         self.timer.node["simulation"].stop()

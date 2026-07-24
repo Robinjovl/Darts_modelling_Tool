@@ -1,6 +1,7 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params, well_control_iface, ms_well
+from darts.nonlinear_solvers import ChopSpec, NewtonSolver
 from darts import linear_solvers
 from darts.linear_solvers import (
     BCSRCPRSpec,
@@ -24,8 +25,8 @@ from darts.linear_solvers.enums import (
 )
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
@@ -83,13 +84,13 @@ class Model(CICDModel):
 
         """ Activate physics """
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         # axes_step-based API: per-axis cell size + per-axis origin. The adaptive
         # multi-index-keyed interpolator caches cells on demand wherever the solver
         # lands; no axes_max, no n_points, no min_p needed.
         p_step = (300 - 1) / (200 - 1)
         z_step = (1 - 3 * epsilon) / (200 - 1)
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=[p_step, z_step, z_step],
                                      axes_origin=[1.0, epsilon, epsilon],
                                      epsilon_z=epsilon,
@@ -109,9 +110,13 @@ class Model(CICDModel):
         # Single per-model home for time-stepping / Newton + linear-solver config
         # (the unified set_solver() pattern). Called by the base reset() before
         # engine.init, so these settings feed engine.init().
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
-                            tol_newton=1e-3, it_newton=20,
-                            newton_type=sim_params.newton_local_chop)
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        # NOTE: 1e-3 / 20 (not the historic 1e-2 / 10) -- tightened on this branch by
+        # commit 34b55809a 'Fix passing parameters from Python'; the nonlinear
+        # refactoring (!327) carried the older values into the NewtonSolver form,
+        # so the merge restores ours. verify_mgr_spec.py compares against these.
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=20, chop=ChopSpec(mode='local'))
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
 
         # MGR (BCSR-CPR) via the single unified spec API (self.linear_solver = MGRSolverSpec).

@@ -28,7 +28,7 @@ from darts.models.opt.opt_module_settings import OptModuleSettings
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.flash import ConstantK
-from darts.physics.super.physics import Compositional
+from darts.physics.base.physics import PhysicsBase
 from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.tools.keyword_file_tools import get_table_keyword
@@ -294,10 +294,10 @@ class Model(CICDModel, OptModuleSettings):
 
         """ Activate physics """
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         # [p, z_1, ..., z_{nc-1}]
         nz = len(components) - 1
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=[1.5] + [5e-3] * nz,
                                      axes_origin=[1.0] + [epsilon] * nz,
                                      epsilon_z=epsilon, extrapolation_flag=True)
@@ -321,9 +321,10 @@ class Model(CICDModel, OptModuleSettings):
             return
         # Single per-model home for time-stepping / Newton config (the unified
         # set_solver pattern); the base reset() calls this before engine.init.
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
-                            tol_newton=1e-6, it_newton=10,
-                            newton_type=sim_params.newton_local_chop)
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-6, max_iterations=10,
+            chop=ChopSpec(mode='local'))
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
         # Forward MGR (BCSR-CPR) via the single unified spec API (self.linear_solver =
         # MGRSolverSpec). The base DartsModel._apply_solver hook builds + injects it

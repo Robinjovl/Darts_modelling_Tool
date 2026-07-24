@@ -1,10 +1,11 @@
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector, sim_params, ms_well
+from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -27,14 +28,14 @@ class Model(CICDModel):
         self.zero = 1e-13
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=0.2, runtime=300, tol_newton=1e-3,
-                            coupled_well_res_norm_method=2)
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=0.2, runtime=300 )
 
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
         # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
-        super().set_solver()  # platform default linear solver spec
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, coupled_well_res_norm_method=2)
         self.linear_solver.spec.tolerance = 1e-6
 
     def set_initial_conditions(self):
@@ -90,8 +91,8 @@ class Model(CICDModel):
 
         # create physics
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=[2.5, 2.5e-3], axes_origin=[0., 0.], epsilon_z=epsilon,
                                      extrapolation_flag=True)
         """ Add property region """

@@ -153,7 +153,7 @@ public:
   void apply_global_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX) override;
   void apply_local_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX) override;
 
-  int apply_newton_update(value_t dt) override;
+  int apply_update(value_t dt) override;
 
   /** @defgroup Engine_methods
      *  Methods of base engine class exposed to Python
@@ -163,7 +163,7 @@ public:
   /// @brief report for one newton iteration
   virtual int assemble_linear_system(value_t deltat) override;
   virtual int solve_linear_equation() override;
-  virtual int post_newtonloop(value_t deltat, value_t time) override;
+  virtual int post_newtonloop(value_t deltat, value_t time, index_t converged) override;
 
   // Device-resident residual norms: the per-assembly host mirror of op_vals_arr
   // is gone, so the default (L2) norms reduce on the device. L1/Linf fall back
@@ -784,7 +784,6 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   time(&rawtime);
   timeinfo = localtime(&rawtime);
 
-  stat = sim_stat();
 
   // initialize jacobian structure
   init_jacobian_structure(Jacobian);
@@ -821,7 +820,7 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   }
 
   Xn = X = X_init;
-  dt = params->first_ts;
+  dt = 0.0; // timestep sizing is owned by the Python driver
   prev_usual_dt = dt;
 
   // initialize arrays for every operator set

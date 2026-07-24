@@ -2,14 +2,15 @@ import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
-from darts.physics.super.initialize import Initialize
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
+from darts.physics.base.initialize import Initialize
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+from darts.nonlinear_solvers import NewtonSolver
 
 from dartsflash.libflash import NegativeFlash
 from dartsflash.libflash import CubicEoS, AQEoS, FlashParams, InitialGuess
@@ -36,10 +37,11 @@ class Model(CICDModel):
         return
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5, tol_newton=1e-3, it_newton=10,
+        self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5,
                             runtime=50, # This runtime will be used when CI test is conducted without the main file
                             )
-        super().set_solver()  # platform default linear solver spec
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10)
         self.linear_solver.spec.tolerance = 1e-5
         self.linear_solver.spec.max_iterations = 50
 
@@ -110,11 +112,11 @@ class Model(CICDModel):
                                            "yH2O": lambda: property_container.x[1, 0]
                                            }
 
-        state_spec = Compositional.StateSpecification.PT
+        state_spec = PhysicsBase.StateSpecification.PT
         # 1 p + (nc-1) z + 1 T
         ax_step = [0.0599] + [1e-4] * (len(components) - 1) + [0.028]
         ax_origin = [1.0] + [epsilon] * (len(components) - 1) + [220.0]
-        self.physics = Compositional(components, phases, self.timer,
+        self.physics = PhysicsBase(components, phases, self.timer,
                                      axes_step=ax_step, axes_origin=ax_origin,
                                      epsilon_z=epsilon, state_spec=state_spec, cache=False,
                                      extrapolation_flag=True)

@@ -12,7 +12,7 @@
           PROJECT_DIR="${CI_PROJECT_DIR:-$PWD}"
           INTERPOLATOR_TEST_WORKDIR="$(mktemp -d)"
           cd "$INTERPOLATOR_TEST_WORKDIR" || exit
-          python -m pytest "$PROJECT_DIR/tests/interpolators" -v
+          python -m pytest "$PROJECT_DIR/tests" -v
           cd "$PROJECT_DIR" || exit
         # test discretizer
         - cd discretizer/tests/compare_discretizers
@@ -137,7 +137,7 @@ test-linux-tahiti-image-gpu:
             PROJECT_DIR=\${CI_PROJECT_DIR:-\$PWD} && \
             INTERPOLATOR_TEST_WORKDIR=\$(mktemp -d) && \
             cd \"\$INTERPOLATOR_TEST_WORKDIR\" && \
-            python -m pytest \"\$PROJECT_DIR/tests/interpolators\" -v && \
+            python -m pytest \"\$PROJECT_DIR/tests\" -v && \
             cd \"\$PROJECT_DIR\" && \
             # test discretizer
             cd discretizer/tests/compare_discretizers && \

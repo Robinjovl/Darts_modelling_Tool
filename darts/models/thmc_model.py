@@ -7,19 +7,22 @@ from darts.engines import (
     linear_solver_params,
     mech_operators,
     sim_params,
-    value_vector,
 )
 from darts.models.darts_model import DartsModel
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import SinglePhase
-from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 
 
 class THMCModel(DartsModel):
+    # Mechanics engines select their linear solver through params.linear_type /
+    # engine.ls_params (see set_solver below), not through a LinearSolverSpec.
+    linear_solver_from_engine_factory = True
+
     def __init__(self):
         try:
             from darts.engines import get_num_threads
@@ -72,19 +75,26 @@ class THMCModel(DartsModel):
         )
 
     def set_solver(self):
-        # Mechanics models drive the linear solver through params.linear_type /
-        # engine.ls_params (a direct cpu_superlu by default), NOT through a
-        # self.linear_solver spec -- so they do NOT call super().set_solver() (which would
-        # select the flow CPR/AMG default) and leave self.linear_solver None. Called from
-        # the base reset(), before engine.init.
-        self.params.tolerance_newton = (
-            1e-6  # Tolerance of newton residual norm ||residual||<tol_newt
-        )
-        self.params.newton_type = (
-            sim_params.newton_global_chop
-        )  # Type of newton method (related to chopping strategy?)
-        self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
-        self.params.max_i_newton = 10
+        # Unified per-model solver hook (!280): called from the base reset(),
+        # before engine.init. Mechanics models drive the LINEAR solver through
+        # params.linear_type / engine.ls_params (a direct cpu_superlu by
+        # default), NOT through a self.linear_solver spec -- so they do NOT call
+        # super().set_solver() (which would select the flow CPR/AMG default) and
+        # leave self.linear_solver at the untouched platform default.
+        # The NONLINEAR solver is configured through its spec (!327).
+        super().set_solver()
+        spec = self.nonlinear_solver.spec
+        spec.tolerance = 1e-6  # Tolerance of newton residual norm ||residual||<tol_newt
+        spec.chop.mode = "global"
+        spec.chop.factor = 0.2
+        spec.max_iterations = 10
+        # geomechanics engines converge on a deviatoric per-component residual and
+        # apply the C++ apply_newton_update composite directly: swap the runtime to
+        # the shared MechanicsNewtonSolver (replaces the per-model copied loops).
+        from darts.nonlinear_solvers import MechanicsNewtonSolver
+
+        self.nonlinear_solver = MechanicsNewtonSolver(spec)
+        self.nonlinear_solver.bind(self)
 
         # Per-engine default (decision 2026-06-12): in a BOS build
         # (ENABLE_BOS_SOLVERS, no open-source registry) mechanics engines
@@ -353,15 +363,17 @@ class THMCModel(DartsModel):
             perf_data['OBL axes_step'] = list(self.physics.axes_step)
             perf_data['OBL axes_origin'] = list(self.physics.axes_origin)
             perf_data['operators'] = self.physics.n_ops
-            perf_data['timesteps'] = self.physics.engine.stat.n_timesteps_total
-            perf_data['wasted timesteps'] = self.physics.engine.stat.n_timesteps_wasted
-            perf_data['newton iterations'] = self.physics.engine.stat.n_newton_total
-            perf_data['wasted newton iterations'] = (
-                self.physics.engine.stat.n_newton_wasted
+            perf_data['timesteps'] = self.nonlinear_solver.stats.n_timesteps_total
+            perf_data['wasted timesteps'] = (
+                self.nonlinear_solver.stats.n_timesteps_wasted
             )
-            perf_data['linear iterations'] = self.physics.engine.stat.n_linear_total
+            perf_data['newton iterations'] = self.nonlinear_solver.stats.n_newton_total
+            perf_data['wasted newton iterations'] = (
+                self.nonlinear_solver.stats.n_newton_wasted
+            )
+            perf_data['linear iterations'] = self.nonlinear_solver.stats.n_linear_total
             perf_data['wasted linear iterations'] = (
-                self.physics.engine.stat.n_linear_wasted
+                self.nonlinear_solver.stats.n_linear_wasted
             )
 
             sim = self.timer.node['simulation']

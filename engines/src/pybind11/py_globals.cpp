@@ -102,25 +102,13 @@ void pybind_globals(py::module &m)
 
   sim_params.def(py::init<>())
     //properties
-    .def_readwrite("first_ts", &sim_params::first_ts, "Length of the first time step (days)")
-    .def_readwrite("max_ts", &sim_params::max_ts)
-    .def_readwrite("mult_ts", &sim_params::mult_ts)
-    .def_readwrite("min_ts", &sim_params::min_ts)
-    .def_readwrite("max_i_newton", &sim_params::max_i_newton)
     .def_readwrite("max_i_linear", &sim_params::max_i_linear)
-    .def_readwrite("tolerance_newton", &sim_params::tolerance_newton)
     .def_readwrite("tolerance_linear", &sim_params::tolerance_linear)
-    .def_readwrite("newton_type", &sim_params::newton_type)
-    .def_readwrite("newton_params", &sim_params::newton_params)
     .def_readwrite("linear_type", &sim_params::linear_type)
     .def_readwrite("linear_params", &sim_params::linear_params)
-    .def_readwrite("nonlinear_norm_type", &sim_params::nonlinear_norm_type)
-    .def_readwrite("log_transform", &sim_params::log_transform)
     .def_readwrite("enable_permporo", &sim_params::enable_permporo)
-    .def_readwrite("obl_min_fac", &sim_params::obl_min_fac)
     .def_readwrite("sim_eps", &sim_params::sim_eps)
-    .def_readwrite("well_tolerance_coefficient", &sim_params::well_tolerance_coefficient)
-    .def_readwrite("stationary_point_tolerance", &sim_params::stationary_point_tolerance)
+    .def_readwrite("global_actnum", &sim_params::global_actnum)
     .def_readwrite("assembly_kernel", &sim_params::assembly_kernel)
     .def_readwrite("schur_elim_count", &sim_params::schur_elim_count,
         "K = number of cell-local (diagonal-block-only) equation/unknown pairs the GPU "
@@ -132,7 +120,6 @@ void pybind_globals(py::module &m)
         "Eliminated unknown columns (length K) for GPU local Schur elimination")
     .def_readwrite("finalize_mpi", &sim_params::finalize_mpi)
     .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance)
-    .def_readwrite("line_search", &sim_params::line_search)
     .def_readwrite("linear_print_level", &sim_params::linear_print_level);
 
 
@@ -147,7 +134,6 @@ void pybind_globals(py::module &m)
     .value("newton_std", sim_params::newton_solver_t::NEWTON_STD)
     .value("newton_global_chop", sim_params::newton_solver_t::NEWTON_GLOBAL_CHOP)
     .value("newton_local_chop", sim_params::newton_solver_t::NEWTON_LOCAL_CHOP)
-    .value("newton_inflection_point", sim_params::newton_solver_t::NEWTON_INFLECTION_POINT)
     .export_values();
 
   py::enum_<sim_params::linear_solver_t>(sim_params, "linear_solver_t", "Available types of linear solvers")
@@ -270,15 +256,6 @@ void pybind_globals(py::module &m)
   sim_params.attr("mgrSmootherHypreILU") = py::int_(16);
   sim_params.attr("mgrSmootherL1Jacobi") = py::int_(18);
 
-  py::class_<sim_stat>(m, "sim_stat", "Class simulation statistics")
-      .def(py::init<>())
-      //properties
-      .def_readwrite("n_newton_wasted", &sim_stat::n_newton_wasted)
-      .def_readwrite("n_newton_total", &sim_stat::n_newton_total)
-      .def_readwrite("n_linear_total", &sim_stat::n_linear_total)
-      .def_readwrite("n_linear_wasted", &sim_stat::n_linear_wasted)
-      .def_readwrite("n_timesteps_total", &sim_stat::n_timesteps_total)
-      .def_readwrite("n_timesteps_wasted", &sim_stat::n_timesteps_wasted);
 
   // timer_node is registered by darts.interpolators (imported at module init).
   // Re-export it so that `from darts.engines import timer_node` still works.
