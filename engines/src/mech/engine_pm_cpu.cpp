@@ -185,12 +185,12 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   n_ops = get_n_ops();
   nc = get_n_comps();
   z_var_idx = get_z_var_idx();
-  /*if (params->log_transform == 0)
+  /*if (log_transform == 0)
 	{
 		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
 		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
 	}
-	else if (params->log_transform == 1)
+	else if (log_transform == 1)
 	{
 		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
 		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
@@ -241,7 +241,6 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   time(&rawtime);
   timeinfo = localtime(&rawtime);
 
-  stat = sim_stat();
 
   print_header();
 
@@ -287,7 +286,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   for (index_t i = 0; i < mesh->ref_pressure.size(); i++)
 	Xref[N_VARS * i + P_VAR] = Xn_ref[N_VARS * i + P_VAR] = mesh->ref_pressure[i];
 
-  dt = params->first_ts;
+  dt = 0.0; // timestep sizing is owned by the Python driver
   prev_usual_dt = dt;
 
   // initialize arrays for every operator set
@@ -1415,7 +1414,7 @@ void engine_pm_cpu::extract_Xop()
 std::vector<value_t>
 engine_pm_cpu::calc_newton_dev()
 {
-	/*switch (params->nonlinear_norm_type)
+	/*switch (residual_norm_type)
 	{
 	case sim_params::L1:
 	{
@@ -1585,7 +1584,7 @@ int engine_pm_cpu::assemble_linear_system(value_t deltat)
 
 int engine_pm_cpu::apply_newton_update(value_t dt)
 {
-	/*if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
+	/*if (newton_chop_mode == sim_params::NEWTON_GLOBAL_CHOP)
 	{
 		// max gap
 		/*for (index_t i = mesh->n_matrix; i < mesh->n_res_blocks; i++)
@@ -1627,7 +1626,7 @@ int engine_pm_cpu::solve_linear_equation()
 {
 	int r_code;
 	char buffer[1024];
-	linear_solver_error_last_dt = 0;
+	last_linear_iters = 0;
 
 	linear_solver = linear_solvers[active_linear_solver_id];
 
@@ -1664,11 +1663,7 @@ int engine_pm_cpu::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver setup returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		//Jacobian->write_matrix_to_file("jac_linear_setup_fail.csr");
-		linear_solver_error_last_dt = 1;
-		return linear_solver_error_last_dt;
+		return 1;
 	}
 
 	timer->node["linear solver solve"].start();
@@ -1738,57 +1733,26 @@ int engine_pm_cpu::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		linear_solver_error_last_dt = 2;
-		return linear_solver_error_last_dt;
+		return 2;
 	}
 	else
 	{
-		sprintf(buffer, "\t #%d (%.4e, %.4e, %.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1,
+		sprintf(buffer, "\t (%.4e, %.4e, %.4e, %.4e): lin %d (%.1e)\n",
 				dev_p, dev_u, dev_g, well_residual_last_dt,
 				linear_solver->get_n_iters(), linear_solver->get_residual());
 		std::cout << buffer << std::flush;
-		n_linear_last_dt += linear_solver->get_n_iters();
+		last_linear_iters = linear_solver->get_n_iters();
+		last_linear_residual = linear_solver->get_residual();
 	}
 	return 0;
 }
 
 int engine_pm_cpu::post_newtonloop(value_t deltat, value_t time, index_t converged)
 {
-	char buffer[1024];
-	double well_tolerance_coefficient = 1e2;
-
-	if (linear_solver_error_last_dt == 1) // linear solver setup failed
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (linear solver setup failed) \n", deltat);
-	}
-	else if (linear_solver_error_last_dt == 2) // linear solver solve failed
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (linear solver solve failed) \n", deltat);
-	}
-	else if (newton_residual_last_dt >= params->tolerance_newton) // no reservoir convergence reached
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (newton residual reservoir) \n", deltat);
-	}
-	else if (well_residual_last_dt > well_tolerance_coefficient * params->tolerance_newton) // no well convergence reached
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (newton residual wells) \n", deltat);
-	}
-	else
-	{
-		converged *= 1;
-	}
-
 	dev_u = dev_p = well_residual_last_dt = std::numeric_limits<value_t>::infinity();
 
 	if (!converged)
 	{
-		stat.n_newton_wasted += n_newton_last_dt;
-		stat.n_linear_wasted += n_linear_last_dt;
-		stat.n_timesteps_wasted++;
-		converged = 0;
-
 		for (auto& contact : contacts)
 		{
 		  std::copy(contact.states_n.begin(), contact.states_n.end(), contact.states.begin());
@@ -1800,17 +1764,9 @@ int engine_pm_cpu::post_newtonloop(value_t deltat, value_t time, index_t converg
 		std::copy(fluxes_biot_n.begin(), fluxes_biot_n.end(), fluxes_biot.begin());
 		std::copy(fluxes_ref_n.begin(), fluxes_ref_n.end(), fluxes_ref.begin());
 		std::copy(fluxes_biot_ref_n.begin(), fluxes_biot_ref_n.end(), fluxes_biot_ref.begin());
-		std::cout << buffer << std::flush;
 	}
 	else //convergence reached
 	{
-		stat.n_newton_total += n_newton_last_dt;
-		stat.n_linear_total += n_linear_last_dt;
-		stat.n_timesteps_total++;
-		converged = 1;
-
-		print_timestep(time + deltat, deltat);
-
 		time_data["time"].push_back(time + deltat);
 
 		for (ms_well *w : wells)
@@ -1880,12 +1836,9 @@ int engine_pm_cpu::post_explicit(value_t deltat, value_t time)
   char buffer[1024];
   double well_tolerance_coefficient = 1e2;
 
-  stat.n_newton_total += n_newton_last_dt;
-  stat.n_linear_total += n_linear_last_dt;
-  stat.n_timesteps_total++;
   converged = 1;
 
-  print_timestep(time + deltat, deltat);
+  print_timestep(time + deltat, deltat, 0, 0, 0.0, 0.0);
 
   time_data["time"].push_back(time + deltat);
 

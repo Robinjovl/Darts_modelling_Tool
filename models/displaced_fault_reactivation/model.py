@@ -3,6 +3,52 @@ from darts.engines import value_vector, sim_params, mech_operators, rsf_props, s
 from reservoir import UnstructReservoir
 import numpy as np
 from darts.engines import vector_linear_solver_params, linear_solver_params
+from darts.nonlinear_solvers import MechanicsNewtonSolver
+
+
+class DisplacedFaultNewtonSolver(MechanicsNewtonSolver):
+    """Mechanics Newton driver specialized for the fault-reactivation model:
+    the third residual component is the contact-gap residual ``dev_g``, the
+    timestep fails early when it exceeds the contact-residual cut-off, and the
+    dynamic-mode slip-area gating runs after the loop. (Replaces the copied
+    ``run_timestep_python`` loop; the base loop lives in MechanicsNewtonSolver.)"""
+
+    def compute_mech_residual(self):
+        engine = self.engine
+        res = engine.calc_newton_dev()
+        engine.dev_p = res[0]
+        engine.dev_u = res[1]
+        engine.dev_g = res[2] if len(res) > 2 and res[2] == res[2] else 0.0
+        return res[0], res[1], engine.dev_g
+
+    def on_mech_iteration(self, i, dev_p, dev_u, dev_third, well_residual):
+        print(
+            f"{i}: rp = {dev_p}\tru = {dev_u}\trg = {dev_third}"
+            f"\trwell = {well_residual}"
+        )
+
+    def check_early_break(self, i) -> bool:
+        if self.engine.dev_g > self.model.cut_off_gap_residual:
+            print(
+                'Restart newton iterations due to exceed of contact residual '
+                'cut-off exceeded!!!'
+            )
+            return True
+        return False
+
+    def finalize_convergence(self, converged: int) -> int:
+        m = self.model
+        if not hasattr(m, 'slip_area'):
+            m.slip_area = [0.0]
+        cur_area = m.reservoir.calc_slip_areas(engine=m.physics.engine)[0]  # one fault
+        print('slip area = ' + str(cur_area))
+        if m.enable_dynamic_mode:
+            if cur_area - m.slip_area[-1] > 4.2 * m.min_area:
+                converged *= 0
+            else:
+                m.slip_area.append(cur_area)
+                converged *= 1
+        return converged
 
 from darts.physics.base.property_container import PropertyContainer
 from darts.physics.mech.poroelasticity import Poroelasticity
@@ -84,13 +130,19 @@ class Model(THMCModel):
                     X[4 * cell_id + 3] += p(cell.centroid[0])
                     Xn[4 * cell_id + 3] += p(cell.centroid[0])
     def set_solver_params(self):
-        self.params.tolerance_newton = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
-        self.params.newton_type = sim_params.newton_local_chop  # Type of newton method (related to chopping strategy?)
-        self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
+        self.set_solver()
+        self.nonlinear_solver.spec.tolerance = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
+        self.nonlinear_solver.spec.chop.mode = 'local'  # nonlinear update chopping strategy
+        self.nonlinear_solver.spec.chop.factor = 0.2
         if self.friction_law == 'rsf':
-            self.params.max_i_newton = 20
+            self.nonlinear_solver.spec.max_iterations = 20
         else:
-            self.params.max_i_newton = 8
+            self.nonlinear_solver.spec.max_iterations = 8
+
+        # swap the runtime to the fault-specialized mechanics Newton driver
+        # (contact-gap residual + cut-off + slip-area gating), reusing the spec
+        self.nonlinear_solver = DisplacedFaultNewtonSolver(self.nonlinear_solver.spec)
+        self.nonlinear_solver.bind(self)
 
         ls1 = linear_solver_params()
         ls1.linear_type = sim_params.cpu_superlu

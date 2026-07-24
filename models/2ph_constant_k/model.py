@@ -1,6 +1,7 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, value_vector, index_vector
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from scipy.interpolate import interp1d
@@ -41,8 +42,9 @@ class Model(DartsModel):
         else:
             max_ts_mult = 5.
         max_ts = min(4., max_ts_mult * 1000 / self.nx)
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=max_ts, runtime=1000, tol_newton=1e-2, tol_linear=1e-3,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10, chop=ChopSpec(mode='local'))
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=max_ts, runtime=1000, tol_linear=1e-3,
+                            it_linear=50)
         # self.params.linear_type = sim_params.cpu_superlu
 
         self.timer.node["initialization"].stop()

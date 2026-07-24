@@ -65,8 +65,7 @@ public:
   {
     NEWTON_STD = 0,
     NEWTON_GLOBAL_CHOP,
-    NEWTON_LOCAL_CHOP,
-    NEWTON_INFLECTION_POINT
+    NEWTON_LOCAL_CHOP
   };
 
   enum linear_solver_t
@@ -100,35 +99,16 @@ public:
   sim_params()
   {
     // set default params
-    first_ts = 1;
-    max_ts = 10;
-    mult_ts = 2;
-    min_ts = 1e-12;
-
     max_i_linear = 50;
     tolerance_linear = 1e-5;
-    max_i_newton = 20;
-    min_i_newton = 0;
-    tolerance_newton = 1e-3;
-    well_tolerance_coefficient = 1e2;
-    stationary_point_tolerance = 1e-3;
-    newton_type = NEWTON_LOCAL_CHOP;
-    newton_params.push_back(0.1);
-    line_search = false;
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
     linear_type = CPU_SUPERLU;
 #else
     linear_type = CPU_GMRES_CPR_AMG;
 #endif
-    nonlinear_norm_type = L2;
 
-    //Added for debugging purposes:
-    tot_newt_count = 0;
-    log_transform = 0;
-    interface_avg_tmult = 0;
     enable_permporo = false;
-    // obl_min_fac = 10;
     sim_eps = 1e-12;
     assembly_kernel = 0;
 
@@ -137,41 +117,19 @@ public:
     phase_existence_tolerance = 1.e-6;
   }
 
-  value_t first_ts; // first time step length (days)
-  value_t max_ts;   // maximum time step length (days)
-  value_t mult_ts;  // multiplication ts factor
-  value_t min_ts;   // minimum time step length (days)
-
-  index_t max_i_newton;     // maximum number of newton iterations
-  index_t min_i_newton;     // minimum number of newton iterations
   index_t max_i_linear;     // maximum number of linear iterations
-  value_t tolerance_newton; // tolerance for newton solver
   value_t tolerance_linear; // tolerance for linear solver
-  value_t well_tolerance_coefficient; // tolerance multiplier for well newton tolerance
-  value_t stationary_point_tolerance; // stationary point tolerance
-  bool line_search;         // apply line search in newton iterations
 
-  //Added for debugging purposes:
-  index_t tot_newt_count;      // total number of newton iterations (wasted + non-wasted)
-  index_t log_transform;       // 0 => normal comp (X=[P,Z1,...,Znc-1]), 1 => logtransform of comp (X=[P,log(Z1),...,log(Znc-1)])
-  index_t interface_avg_tmult; // 0 => normal trans-multiplier (in operator), 1 => interface weighted trans-multiplier (in engine)
   bool enable_permporo;        // flag enabling transmissibility multiplier in assembly
-  value_t obl_min_fac;         // factor used to determine z_min --> usually taken around 10, such that z_min = 10*z_OBL_min
   value_t sim_eps;             // offset from axes that solution should remain inside
   int assembly_kernel;         // select non-default assebly kernel (for GPU)
 
-  newton_solver_t newton_type;          // Newton solver type (more precisely, nonlinear update type - chopping strategies)
   linear_solver_t linear_type;          // Linear solver type
-  nonlinear_norm_t nonlinear_norm_type; // Nonlinear norm type, used to check for convergence
 
-  std::vector<value_t> newton_params;
   std::vector<value_t> linear_params;
 
   // for NF solver
   std::vector<int> global_actnum;
-
-  // Global chop: 0 - solution increment/value (dX/X) ratio threshold (default 1)
-  // Local chop:  1 - composition increment is limited by max_dx (default 0.1)
 
   index_t finalize_mpi;         // flag to run MPI_Finalize in relevant solvers (required for multiple model run)
 
@@ -195,28 +153,6 @@ public:
     max_i_linear = 50;
     tolerance_linear = 1e-5;
   };
-};
-
-/// Main simulation statistics with active and wasted counts
-class sim_stat
-{
-public:
-  sim_stat()
-  {
-    n_newton_total = 0;     // total number of nonlinear iterations
-    n_linear_total = 0;     // total number of linear iterations
-    n_newton_wasted = 0;    // number of wasted nonlinear iterations
-    n_linear_wasted = 0;    // number of wasted linear iterations
-    n_timesteps_total = 0;  // total number of timetseps
-    n_timesteps_wasted = 0; // number of wasted timetseps
-  }
-
-  index_t n_newton_total;
-  index_t n_linear_total;
-  index_t n_newton_wasted;
-  index_t n_linear_wasted;
-  index_t n_timesteps_total;
-  index_t n_timesteps_wasted;
 };
 
 void write_vector_to_file(std::string file_name, std::vector<value_t> &v);

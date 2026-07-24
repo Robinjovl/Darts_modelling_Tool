@@ -12,7 +12,7 @@ import os
 import numpy as np
 import pytest
 
-from darts.physics.base.physics_base import PhysicsBase
+from darts.physics.base.physics import PhysicsBase
 from darts.tools.obl_cache import OblCacheCodec
 
 ND, NO = 8, 8
