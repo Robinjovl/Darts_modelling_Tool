@@ -79,10 +79,7 @@ from .python_solvers import (  # noqa: F401
 # the same name in this package namespace; the raw pybind class stays reachable
 # as darts.linear_solvers.linear_solvers.LinearSolver (alias
 # LinearSolverInterface) and as the type of LinearSolver.handle.
-from .solver import (  # noqa: F401,E402
-    LinearSolver,
-    default_linear_solver,
-)
+from .solver import LinearSolver  # noqa: F401,E402
 from .specs import (  # noqa: F401
     AMGXCPRSolverSpec,
     BCSRCPRSpec,
@@ -105,5 +102,4 @@ from .specs import (  # noqa: F401
     PythonLinearSolverSpec,
     SchurEliminationSpec,
     SuperLUSolverSpec,
-    default_linear_solver_spec,
 )

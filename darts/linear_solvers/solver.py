@@ -23,7 +23,7 @@ uniform runtime wrapper therefore serves every backend:
   the tolerances mirrored into ``sim_params``).
 """
 
-from darts.linear_solvers.specs import LinearSolverSpec, default_linear_solver_spec
+from darts.linear_solvers.specs import LinearSolverSpec
 
 
 def is_compiled_solver_handle(obj) -> bool:
@@ -48,13 +48,10 @@ class LinearSolver:
     (serializable via ``spec.to_dict()``), and the model binds it via
     :meth:`bind` before materializing the backend.
 
-    :param spec: the :class:`LinearSolverSpec` to run, or ``None`` to run the
-        platform default (resolved at bind time from ``model.platform``),
-        optionally tuned by the keyword arguments.
+    :param spec: the :class:`LinearSolverSpec` to run. ``None`` only for the
+        raw-handle path (:meth:`from_handle`); the platform defaults are
+        constructed explicitly in ``DartsModel.set_solver()``.
     :param model: optional model to bind at construction (usually left ``None``).
-    :param spec_kwargs: keyword arguments applied to the platform-default spec
-        (e.g. ``LinearSolver(tolerance=1e-6, max_iterations=40)``), mirroring
-        ``NewtonSolver(tolerance=1e-4, ...)``. Mutually exclusive with ``spec``.
     """
 
     # Slots make stale pre-instance idioms fail loudly: assigning
@@ -67,24 +64,15 @@ class LinearSolver:
         "handle",
         "python_solver",
         "label",
-        "_pending_spec_kwargs",
     )
 
-    def __init__(self, spec: LinearSolverSpec = None, model=None, **spec_kwargs):
-        if spec is not None and spec_kwargs:
-            raise TypeError(
-                "LinearSolver: pass either a LinearSolverSpec or its keyword "
-                "arguments, not both"
-            )
+    def __init__(self, spec: LinearSolverSpec = None, model=None):
         if spec is not None and not isinstance(spec, LinearSolverSpec):
             raise TypeError(
                 f"LinearSolver expects a LinearSolverSpec, got {type(spec).__name__}"
             )
         self.spec = spec
         self.model = model
-        #: kwargs deferred onto the platform-default spec (resolved at bind time,
-        #: when ``model.platform`` is known)
-        self._pending_spec_kwargs = dict(spec_kwargs)
         #: built C++ solver handle injected into the engine (open-source CPU
         #: builds; None on GPU / proprietary builds and before _apply_solver)
         self.handle = None
@@ -115,32 +103,11 @@ class LinearSolver:
     # ------------------------------------------------------------ binding
 
     def bind(self, model) -> "LinearSolver":
-        """Attach this (possibly detached) solver to a model; returns self.
-        Resolves the platform-default spec (and any deferred keyword arguments)
-        now that ``model.platform`` is known. The backend is materialized
-        separately by :meth:`DartsModel._apply_solver` (it needs the block size
-        and the engine object)."""
+        """Attach this (possibly detached) solver to a model; returns self. The
+        backend is materialized separately by :meth:`DartsModel._apply_solver`
+        (it needs the matrix block size and the engine object)."""
         self.model = model
-        self.resolve_spec(getattr(model, "platform", "cpu"))
         return self
-
-    def resolve_spec(self, platform: str = "cpu") -> LinearSolverSpec:
-        """Materialize the platform-default spec if none was chosen (idempotent);
-        apply and consume any deferred constructor keyword arguments."""
-        if self.spec is None and self.handle is None:
-            self.spec = default_linear_solver_spec(
-                "gpu" if platform == "gpu" else "cpu"
-            )
-        if self.spec is not None and self._pending_spec_kwargs:
-            for name, value in self._pending_spec_kwargs.items():
-                if not hasattr(self.spec, name):
-                    raise AttributeError(
-                        f"LinearSolver: unknown spec field {name!r} for "
-                        f"{type(self.spec).__name__}"
-                    )
-                setattr(self.spec, name, value)
-            self._pending_spec_kwargs = {}
-        return self.spec
 
     # ------------------------------------------------------------ introspection
 
@@ -156,20 +123,10 @@ class LinearSolver:
         elif self.handle is not None:
             head = "raw-handle"
         else:
-            head = "platform-default (unresolved)"
+            head = "unconfigured"
         parts = [head]
         if self.handle is not None:
             parts.append("built")
         if self.python_solver is not None:
             parts.append("python-resident")
         return f"LinearSolver({', '.join(parts)})"
-
-
-def default_linear_solver() -> LinearSolver:
-    """Default linear solver: a detached :class:`LinearSolver` running the
-    platform-default spec — FGMRES + open-source CPR/AMG on CPU, AMGX-CPR on GPU
-    (resolved at bind time). Mirror of
-    :func:`darts.nonlinear_solvers.default_nonlinear_solver`; the bare spec is
-    available from :func:`~darts.linear_solvers.specs.default_linear_solver_spec`.
-    """
-    return LinearSolver()

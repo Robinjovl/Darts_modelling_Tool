@@ -914,37 +914,3 @@ class GPUCuSolverSpec(GPUSolverSpec):
     """
 
     linear_type_name: ClassVar[str] = "gpu_cusolver"
-
-
-def default_linear_solver_spec(platform: str = "cpu") -> LinearSolverSpec:
-    """Return the default linear-solver spec for a platform.
-
-    Single source of truth for the default solver. The CPU default is
-    **FGMRES + open-source CPR** -- the in-tree restart-GMRES wrapped around
-    the two-stage CPR preconditioner (HYPRE BoomerAMG on the pressure
-    subsystem + HYPRE_ILU(0) on the full system). This is the open-source
-    equivalent of the legacy ``linsolv_bos_gmres + linsolv_bos_cpr_amg`` stack
-    that the proprietary build used as its default. Validated against MGR
-    across ``2ph_comp``, ``2ph_do``, ``2ph_geothermal``, and ``3ph_bo``: same
-    Newton / linear iteration counts as MGR, with lower per-iteration setup
-    overhead.
-
-    :class:`MGRSolverSpec` remains the recommended fallback for matrices
-    where the CPR pressure extraction is a bad fit; set
-    ``self.linear_solver = MGRSolverSpec()`` in the model's ``set_solver()`` to use it.
-
-    :param platform: ``"cpu"`` or ``"gpu"``.
-
-    The GPU default is :class:`AMGXCPRSolverSpec` -- GMRES + AMGX-CPR (NVIDIA
-    AMGX algebraic multigrid on the pressure subsystem + ILU on the full system),
-    mapping to ``linear_solver_t.gpu_gmres_cpr_amgx_ilu``. A :class:`GPUSolverSpec`
-    does not build a C++ solver; it names the ``params.linear_type`` enum, which
-    :meth:`DartsModel._apply_solver` sets on the GPU platform and the GPU engine
-    factory (``engine_base_gpu``) consumes. So ``self.linear_solver`` is the single
-    user-facing API on GPU too.
-
-    :param platform: ``"cpu"`` or ``"gpu"``.
-    """
-    if platform.lower() == "gpu":
-        return AMGXCPRSolverSpec()
-    return GMRESSolverSpec(restart=50, prec=CPRSolverSpec())
