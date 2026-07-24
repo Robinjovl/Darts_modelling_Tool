@@ -900,9 +900,19 @@ class Output:
                         (self.reservoir.mesh.n_blocks, dataset_width)
                     )[cell_id]
                 else:
-                    reshaped = np.asarray(self.physics.engine.X).reshape(
-                        (self.reservoir.mesh.n_blocks, self.physics.n_vars)
-                    )[cell_id]
+                    engine_state = np.asarray(self.physics.engine.X)
+                    engine_width = (
+                        engine_state.size // self.reservoir.mesh.n_blocks
+                    )
+                    reshaped = engine_state.reshape(
+                        (self.reservoir.mesh.n_blocks, engine_width)
+                    )
+                    if engine_width != dataset_width:
+                        flow_start = getattr(self.physics.engine, "P_VAR", 0)
+                        reshaped = reshaped[
+                            :, flow_start : flow_start + dataset_width
+                        ]
+                    reshaped = reshaped[cell_id]
                 data_array = np.expand_dims(
                     reshaped, axis=0
                 )  # shape (1, n_cells, n_state)
@@ -2347,11 +2357,18 @@ class Output:
             physics, "n_well_ctrl_itor_ops", physics.well_ctrl_operators.n_ops
         )
         n_reservoir_ops = physics.reservoir_operators[0].n_ops
-        n_vars = physics.engine.N_VARS
+        n_vars = physics.n_vars
         block_idx = index_vector(np.arange(batch_size).astype(np.int32))
 
         states_m = h5_well_data["dynamic"]["X"][time_idx, cell_m]
         states_p = h5_well_data["dynamic"]["X"][time_idx, cell_p]
+        if states_m.shape[-1] != n_vars:
+            # Mechanics engines also store displacement unknowns. Select the
+            # contiguous flow state consumed by the property interpolators.
+            flow_start = getattr(physics.engine, "P_VAR", 0)
+            flow_vars = slice(flow_start, flow_start + n_vars)
+            states_m = states_m[..., flow_vars]
+            states_p = states_p[..., flow_vars]
 
         if self.precision == "s":
             axes_min = np.array(physics.axes_min)
