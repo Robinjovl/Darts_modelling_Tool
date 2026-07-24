@@ -2,6 +2,7 @@ from darts.engines import *
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 import numpy as np
 
 from darts.physics.base.physics import PhysicsBase
@@ -35,9 +36,10 @@ class Model(CICDModel, OptModuleSettings):
         self.Peaceman_WI = Peaceman_WI
         self.set_physics()
 
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-6, max_iterations=10,
+                                           chop=ChopSpec(mode='local'))
         self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000,
-                            tol_newton=1e-6, tol_linear=1e-3, it_newton=10, it_linear=50,
-                            newton_type=sim_params.newton_local_chop)
+                            tol_linear=1e-3, it_linear=50)
 
         self.timer.node["initialization"].stop()
 

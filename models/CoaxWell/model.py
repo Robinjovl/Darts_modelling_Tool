@@ -4,6 +4,7 @@ from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from darts.engines import value_vector, sim_params
 from darts.engines import well_control_iface, ms_well
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.base.property_container import PropertyContainer
@@ -29,9 +30,10 @@ class Model(CICDModel):
         # far below the IAPWS-valid range (-> "BISECTION not converged" crash). Tighten the
         # global chop from 1 (100% relative change) to 0.2, matching the mitigation already
         # used by cpg_sloping_fault's ModelGeothermal for the same failure.
-        self.set_sim_params(first_ts=1e-6, mult_ts=8, max_ts=31, runtime=365, tol_newton=1e-4, tol_linear=1e-6,
-                            it_newton=20, it_linear=40, newton_type=sim_params.newton_global_chop,
-                            newton_params=value_vector([0.2]))
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=20,
+                                           chop=ChopSpec(mode='global', factor=0.2))
+        self.set_sim_params(first_ts=1e-6, mult_ts=8, max_ts=31, runtime=365, tol_linear=1e-6,
+                            it_linear=40)
 
         self.timer.node["initialization"].stop()
 

@@ -1351,7 +1351,8 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 	return 0;
 };
 
-int engine_base::print_timestep(value_t time, value_t deltat)
+int engine_base::print_timestep(value_t time, value_t deltat, index_t n_newton, index_t n_linear,
+								value_t newton_residual, value_t well_residual)
 {
 	double estimate;
 	int hour, min, sec;
@@ -1377,8 +1378,8 @@ int engine_base::print_timestep(value_t time, value_t deltat)
 	};
 
 	std::string msg = fmt("T = %g, DT = %g, NI = %d, LI = %d, RES = %.1e (%.1e), CFL=%.3lf (ELAPSED %02d:%02d:%02d",
-			time, deltat, n_newton_last_dt, n_linear_last_dt, newton_residual_last_dt, well_residual_last_dt, CFL_max, hour, min, sec);
-	if ((dt * params->mult_ts > params->max_ts || full_step_timer.timer) && t < stop_time)
+			time, deltat, n_newton, n_linear, newton_residual, well_residual, CFL_max, hour, min, sec);
+	if (full_step_timer.timer && t < stop_time)
 	{
 		if (!full_step_timer.timer)
 		{
@@ -1426,8 +1427,8 @@ int engine_base::print_stat()
 	const uint16_t n_ops = get_n_ops();
 
 	r_code += sprintf(buffer, "\n");
-	r_code += sprintf(buffer + r_code, "Total steps %d (%d) newton %d (%d) linear %d (%d)\n", stat.n_timesteps_total,
-					  stat.n_timesteps_wasted, stat.n_newton_total, stat.n_newton_wasted, stat.n_linear_total, stat.n_linear_wasted);
+	// cumulative timestep/newton/linear statistics are tracked and printed by the
+	// Python nonlinear solver (darts.nonlinear_solvers.NonlinearSolver.stats)
 
 	r_code += sprintf(buffer + r_code, "---OBL Statistics---\n");
 	r_code += sprintf(buffer + r_code, "Number of operators: %d\n", n_ops);
@@ -1778,7 +1779,7 @@ double
 engine_base::calc_newton_residual()
 {
 
-	switch (params->nonlinear_norm_type)
+	switch (residual_norm_type)
 	{
 	case sim_params::L1:
 	{
@@ -1884,7 +1885,7 @@ double
 engine_base::calc_well_residual()
 {
 
-	switch (params->nonlinear_norm_type)
+	switch (residual_norm_type)
 	{
 	case sim_params::L1:
 	{
@@ -1907,12 +1908,17 @@ engine_base::calc_well_residual()
 
 //#define NORMAL_ZC //If you want to use logtransform of zc, i.e. X = [P, log(z1), ..., log(znc-1)] instead of [P, z1, ..., znc-1], comment this line!
 
-int engine_base::apply_newton_update(value_t dt)
+// Staged nonlinear-update kernels. Each guards its own applicability so the
+// Python nonlinear solver can compose them into a pre-update pipeline driven
+// by the solver spec (darts.nonlinear_solvers); apply_newton_update() below
+// remains the legacy composite with identical behavior.
+
+void engine_base::correct_composition()
 {
 	timer->node["newton update"].node["composition correction"].start();
 	if (nc > 1)
 	{
-	  if (params->log_transform == 1)
+	  if (log_transform == 1)
 	  {
 		apply_composition_correction_new(X, dX);
 	  }
@@ -1922,56 +1928,82 @@ int engine_base::apply_newton_update(value_t dt)
 	  }
 	}
 	timer->node["newton update"].node["composition correction"].stop();
+}
 
-	if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
+void engine_base::correct_chop_global()
+{
+	if (n_solid > 0)
 	{
-	  if (n_solid > 0)
+	  apply_local_chop_correction_with_solid(X, dX);
+	}
+	else
+	{
+	  if (log_transform == 1)
 	  {
-		apply_local_chop_correction_with_solid(X, dX);
+		apply_global_chop_correction_new(X, dX);
 	  }
 	  else
 	  {
-		if (params->log_transform == 1)
-		{
-		  apply_global_chop_correction_new(X, dX);
-		}
-		else
-		{
-		  apply_global_chop_correction(X, dX);
-		}
+		apply_global_chop_correction(X, dX);
 	  }
 	}
+}
+
+void engine_base::correct_chop_local()
+{
 	// apply local chop only if number of components is 2 and more
-	else if (params->newton_type == sim_params::NEWTON_LOCAL_CHOP && nc > 1)
+	if (nc <= 1)
+	  return;
+	if (n_solid > 0)
 	{
-	  if (n_solid > 0)
+	  apply_local_chop_correction_with_solid(X, dX);
+	}
+	else
+	{
+	  if (log_transform == 1)
 	  {
-		apply_local_chop_correction_with_solid(X, dX);
+		apply_local_chop_correction_new(X, dX);
 	  }
 	  else
 	  {
-		if (params->log_transform == 1)
-		{
-		  apply_local_chop_correction_new(X, dX);
-		}
-		else
-		{
-		  apply_local_chop_correction(X, dX);
-		}
+		apply_local_chop_correction(X, dX);
 	  }
 	}
+}
 
+void engine_base::correct_obl_axes()
+{
 	// apply only if interpolation is used for derivatives
 	// make decision based on only the first region
 	if (op_axis_min[0].size() > 0)
 		apply_obl_axis_local_correction(X, dX);
+}
 
+void engine_base::correct_obl_axes(const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max)
+{
+	if (axis_min.size() != (size_t)n_vars || axis_max.size() != (size_t)n_vars)
+	{
+		std::cout << "OBL axis correction skipped: axis bounds size mismatch (expected " << (int)n_vars << " values per axis)" << std::endl;
+		return;
+	}
+	for (auto &region_bounds : op_axis_min)
+		region_bounds = axis_min;
+	for (auto &region_bounds : op_axis_max)
+		region_bounds = axis_max;
+	apply_obl_axis_local_correction(X, dX);
+}
+
+void engine_base::correct_thermal()
+{
 	// Apply thermal variable correction when the PH formulation with a multi-component fluid is used.
 	if (state_spec >= StateSpecification::PH && n_vars > 2)
 	{
 		apply_thermal_var_correction(X, dX);
 	}
+}
 
+int engine_base::apply_update(value_t dt)
+{
 	// make newton update
 	auto newton_update_coefficient_copy = this->newton_update_coefficient;
 	std::transform(X.begin(), X.end(), dX.begin(), X.begin(),
@@ -1981,6 +2013,25 @@ int engine_base::apply_newton_update(value_t dt)
 	this->newton_update_coefficient = 1.0;
 
 	return 0;
+}
+
+int engine_base::apply_newton_update(value_t dt)
+{
+	correct_composition();
+
+	if (newton_chop_mode == sim_params::NEWTON_GLOBAL_CHOP)
+	{
+	  correct_chop_global();
+	}
+	else if (newton_chop_mode == sim_params::NEWTON_LOCAL_CHOP)
+	{
+	  correct_chop_local();
+	}
+
+	correct_obl_axes();
+	correct_thermal();
+
+	return apply_update(dt);
 }
 
 /**
@@ -2479,7 +2530,7 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 	index_t n_corrected = 0;
 
 	// Check if solving for the log-transform or regular composition:
-	if (params->log_transform == 0)
+	if (log_transform == 0)
 	{
 		// No log-transform is applied to nonlinear unknowns (compositions only), proceed normally:
 		for (index_t i = 0; i < nb; i++)
@@ -2559,7 +2610,7 @@ void engine_base::apply_composition_correction_new(std::vector<value_t> &X, std:
 			check_vec.clear();
 		}
 	}
-	else if (params->log_transform == 1)
+	else if (log_transform == 1)
 	{
 		// Log-transform is applied to nonlinear unknowns (compositions only), transform back composition exp(log(zc)) to apply correction:
 		for (index_t i = 0; i < nb; i++)
@@ -2666,11 +2717,11 @@ void engine_base::apply_global_chop_correction(std::vector<value_t> &X, std::vec
 		}
 	}
 
-	if (max_ratio > params->newton_params[0])
+	if (max_ratio > newton_chop_factor)
 	{
 		std::cout << "Apply global chop with max changes = " << max_ratio << "\n";
 		for (size_t i = 0; i < n_vars_total; i++)
-			dX[i] *= params->newton_params[0] / max_ratio;
+			dX[i] *= newton_chop_factor / max_ratio;
 	}
 }
 
@@ -2681,7 +2732,7 @@ void engine_base::apply_global_chop_correction_new(std::vector<value_t> &X, std:
 	double temp_zc = 0;
 	double temp_dz = 0;
 
-	if (params->log_transform == 0)
+	if (log_transform == 0)
 	{
 		for (index_t i = 0; i < n_vars_total; i++)
 		{
@@ -2693,16 +2744,16 @@ void engine_base::apply_global_chop_correction_new(std::vector<value_t> &X, std:
 			}
 		}
 
-		if (max_ratio > params->newton_params[0])
+		if (max_ratio > newton_chop_factor)
 		{
 			std::cout << "Apply global chop with max changes = " << max_ratio << "\n";
 			for (size_t i = 0; i < n_vars_total; i++)
 			{
-				dX[i] *= params->newton_params[0] / max_ratio;
+				dX[i] *= newton_chop_factor / max_ratio;
 			}
 		}
 	}
-	else if (params->log_transform == 1)
+	else if (log_transform == 1)
 	{
 		for (index_t i = 0; i < n_vars_total; i++)
 		{
@@ -2723,12 +2774,12 @@ void engine_base::apply_global_chop_correction_new(std::vector<value_t> &X, std:
 			}
 		}
 
-		if (max_ratio > params->newton_params[0])
+		if (max_ratio > newton_chop_factor)
 		{
 			std::cout << "Apply global chop with max changes = " << max_ratio << "\n";
 			for (size_t i = 0; i < n_vars_total; i++)
 			{
-				dX[i] *= params->newton_params[0] / max_ratio; //log based composition
+				dX[i] *= newton_chop_factor / max_ratio; //log based composition
 			}
 		}
 	}
@@ -2736,7 +2787,7 @@ void engine_base::apply_global_chop_correction_new(std::vector<value_t> &X, std:
 
 void engine_base::apply_local_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
-	value_t max_dx = params->newton_params[0];
+	value_t max_dx = newton_chop_factor;
 	value_t ratio, dx;
 	index_t n_corrected = 0;
 
@@ -2777,7 +2828,7 @@ void engine_base::apply_local_chop_correction(std::vector<value_t> &X, std::vect
 
 void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
-	value_t max_dx = params->newton_params[0];
+	value_t max_dx = newton_chop_factor;
 	value_t ratio, dx;
 	index_t n_corrected = 0;
 	uint8_t nc_fl = nc - n_solid;
@@ -2819,11 +2870,11 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 
 void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
-	value_t max_dx = params->newton_params[0];
+	value_t max_dx = newton_chop_factor;
 	value_t ratio, dx;
 	index_t n_corrected = 0;
 
-	if (params->log_transform == 0)
+	if (log_transform == 0)
 	{
 		for (int i = 0; i < mesh->n_blocks; i++)
 		{
@@ -2858,7 +2909,7 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 			}
 		}
 	}
-	else if (params->log_transform == 1)
+	else if (log_transform == 1)
 	{
 		std::cout << "!!!Using local chop for log-transform of variables is not tested properly, proceed with caution!!!" << std::endl;
 		for (int i = 0; i < mesh->n_blocks; i++)
@@ -3074,7 +3125,7 @@ int engine_base::solve_linear_equation()
 {
 	int r_code;
 	char buffer[1024];
-	linear_solver_error_last_dt = 0;
+	last_linear_iters = 0;
 	timer->node["linear solver setup"].start();
 	r_code = linear_solver->setup(Jacobian);
 	timer->node["linear solver setup"].stop();
@@ -3083,11 +3134,8 @@ int engine_base::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver setup returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
 		//Jacobian->write_matrix_to_file("jac_linear_setup_fail.csr");
-		linear_solver_error_last_dt = 1;
-		return linear_solver_error_last_dt;
+		return 1;
 	}
 
 	timer->node["linear solver solve"].start();
@@ -3112,72 +3160,24 @@ int engine_base::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		linear_solver_error_last_dt = 2;
-		return linear_solver_error_last_dt;
+		return 2;
 	}
 	else
 	{
-		sprintf(buffer, "\t #%d (%.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1, newton_residual_last_dt,
-				well_residual_last_dt, linear_solver->get_n_iters(), linear_solver->get_residual());
-		std::cout << buffer << std::flush;
-		n_linear_last_dt += linear_solver->get_n_iters();
+		last_linear_iters = linear_solver->get_n_iters();
+		last_linear_residual = linear_solver->get_residual();
 	}
 	return 0;
 }
 
-int engine_base::post_newtonloop(value_t deltat, value_t time)
+int engine_base::post_newtonloop(value_t deltat, value_t time, index_t converged)
 {
-	int converged = 0;
-	char buffer[1024];
-	double well_tolerance_coefficient = 1e2;
-
-	if (linear_solver_error_last_dt == 1) // linear solver setup failed
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (linear solver setup failed) \n", deltat);
-	}
-	else if (linear_solver_error_last_dt == 2) // linear solver solve failed
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (linear solver solve failed) \n", deltat);
-	}
-	else if (newton_residual_last_dt >= params->tolerance_newton) // no reservoir convergence reached
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (newton residual reservoir) \n", deltat);
-	}
-	else if (well_residual_last_dt > well_tolerance_coefficient * params->tolerance_newton) // no well convergence reached
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (newton residual wells) \n", deltat);
-	}
-	else
-	{
-		converged = 1;
-	}
-
 	if (!converged)
 	{
-		stat.n_newton_wasted += n_newton_last_dt;
-		stat.n_linear_wasted += n_linear_last_dt;
-		stat.n_timesteps_wasted++;
-		converged = 0;
-
 		X = Xn;
-
-		std::cout << buffer << std::flush;
 	}
 	else //convergence reached
 	{
-		stat.n_newton_total += n_newton_last_dt;
-		stat.n_linear_total += n_linear_last_dt;
-		stat.n_timesteps_total++;
-		converged = 1;
-
-		//adjoint method
-		if (opt_history_matching == false)
-		{
-			print_timestep(time + deltat, deltat);
-		}
-
 		time_data["time"].push_back(time + deltat);
 
 		for (ms_well *w : wells)
@@ -3206,7 +3206,7 @@ int engine_base::post_newtonloop(value_t deltat, value_t time)
 
 		Xn = X;
 		op_vals_arr_n = op_vals_arr;
-		t += dt;
+		t = time + deltat;
 
 
 

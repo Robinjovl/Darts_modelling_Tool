@@ -547,7 +547,7 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
                             lower_lim=8.e-4,
                             upper_lim=1.5 * n.ini_comp[1])
 
-    return n.timer, n.physics.engine.stat
+    return n.timer, n.nonlinear_solver.stats
 
 def test_performance(params, n_repeat: int = 1):
     n_models = len(params['itor_type'])

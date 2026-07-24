@@ -1,6 +1,7 @@
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector, sim_params, ms_well
+from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
 from darts.physics.base.physics import PhysicsBase
@@ -27,8 +28,8 @@ class Model(CICDModel):
         self.zero = 1e-13
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=0.2, runtime=300, tol_newton=1e-3, tol_linear=1e-6,
-                            coupled_well_res_norm_method=2)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, coupled_well_res_norm_method=2)
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=0.2, runtime=300, tol_linear=1e-6)
 
         self.timer.node["initialization"].stop()
 
