@@ -2005,23 +2005,42 @@ class Output:
         for well in self.reservoir.wells:
             res_cell_idxs = [perf[1] for perf in well.perforations]
 
-            # Find indices of perforations in the connection list (those connections
-            # which 1. block_m is in the desired well and 2. block_p is in res_cell_idxs)
+            # Use the standard well-segment range first.
             mask = np.logical_and(
                 np.isin(block_p, res_cell_idxs),
                 np.logical_and(
-                    block_m >= well.well_head_idx, block_m <= well.well_bottom_idx
+                    block_m >= well.well_head_idx,
+                    block_m <= well.well_bottom_idx,
                 ),
             )
+            conn_idxs = np.flatnonzero(mask)
 
-            conn_idxs = np.nonzero(mask)
-            well_perf_conn_idxs[well.name] = conn_idxs[0]
-            assert well_perf_conn_idxs[well.name].size == len(
-                well.perforations
-            ) and np.all(
-                block_m[well_perf_conn_idxs[well.name]]
-                > self.reservoir.mesh.n_res_blocks
+            # MPFA mechanics wells can leave well_bottom_idx undefined
+            # and store both connection directions. For those simple EPM wells,
+            # each perforation connects directly from well_body_idx.
+            standard_lookup_ok = (
+                conn_idxs.size == len(well.perforations)
+                and np.all(
+                    block_m[conn_idxs] >= self.reservoir.mesh.n_res_blocks
+                )
             )
+            if not standard_lookup_ok:
+                fallback_conn_idxs = []
+                for perf in well.perforations:
+                    matches = np.flatnonzero(
+                        (block_m == well.well_body_idx)
+                        & (block_p == perf[1])
+                    )
+                    if matches.size != 1:
+                        raise RuntimeError(
+                            f"Expected one perforation connection for well "
+                            f"{well.name!r} and reservoir cell {perf[1]}, "
+                            f"found {matches.size}"
+                        )
+                    fallback_conn_idxs.append(int(matches[0]))
+                conn_idxs = np.asarray(fallback_conn_idxs, dtype=np.intp)
+
+            well_perf_conn_idxs[well.name] = conn_idxs
 
             # Find idx of well_head-well_body connection in the connection list
             wh_conn_idx = np.where(
@@ -2328,7 +2347,7 @@ class Output:
             physics, "n_well_ctrl_itor_ops", physics.well_ctrl_operators.n_ops
         )
         n_reservoir_ops = physics.reservoir_operators[0].n_ops
-        n_vars = physics.n_vars
+        n_vars = physics.engine.N_VARS
         block_idx = index_vector(np.arange(batch_size).astype(np.int32))
 
         states_m = h5_well_data["dynamic"]["X"][time_idx, cell_m]
