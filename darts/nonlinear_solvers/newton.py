@@ -73,18 +73,6 @@ class NewtonSpec(NonlinearSolverSpec):
         engine.log_transform = 1 if self.chop.log_transform else 0
 
 
-def default_nonlinear_spec() -> NewtonSpec:
-    """Default nonlinear solver spec: local-chop Newton, matching the historic
-    sim_params defaults."""
-    return NewtonSpec()
-
-
-def default_nonlinear_solver() -> "NewtonSolver":
-    """Default nonlinear solver: a detached local-chop Newton solver, matching
-    the historic sim_params defaults."""
-    return NewtonSolver(default_nonlinear_spec())
-
-
 # ------------------------------------------------------------------ solver
 
 

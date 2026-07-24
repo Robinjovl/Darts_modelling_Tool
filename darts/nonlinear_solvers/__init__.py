@@ -29,7 +29,7 @@ Design (specified in ``set_solver()``, the same hook as the linear solver of MR2
           self.nonlinear_solver.spec.tolerance = 1e-4
           self.nonlinear_solver.spec.chop.factor = 0.2
 
-- The solver instance (created in ``set_solver()`` / :func:`default_nonlinear_solver`)
+- The solver instance (created in ``set_solver()``)
   is bound to the model by ``DartsModel._apply_nonlinear()`` during ``init()``. It
   owns ``run_timestep()`` — the nonlinear loop driving the C++ per-iteration
   kernels (assembly, linear solve, dX corrections, residual norms). Every
@@ -68,8 +68,6 @@ from darts.nonlinear_solvers.mechanics import MechanicsNewtonSolver
 from darts.nonlinear_solvers.newton import (
     NewtonSolver,
     NewtonSpec,
-    default_nonlinear_solver,
-    default_nonlinear_spec,
 )
 
 __all__ = [
@@ -82,8 +80,6 @@ __all__ = [
     # solver specs
     "NonlinearSolverSpec",
     "NewtonSpec",
-    "default_nonlinear_solver",
-    "default_nonlinear_spec",
     # runtime
     "NonlinearSolver",
     "NewtonSolver",

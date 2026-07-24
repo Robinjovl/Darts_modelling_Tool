@@ -16,7 +16,7 @@ from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
 from darts.interpolators import op_vector
 from darts.models.output import Output
-from darts.nonlinear_solvers import default_nonlinear_solver
+from darts.nonlinear_solvers import ChopSpec, NewtonSolver, Norm, OBLBoundsSpec
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
@@ -597,7 +597,10 @@ class DartsModel:
         ``self.nonlinear_solver.spec`` (serializable via ``.to_dict()``, for tracing).
 
         The default implementation is idempotent and lazy: it keeps any solver a
-        subclass already assigned and otherwise materializes the default.
+        subclass already assigned and otherwise materializes the default below —
+        which spells out **every** default parameter explicitly, so the effective
+        configuration of a model that does not override it is readable here
+        instead of being hidden in the spec dataclass defaults.
         Override in a model to select/tune the nonlinear solver, either by
         replacing it::
 
@@ -614,7 +617,28 @@ class DartsModel:
                 self.nonlinear_solver.spec.chop.factor = 0.2
         """
         if getattr(self, "nonlinear_solver", None) is None:
-            self.nonlinear_solver = default_nonlinear_solver()
+            # Default nonlinear solver, with every parameter stated explicitly.
+            # These values mirror the NewtonSpec/NonlinearSolverSpec field
+            # defaults — keep the two in sync when changing a default.
+            self.nonlinear_solver = NewtonSolver(
+                tolerance=1e-3,  # reservoir-block residual tolerance
+                well_tolerance_multiplier=100.0,  # well tol = tolerance * this
+                max_iterations=20,  # max Newton iterations per timestep
+                stationary_point_tolerance=1e-3,  # residual-stagnation detection
+                norm=Norm.L2,  # residual norm
+                coupled_well_res_norm_method=1,  # DFM coupled well-res norm (1 or 2)
+                chop=ChopSpec(
+                    mode="local",  # 'local' | 'global' | None
+                    factor=0.1,  # max composition change per iteration
+                    log_transform=False,  # solve in log-composition variables
+                ),
+                obl_bounds=OBLBoundsSpec(
+                    mode=None,  # None (off) | 'obl_axes'
+                    axis_min=None,  # per-state-variable lower bounds
+                    axis_max=None,  # per-state-variable upper bounds
+                ),
+            )
+            # pre_routines / post_routines / fallbacks default to empty lists
 
     @property
     def data_ts(self):
