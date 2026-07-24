@@ -1,5 +1,6 @@
 from darts.engines import *
 from darts.models.cicd_model import CICDModel
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from darts.physics.base.physics import PhysicsBase
@@ -24,9 +25,10 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-4, mult_ts=1.5, max_ts=1, runtime=10, tol_newton=1e-3, tol_linear=1e-4,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
-        self.params.newton_params[0] = 0.25
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
+                                           chop=ChopSpec(mode='local', factor=0.25))
+        self.set_sim_params(first_ts=1e-4, mult_ts=1.5, max_ts=1, runtime=10, tol_linear=1e-4,
+                            it_linear=50)
 
         self.timer.node["initialization"].stop()
 

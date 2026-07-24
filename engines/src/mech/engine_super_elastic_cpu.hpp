@@ -158,6 +158,8 @@ public:
 
   value_t dev_u,		dev_p,		dev_e,		dev_z[NC], dev_g;
   value_t dev_u_prev,	dev_p_prev, dev_e_prev, dev_z_prev[NC], dev_g_prev, well_residual_prev_dt;
+  // well residual of the current timestep (engine-internal convergence tracking)
+  value_t well_residual_last_dt;
 
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
 
