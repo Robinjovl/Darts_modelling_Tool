@@ -25,11 +25,12 @@ from darts.linear_solvers.enums import (
 )
 from darts.models.cicd_model import CICDModel
 from darts.models.opt.opt_module_settings import OptModuleSettings
+from darts.nonlinear_solvers import ChopSpec, NewtonSolver
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.flash import ConstantK
-from darts.physics.base.physics import PhysicsBase
-from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.tools.keyword_file_tools import get_table_keyword
 

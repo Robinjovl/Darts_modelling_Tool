@@ -727,13 +727,16 @@ class DartsModel:
         configuration of a model that does not override it is readable here instead
         of being hidden in the spec dataclass defaults.
 
-        Override in a model either by replacing a solver::
+        Override in a model either by replacing a solver -- both attributes hold a
+        runtime instance (``NewtonSolver`` / ``LinearSolver``); a linear spec is
+        auto-wrapped for convenience, so these two linear forms are equivalent::
 
             def set_solver(self):
                 super().set_solver()
                 self.nonlinear_solver = NewtonSolver(tolerance=1e-4,
                                                      chop=ChopSpec(mode='global'))
-                self.linear_solver = MGRSolverSpec(tolerance=1e-4)
+                self.linear_solver = MGRSolverSpec(tolerance=1e-4)          # spec (auto-wrapped)
+                self.linear_solver = LinearSolver(MGRSolverSpec(tolerance=1e-4))  # explicit instance
 
         or by tuning the spec of the default::
 
@@ -783,9 +786,14 @@ class DartsModel:
                 # GPU default: GMRES + AMGX-CPR (NVIDIA AMGX on the pressure
                 # subsystem + ILU on the full system). A GPUSolverSpec does not
                 # build a C++ solver; it names the params.linear_type enum
-                # (gpu_gmres_cpr_amgx_ilu) that the GPU engine factory consumes,
-                # so only the engine-applied knobs below are meaningful.
-                self.linear_solver = AMGXCPRSolverSpec(
+                # (gpu_gmres_cpr_amgx_ilu) that the GPU engine factory consumes.
+                # Its field set is deliberately small: the AMG multigrid
+                # configuration lives in the C++ engine factory / an AMGX JSON
+                # config, NOT in Python, so the only Python-side knobs are the
+                # shared tolerance / max_iterations / print_level (mirrored into
+                # sim_params) and the GPU-specific Schur elimination. Every field
+                # of the spec is stated here.
+                spec = AMGXCPRSolverSpec(
                     tolerance=1e-5,  # linear residual tolerance
                     max_iterations=50,  # max Krylov iterations per solve
                     print_level=0,  # solver verbosity
@@ -798,8 +806,11 @@ class DartsModel:
                 # CPU default: in-tree FGMRES around the two-stage CPR
                 # preconditioner (HYPRE BoomerAMG on the pressure subsystem +
                 # ILU(0) on the full system) -- the open-source equivalent of the
-                # legacy `bos_gmres + bos_cpr_amg` default.
-                self.linear_solver = GMRESSolverSpec(
+                # legacy `bos_gmres + bos_cpr_amg` default. Unlike the GPU spec,
+                # the CPR preconditioner is BUILT through the open-source registry
+                # from Python, so every HYPRE BoomerAMG knob is a settable field
+                # and is stated explicitly here.
+                spec = GMRESSolverSpec(
                     tolerance=1e-5,  # linear residual tolerance
                     max_iterations=50,  # max Krylov iterations per solve
                     print_level=0,  # solver verbosity
@@ -839,6 +850,13 @@ class DartsModel:
                         adaptive_consecutive_bad=2,  # bad solves before rebuilding
                     ),
                 )
+            # Assign the runtime LinearSolver INSTANCE, not the bare spec -- the
+            # mirror of the nonlinear default above holding a NewtonSolver instance
+            # (fa929d51f: "assign an instance of linear solver, not its spec, to
+            # enforce consistency with the nonlinear solvers"). The setter would
+            # wrap a bare spec too, but constructing the instance explicitly keeps
+            # the two families symmetric and states the intent in this one place.
+            self.linear_solver = LinearSolver(spec)
             self._default_solver_obj = self.linear_solver
 
         # A deprecated set_sim_params(tol_newton=..., tol_linear=..., ...) call made
