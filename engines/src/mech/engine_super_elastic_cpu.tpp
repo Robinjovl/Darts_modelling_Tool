@@ -13,10 +13,6 @@
 
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "linsolv_bos_gmres.hpp"
-#include "linsolv_bos_bilu0.hpp"
-#include "linsolv_bos_cpr.hpp"
-#include "linsolv_bos_amg.hpp"
 #include "linsolv_superlu.hpp"
 #else
 #include "linsolv_bos_gmres.h"
@@ -124,6 +120,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	{
 		switch (params->linear_type)
 		{
+#ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS solvers; the open-source build injects via the registry
 		case sim_params::CPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
@@ -132,6 +129,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			linear_solver->set_prec(cpr);
 			break;
 		}
+#endif // OPENDARTS_LINEAR_SOLVERS
 #ifdef _WIN32
 #if 0
 		  // Can be enabled if amgdll.dll is available.
@@ -147,12 +145,14 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		}
 #endif
 #endif //_WIN32
+#ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS solver; open-source build injects via the registry
 		case sim_params::CPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
 			linear_solver->set_prec(new linsolv_bos_bilu0<N_VARS>);
 			break;
 		}
+#endif // OPENDARTS_LINEAR_SOLVERS
 #ifndef OPENDARTS_LINEAR_SOLVERS
 		case sim_params::CPU_GMRES_FS_CPR:
 		{
@@ -177,7 +177,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			break;
 		}
 
-#ifdef WITH_GPU
+// The GPU BOS-enum cases use the proprietary linsolv_bos_* solvers; the open-source
+// GPU build runs through engine_super_gpu (registry / AMGX-CPR), not this factory.
+#if defined(WITH_GPU) && !defined(OPENDARTS_LINEAR_SOLVERS)
 		case sim_params::GPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);

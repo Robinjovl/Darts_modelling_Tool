@@ -112,6 +112,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   {
 	switch (param.linear_type)
 	{
+#ifndef OPENDARTS_LINEAR_SOLVERS
 	  case sim_params::CPU_GMRES_CPR_AMG:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>);
@@ -126,7 +127,6 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 		linear_solvers.back()->set_prec(new linsolv_bos_bilu0<N_VARS>);
 		break;
 	  }
-#ifndef OPENDARTS_LINEAR_SOLVERS
 	  case sim_params::CPU_GMRES_FS_CPR:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>);
@@ -153,7 +153,9 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 		break;
 	  }
 
-#ifdef WITH_GPU
+// The GPU BOS-enum cases use the proprietary linsolv_bos_* solvers; the open-source
+// GPU build injects its solver through the registry, not this factory.
+#if defined(WITH_GPU) && !defined(OPENDARTS_LINEAR_SOLVERS)
 	  case sim_params::GPU_GMRES_CPR_AMG:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
@@ -1940,7 +1942,11 @@ int engine_pm_cpu::post_explicit(value_t deltat, value_t time)
 
 void engine_pm_cpu::update_uu_jacobian()
 {
+#ifndef OPENDARTS_LINEAR_SOLVERS
+	// The uu-block refresh lives on the proprietary FS-CPR preconditioner; in the
+	// open-source build the FS-CPR solver is not available and this is a no-op.
 	static_cast<linsolv_bos_fs_cpr<N_VARS>*>(static_cast<linsolv_bos_gmres<N_VARS>*>(linear_solver)->prec)->do_update_uu();
+#endif // OPENDARTS_LINEAR_SOLVERS
 }
 
 void engine_pm_cpu::scale_rows()

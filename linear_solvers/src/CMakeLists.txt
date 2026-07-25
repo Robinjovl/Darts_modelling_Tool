@@ -100,11 +100,6 @@ set(OD_LINEAR_SOLVERS_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_superlu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_hypre_amg.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_hypre_ilu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_amg.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_bilu0.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_cpr.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_fs_cpr.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_gmres.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_gmres.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cpr.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/matrix_slice.cpp
@@ -134,11 +129,6 @@ set(OD_LINEAR_SOLVERS_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_superlu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_hypre_amg.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_hypre_ilu.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_amg.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_bilu0.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_cpr.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_fs_cpr.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_gmres.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_gmres.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cpr.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/../include/matrix_slice.hpp
@@ -241,7 +231,7 @@ file(MAKE_DIRECTORY ${_od_linsolv_gen_dir})
 foreach(_od_solver linsolv_gmres linsolv_cpr linsolv_mgr linsolv_superlu
                    linsolv_bicgstab linsolv_gmres_gpu linsolv_cusolv
                    linsolv_cusparse_ilu linsolv_cudss linsolv_amgx linsolv_mcsgs
-                   linsolv_bos_bilu0 linsolv_bos_gmres csr_matrix)
+                   csr_matrix)
   od_emit_template_instantiations(
     CLASS ${_od_solver}
     MAX_N ${_od_linsolv_max_n}
@@ -262,7 +252,7 @@ set_source_files_properties(
 
 # CPR solvers start at block size 2 — the constrained-pressure-residual split is
 # undefined for a 1x1 block (no non-pressure sub-block to decouple).
-foreach(_od_solver linsolv_bos_cpr linsolv_bos_cpr_gpu)
+foreach(_od_solver linsolv_bos_cpr_gpu)
   od_emit_template_instantiations(
     CLASS ${_od_solver}
     MIN_N 2
@@ -281,12 +271,8 @@ od_emit_template_instantiations(
 )
 
 # Compatibility solvers with fixed, domain-specific block sizes (not coupled to
-# OPENDARTS_MAX_DIMS): the default full-system CPR (block size 4 only) and the
-# HYPRE scalar preconditioners (block size 1 — the reduced pressure system).
-od_emit_template_instantiations(
-  CLASS linsolv_bos_fs_cpr MIN_N 4 MAX_N 4
-  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_bos_fs_cpr_instantiations.inc
-)
+# OPENDARTS_MAX_DIMS): the HYPRE scalar preconditioners (block size 1 — the
+# reduced pressure system).
 od_emit_template_instantiations(
   CLASS linsolv_hypre_amg MIN_N 1 MAX_N 1
   OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_hypre_amg_instantiations.inc
@@ -294,13 +280,6 @@ od_emit_template_instantiations(
 od_emit_template_instantiations(
   CLASS linsolv_hypre_ilu MIN_N 1 MAX_N 1
   OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_hypre_ilu_instantiations.inc
-)
-
-# Default AMG supports a non-contiguous block-size set {1, 3}; block size 2 is
-# intentionally absent (see the VALUES option of od_emit_template_instantiations).
-od_emit_template_instantiations(
-  CLASS linsolv_bos_amg VALUES "1;3"
-  OUTPUT_FILE ${_od_linsolv_gen_dir}/linsolv_bos_amg_instantiations.inc
 )
 # ------------------------------------------------------------------------------
 

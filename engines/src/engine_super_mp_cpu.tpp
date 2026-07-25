@@ -13,10 +13,6 @@
 
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "linsolv_bos_gmres.hpp"
-#include "linsolv_bos_bilu0.hpp"
-#include "linsolv_bos_cpr.hpp"
-#include "linsolv_bos_amg.hpp"
 #include "linsolv_superlu.hpp"
 #else
 #include "linsolv_bos_gmres.h"
@@ -108,6 +104,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	{
 		switch (params->linear_type)
 		{
+#ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS solvers; the open-source build injects via the registry
 		case sim_params::CPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
@@ -116,6 +113,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 			linear_solver->set_prec(cpr);
 			break;
 		}
+#endif // OPENDARTS_LINEAR_SOLVERS
 #ifndef __linux__
 #if 0
 		  // Can be enabled if amgdll.dll is available.
@@ -131,19 +129,23 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		}
 #endif
 #endif
+#ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS solver; open-source build injects via the registry
 		case sim_params::CPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
 			linear_solver->set_prec(new linsolv_bos_bilu0<N_VARS>);
 			break;
 		}
+#endif // OPENDARTS_LINEAR_SOLVERS
 		case sim_params::CPU_SUPERLU:
 		{
 			linear_solver = new linsolv_superlu<N_VARS>;
 			break;
 		}
 
-#ifdef WITH_GPU
+// The GPU BOS-enum cases use the proprietary linsolv_bos_* solvers; the open-source
+// GPU build runs through engine_super_gpu (registry / AMGX-CPR), not this factory.
+#if defined(WITH_GPU) && !defined(OPENDARTS_LINEAR_SOLVERS)
 		case sim_params::GPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
@@ -458,6 +460,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		// initialization of linear solver
 		if (!linear_solver_ad)
 		{
+#ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS adjoint fallback (disabled by if(0)); open-source uses SuperLU
 			if (0)
 			{
 				// so far these preconditioner and the linear solver can't be applied to adjoint for some reason
@@ -466,6 +469,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 
 			}
 			else
+#endif // OPENDARTS_LINEAR_SOLVERS
 				linear_solver_ad = new linsolv_superlu<1>;
 		}
 		linear_solver_ad->init_timer_nodes(&timer->node["linear solver for adjoint method - setup"], &timer->node["linear solver for adjoint method - solve"]);

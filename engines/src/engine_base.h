@@ -26,13 +26,8 @@ inline py::array_t<T> get_raw_array(T* arr, size_t size) {
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
 #include "linear_solvers_data_types.hpp"
-#include "linsolv_bos_gmres.hpp"
-#include "linsolv_bos_bilu0.hpp"
-#include "linsolv_bos_cpr.hpp"
-#include "linsolv_bos_fs_cpr.hpp"
 #include "csr_matrix.hpp"
 #include "block_csr_matrix.hpp"
-#include "linsolv_bos_amg.hpp"
 #include "linsolv_superlu.hpp"
 #include "linsolv_mgr.hpp"
 using namespace opendarts::linear_solvers;

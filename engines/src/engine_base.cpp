@@ -176,15 +176,14 @@ void engine_base::init_adjoint_base()
 	// initialization of linear solver
 	if (!linear_solver_ad)
 	{
-		if (0)
-		{
-			// so far these preconditioner and the linear solver can't be applied to adjoint for some reason
-			linear_solver_ad = new linsolv_bos_gmres<1>;
-			linear_solver_ad->set_prec(new linsolv_bos_bilu0<1>);
-
-		}
-		else
-			linear_solver_ad = new linsolv_superlu<1>;
+#if !defined(OPENDARTS_LINEAR_SOLVERS) && 0
+		// so far these preconditioner and the linear solver can't be applied to adjoint for some reason
+		// (kept disabled; the proprietary BOS solvers are unavailable in the open-source build)
+		linear_solver_ad = new linsolv_bos_gmres<1>;
+		linear_solver_ad->set_prec(new linsolv_bos_bilu0<1>);
+#else
+		linear_solver_ad = new linsolv_superlu<1>;
+#endif
 		linear_solver_ad_owned = true;
 		linear_solver_ad_uses_jacobian_transpose = false;
 	}

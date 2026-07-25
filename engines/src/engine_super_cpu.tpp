@@ -13,10 +13,6 @@
 #include "engine_super_adjoint.hpp"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "linsolv_bos_gmres.hpp"
-#include "linsolv_bos_bilu0.hpp"
-#include "linsolv_bos_cpr.hpp"
-#include "linsolv_bos_amg.hpp"
 #include "linsolv_superlu.hpp"
 #else
 #include "linsolv_bos_gmres.h"
