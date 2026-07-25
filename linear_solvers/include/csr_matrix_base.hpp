@@ -40,9 +40,15 @@ namespace opendarts
     {
     public:
       // Data members
-      opendarts::linear_solvers::sparse_matrix_type type;  // TODO: this must be changed to be a type of enum of matrix types defined above, kept for compatibility
-      int is_square;  // TODO: this must be changed to bool for example (or removed, do we really allow for non-square matrices?), kept for compatibility
-      int n_row_size;  // number of rows in each block, TODO: this must be changed and checked if it is to be kept and how, kept for compatibility
+      // The three fields below mirror the proprietary darts-linear-solvers
+      // csr_matrix_base public layout. The engine and the BOS solvers are
+      // compiled against whichever matrix the build selects (open-source here,
+      // proprietary when ENABLE_BOS_SOLVERS=ON), so this class keeps the same
+      // data members. They are load-bearing, not transitional -- do not
+      // rename/retype while the BOS path is supported.
+      opendarts::linear_solvers::sparse_matrix_type type;  // matrix-kind tag; proprietary stores it as int, here already the strong enum. Only ever set to MATRIX_TYPE_UNDEFINED.
+      int is_square;  // 1 if n_rows == n_cols; int (not bool) for proprietary parity. Read by the adjoint assembly (engine_base.cpp).
+      int n_row_size;  // rows per block (i.e. the block size); used e.g. for Jacobian value-array sizing on GPU (engine_base_gpu.cpp).
       opendarts::config::index_t n_rows;
       opendarts::config::index_t n_cols;
       opendarts::config::index_t n_non_zeros;
@@ -64,7 +70,7 @@ namespace opendarts
           @return pointer to the data memory array of the std::vector containing
           the nonzero values of the sparse array (csr_matrix::values).
       */
-      virtual opendarts::config::mat_float *get_values() = 0; // TODO: from original csr_matrix to keep compatibility
+      virtual opendarts::config::mat_float *get_values() = 0; // mirrors proprietary csr_matrix; primary Jacobian accessor used throughout the engines
 
       /** Provides direct access to the row pointer data structure of the sparse matrix block CSR format.
           See csr_matrix::rows_ptr for a detailed description.
@@ -75,7 +81,7 @@ namespace opendarts
           @return pointer to the data memory array of the std::vector containing
           the rows pointers of the sparse array (csr_matrix::rows_ptr).
       */
-      virtual opendarts::config::index_t *get_rows_ptr() = 0; // TODO: from original csr_matrix to keep compatibility
+      virtual opendarts::config::index_t *get_rows_ptr() = 0; // mirrors proprietary csr_matrix; primary Jacobian accessor used throughout the engines
 
       /** Provides direct access to the column index data structure of the sparse matrix block CSR format.
           See csr_matrix::cols_ind for a detailed description.
@@ -86,11 +92,11 @@ namespace opendarts
           @return pointer to the data memory array of the std::vector containing
           the column indices of the sparse array (csr_matrix::rows_ptr).
       */
-      virtual opendarts::config::index_t *get_cols_ind() = 0; // TODO: from original csr_matrix_base to keep compatibility
+      virtual opendarts::config::index_t *get_cols_ind() = 0; // mirrors proprietary csr_matrix_base; primary Jacobian accessor used throughout the engines
 
 
       //! return rows_ptr array
-      virtual opendarts::config::index_t *get_diag_ind() = 0; // TODO: from original csr_matrix_base to keep compatibility
+      virtual opendarts::config::index_t *get_diag_ind() = 0; // mirrors proprietary csr_matrix_base; primary Jacobian accessor used throughout the engines
 
 
       /** Provides direct access to the start row index for each thread.
@@ -101,7 +107,7 @@ namespace opendarts
           @return pointer to the data memory array of the std::vector containing
           the start row indices for each thread for the sparse array.
       */
-      virtual opendarts::config::index_t *get_row_thread_starts() = 0;  // TODO: from original csr_matrix_base to keep compatibility
+      virtual opendarts::config::index_t *get_row_thread_starts() = 0;  // mirrors proprietary csr_matrix_base; used by the OpenMP assembly partition (see csr_matrix override)
 
 
       // Input/Output
@@ -113,18 +119,19 @@ namespace opendarts
           opendarts::linear_solvers::sparse_matrix_import_format import_format) = 0; // from original, but generalised
 
 
-      // TODO: Implemented for backwards compatibility, to be removed
+      // The three members below mirror the proprietary csr_matrix API. They must
+      // resolve when the engine is compiled against either matrix, so they are
+      // retained for BOS interface parity -- not slated for removal.
 
-      int write_matrix_to_file(const char *filename, int sort_cols = 0);  // kept for compatiblity with old interface, to be removed
+      int write_matrix_to_file(const char *filename, int sort_cols = 0);  // debug matrix dump; used by the engines and the mechanics contact solver
 
-      // Calculate matrix vector product, v -- input vector, r -- output vector
-      // r += A * v
-      // return 0 if success
-      // TODO: Implemented for backwards compatibility, need to check if this is kept or not and how
+      // Matrix-vector product r += A * v (v input, r output); returns 0 on success.
+      // Used by the mechanics contact solver (local-Jacobian check).
       int matrix_vector_product(const double *v, double *r);
 
-      // calculate linear combination r = alpha * Au + beta * v
-      // TODO: Implemented for backwards compatibility, need to check if this is kept or not and how
+      // Linear combination r = alpha * A u + beta * v. Mirrors proprietary csr_matrix;
+      // currently no open-source caller (the impl emits a one-time deprecation note),
+      // kept for BOS interface parity.
       int calc_lin_comb(const double alpha, const double beta, double *u, double *v, double *r);
 
 #ifdef WITH_GPU

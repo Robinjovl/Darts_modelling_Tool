@@ -107,12 +107,7 @@ namespace opendarts
       return 0;
     }
 
-    // TODO: n_block_size_input makes no sense as input parameter, since this is
-    //       a templated matrix with block size as the template parameter. By allowing
-    //       this, one can declare the matrix with block size N and then with this
-    //       function set it to M, which gives rise to all sorts of errors.
-    //       Was kept for now for backwards compatibility, but as optional, so that
-    //       it is removed in the (very near) future.
+    // Raw-data init (mirrors proprietary csr_matrix); see csr_matrix.hpp.
     template <uint8_t N_BLOCK_SIZE>
     int csr_matrix<N_BLOCK_SIZE>::init(opendarts::config::index_t n_rows_input,
         opendarts::config::index_t n_cols_input,
@@ -710,8 +705,8 @@ namespace opendarts
     }
 
 
-    // TODO: Kept for backwards compatibility, need to check if this is to be kept or not or restructured
-
+    // Pointer-taking init (mirrors proprietary init(csr_matrix*)); used by the
+    // FS-CPR solver sub-blocks and the solver tests. See csr_matrix.hpp.
     template <uint8_t N_BLOCK_SIZE> int csr_matrix<N_BLOCK_SIZE>::init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *csr_matrix_in)
     {
       // Initialize the matrix with the values of the input matrix

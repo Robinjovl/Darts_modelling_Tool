@@ -51,8 +51,11 @@ namespace opendarts
     {
     public:
       // Data members
-      const opendarts::config::index_t n_block_size_ = N_BLOCK_SIZE;        // TODO: name must be n_block_size, n_block_size_ is for backwards compatiblity
-      const opendarts::config::index_t b_sqr = N_BLOCK_SIZE * N_BLOCK_SIZE; // TODO: name must be n_block_size_square, b_sqr is for backwards compatiblity
+      // Names mirror the proprietary darts-linear-solvers csr_matrix exactly
+      // (n_block_size_ and b_sqr are declared there too); do NOT rename while the
+      // BOS path is supported -- the engine is compiled against either class.
+      const opendarts::config::index_t n_block_size_ = N_BLOCK_SIZE;        // block size (== N_BLOCK_SIZE template parameter)
+      const opendarts::config::index_t b_sqr = N_BLOCK_SIZE * N_BLOCK_SIZE; // block size squared (scalar values per block)
       opendarts::config::index_t n_total_non_zeros;                         // the total number of non zero values is
                                                                             // equal to n_block_size * n_block_size *
                                                                             // n_non_zeros, since n_non_zeros refers to
@@ -383,14 +386,14 @@ namespace opendarts
       int import_matrix_from_file_csr(const std::string &filename);
 
     public:
-      // TODO: Implemented for backwards compatibility, to be removed or restructured
+      // The initializers below mirror the proprietary darts-linear-solvers
+      // csr_matrix so the engine compiles against either matrix. Retained for
+      // BOS interface parity, not transitional.
 
-      // TODO: n_block_size_input makes no sense as input parameter, since this is
-      //       a templated matrix with block size as the template parameter. By allowing
-      //       this, one can declare the matrix with block size N and then with this
-      //       function set it to M, which gives rise to all sorts of errors.
-      //       Was kept for now for backwards compatibility, but as optional, so that
-      //       it is removed in the (very near) future.
+      // Mirrors proprietary init(n_rows, n_cols, n_blok_size, n_non_zeros, row_thread_starts).
+      // n_block_size_input is redundant here (the block size is the template parameter);
+      // the implementation warns if it differs from n_block_size_ and otherwise ignores
+      // it -- the argument exists only to match the proprietary signature.
       int init(opendarts::config::index_t n_rows_input, opendarts::config::index_t n_cols_input, opendarts::config::index_t n_block_size_input, opendarts::config::index_t n_non_zeros_input, opendarts::config::index_t *new_row_thread_starts = 0);
 
       int init_struct(opendarts::config::index_t n_rows_input, opendarts::config::index_t n_cols_input, opendarts::config::index_t n_non_zeros_input);
@@ -405,14 +408,23 @@ namespace opendarts
       */
       opendarts::config::index_t *get_row_thread_starts() override; // from original csr_matrix_base to keep compatibility
 
-      int init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *csr_matrix_in); // TODO: may be redundant, check if we can use the function above only
+      // Pointer-taking init (mirrors proprietary init(csr_matrix*)); used by the
+      // FS-CPR solver's sub-block matrices (linsolv_fs_cpr) and the solver tests.
+      int init(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *csr_matrix_in);
 
-      int build_transpose(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *csr_matrix_in); // TODO: may be redundant with respect to csr_matrix::transpose
+      // build_transpose[_struct] mirror the proprietary csr_matrix; used by the
+      // multi-point (super_mp) engine and the transpose unit tests. They wrap
+      // transpose() (full values, resp. structure-only) behind the proprietary
+      // signature (which takes a source pointer rather than a destination ref).
+      int build_transpose(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *csr_matrix_in);
 
-      int build_transpose_struct(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *csr_matrix_in); // TODO: may be redundant with respect to csr_matrix::transpose
+      int build_transpose_struct(opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *csr_matrix_in);
 
+      // Cross-block-size scalar (block-size-1) expansion; complements as_nb_1 (which
+      // maps to this matrix's own block size). Mirrors proprietary to_nb_1; used by
+      // the engines and FS-CPR. See also the polymorphic csr_matrix_base overload below.
       template <uint8_t M_BLOCK_SIZE>
-      int to_nb_1(const opendarts::linear_solvers::csr_matrix<M_BLOCK_SIZE> *csr_matrix_in); // TODO: do we need this function or as_nb_1 is enough?
+      int to_nb_1(const opendarts::linear_solvers::csr_matrix<M_BLOCK_SIZE> *csr_matrix_in);
 
       // Polymorphic block-CSR -> scalar-CSR expansion: works for any
       // csr_matrix_base (legacy csr_matrix<N> or the unified block_csr_matrix)
