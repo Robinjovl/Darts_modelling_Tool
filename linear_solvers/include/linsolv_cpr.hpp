@@ -203,13 +203,29 @@ namespace opendarts
       // into a csr_matrix<1> sharing the block-CSR structure.
       void build_pressure_subsystem(opendarts::linear_solvers::csr_matrix_base *A);
 
-      // (Re)populate the scalar expansion As_ of the full block system
-      // (structure once, values every call). Used by setup() when the HYPRE
-      // scalar-ILU stage or the adjoint chain needs it, and by
-      // activate_adjoint_chain() when the block-ILU0 stage skipped it.
+      // Refresh the scalar expansion of the full block system: rebind / refresh
+      // the scalar_csr_adapter (block path) or repopulate As_ via to_nb_1 (legacy
+      // path). Does NOT copy values into the As_ shell on the block path -- the
+      // forward HYPRE-ILU stage reads the adapter directly (see ensure_As_shell).
       void refresh_scalar_expansion(opendarts::linear_solvers::csr_matrix_base *A_input);
 
-      // Build a HYPRE IJ matrix from a scalar csr_matrix<1> (sequential, single rank).
+      // Materialise the HYPRE-facing As_ csr_matrix<1> shell (structure + values)
+      // from the scalar_csr_adapter -- needed only by the transpose/adjoint chain
+      // (csr_transpose_scalar reads As_). No-op on the legacy path (As_ already
+      // filled by refresh_scalar_expansion's to_nb_1).
+      void ensure_As_shell();
+
+      // Select the per-handle row-degree cache (Ap / Ap_T / As / As_T).
+      std::vector<opendarts::config::index_t> *pick_n_cols_cache(HYPRE_IJMatrix &A_ij);
+
+      // Build a HYPRE IJ matrix from a scalar-CSR triple (sequential, single
+      // rank). The raw-pointer overload lets the forward stage feed the
+      // scalar_csr_adapter's borrowed arrays with no intermediate shell copy.
+      void build_hypre_ij(opendarts::config::index_t n_rows,
+          const opendarts::config::index_t *row_ptr,
+          const opendarts::config::index_t *col_ind,
+          const opendarts::config::mat_float *values, HYPRE_IJMatrix &A_ij,
+          HYPRE_ParCSRMatrix &A_parcsr);
       void build_hypre_ij(opendarts::linear_solvers::csr_matrix<1> &A,
           HYPRE_IJMatrix &A_ij,
           HYPRE_ParCSRMatrix &A_parcsr);
@@ -226,7 +242,13 @@ namespace opendarts
           HYPRE_ParVector &v_par);
 
       // Refresh an already-created HYPRE IJ matrix with new values (same
-      // sparsity). Returns the underlying ParCSR handle.
+      // sparsity). Returns the underlying ParCSR handle. The raw-pointer overload
+      // lets the forward stage refresh from the scalar_csr_adapter directly.
+      void refresh_hypre_ij(opendarts::config::index_t n_rows,
+          const opendarts::config::index_t *row_ptr,
+          const opendarts::config::index_t *col_ind,
+          const opendarts::config::mat_float *values, HYPRE_IJMatrix &A_ij,
+          HYPRE_ParCSRMatrix &A_parcsr);
       void refresh_hypre_ij(opendarts::linear_solvers::csr_matrix<1> &A,
           HYPRE_IJMatrix &A_ij,
           HYPRE_ParCSRMatrix &A_parcsr);

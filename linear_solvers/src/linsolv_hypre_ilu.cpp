@@ -28,6 +28,7 @@
 
 #include "data_types.hpp"
 #include "csr_matrix.hpp"
+#include "hypre_ij_builder.hpp"
 #include "linsolv_iface.hpp"
 #include "linsolv_hypre_ilu.hpp"
 
@@ -292,67 +293,24 @@ namespace opendarts
       // NOTE: This function works only for N_BLOCK_SIZE = 1
       //       For other values of the block size a full copy of the data must be
       //       done and some temporary storage needs to be arranged.
-
-      const int print_level = 0;  // 0 = quiet (was 2 = HYPRE diagnostics)
-
-      // Convert csr_matrix A to Hypre ij_matrix
-      opendarts::config::index_t ilower, iupper;
-      ilower = 0;
-      iupper = A.n_rows - 1;
-
-      if (static_cast<opendarts::config::index_t>(this->row_indices_.size()) < A.n_rows)
-      {
-        const opendarts::config::index_t old_size =
-            static_cast<opendarts::config::index_t>(this->row_indices_.size());
-        this->row_indices_.resize(A.n_rows);
-        std::iota(this->row_indices_.begin() + old_size,
-            this->row_indices_.end(), old_size);
-      }
-      this->n_cols_.resize(A.n_rows);
-      for (opendarts::config::index_t row_idx = 0; row_idx < A.n_rows; row_idx++)
-        this->n_cols_[row_idx] = A.rows_ptr[row_idx + 1] - A.rows_ptr[row_idx];
-
-      check_result(HYPRE_IJMatrixCreate(hypre_MPI_COMM_WORLD, ilower, iupper, ilower, iupper, &A_ij));
-    	check_result(HYPRE_IJMatrixSetPrintLevel(A_ij, print_level));
-    	check_result(HYPRE_IJMatrixSetObjectType(A_ij, HYPRE_PARCSR));
-      check_result(HYPRE_IJMatrixInitialize(A_ij));
-    	check_result(HYPRE_IJMatrixSetValues(A_ij, A.n_rows, this->n_cols_.data(), this->row_indices_.data(), A.get_cols_ind(), A.get_values()));
-    	check_result(HYPRE_IJMatrixAssemble(A_ij));
+      // Shared scalar-CSR -> HYPRE-IJ build (see hypre_ij_builder.hpp), also used
+      // by linsolv_cpr and linsolv_hypre_amg. GetObject is deferred to setup()
+      // (nullptr), preserving the previous flow.
+      opendarts::linear_solvers::hypre_ij::build(A.n_rows, A.rows_ptr.data(),
+          A.get_cols_ind(), A.get_values(), this->row_indices_, this->n_cols_,
+          A_ij, nullptr);
     }
 
     template <>
     void linsolv_hypre_ilu<1>::refresh(opendarts::linear_solvers::csr_matrix<1> *A)
     {
-      // Update values on an existing IJMatrix without destroying it.
-      // HYPRE_IJMatrixInitialize re-opens the matrix for SetValues; the
-      // sparsity pattern is preserved across calls. The ILU factorization
-      // (built by setup() via HYPRE_ILUSetup) is intentionally NOT rebuilt
-      // here -- it will be reused by the next HYPRE_ILUSolve call.
-      const opendarts::config::index_t n_rows = A->n_rows;
-
-      // Cached row-index iota -- grow only if needed.
-      if (static_cast<opendarts::config::index_t>(this->row_indices_.size()) < n_rows)
-      {
-        const opendarts::config::index_t old_size =
-            static_cast<opendarts::config::index_t>(this->row_indices_.size());
-        this->row_indices_.resize(n_rows);
-        std::iota(this->row_indices_.begin() + old_size,
-            this->row_indices_.end(), old_size);
-      }
-      // n_cols_ was already filled by csr_matrix_to_hypre_ij during setup();
-      // recompute defensively only if the cache is too small.
-      if (static_cast<opendarts::config::index_t>(this->n_cols_.size()) < n_rows)
-      {
-        this->n_cols_.resize(n_rows);
-        for (opendarts::config::index_t row_idx = 0; row_idx < n_rows; row_idx++)
-          this->n_cols_[row_idx] = A->rows_ptr[row_idx + 1] - A->rows_ptr[row_idx];
-      }
-
-      check_result(HYPRE_IJMatrixInitialize(this->A_ij));
-      check_result(HYPRE_IJMatrixSetValues(this->A_ij, n_rows, this->n_cols_.data(),
-          this->row_indices_.data(), A->get_cols_ind(), A->get_values()));
-      check_result(HYPRE_IJMatrixAssemble(this->A_ij));
-      check_result(HYPRE_IJMatrixGetObject(this->A_ij, (void **)&(this->A_parcsr)));
+      // Value-only refresh via the shared helper (re-open, SetValues, assemble,
+      // GetObject). The ILU factorization (built by setup() via HYPRE_ILUSetup)
+      // is intentionally NOT rebuilt here -- it is reused by the next
+      // HYPRE_ILUSolve call.
+      opendarts::linear_solvers::hypre_ij::refresh(A->n_rows, A->rows_ptr.data(),
+          A->get_cols_ind(), A->get_values(), this->row_indices_, this->n_cols_,
+          this->A_ij, &this->A_parcsr);
     }
 
     namespace

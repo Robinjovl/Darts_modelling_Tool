@@ -989,42 +989,19 @@ namespace opendarts
     template <uint8_t N_BLOCK_SIZE>
     int csr_matrix<N_BLOCK_SIZE>::convert_to_ELL()
     {
-      cusparseDirection_t dir = CUSPARSE_DIRECTION_ROW;
-      int mb = this->n_rows;
-      int nb = this->n_rows;
-      int blockDim = N_BLOCK_SIZE;
-
-      cusparseStatus_t status;
-      cusparseMatDescr_t descrC = 0;
-
-      status = cusparseCreateMatDescr(&descrC);
-      if (status != CUSPARSE_STATUS_SUCCESS)
-      {
-        printf("Matrix descriptor initialization failed\n");
-        return 1;
-      }
-      cusparseSetMatType(descrC, CUSPARSE_MATRIX_TYPE_GENERAL);
-      cusparseSetMatIndexBase(descrC, CUSPARSE_INDEX_BASE_ZERO);
-
-      int m = mb * blockDim;
-      int nnzb = this->rows_ptr[mb] - this->rows_ptr[0]; // number of blocks
-      int nnz = nnzb * blockDim * blockDim;              // number of scalar entries
-      if (!csrRowPtrC)
-      {
-        cudaMalloc((void **)&csrRowPtrC, sizeof(int) * (m + 1));
-        cudaMalloc((void **)&csrColIndC, sizeof(int) * nnz);
-        cudaMalloc((void **)&csrValC, sizeof(opendarts::config::mat_float) * nnz);
-      }
-
-      status = cusparseDbsr2csr(cus_handle, dir, mb, nb, cus_descr, values_d, rows_ptr_d, cols_ind_d,
-        blockDim, descrC, csrValC, csrRowPtrC, csrColIndC);
-      if (status != CUSPARSE_STATUS_SUCCESS)
-      {
-        printf("Conversion from BSR to CSR format failed\n");
-        return 1;
-      }
-
-      cusparseDestroyMatDescr(descrC);
+      // Retired scaffolding. This used to expand the device block-CSR into a
+      // scalar-CSR scratch triple (csrRowPtrC/csrColIndC/csrValC via
+      // cudaMalloc + cusparseDbsr2csr) to feed the ELL/HYB SpMV that cuSPARSE
+      // removed in CUDA 11 (see matrix_vector_product_d_ell below, already a stub).
+      // In the open-source build the GPU Jacobian is always a block_csr_matrix,
+      // never csr_matrix<N>, and the scalar-CSR device view AMGX/cuDSS/cuSolver
+      // consume is produced by block_csr_matrix::build_scalar_csr_device() -- so
+      // this path has no live open-source caller (the only call site,
+      // engine_base::test_spmv, is under #ifndef OPENDARTS_LINEAR_SOLVERS).
+      // The signature is retained because convert_to_ELL is a pure-virtual in the
+      // proprietary csr_matrix_base (BOS interface parity); the csrRowPtrC/
+      // csrColIndC/csrValC members stay declared (unused, nullptr) for the same
+      // reason -- free_device()'s null-guarded cudaFree handles them.
       return 0;
     }
 
@@ -1063,9 +1040,9 @@ namespace opendarts
     template <uint8_t N_BLOCK_SIZE>
     int csr_matrix<N_BLOCK_SIZE>::matrix_vector_product_d_ell(const double *v_d, double *r_d)
     {
-      // The cuSPARSE HYB/ELL format was removed in CUDA 11. The scalar-CSR copy
-      // produced by convert_to_ELL is kept, but the dedicated ELL SpMV path is
-      // retired; callers fall back to the block SpMV above.
+      // The cuSPARSE HYB/ELL format was removed in CUDA 11, so this dedicated
+      // ELL SpMV path is retired (convert_to_ELL is now a no-op too); callers
+      // fall back to the block SpMV above.
       (void)v_d;
       (void)r_d;
       printf("cuSparse ELL matrix-vector product is unavailable since CUDA 11.0\n");

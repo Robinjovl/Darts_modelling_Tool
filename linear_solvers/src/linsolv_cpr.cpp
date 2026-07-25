@@ -35,6 +35,7 @@
 #include "HYPRE_utilities.h"
 #include "_hypre_utilities.h"
 
+#include "hypre_ij_builder.hpp"
 #include "linsolv_cpr.hpp"
 #include "solver_configs.hpp"
 
@@ -525,22 +526,33 @@ namespace opendarts
       Ap_->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
     }
 
-    namespace
+    // Pick the per-handle row-degree cache (Ap / Ap_T / As / As_T); each of the
+    // four IJ matrices keeps its own so refresh() can skip recomputing.
+    template <uint8_t N_BLOCK_SIZE>
+    std::vector<opendarts::config::index_t> *
+    linsolv_cpr<N_BLOCK_SIZE>::pick_n_cols_cache(HYPRE_IJMatrix &A_ij)
     {
-      // Fill `n_cols_cache` with per-row column counts derived from A's row
-      // pointer. Only resizes on growth; values are recomputed each call (cheap
-      // and structure-stable across Newton iterations).
-      inline void compute_row_degrees(
-          opendarts::linear_solvers::csr_matrix<1> &A,
-          std::vector<index_t> &n_cols_cache)
-      {
-        const index_t n_rows = A.n_rows;
-        if (static_cast<index_t>(n_cols_cache.size()) < n_rows)
-          n_cols_cache.resize(n_rows);
-        for (index_t i = 0; i < n_rows; ++i)
-          n_cols_cache[i] = A.rows_ptr[i + 1] - A.rows_ptr[i];
-      }
-    } // namespace
+      if (&A_ij == &Ap_ij_)             return &n_cols_Ap_;
+      else if (&A_ij == &Ap_T_ij_)      return &n_cols_Ap_T_;
+      else if (&A_ij == &As_ij_)        return &n_cols_As_;
+      else if (&A_ij == &As_T_ij_)      return &n_cols_As_T_;
+      return &n_cols_As_;  // fallback
+    }
+
+    // Raw scalar-CSR triple overload -- lets the forward stage feed the
+    // scalar_csr_adapter's borrowed (row_ptr, col_ind, values) directly, with no
+    // intermediate As_ shell copy. The scalar-CSR -> HYPRE-IJ create/set/assemble
+    // sequence lives in the shared hypre_ij::build helper (also used by
+    // linsolv_hypre_amg/_ilu).
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_cpr<N_BLOCK_SIZE>::build_hypre_ij(index_t n_rows,
+        const index_t *row_ptr, const index_t *col_ind,
+        const opendarts::config::mat_float *values, HYPRE_IJMatrix &A_ij,
+        HYPRE_ParCSRMatrix &A_parcsr)
+    {
+      opendarts::linear_solvers::hypre_ij::build(n_rows, row_ptr, col_ind, values,
+          row_indices_, *pick_n_cols_cache(A_ij), A_ij, &A_parcsr);
+    }
 
     template <uint8_t N_BLOCK_SIZE>
     void linsolv_cpr<N_BLOCK_SIZE>::build_hypre_ij(
@@ -548,35 +560,18 @@ namespace opendarts
         HYPRE_IJMatrix &A_ij,
         HYPRE_ParCSRMatrix &A_parcsr)
     {
-      const index_t n_rows = A.n_rows;
-      const index_t ilower = 0;
-      const index_t iupper = n_rows - 1;
+      build_hypre_ij(A.n_rows, A.rows_ptr.data(), A.get_cols_ind(),
+          A.get_values(), A_ij, A_parcsr);
+    }
 
-      // Cached row-index buffer and per-matrix row-degrees. Pick the
-      // n_cols_* cache by IJMatrix handle so each of the four matrices
-      // (Ap, Ap_T, As, As_T) gets its own.
-      ensure_row_indices(n_rows);
-      std::vector<index_t> *n_cols_cache = nullptr;
-      if (&A_ij == &Ap_ij_)             n_cols_cache = &n_cols_Ap_;
-      else if (&A_ij == &Ap_T_ij_)      n_cols_cache = &n_cols_Ap_T_;
-      else if (&A_ij == &As_ij_)        n_cols_cache = &n_cols_As_;
-      else if (&A_ij == &As_T_ij_)      n_cols_cache = &n_cols_As_T_;
-      else                              n_cols_cache = &n_cols_As_;  // fallback
-      compute_row_degrees(A, *n_cols_cache);
-
-      check_hypre(HYPRE_IJMatrixCreate(hypre_MPI_COMM_WORLD, ilower, iupper,
-                      ilower, iupper, &A_ij),
-          "IJMatrixCreate");
-      check_hypre(HYPRE_IJMatrixSetPrintLevel(A_ij, 0), "IJMatrixSetPrintLevel");
-      check_hypre(HYPRE_IJMatrixSetObjectType(A_ij, HYPRE_PARCSR),
-          "IJMatrixSetObjectType");
-      check_hypre(HYPRE_IJMatrixInitialize(A_ij), "IJMatrixInitialize");
-      check_hypre(HYPRE_IJMatrixSetValues(A_ij, n_rows, n_cols_cache->data(),
-                      row_indices_.data(), A.get_cols_ind(), A.get_values()),
-          "IJMatrixSetValues");
-      check_hypre(HYPRE_IJMatrixAssemble(A_ij), "IJMatrixAssemble");
-      check_hypre(HYPRE_IJMatrixGetObject(A_ij, (void **) &A_parcsr),
-          "IJMatrixGetObject");
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_cpr<N_BLOCK_SIZE>::refresh_hypre_ij(index_t n_rows,
+        const index_t *row_ptr, const index_t *col_ind,
+        const opendarts::config::mat_float *values, HYPRE_IJMatrix &A_ij,
+        HYPRE_ParCSRMatrix &A_parcsr)
+    {
+      opendarts::linear_solvers::hypre_ij::refresh(n_rows, row_ptr, col_ind,
+          values, row_indices_, *pick_n_cols_cache(A_ij), A_ij, &A_parcsr);
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -585,29 +580,8 @@ namespace opendarts
         HYPRE_IJMatrix &A_ij,
         HYPRE_ParCSRMatrix &A_parcsr)
     {
-      // Update values on an existing IJMatrix without destroying it.
-      // HYPRE_IJMatrixInitialize re-opens the matrix for SetValues; the
-      // sparsity pattern is preserved across calls.
-      const index_t n_rows = A.n_rows;
-      ensure_row_indices(n_rows);
-      std::vector<index_t> *n_cols_cache = nullptr;
-      if (&A_ij == &Ap_ij_)             n_cols_cache = &n_cols_Ap_;
-      else if (&A_ij == &Ap_T_ij_)      n_cols_cache = &n_cols_Ap_T_;
-      else if (&A_ij == &As_ij_)        n_cols_cache = &n_cols_As_;
-      else if (&A_ij == &As_T_ij_)      n_cols_cache = &n_cols_As_T_;
-      else                              n_cols_cache = &n_cols_As_;
-      // n_cols was already filled by build_hypre_ij; do nothing if structure
-      // is stable. Recompute if the matrix shrank/grew (defensive).
-      if (static_cast<index_t>(n_cols_cache->size()) < n_rows)
-        compute_row_degrees(A, *n_cols_cache);
-
-      check_hypre(HYPRE_IJMatrixInitialize(A_ij), "IJMatrixInitialize(refresh)");
-      check_hypre(HYPRE_IJMatrixSetValues(A_ij, n_rows, n_cols_cache->data(),
-                      row_indices_.data(), A.get_cols_ind(), A.get_values()),
-          "IJMatrixSetValues(refresh)");
-      check_hypre(HYPRE_IJMatrixAssemble(A_ij), "IJMatrixAssemble(refresh)");
-      check_hypre(HYPRE_IJMatrixGetObject(A_ij, (void **) &A_parcsr),
-          "IJMatrixGetObject(refresh)");
+      refresh_hypre_ij(A.n_rows, A.rows_ptr.data(), A.get_cols_ind(),
+          A.get_values(), A_ij, A_parcsr);
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -654,11 +628,12 @@ namespace opendarts
       if (!As_)
         As_ = std::make_unique<opendarts::linear_solvers::csr_matrix<1>>();
 
-      // Preferred path -- bind a scalar_csr_adapter to the block Jacobian
-      // and reuse the cached scalar structure across Newton iterations. The
-      // adapter's value buffer is the source of truth; As_ is the HYPRE-
-      // facing csr_matrix<1> shell, populated once (structure) + refreshed
-      // (values) from the adapter.
+      // Preferred path -- bind a scalar_csr_adapter to the block Jacobian and
+      // reuse the cached scalar structure across Newton iterations. The adapter's
+      // value buffer is the source of truth: the forward HYPRE-ILU stage reads it
+      // directly (SuperLU-style), so no per-Newton copy into the As_ shell is
+      // paid. The As_ csr_matrix<1> shell is materialised only when the
+      // transpose/adjoint chain needs it -- by ensure_As_shell().
       auto *A_block = dynamic_cast<opendarts::linear_solvers::block_csr_matrix *>(A_input);
       if (A_block != nullptr)
       {
@@ -676,38 +651,49 @@ namespace opendarts
         {
           scalar_adapter_->refresh();
         }
-
-        const auto n = scalar_adapter_->n_rows();
-        const auto nnz = scalar_adapter_->nnz();
-        if (As_->n_rows != n
-            || static_cast<opendarts::config::index_t>(As_->n_non_zeros) != nnz)
-        {
-          // (Re)allocate the HYPRE-facing csr_matrix<1> shell and copy the
-          // scalar structure once. Subsequent setups skip these copies.
-          As_->init(n, scalar_adapter_->n_cols(), nnz);
-          std::copy(scalar_adapter_->row_ptr(),
-              scalar_adapter_->row_ptr() + n + 1, As_->rows_ptr.data());
-          std::copy(scalar_adapter_->col_ind(),
-              scalar_adapter_->col_ind() + nnz, As_->cols_ind.data());
-          As_->n_non_zeros = nnz;
-          As_->n_row_size = 1;
-          As_->is_square = (n == scalar_adapter_->n_cols()) ? 1 : 0;
-          As_->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-        }
-        // Refresh values -- a contiguous std::copy of the gathered scalar
-        // values into the As_ buffer. Replaces the per-Newton nested-loop
-        // scalar expansion inside csr_matrix<1>::to_nb_1.
-        std::copy(scalar_adapter_->values(),
-            scalar_adapter_->values() + nnz, As_->values.data());
       }
       else
       {
         // Legacy path -- engine is still feeding a csr_matrix<N> (tests,
         // GPU, reference build). Use the polymorphic to_nb_1, which
-        // performs both the structural rebuild and the value gather.
+        // performs both the structural rebuild and the value gather. There is
+        // no adapter, so the forward stage and ensure_As_shell() both read As_.
         scalar_adapter_.reset();
         As_->to_nb_1(A_input);
       }
+    }
+
+    // Materialise the HYPRE-facing As_ csr_matrix<1> shell (structure once +
+    // values) from the scalar_csr_adapter. Needed only by the transpose/adjoint
+    // chain: csr_transpose_scalar reads As_, whereas the forward stage reads the
+    // adapter directly. No-op on the legacy path, where refresh_scalar_expansion's
+    // to_nb_1 already filled As_. (The body is the As_ population that used to run
+    // unconditionally inside refresh_scalar_expansion, so As_ is byte-identical to
+    // before -- the adjoint chain is unchanged.)
+    template <uint8_t N_BLOCK_SIZE>
+    void linsolv_cpr<N_BLOCK_SIZE>::ensure_As_shell()
+    {
+      if (!scalar_adapter_)
+        return;  // legacy path: As_ already populated by to_nb_1
+      if (!As_)
+        As_ = std::make_unique<opendarts::linear_solvers::csr_matrix<1>>();
+      const auto n = scalar_adapter_->n_rows();
+      const auto nnz = scalar_adapter_->nnz();
+      if (As_->n_rows != n
+          || static_cast<opendarts::config::index_t>(As_->n_non_zeros) != nnz)
+      {
+        As_->init(n, scalar_adapter_->n_cols(), nnz);
+        std::copy(scalar_adapter_->row_ptr(),
+            scalar_adapter_->row_ptr() + n + 1, As_->rows_ptr.data());
+        std::copy(scalar_adapter_->col_ind(),
+            scalar_adapter_->col_ind() + nnz, As_->cols_ind.data());
+        As_->n_non_zeros = nnz;
+        As_->n_row_size = 1;
+        As_->is_square = (n == scalar_adapter_->n_cols()) ? 1 : 0;
+        As_->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+      }
+      std::copy(scalar_adapter_->values(),
+          scalar_adapter_->values() + nnz, As_->values.data());
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -922,6 +908,10 @@ namespace opendarts
       // matrix of the last setup().
       if (stage2_type_ == 1)
         refresh_scalar_expansion(A_);
+      // The forward stage reads scalar values from the adapter (not As_), so
+      // materialise the As_ shell now for the transpose below (no-op on the
+      // legacy path, where refresh_scalar_expansion already filled As_).
+      ensure_As_shell();
 
       // Transpose twins of the current pressure / full-system matrices. The
       // forward Ap_ / As_ always hold the values of the last setup(), so the
@@ -1035,9 +1025,15 @@ namespace opendarts
         }
         else
         {
-          // Forward HYPRE_ILU on A_s (full-system scalar expansion).
-          build_hypre_ij(*As_, As_ij_, As_parcsr_);
-          create_hypre_vectors(As_->n_rows, ilu_b_ij_, ilu_x_ij_);
+          // Forward HYPRE_ILU on A_s (full-system scalar expansion). Feed the
+          // scalar_csr_adapter's borrowed arrays directly (block path) -- no As_
+          // shell copy -- falling back to the As_ shell on the legacy path.
+          const index_t as_n = scalar_adapter_ ? scalar_adapter_->n_rows() : As_->n_rows;
+          const index_t *as_rp = scalar_adapter_ ? scalar_adapter_->row_ptr() : As_->rows_ptr.data();
+          const index_t *as_ci = scalar_adapter_ ? scalar_adapter_->col_ind() : As_->cols_ind.data();
+          const opendarts::config::mat_float *as_v = scalar_adapter_ ? scalar_adapter_->values() : As_->values.data();
+          build_hypre_ij(as_n, as_rp, as_ci, as_v, As_ij_, As_parcsr_);
+          create_hypre_vectors(as_n, ilu_b_ij_, ilu_x_ij_);
 
           create_fullsystem_ilu(ilu_, "");
           {
@@ -1078,10 +1074,21 @@ namespace opendarts
           cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR IJ refresh"));
           refresh_hypre_ij(*Ap_, Ap_ij_, Ap_parcsr_);
           if (stage2_type_ == 0)
-            refresh_hypre_ij(*As_, As_ij_, As_parcsr_);
+          {
+            // Forward As stage: refresh from the adapter directly (block path),
+            // no As_ shell copy; fall back to As_ on the legacy path.
+            const index_t as_n = scalar_adapter_ ? scalar_adapter_->n_rows() : As_->n_rows;
+            const index_t *as_rp = scalar_adapter_ ? scalar_adapter_->row_ptr() : As_->rows_ptr.data();
+            const index_t *as_ci = scalar_adapter_ ? scalar_adapter_->col_ind() : As_->cols_ind.data();
+            const opendarts::config::mat_float *as_v = scalar_adapter_ ? scalar_adapter_->values() : As_->values.data();
+            refresh_hypre_ij(as_n, as_rp, as_ci, as_v, As_ij_, As_parcsr_);
+          }
           if (adjoint_active_)
           {
-            // Keep the transpose twins in sync with the refreshed values.
+            // Keep the transpose twins in sync with the refreshed values. The
+            // forward stage no longer fills As_, so materialise it for the
+            // transpose below (no-op on the legacy path).
+            ensure_As_shell();
             csr_transpose_scalar(*Ap_, *Ap_T_);
             csr_transpose_scalar(*As_, *As_T_);
             refresh_hypre_ij(*Ap_T_, Ap_T_ij_, Ap_T_parcsr_);
