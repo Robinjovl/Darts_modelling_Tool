@@ -71,13 +71,18 @@ class DataTS:
     """Timestep-control parameters.
 
     Holds ONLY the timestep controls (``dt_first``/``dt_min``/``dt_mult``/
-    ``dt_max``/``eta``). Neither solver's settings are mirrored here — each
-    lives at its own single source of truth:
+    ``dt_max``/``eta``) plus the total ``runtime``. Neither solver's settings
+    are mirrored here — each lives at its own single source of truth:
     ``DartsModel.nonlinear_solver.spec`` (a
     :class:`darts.nonlinear_solvers.NonlinearSolverSpec`, !327) and
     ``DartsModel.linear_solver.spec`` (a
     :class:`darts.linear_solvers.LinearSolverSpec`, !280 — the transitional
     ``linear_*`` attributes this structure carried are now removed).
+
+    This is the timestepping analogue of the validated, serializable nonlinear
+    and linear solver specs: :meth:`validate` and :meth:`to_dict` mirror
+    ``NonlinearSolverSpec``'s, so the effective timestepping configuration is
+    serializable and inspectable (see :meth:`DartsModel.print_config`).
     """
 
     _FIELDS = (
@@ -86,21 +91,59 @@ class DataTS:
         "dt_min",
         "dt_mult",
         "dt_max",
+        "runtime",
     )
 
-    def __init__(self, n_vars):
+    def __init__(self, n_vars=0):
         # timestep control (owned by this structure)
         self.eta = (
             1e20 * np.ones(n_vars)
         )  # controls the timestep by the variable change from the previous newton iteration
         # dX = Xn - X. Eta has a size of number of DOFs per cell. Set to a large value by default, so doesn't affect the timestep choice
         self.dt_first = 1.0  # initial timestep [days]
-        self.dt_min = 1e-12  # minimal allowed timestep [days]
+        # minimal allowed timestep [days] = the divergence-abort floor. NOTE: a
+        # known discrepancy remains -- set_sim_params(min_ts=) defaults to 1e-15,
+        # so a model configured through set_sim_params (without an explicit min_ts)
+        # floors lower than one that constructs DataTS directly. This value is left
+        # at 1e-12 deliberately (behaviour-preserving); the *effective* value is now
+        # surfaced by DartsModel.print_config(). Unifying the two paths is a follow-up
+        # that requires re-baselining the models that ride the abort floor.
+        self.dt_min = 1e-12
         self.dt_mult = 2.0  # timestep multiplier, affects the next timestep choice
         self.dt_max = 10.0  # maximal allowed timestep [days]
+        self.runtime = (
+            1000.0  # total runtime [days]; read by run() when days is not given
+        )
+
+    def validate(self):
+        """Raise ``ValueError`` on an obviously-invalid timestepping configuration
+        (mirror of ``NonlinearSolverSpec.validate()``); called at ``init()``."""
+        if self.dt_first <= 0:
+            raise ValueError(f"data_ts.dt_first must be > 0, got {self.dt_first}")
+        if self.dt_min <= 0:
+            raise ValueError(f"data_ts.dt_min must be > 0, got {self.dt_min}")
+        if self.dt_max < self.dt_min:
+            raise ValueError(
+                f"data_ts.dt_max ({self.dt_max}) must be >= dt_min ({self.dt_min})"
+            )
+        if self.dt_mult < 1.0:
+            raise ValueError(f"data_ts.dt_mult must be >= 1, got {self.dt_mult}")
+        if self.runtime <= 0:
+            raise ValueError(f"data_ts.runtime must be > 0, got {self.runtime}")
+
+    def to_dict(self):
+        """Serializable snapshot (mirror of ``NonlinearSolverSpec.to_dict()``)."""
+        return {
+            "eta": np.asarray(self.eta).tolist(),
+            "dt_first": self.dt_first,
+            "dt_min": self.dt_min,
+            "dt_mult": self.dt_mult,
+            "dt_max": self.dt_max,
+            "runtime": self.runtime,
+        }
 
     def print(self):
-        print("Simulation parameters:")
+        print("Timestepping parameters:")
         for k in self._FIELDS:
             print("\t", k, "=", getattr(self, k))
 
@@ -1379,19 +1422,51 @@ class DartsModel:
     def data_ts(self, value):
         self._data_ts = value
 
+    @property
+    def runtime(self):
+        """Total simulation time in days, read by :meth:`run` when ``days`` is not
+        given. Single-sourced on ``data_ts.runtime`` — reading it before any
+        assignment returns the default (1000.0) instead of raising ``AttributeError``."""
+        return self.data_ts.runtime
+
+    @runtime.setter
+    def runtime(self, value):
+        self.data_ts.runtime = value
+
+    def print_config(self):
+        """Print the effective solver configuration in one place — timestepping
+        (``data_ts``) + nonlinear (``nonlinear_solver.spec``) + linear
+        (``linear_solver.spec``) — using the same ``to_dict()`` serialization each
+        family exposes. Available after ``set_solver()`` / ``init()``."""
+        print("=== Effective configuration ===")
+        print("Timestepping (data_ts):")
+        for k, v in self.data_ts.to_dict().items():
+            print(f"\t{k} = {v}")
+        ns = getattr(self, "nonlinear_solver", None)
+        ns_spec = getattr(ns, "spec", None) if ns is not None else None
+        if ns_spec is not None and hasattr(ns_spec, "to_dict"):
+            print("Nonlinear solver (nonlinear_solver.spec):")
+            for k, v in ns_spec.to_dict().items():
+                print(f"\t{k} = {v}")
+        ls = getattr(self, "linear_solver", None)
+        ls_spec = getattr(ls, "spec", None) if ls is not None else None
+        if ls_spec is not None and hasattr(ls_spec, "to_dict"):
+            print("Linear solver (linear_solver.spec):")
+            for k, v in ls_spec.to_dict().items():
+                print(f"\t{k} = {v}")
+
     def _apply_nonlinear(self):
-        """Bind the nonlinear solver to this model and make sure
-        ``data_ts``/``sim_params`` exist. Called from init()."""
+        """Bind the nonlinear solver to this model and make sure ``data_ts``
+        exists. Called from init()."""
         self.set_solver()
         if self._data_ts is None:
             self.data_ts = DataTS(self.physics.n_vars)
         # the structure may have been created pre-init with n_vars=0: size eta now
         if len(self._data_ts.eta) < self.physics.n_vars:
             self._data_ts.eta = 1e20 * np.ones(self.physics.n_vars)
-        # ALWAYS mirror the (possibly user-set) linear settings into sim_params —
-        # not only when data_ts was just created. Reading model.data_ts before
-        # init() materializes _data_ts, which previously skipped this copy and
-        self.copy_data_ts_to_sim_params()
+        # fail loudly on an obviously-broken timestepping config, matching the
+        # per-timestep spec.validate() the Newton loop already does
+        self._data_ts.validate()
         # bind the (possibly detached) solver to this model
         self.nonlinear_solver.bind(self)
 
@@ -1410,8 +1485,8 @@ class DartsModel:
         for k in DataTS._FIELDS:
             if k == "eta":
                 continue
-            setattr(self.data_ts, k, getattr(data_ts, k))
-        self.copy_data_ts_to_sim_params()
+            if hasattr(data_ts, k):
+                setattr(self.data_ts, k, getattr(data_ts, k))
 
     def set_sim_params(
         self,
@@ -1499,9 +1574,8 @@ class DartsModel:
         # Legacy kwargs of either family are mapped for one deprecation cycle by
         # _migrate_legacy_solver_kwargs() above.
 
+        # single-sourced on data_ts.runtime via the runtime property
         self.runtime = runtime
-
-        self.copy_data_ts_to_sim_params()
 
     def _migrate_legacy_solver_kwargs(self, legacy: dict):
         """One-deprecation-cycle shim: map removed ``set_sim_params`` solver

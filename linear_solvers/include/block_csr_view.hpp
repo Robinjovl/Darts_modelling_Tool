@@ -21,10 +21,13 @@
 // block_csr_view<N> -- the zero-overhead, compile-time-block-size lens over a
 // block_csr_matrix (see SOLVER_REFACTORING_PLAN.md section 12.4, layer 4).
 //
-// The engine is templated on the number of equations per cell, so the
+// The engine is templated on the number of equations per cell, so the INTENDED
 // assembly hot path holds a block_csr_view<N_VARS>: block accessors with a
 // compile-time N are fully inlined, with no virtual dispatch and no runtime
-// block-size arithmetic. The view is non-owning -- it stores a pointer to a
+// block-size arithmetic. (Design intent -- not yet wired: as of this branch the
+// engine assembly still reads through the csr_matrix_base virtual accessors and
+// nothing outside the unit tests includes this header. See Tier-3 plan / section
+// 12.4 layer 4.) The view is non-owning -- it stores a pointer to a
 // block_csr_matrix and adds no storage of its own.
 
 #include <cassert>

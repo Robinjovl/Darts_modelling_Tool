@@ -71,13 +71,12 @@ namespace opendarts
       HYPRE_Solver solver;
       opendarts::linear_solvers::linsolv_iface_bos<N_BLOCK_SIZE> *prec;
       opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A;  // kept for backwards compatibility
-      HYPRE_IJMatrix A_ij;  // this matrix is the matrix linked to the hypre amg solver
-                            // it shares most of the data with the matrix A, to avoid
-                            // duplication, but some duplication is unavoidable because
-                            // A and A_ij use slightly different data formats, specifically
-                            // the way row data is encoded.
-      HYPRE_ParCSRMatrix A_parcsr;  // we also need a Hypre ParCSRMatrix so we keep it here also
-                                    // this one shares all data with A_ij
+      HYPRE_IJMatrix A_ij;  // the matrix linked to the hypre ILU solver. HYPRE_IJMatrixSetValues +
+                            // HYPRE_IJMatrixAssemble COPY the scalar CSR values into HYPRE-owned
+                            // ParCSR storage, so A_ij holds an independent copy of A's data (nothing
+                            // is shared with A) -- the values must be re-set whenever A is reassembled.
+      HYPRE_ParCSRMatrix A_parcsr;  // the ParCSR object fetched from A_ij (HYPRE_IJMatrixGetObject);
+                                    // it is a handle into A_ij's HYPRE-owned storage
       HYPRE_IJVector b_ij;  // right hand side vector as HYPRE_IJVector
       HYPRE_ParVector b_par;  // right hand side vector as HYPRE_ParVector
       HYPRE_IJVector x_ij;  // solution vector as HYPRE_IJVector

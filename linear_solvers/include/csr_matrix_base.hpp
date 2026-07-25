@@ -123,15 +123,20 @@ namespace opendarts
       // resolve when the engine is compiled against either matrix, so they are
       // retained for BOS interface parity -- not slated for removal.
 
-      int write_matrix_to_file(const char *filename, int sort_cols = 0);  // debug matrix dump; used by the engines and the mechanics contact solver
+      int write_matrix_to_file(const char *filename, int sort_cols = 0);  // debug matrix dump; used live by the engines (e.g. engine_base_gpu.cpp:509, engine_pm_cpu.cpp:1715, engine_base::test_assembly)
 
-      // Matrix-vector product r += A * v (v input, r output); returns 0 on success.
-      // Used by the mechanics contact solver (local-Jacobian check).
+      // Matrix-vector product r += A * v (v input, r output). NOTE: this is a
+      // non-virtual no-op stub on the base, and csr_matrix<N> provides no host
+      // matrix_vector_product of its own (only the transpose variant
+      // matrix_vector_product_t), so it is non-functional in the open-source
+      // build: its one live caller (engine_base::test_spmv, a benchmark) hits the
+      // stub, and the mechanics-contact caller is commented out. Retained for BOS
+      // interface parity (the proprietary base implements it).
       int matrix_vector_product(const double *v, double *r);
 
-      // Linear combination r = alpha * A u + beta * v. Mirrors proprietary csr_matrix;
-      // currently no open-source caller (the impl emits a one-time deprecation note),
-      // kept for BOS interface parity.
+      // Linear combination r = alpha * A u + beta * v. Same status as
+      // matrix_vector_product above: base no-op stub, no live open-source caller
+      // (the impl emits a one-time deprecation note), kept for BOS interface parity.
       int calc_lin_comb(const double alpha, const double beta, double *u, double *v, double *r);
 
 #ifdef WITH_GPU

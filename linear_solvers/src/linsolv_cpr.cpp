@@ -817,6 +817,12 @@ namespace opendarts
       const std::string t(tag);
       check_hypre(HYPRE_BoomerAMGCreate(&amg),
           ("BoomerAMGCreate" + t).c_str());
+      // NOTE: systems / unknown-based AMG (HYPRE_BoomerAMGSetNumFunctions) is
+      // deliberately NOT enabled. The operator handed to BoomerAMG here is the
+      // scalar (1 DOF/cell) pressure system produced by the CPR True-IMPES
+      // reduction (build_pressure_subsystem), not the coupled block system --
+      // so it is already a single-function scalar problem. Do not "fix" this by
+      // calling SetNumFunctions; the block coupling is handled outside HYPRE.
       apply_pressure_amg_options(amg, tag);
     }
 

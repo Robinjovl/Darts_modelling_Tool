@@ -439,16 +439,16 @@ namespace opendarts
       // proprietary darts-linear-solvers csr_matrix; the open-source GPU
       // solvers (AMGX, cuSPARSE ILU, BiCGStab, ...) build on this layer.
       //
-      // 1 once the device mode has been enabled via init_device(); 0 otherwise.
+      // Set to 1 once device mode is enabled via init_device().
       // Declared unconditionally so non-GPU callers can cheaply test it.
       int gpu_mode = 0;
 
 #ifdef WITH_GPU
       // Device copies of the block-CSR structure and values.
-      opendarts::config::mat_float *values_d = nullptr;   // nonzero block values on device
-      opendarts::config::index_t *rows_ptr_d = nullptr;   // block row pointers on device
-      opendarts::config::index_t *cols_ind_d = nullptr;   // block column indices on device
-      opendarts::config::index_t *diag_ind_d = nullptr;   // diagonal block indices on device
+      opendarts::config::mat_float *values_d = nullptr;   // nonzero block values
+      opendarts::config::index_t *rows_ptr_d = nullptr;   // block row pointers
+      opendarts::config::index_t *cols_ind_d = nullptr;   // block column indices
+      opendarts::config::index_t *diag_ind_d = nullptr;   // diagonal block indices
 
       // Scratch CSR copy used by convert_to_ELL (block-CSR expanded to scalar CSR).
       opendarts::config::index_t *csrRowPtrC = nullptr;
