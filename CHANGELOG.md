@@ -9,6 +9,14 @@
 - Add OLGA-style linear IPR support for controlling injectivity/productivity of DFM wells ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
 - Add `IdealGasDensity` to `darts/physics/properties/density.py` ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
 - Add `AirViscositySutherland` to `darts/physics/properties/viscosity.py` ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
+- Breaking changes:
+  - Renamed the `rate_type` argument to `rate_ctrl_type` in `WellData.add_inj_rate_control()` and `WellData.add_prd_rate_control()` to make clear that it specifies the type of rate control:
+  \
+  {- Before: idata.well_data.add_inj_rate_control(..., rate_type=...) -}\
+  {+ Now:    idata.well_data.add_inj_rate_control(..., rate_ctrl_type=...) +}
+  \
+  {- Before: idata.well_data.add_prd_rate_control(..., rate_type=...) -}\
+  {+ Now:    idata.well_data.add_prd_rate_control(..., rate_ctrl_type=...) +}
 
 # 1.5.0 [27-05-2026]
 - Fluid heat capacity is added into the input data for THM models ([!270](https://gitlab.com/open-darts/open-darts/-/merge_requests/270))
@@ -20,12 +28,16 @@
   - Streamline storage and visualization of DFM well properties
   - Support storage and visualization of multiple DFM wells
   - Support storage of DFM well output in `.vtp` files to be visualized in ParaView
-- Support live plotting ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
+- Support live plotting for DFM wells ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287)):
   - Live (real-time) plots for solver properties (time step size and number of Newton iterations) and tracking the state of a block on the PH diagram
   - Live (real-time) plots for profiles of DFM well properties
   - Save live-plot snapshots and monitor a reservoir block
 - Align depth of perforated well segments with reservoir blocks ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Fix BHT calculation for PH formulation in the method `store_bhp_bht` in `output.py` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
+- Improved nonlinear convergence stability for high-rate injection and production wells by normalizing rate-control residuals, preventing large target rates from dominating the residual norm ([!311](https://gitlab.com/open-darts/open-darts/-/merge_requests/311))
+- Added injection and production rate ramp-up support via `idata.well_data` scheduling ([!311](https://gitlab.com/open-darts/open-darts/-/merge_requests/311))
+- Updated timestepping to honor scheduled well-control changes so ramp-up points are applied correctly ([!311](https://gitlab.com/open-darts/open-darts/-/merge_requests/311))
+- Added a CI test demonstrating rate ramp-up controls ([!311](https://gitlab.com/open-darts/open-darts/-/merge_requests/311))
 - Store the arrays `time`, `n_newton_iters`, and `time_step_size` in the class `DartsModel` ([!287](https://gitlab.com/open-darts/open-darts/-/merge_requests/287))
 - Implement `engine_base::apply_thermal_var_correction` to improve the issue related to sharp enthalpy updates from the Newton-Raphson solver for the pressure-enthalpy (PH) formulation ([!289](https://gitlab.com/open-darts/open-darts/-/merge_requests/289))
 - Support well controls (rate and WHP) for DFM wells consistent with EPM wells. WHP is controlled for DFM wells and BHP is controlled for EPM wells ([!292](https://gitlab.com/open-darts/open-darts/-/merge_requests/292))

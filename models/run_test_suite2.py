@@ -62,6 +62,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
 
     accepted_dirs = [
         '2ph_comp',
+        '2ph_comp_ramp_up_rate',
         '2ph_comp_solid',
         '2ph_do',
         '2ph_geothermal',

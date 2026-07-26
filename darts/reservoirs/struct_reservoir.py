@@ -153,7 +153,7 @@ class StructReservoir(ReservoirBase):
             volume,
             self.global_data['op_num'],
         ]
-        self.cell_m, self.cell_p, tran, tran_thermal, arrs_local = (
+        self.cell_m, self.cell_p, self.tran, self.tran_thermal, arrs_local = (
             self.discretizer.apply_actnum_filter(
                 self.actnum, cell_m, cell_p, tran, tran_thermal, arrs
             )
@@ -169,8 +169,8 @@ class StructReservoir(ReservoirBase):
         mesh.init(
             index_vector(self.cell_m),
             index_vector(self.cell_p),
-            value_vector(tran),
-            value_vector(tran_thermal),
+            value_vector(self.tran),
+            value_vector(self.tran_thermal),
         )
 
         # Create numpy arrays wrapped around mesh data (no copying)
