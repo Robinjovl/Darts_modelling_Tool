@@ -467,7 +467,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         :return:
         '''
 
-        import vtk
+        try:
+            import vtk
+        except ModuleNotFoundError:
+            import subprocess
+            import sys
+
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "vtk"]
+            )
+            import vtk
         well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
         # Append multiple cylinders into one polydata
         appendFilter = vtk.vtkAppendPolyData()
