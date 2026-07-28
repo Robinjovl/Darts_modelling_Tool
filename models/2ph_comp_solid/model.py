@@ -1,10 +1,11 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params, value_vector, ms_well
+from darts.engines import value_vector, ms_well
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
@@ -24,9 +25,10 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-5, tol_linear=1e-6,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
-        self.data_ts.newton_tol_stationary = 1e-5
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=10, chop=ChopSpec(mode='local'))
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_linear=1e-6,
+                            it_linear=50)
+        self.nonlinear_solver.spec.stationary_point_tolerance = 1e-5
 
         self.timer.node["initialization"].stop()
 
@@ -91,9 +93,9 @@ class Model(CICDModel):
 
         """ Activate physics """
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         # 4 components → 3 z axes
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=[10.0, 1e-2, 1e-2, 1e-2],
                                      axes_origin=[1.0, epsilon, epsilon, epsilon],
                                      epsilon_z=epsilon, extrapolation_flag=True)

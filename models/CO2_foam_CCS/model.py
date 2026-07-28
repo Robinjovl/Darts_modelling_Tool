@@ -1,8 +1,9 @@
 from darts.engines import *
 from darts.models.cicd_model import CICDModel
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
-from darts.physics.super.physics import Compositional
+from darts.physics.base.physics import PhysicsBase
 from property_container import PropertyContainer
 from operator_evaluator import AccFluxGravityEvaluator, AccFluxGravityWellEvaluator, RateEvaluator, PropertyEvaluator
 
@@ -24,9 +25,10 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=1e-4, mult_ts=1.5, max_ts=1, runtime=10, tol_newton=1e-3, tol_linear=1e-4,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
-        self.params.newton_params[0] = 0.25
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
+                                           chop=ChopSpec(mode='local', factor=0.25))
+        self.set_sim_params(first_ts=1e-4, mult_ts=1.5, max_ts=1, runtime=10, tol_linear=1e-4,
+                            it_linear=50)
 
         self.timer.node["initialization"].stop()
 
@@ -82,7 +84,7 @@ class Model(CICDModel):
 
         """ Activate physics """
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         nz = len(components) - 1
         ax_step = [5.0] + [5e-3] * nz
         ax_origin = [1.0] + [eps_z] * nz
@@ -110,9 +112,9 @@ class Model(CICDModel):
                                                is_inj=False, target=85.)
 
 
-class CustomPhysics(Compositional):
+class CustomPhysics(PhysicsBase):
     def __init__(self, components, phases, timer, axes_step, axes_origin=None, epsilon_z=1e-9,
-                 state_spec=Compositional.StateSpecification.P, cache=False):
+                 state_spec=PhysicsBase.StateSpecification.P, cache=False):
         super().__init__(components, phases, timer, axes_step=axes_step, axes_origin=axes_origin,
                          epsilon_z=epsilon_z, state_spec=state_spec, cache=cache)
 

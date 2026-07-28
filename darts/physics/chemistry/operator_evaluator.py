@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.physics.super.operator_evaluator import OperatorsSuper
+from darts.physics.base.operator_evaluator import OperatorsSuper
 
 
 class ReservoirOperators(OperatorsSuper):

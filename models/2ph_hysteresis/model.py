@@ -7,7 +7,8 @@ import numpy as np
 
 from darts.engines import value_vector
 from darts.models.cicd_model import CICDModel
-from darts.physics.base.physics_base import HistoryField, PhysicsBase
+from darts.nonlinear_solvers import NewtonSolver
+from darts.physics.base.physics import PhysicsBase, HistoryField
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import ConstantK
@@ -15,8 +16,8 @@ from darts.physics.properties.hysteresis import (
     KilloughCapillaryPressureTable,
     KilloughRelPermTable,
 )
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
 from dartsflash.components import CompData
 from dartsflash.libflash import AQEoS, CubicEoS, FlashParams
@@ -105,14 +106,13 @@ class Model(CICDModel):
             start_injection_h2o_days=self.start_injection_h2o_days,
             water_injection_rate=self.water_injection_rate,
         )
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=16)
         self.set_sim_params(
             first_ts=1e-4,
             mult_ts=1.5,
             max_ts=1.0,
             runtime=1000.0,
-            tol_newton=1e-3,
             tol_linear=1e-3,
-            it_newton=16,
             it_linear=20,
         )
         self.data_ts.eta[-1] = 0.05
@@ -309,7 +309,7 @@ class Model(CICDModel):
             else []
         )
 
-        self.physics = Compositional(
+        self.physics = PhysicsBase(
             components,
             phases,
             self.timer,

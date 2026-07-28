@@ -1,10 +1,11 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params, ms_well
+from darts.engines import ms_well
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
@@ -22,8 +23,9 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=20, runtime=1000, tol_newton=1e-2, tol_linear=1e-3,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10, chop=ChopSpec(mode='local'))
+        self.set_sim_params(first_ts=0.01, mult_ts=2, max_ts=20, runtime=1000, tol_linear=1e-3,
+                            it_linear=50)
 
         self.timer.node["initialization"].stop()
 
@@ -66,8 +68,8 @@ class Model(CICDModel):
 
         """ Activate physics """
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=[2.0, 1e-2, 1e-2],  # p [bar], 2 z axes (3 components)
                                      axes_origin=[1.0, epsilon, epsilon],
                                      epsilon_z=epsilon, extrapolation_flag=True)

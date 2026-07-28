@@ -105,9 +105,16 @@ if %skip_req%==false (
   rem -- Install Hypre
   cd hypre\src\cmbuild
   rem For debugging: -DHYPRE_ENABLE_PRINT
-  cmake -D HYPRE_BUILD_TESTS=ON ^
-        -D HYPRE_BUILD_EXAMPLES=ON ^
+  rem Tests/examples are never run, only the library is used, so don't build
+  rem them. Building them also made parallel MSBuild race on the per-directory
+  rem "re-run cmake if generate.stamp is stale" custom rule across the ~30 test
+  rem projects ("Cannot restore timestamp ... Access is denied" -> MSB8066).
+  rem CMAKE_SUPPRESS_REGENERATION drops ZERO_CHECK and those stamp-check rules
+  rem entirely; safe for a one-shot CI configure.
+  cmake -D HYPRE_BUILD_TESTS=OFF ^
+        -D HYPRE_BUILD_EXAMPLES=OFF ^
         -D HYPRE_WITH_MPI=OFF ^
+        -D CMAKE_SUPPRESS_REGENERATION=ON ^
         -D CMAKE_INSTALL_PREFIX=..\..\..\install .. > ..\..\..\..\make_hypre.log || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\..\make_hypre.log || goto :error
   cd ..\..\..\

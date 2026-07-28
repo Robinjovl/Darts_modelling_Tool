@@ -2,13 +2,14 @@ import numpy as np
 from darts.models.darts_model import DartsModel
 from darts.engines import ms_well
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+from darts.nonlinear_solvers import NewtonSolver
 
 
 class Model(DartsModel):
@@ -77,11 +78,9 @@ class Model(DartsModel):
         self.set_physics(zero, temperature=None, ph=False, vl_phases=False)
         self.inj_stream = [0.001] if self.components[0] == "H2O" else [0.999]
 
-        self.set_sim_params(first_ts=1e-7, mult_ts=2, max_ts=20., tol_newton=1e-6, tol_linear=1e-6, it_newton=8,
-                            it_linear=50, runtime=1,
-                            # newton_type=self.params.newton_global_chop,  # Type of newton method (related to chopping strategy?)
-                            # newton_params=value_vector([0.2]),  # Probably chop-criteria(?)
-                            )
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-6, max_iterations=8)
+        self.set_sim_params(first_ts=1e-7, mult_ts=2, max_ts=20., tol_linear=1e-6,
+                            it_linear=50, runtime=1)
         # self.params.nonlinear_norm_type = self.params.L1
         # self.params.linear_type = self.params.cpu_superlu
 
@@ -168,18 +167,18 @@ class Model(DartsModel):
 
         """ Define state specification and initialize Physics object """
         if temperature is None:  # if None, then thermal=True
-            state_spec = Compositional.StateSpecification.PH if ph else Compositional.StateSpecification.PT
+            state_spec = PhysicsBase.StateSpecification.PH if ph else PhysicsBase.StateSpecification.PT
         else:
-            state_spec = Compositional.StateSpecification.P
+            state_spec = PhysicsBase.StateSpecification.P
 
         # [p, z_1, ..., z_{nc-1}, T?]
         nz = len(components) - 1
         ax_step = [0.399] + [1e-3] * nz
         ax_origin = [1.0] + [epsilon] * nz
-        if state_spec >= Compositional.StateSpecification.PT:
+        if state_spec >= PhysicsBase.StateSpecification.PT:
             ax_step.append(0.1)
             ax_origin.append(273.15)
-        self.physics = Compositional(components, phases, self.timer,
+        self.physics = PhysicsBase(components, phases, self.timer,
                                      axes_step=ax_step, axes_origin=ax_origin,
                                      epsilon_z=epsilon, state_spec=state_spec, cache=False,
                                      extrapolation_flag=True)
@@ -189,7 +188,7 @@ class Model(DartsModel):
 
     def set_initial_conditions(self):
         if 1:
-            from darts.physics.super.initialize import Initialize
+            from darts.physics.base.initialize import Initialize
             init = Initialize(physics=self.physics)
 
             # Solve boundary state

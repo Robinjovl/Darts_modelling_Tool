@@ -111,13 +111,11 @@ class WellControl:
         # bhp control
         self.bhp = None  # bars
         # rate control
-        self.rate = (
-            None  # m3/day for Geothermal physics ans kmol/day for Compositional physics
-        )
+        self.rate = None  # kmol/day for compositional physics
         self.bhp_constraint = None  # lower limit for bhp, bars
         # if thermal
         self.inj_bht = None  # K
-        # if Compositional
+        # if compositional
         self.phase_name = None  # phase name for well control, [str]
 
     def prod_rate_control(self, rate, rate_type, bhp_constraint=None, phase_name=None):
@@ -127,7 +125,7 @@ class WellControl:
         self.rate = rate
         self.rate_type = rate_type
         self.bhp_constraint = bhp_constraint
-        # if Compositional
+        # if compositional
         self.phase_name = phase_name  # produced phase name, [str]
 
     def prod_bhp_control(self, bhp):
@@ -153,7 +151,7 @@ class WellControl:
         self.bhp_constraint = bhp_constraint
         # if thermal
         self.inj_bht = temperature  # K
-        # if Compositional
+        # if compositional
         self.phase_name = phase_name  # injected phase name, [str]
         self.inj_composition = inj_composition  # 0 < injected composition < 1
 
@@ -166,7 +164,7 @@ class WellControl:
         self.bhp = bhp
         # if thermal
         self.inj_bht = temperature  # K
-        # if Compositional
+        # if compositional
         self.phase_name = phase_name  # injected phase name, [str]
         self.inj_composition = inj_composition  # 0 < injected composition < 1
 
@@ -373,7 +371,7 @@ class WellData:
         :param bhp: bottom hole pressure, can be None if rate-controlled
         :param bhp_constraint: bottom hole pressure constraint (min for prod and max for inj wells)
         :param inj_temp: injection temperature, [K]
-        :param phase_name # injected phase name, [str], for Compositional physics
+        :param phase_name # injected phase name, [str], for compositional physics
         :return:
         """
         self.wells[name].controls.append(
@@ -467,6 +465,10 @@ class Simulation:
 
     def __init__(self):
         self.time_steps = None
+        # Nonlinear (Newton) convergence tolerance. ``None`` keeps the
+        # nonlinear-solver spec default; a model's ``set_solver()`` reads this
+        # and applies it to ``self.nonlinear_solver.spec.tolerance``.
+        self.newton_tolerance = None
 
 
 class OtherProps:

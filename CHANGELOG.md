@@ -1,4 +1,49 @@
 # 1.5.1 [14-07-2026]
+- Nonlinear solver refactoring (`nonlinear_refactoring` branch):
+  - **New single input source for the nonlinear solve: the `darts.nonlinear_solvers` package** (`base.py` — enums, sub-specs, base spec and runtime base classes; `newton.py` — the Newton specs and `NewtonSolver`; re-exported from the package root). Declarative spec dataclasses `NonlinearSolverSpec` / `NewtonSpec` (with `ChopSpec`, `OBLBoundsSpec`) are the declarative input (stdlib dataclasses; dict/JSON-serializable and Pydantic-forward-compatible); **`DartsModel.nonlinear_solver` holds the runtime `NewtonSolver` instance** built from a spec — assigned in the `set_solver()` hook (same hook as the linear solver spec of [!280](https://gitlab.com/open-darts/open-darts/-/merge_requests/280)) or inline in the constructor. The solver is constructed *detached* (no model needed) and `bind()`s to the model in `init()`; the input spec stays retrievable as `model.nonlinear_solver.spec` / `.to_spec()` and serialized via `.spec.to_dict()` (uses `dataclasses.asdict`, delegating to `model_dump()` if a spec is later a Pydantic model — the MR300 `darts/api/autospec.py` tracing convention). Timestep control (`dt_first`/`dt_min`/`dt_mult`/`dt_max`/`eta`) lives ONLY in the `data_ts` structure (not in `sim_params` anymore).
+  - **Breaking (model API):** `set_sim_params()` no longer accepts any nonlinear-solver argument (`tol_newton`, `it_newton`, `newton_type`, `newton_params`, `line_search`, `coupled_well_res_norm_method` are removed); it now sets only the timestep and linear-solver parameters (`first_ts`/`mult_ts`/`min_ts`/`max_ts`/`runtime`/`tol_linear`/`it_linear`). Specify the nonlinear solver via `self.nonlinear_solver = NewtonSolver(tolerance=…, max_iterations=…, chop=ChopSpec(mode=…, factor=…))` (accepts a `NewtonSpec` positionally or its keyword arguments), and tune the default via `self.nonlinear_solver.spec.<field>`. All in-repo models were migrated accordingly.
+  - `run_timestep()` moved from `DartsModel` to `darts.nonlinear_solvers.NewtonSolver`; the model method delegates, so existing overrides keep working. A per-iteration `on_iteration()` hook replaces the forked Newton loop in `plot_live`.
+  - **Staged nonlinear iteration**: every iteration is decomposed into explicit `pre_iteration()` (user routines), `update()` (the spec-assembled dX-correction pipeline — composition correction, global/local chop, OBL-bounds constraints, thermal-variable correction — followed by the plain Newton step) and `post_iteration()` (user routines) solver methods. The C++ `apply_newton_update` composite was split into the self-guarded kernels `correct_composition` / `correct_chop_global` / `correct_chop_local` / `correct_obl_axes` / `correct_thermal` / `apply_update`, all bound to Python (the legacy composite remains, behavior-identical).
+  - **Single source of truth**: `DataTS` (`model.data_ts`) holds only the timestep controls (`dt_*`, `eta`) and the transitional linear settings; the nonlinear-solver settings live solely on `model.nonlinear_solver.spec` (the `data_ts.newton_tol`/`newton_max_iter`/`newton_tol_stationary`/`newton_tol_wel_mult`/`coupled_well_res_norm_method` aliases are removed — read/write `nonlinear_solver.spec.tolerance`/`max_iterations`/`stationary_point_tolerance`/`well_tolerance_multiplier`/`coupled_well_res_norm_method`). The `DartsModel._get_nonlinear()` helper is gone: `model.nonlinear_solver` is the bound solver instance itself (its `.status`, `.stats`, `.spec` are read directly).
+  - **Divergence fallbacks**: `NonlinearSolverSpec.fallbacks` is an ordered list of `FallbackSpec` tried by `NonlinearSolver.solve_timestep()` when the primary solve fails, before the driver cuts the timestep — each fallback retries the same dt with another solver spec and/or additional built-in or user-defined pre/post routines (`pre_routines`/`post_routines`, signature `f(solver, dt, t, iteration)`).
+  - Python/C++ separation: the convergence decision, statistics, stationary-point detection and the iteration/timestep log lines are Python-side; the C++ engine keeps only the cell-looping kernels (assembly + OBL interpolation, residual norms, linear solve, dX corrections, timestep state commit/rollback).
+  - **Breaking (C++ engine interface):** `engine.post_newtonloop(dt, t, converged)` now requires the Python convergence verdict; the engine members `n_newton_last_dt`, `n_linear_last_dt`, `newton_residual_last_dt`, `well_residual_last_dt`, `linear_solver_error_last_dt` and `engine.stat` (class `sim_stat`) are removed — use `NonlinearSolver.status` (per-timestep) and `NonlinearSolver.stats` (cumulative) instead, plus `engine.get_last_linear_iters()` / `engine.get_last_linear_residual()` for the last linear solve.
+  - **Breaking (`sim_params`):** all nonlinear and timestep control fields removed — `first_ts`/`max_ts`/`mult_ts`/`min_ts`, `tolerance_newton`/`max_i_newton`/`min_i_newton`, `newton_type`/`newton_params`, `nonlinear_norm_type`, `log_transform`, `line_search`, `stationary_point_tolerance`, `well_tolerance_coefficient`, `obl_min_fac`, `tot_newt_count`, `interface_avg_tmult`. What remains is the linear-solver + physics rump, deleted entirely once [!280](https://gitlab.com/open-darts/open-darts/-/merge_requests/280) is merged. The kernel-level controls now live on the engine (`newton_chop_mode`, `newton_chop_factor`, `log_transform`, `residual_norm_type`) and are synced from the spec before every timestep solve.
+  - `set_sim_params()` (timestep + linear only, see above) and `set_sim_params_data_ts()` remain as deprecated shims writing into `data_ts`. For one deprecation cycle `set_sim_params()` still accepts the removed nonlinear keyword arguments (`tol_newton`/`it_newton`/`newton_type`/`newton_params`/`coupled_well_res_norm_method`): they emit a `DeprecationWarning` and are mapped onto `model.nonlinear_solver.spec` (unknown keywords still raise `TypeError`). The historic nonlinear *attribute* names are gone from `DataTS` — use `model.nonlinear_solver.spec.*`; only the timestep controls and the transitional linear settings remain plain attributes on it until [!280](https://gitlab.com/open-darts/open-darts/-/merge_requests/280).
+  - **`MechanicsNewtonSolver`** (`darts.nonlinear_solvers.mechanics`) drives the geomechanics engines' Newton loop (deviatoric per-component residual, per-component convergence, the C++ `apply_newton_update` composite) through overridable hooks, so the mechanics models share one driver instead of each copying the loop.
+  - Verified bit-identical (timestep / Newton / linear counts and solution hash) on 2ph_do, 2ph_comp, 3ph_bo and 2ph_geothermal; mechanics validated via the poroelastic convergence studies and the Mandel analytic run. Fake-engine unit tests live in `tests/test_nonlinear_solver.py`.
+- Migration guide (`nonlinear_refactoring`) — the nonlinear-solver settings moved off `sim_params`/`data_ts` onto `DartsModel.nonlinear_solver` (a `NewtonSolver` instance holding a `NewtonSpec`). Removed symbols raise `TypeError`/`AttributeError` (except `set_sim_params()`'s nonlinear keywords, kept one release with a `DeprecationWarning`).
+  - **Configure the nonlinear solver** (in a `set_solver()` override or the model constructor):
+    ```
+    # Before
+    self.set_sim_params(first_ts=1e-3, tol_newton=1e-4, it_newton=15,
+                        newton_type=sim_params.newton_local_chop, newton_params=[0.2])
+    # After
+    from darts.nonlinear_solvers import NewtonSolver, ChopSpec
+    self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
+                                         chop=ChopSpec(mode='local', factor=0.2))
+    self.set_sim_params(first_ts=1e-3, tol_linear=1e-6, it_linear=200)  # timestep + linear only
+    ```
+  - **Read/write nonlinear settings** — the `data_ts.newton_*` aliases are gone; use `model.nonlinear_solver.spec.*`:
+    ```
+    data_ts.newton_tol                    -> nonlinear_solver.spec.tolerance
+    data_ts.newton_max_iter               -> nonlinear_solver.spec.max_iterations
+    data_ts.newton_tol_stationary         -> nonlinear_solver.spec.stationary_point_tolerance
+    data_ts.newton_tol_wel_mult           -> nonlinear_solver.spec.well_tolerance_multiplier
+    data_ts.coupled_well_res_norm_method  -> nonlinear_solver.spec.coupled_well_res_norm_method
+    ```
+  - **Statistics / per-timestep status** — `engine.stat` and the `engine.*_last_dt` members are removed:
+    ```
+    engine.stat.n_newton_total     -> model.nonlinear_solver.stats.n_newton_total  (same field names)
+    engine.n_newton_last_dt        -> model.nonlinear_solver.status.n_newton
+    engine.n_linear_last_dt        -> model.nonlinear_solver.status.n_linear
+    engine.newton_residual_last_dt -> model.nonlinear_solver.status.newton_residual
+    # last linear solve: engine.get_last_linear_iters() / engine.get_last_linear_residual()  (new)
+    ```
+  - **Removed `sim_params` fields** (`first_ts`/`max_ts`/`mult_ts`/`min_ts`, `tolerance_newton`/`max_i_newton`/`min_i_newton`, `newton_type`/`newton_params`, `nonlinear_norm_type`, `line_search`, `stationary_point_tolerance`, `well_tolerance_coefficient`, `log_transform`, `tot_newt_count`, `interface_avg_tmult`, `obl_min_fac`) — timestep controls live on `model.data_ts` (`dt_first`/`dt_min`/`dt_mult`/`dt_max`/`eta`), nonlinear controls on the `NewtonSpec`.
+  - **Custom Newton loops**: models overriding `run_timestep` or copying the loop should instead use `NewtonSolver`; geomechanics models use `MechanicsNewtonSolver` and override its residual/convergence hooks (`compute_mech_residual`, `check_early_break`, `finalize_convergence`) rather than reimplementing the loop.
+  - **Constraining the Newton state (OBL axis bounds)**: pass `NewtonSolver(..., obl_bounds=OBLBoundsSpec(mode='obl_axes', axis_min=[...], axis_max=[...]))` (or set `nonlinear_solver.spec.obl_bounds`). `axis_min`/`axis_max` are per-state-variable bounds in `[p, z_1, ..., z_{nc-1}, (T)]` order (length `n_vars`; `None` leaves an axis unbounded — composition axes are usually `None`, the composition correction already projects `z` onto the simplex). Each Newton iteration then clamps the update `dX` per cell/variable so the post-update state stays strictly inside the box — used to hold the trajectory in a physically/numerically valid window on the (otherwise unbounded) adaptive OBL grid. Default (`mode=None`) applies no constraint.
+  - **Out-of-tree C++ engine subclasses**: `post_newtonloop(dt, t)` gained a third argument, `post_newtonloop(dt, t, converged)` (the Python-side convergence verdict); the nonlinear loop now lives in Python (`NewtonSolver.run_timestep`), and the engine keeps only the per-iteration kernels (`assemble_linear_system`, `calc_newton_residual`/`calc_well_residual`, `correct_composition`/`correct_chop_*`/`correct_obl_axes`/`correct_thermal`, `apply_update`, `solve_linear_equation`, `post_newtonloop`).
 - Breaking changes ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)):
   - **OBL grid API: the legacy bounds arguments are removed. Physics classes now take `axes_step` (required, per-axis cell size) and `axes_origin` (optional, per-axis grid origin) only.** Removed everywhere: `n_points`, `min_p`/`max_p`, `min_z`/`max_z`, `min_t`/`max_t`, `min_e`/`max_e`, `axes_min`/`axes_max`, `n_axes_points`, and `PhysicsBase.determine_obl_bounds()`. `epsilon_z` became a keyword argument (default `1e-9`). The grid is unbounded, so there is no `axes_max` or point count. Passing any removed argument raises `TypeError`. Affects `Compositional`, `Geothermal`, `ElementBasedReactiveFlow`, `Poroelasticity` and `PhysicsBase.create_interpolator` (see the migration guide below).
   - Physics instance fields renamed: read `physics.axes_origin` where you read `physics.axes_min`; `physics.axes_max`, `physics.n_axes_points`, `physics.PT_axes_min` and `physics.PT_axes_max` are gone (`physics.axes_step` gives the per-axis cell size; the P-T window lives in `physics.thermal_var_axes_origin` / `physics.thermal_var_axes_step`).
@@ -28,6 +73,47 @@
   {+ Now:    Geothermal(timer, axes_step=[(351-1)/255, (10000-1000)/255], axes_origin=[1.0, 1000.0]) +}
   \
   The Geothermal P-T `ThermalVarOperator` window (formerly the hardcoded `PT_axes_min`/`PT_axes_max`) is now the optional `thermal_var_axes_step` / `thermal_var_axes_origin` (defaults `[p_step, 1.0]` / `[p_origin, 273.15]`).
+- Breaking changes ([!318](https://gitlab.com/open-darts/open-darts/-/merge_requests/318)):
+  - **The `Geothermal` physics/engine is removed.** Single-component-water geothermal simulation (IAPWS-97, `[P, enthalpy]` state) is superseded by the compositional `PhysicsBase` engine driven by a DARTSFlash IAPWS-95 PT-flash. The primary unknowns change from `[P, enthalpy]` to `[P, temperature]`, so `engine.X` layout, the OBL grid axes (P-H → P-T), and any code reading the thermal variable change accordingly. The bundled former-geothermal models (`GeoRising`, `CoaxWell`, `cpg_sloping_fault`, `fracture_network`) were migrated; see the migration guide below.
+  - Unused engines removed: all `engine_nc*` except `engine_nc_nl`.
+  - `PropertyBase` was folded into `PropertyContainer`, and `operators_base.py` was merged into `operator_evaluator.py`. Import `OperatorsBase`, `WellCtrlOperators`, `ThermalVarOperator` and `PropertyOperators` from `darts.physics.base.operator_evaluator`; the `darts.physics.base.operators_base` and `darts.physics.base.property_base` modules no longer exist.
+  - The built-in IAPWS-IF97 property evaluators are removed together with the `Geothermal` physics they served: the `darts.physics.properties.iapws` subpackage (`iapws_property.py`, `iapws_property_vec.py`, `custom_rock_property.py`) no longer exists. Migrated models take water/steam properties from the DARTSFlash IAPWS-95 EoS instead (`EoSDensity`/`EoSEnthalpy` on the `IAPWS` mixture); the dead `compute_temperature` helpers built on `_Backward1_T_Ph_vec` were dropped from the models. The external `iapws` pip dependency is kept — `models/chemistry/carbonated_water` still uses its viscosity correlation directly.
+- Migration guide ([!318](https://gitlab.com/open-darts/open-darts/-/merge_requests/318)) — `Geothermal` → compositional `PhysicsBase` (`state_spec=PT`). A single-component-water geothermal model becomes a compositional model whose property evaluators are wired explicitly around an IAPWS-95 PT-flash:\
+  {- Before: self.physics = Geothermal(idata, timer) -}\
+  {+ Now:    self.physics = PhysicsBase(components, phases, timer, state_spec=PhysicsBase.StateSpecification.PT, axes_step=[p_step, t_step], axes_origin=[p_origin, t_origin], epsilon_z=eps) — with a hand-wired PropertyContainer (below) +}
+  ```python
+  from darts.physics.base.physics import PhysicsBase
+  from darts.physics.base.property_container import PropertyContainer
+  from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
+  from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+  from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+  from darts.physics.properties.viscosity import MaoDuan2009
+
+  components, phases, eps = ["H2O"], ["V", "L"], 1e-12       # 'V','L' (vapor, liquid) replace legacy 'steam','water'
+  comp_data = CompData(components=components, setprops=True)
+  pc = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw, eps_z=eps)
+
+  flash = IAPWS(iapws_ideal=True, ice_phase=False)           # IAPWS-95 EoS
+  flash.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
+  pc.flash_ev = flash
+  pc.density_ev      = {"V": EoSDensity(flash.eos["IAPWS"], comp_data.Mw, EoS.RootFlag.MAX),
+                        "L": EoSDensity(flash.eos["IAPWS"], comp_data.Mw, EoS.RootFlag.MIN)}
+  pc.enthalpy_ev     = {"V": EoSEnthalpy(flash.eos["IAPWS"], EoS.RootFlag.MAX),
+                        "L": EoSEnthalpy(flash.eos["IAPWS"], EoS.RootFlag.MIN)}
+  pc.viscosity_ev    = {"V": ConstFunc(0.01), "L": MaoDuan2009(components)}   # liquid µ must stay T/P-dependent
+  pc.rel_perm_ev     = {"V": PhaseRelPerm("gas", swc=0.0), "L": PhaseRelPerm("oil", swc=0.0)}
+  pc.conductivity_ev = {"V": ConstFunc(0.0), "L": ConstFunc(172.8)}           # kJ/m/day/K
+
+  self.physics = PhysicsBase(components, phases, timer,
+                             state_spec=PhysicsBase.StateSpecification.PT,
+                             axes_step=[p_step, t_step], axes_origin=[p_origin, t_origin], epsilon_z=eps)
+  self.physics.add_property_region(pc)
+  ```
+  Notes:
+  - **State layout** changes `[P, enthalpy]` → `[P, temperature]`: update any `engine.X` slicing, and switch the OBL input fields `idata.obl.e_step`/`e_origin` (enthalpy axis) to `t_step`/`t_origin` (temperature axis).
+  - **Keep the temperature `axes_origin` at ≥ `273.15` K** (the IAPWS liquid floor). With `ice_phase=False` the PT-flash returns NaN below it; because the OBL grid is unbounded it would otherwise sample the sub-freezing region and fail (singular CPR / timestep collapse).
+  - **Liquid viscosity** must be `MaoDuan2009(components)` (T/P-dependent), not a constant — a constant `µ` rescales well rates by `µ_ref/µ_const` under BHP control.
+  - IAPWS-97 → IAPWS-95 is a property-model change: well BHT/BHP shift by ≲ 0.2 %, so **regenerate reference solutions** for migrated models.
 - Add hysteresis support for OBL-based compositional simulations through per-cell history variables, including Killough scanning-curve handling; the feature is disabled by default and enabled only when history variables are explicitly declared in the physics setup ([!310](https://gitlab.com/open-darts/open-darts/-/merge_requests/310)).
 - Output:
   - output which was using `vtk` module, has been changed to use `meshio` (struct reservoir, cpg reservoir) and darts/tools/vtk_io.py (writing vtp files with dynamic results along well trajectories)

@@ -1,10 +1,11 @@
 from darts.models.cicd_model import CICDModel
 from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, ms_well
+from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -34,7 +35,8 @@ class Model(DartsModel, OptModuleSettings):
         self.set_physics()
         self.set_reservoir(mesh_file)
 
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, tol_newton=1e-3, tol_linear=1e-6)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, tol_linear=1e-6)
 
         self.timer.node["initialization"].stop()
 
@@ -127,10 +129,10 @@ class Model(DartsModel, OptModuleSettings):
 
         # create physics
         thermal = True
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         # [p, z_1, ..., z_{nc-1}, T]
         nz = len(components) - 1
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
                                      axes_step=[2.5] + [2.5e-3] * nz + [0.4511],
                                      axes_origin=[0.0] + [epsilon] * nz + [273.15 + 20],
                                      epsilon_z=epsilon, extrapolation_flag=True)
