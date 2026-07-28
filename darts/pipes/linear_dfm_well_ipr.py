@@ -142,9 +142,23 @@ class LinearDFMWellIPR:
                     f"Perforation index {connection.perforation_index} is out of bounds for well {connection.well_name!r}."
                 )
 
-            perf_segment_local, res_block_idx, _, _ = well.perforations[
-                connection.perforation_index
-            ]
+            perf_segment_local, res_block_idx, well_index, well_indexD = (
+                well.perforations[connection.perforation_index]
+            )
+            if well_index != 0.0:
+                raise ValueError(
+                    f"Perforation {connection.perforation_index} of well {connection.well_name!r} "
+                    f"has a non-zero well index (WI={well_index}). LinearDFMWellIPR manages "
+                    "the well-reservoir flux directly; a non-zero well_index would cause double-counting. "
+                    "Set well_index=0.0 when calling add_perforation()."
+                )
+            if well_indexD != 0.0:
+                raise ValueError(
+                    f"Perforation {connection.perforation_index} of well {connection.well_name!r} "
+                    f"has a non-zero thermal well index (WID={well_indexD}). LinearDFMWellIPR manages "
+                    "the well-reservoir flux directly; a non-zero well_indexD would cause double-counting. "
+                    "Set well_indexD=0.0 when calling add_perforation()."
+                )
             well_block_idx = well.well_body_idx + perf_segment_local
             resolved.append(
                 {
