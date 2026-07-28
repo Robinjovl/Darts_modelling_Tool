@@ -288,23 +288,18 @@ class SemiAnalyticalWellLateralHeatTransferHook:
         physics = self.model.physics
         well = self.well
         n_vars = physics.n_vars
+        X = np.asarray(physics.engine.X)
+        X_well = X[
+            well.well_head_idx * n_vars : (well.well_head_idx + well.num_segments)
+            * n_vars
+        ].reshape(well.num_segments, n_vars)
 
         if physics.state_spec == physics.StateSpecification.PT:
-            T_segments = physics.engine.X[
-                well.well_head_idx * n_vars + (n_vars - 1) : (
-                    well.well_head_idx + well.num_segments
-                )
-                * n_vars
-                + (n_vars - 1) : n_vars
-            ]
+            T_segments = X_well[:, -1]
         elif physics.state_spec == physics.StateSpecification.PH:
             T_segments = np.zeros(well.num_segments)
             for i in range(well.num_segments):
-                state = physics.engine.X[
-                    (well.well_head_idx + i) * n_vars : (well.well_head_idx + i + 1)
-                    * n_vars
-                ]
-                physics.property_containers[0].evaluate(state)
+                physics.property_containers[0].evaluate(X_well[i])
                 T_segments[i] = physics.property_containers[0].temperature
         else:
             raise NotImplementedError(
@@ -313,13 +308,11 @@ class SemiAnalyticalWellLateralHeatTransferHook:
 
         lateral_heat_rate = self.lateral_heat_ev.evaluate(T_segments, t + dt)
         rhs = np.asarray(physics.engine.RHS)
-        rhs[
-            well.well_head_idx * n_vars + (n_vars - 1) : (
-                well.well_head_idx + well.num_segments
-            )
+        rhs_well = rhs[
+            well.well_head_idx * n_vars : (well.well_head_idx + well.num_segments)
             * n_vars
-            + (n_vars - 1) : n_vars
-        ] -= lateral_heat_rate * dt
+        ].reshape(well.num_segments, n_vars)
+        rhs_well[:, -1] -= lateral_heat_rate * dt
 
 
 def add_numerical_well_lateral_heat_transfer(
