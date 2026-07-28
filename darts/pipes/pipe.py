@@ -64,6 +64,10 @@ class TangUnifiedDFParams:
     m3: float
 
 
+def _linear_interp_extrap(x, x0, x1, y0, y1):
+    return y0 + (y1 - y0) / (x1 - x0) * (x - x0)
+
+
 class Pipe:
     g = 9.80665 * meter() / second() ** 2  # Gravitational acceleration
 
@@ -88,7 +92,7 @@ class Pipe:
         tang_parameter_set: str = "olgas",
         friction_model: str | None = None,
         Cmax: float = 1.2,
-        Fv: float = 1,
+        Fv: float = 1.0,
         prop_eval_method: str = "direct",
         diff_method: str = "OBL",
         eps_p: float = 1e-4,
@@ -133,7 +137,7 @@ class Pipe:
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
                      could have a value between 1.0 and 1.5. It is set to:
                      --> 1.2 in ECLIPSE according to Shi et al. paper (Drift-Flux Modeling of Two-Phase Flow in Wellbores)
-                     --> 1 in a wellbore simulator in Tonken et al. paper (A transient geothermal wellbore simulator)
+                     --> 1.0 in a wellbore simulator in Tonken et al. paper (A transient geothermal wellbore simulator)
         :type Cmax: float
         :param Fv: A multiplier on the flooding velocity fraction, set to be 1 by default, and its value can be tuned
                    to fit the observations.
@@ -297,26 +301,13 @@ class Pipe:
                 m0 = 1.85
                 n1 = 0.21
                 n2 = 0.95
-            elif 1 < Cmax < 1.2:
-                # Linear interpolation
+            elif 1 < Cmax <= 1.5:
+                # Linear interpolation/extrapolation from the two anchor points Cmax=1 and Cmax=1.2
                 a1 = 0.06
-                a2 = np.interp(Cmax, [1, 1.2], [0.21, 0.12])
-                m0 = np.interp(Cmax, [1, 1.2], [1.85, 1.27])
-                n1 = np.interp(Cmax, [1, 1.2], [0.21, 0.24])
-                n2 = np.interp(Cmax, [1, 1.2], [0.95, 1.08])
-            elif Cmax == 1.2:
-                a1 = 0.06
-                a2 = 0.12
-                m0 = 1.27
-                n1 = 0.24
-                n2 = 1.08
-            elif 1.2 < Cmax <= 1.5:
-                # Linear extrapolation
-                a1 = 0.06
-                a2 = np.interp(Cmax, [1, 1.2], [0.21, 0.12])
-                m0 = np.interp(Cmax, [1, 1.2], [1.85, 1.27])
-                n1 = np.interp(Cmax, [1, 1.2], [0.21, 0.24])
-                n2 = np.interp(Cmax, [1, 1.2], [0.95, 1.08])
+                a2 = _linear_interp_extrap(Cmax, 1.0, 1.2, 0.21, 0.12)
+                m0 = _linear_interp_extrap(Cmax, 1.0, 1.2, 1.85, 1.27)
+                n1 = _linear_interp_extrap(Cmax, 1.0, 1.2, 0.21, 0.24)
+                n2 = _linear_interp_extrap(Cmax, 1.0, 1.2, 0.95, 1.08)
             else:
                 raise ValueError("Cmax value is out of the allowed range [1 to 1.5]")
 
