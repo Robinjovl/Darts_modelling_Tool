@@ -1,4 +1,7 @@
+import warnings
+
 import numpy as np
+from dartsflash.dartsflash import DARTSFlash
 from dartsflash.libflash import EoS, VdWP
 
 NA = 6.02214076e23  # Avogadro's number [mol-1]
@@ -8,18 +11,190 @@ R = NA * kB  # Gas constant [J/mol.K]
 
 class EoSDensity:
     """
-    This class can evaluate density (molar volume) from an EoS object.
+    This class evaluates density (molar volume) from an EoS, either through Flash or directly from EoS.
     """
 
     def __init__(
         self,
-        eos: EoS,
-        Mw: list,
+        flash_ev: DARTSFlash = None,
+        phase_idx: int = None,
+        eos: EoS = None,
         root_flag: EoS.RootFlag = EoS.RootFlag.STABLE,
         ions: list = None,
         combined_ions_stoichiometry: list = None,
     ):
         """
+        Constructor of EoSDensity object. Option to either provide flash object + phase idx, or EoS object directly.
+
+        :param flash_ev: Flash object
+        :type flash_ev: DARTSFlash
+        :param phase_idx: Phase index of specified phase in FlashResults
+        :type phase_idx: int
+        :param eos: Derived object from :class:`dartsflash.libflash.EoS`
+        :type eos: EoS
+        :param root_flag: EoS root flag, 0) STABLE, 1) MIN (Liquid), 2) MAX (Vapour); default is STABLE
+        :param ions: List of ions, default is None
+        :param combined_ions_stoichiometry: List of normalized ion stoichiometry in case they have been lumped in flash output, default is None
+        """
+        assert (flash_ev is not None and phase_idx is not None) or eos is not None, (
+            "Specify either flash object + phase idx or EoS object to "
+        )
+        if flash_ev is not None and phase_idx is not None:
+            warnings.warn(
+                "Both flash and EoS objects defined, using Flash object", stacklevel=2
+            )
+
+        # Flash object
+        self.flash_ev = flash_ev
+
+        # EoS object and RootFlag
+        self.eos = eos
+        self.root_flag = root_flag
+
+        # Ions and combined ions
+        self.ions = ions
+        self.combined_ions_stoichiometry = combined_ions_stoichiometry
+
+    def evaluate(self, pressure, temperature, x):
+        """
+        Evaluates the EoS for mass density at given pressure, temperature and composition x.
+
+        :param pressure: Pressure in bar
+        :type pressure: float
+        :param temperature: Temperature in Kelvin
+        :type temperature: float
+        :param x: Phase composition in mole fractions/mole numbers
+        :type x: list
+
+        :returns: Phase density in kg/m3
+        :rtype: float
+        """
+        if self.flash_ev is not None:
+            flash_results = self.flash_ev.get_flash_results(derivs=False)
+            eos_results = self.flash_ev.get_phase_properties(
+                flash_results=flash_results,
+                phase_idx=self.phase_idx,
+                calc_mass_density=True,
+            )
+            return eos_results.get_phase_mass_density().value
+
+        else:
+            self.eos.set_root_flag(self.root_flag)
+
+            if self.combined_ions_stoichiometry is not None:
+                xi = np.append(
+                    x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry)
+                )
+            else:
+                xi = x
+
+            return self.eos.rho(pressure, temperature, xi)  # kg/m3
+
+
+class EoSEnthalpy:
+    """
+    This class evaluates phase (ideal + residual) enthalpy from an EoS, either through Flash or directly from EoS.
+    """
+
+    def __init__(
+        self,
+        flash_ev: DARTSFlash = None,
+        phase_idx: int = None,
+        eos: EoS = None,
+        root_flag: EoS.RootFlag = EoS.RootFlag.STABLE,
+        ions: list = None,
+        combined_ions_stoichiometry: list = None,
+    ):
+        """
+        Constructor of EoSEnthalpy object. Option to either provide flash object + phase idx, or EoS object directly.
+
+        :param flash_ev: Flash object
+        :type flash_ev: DARTSFlash
+        :param phase_idx: Phase index of specified phase in FlashResults
+        :type phase_idx: int
+        :param eos: Derived object from :class:`dartsflash.libflash.EoS`
+        :type eos: EoS
+        :param root_flag: EoS root flag, 0) STABLE, 1) MIN (Liquid), 2) MAX (Vapour); default is STABLE
+        :param ions: List of ions, default is None
+        :param combined_ions_stoichiometry: List of normalized ion stoichiometry in case they have been lumped in flash output, default is None
+        """
+        assert (flash_ev is not None and phase_idx is not None) or eos is not None, (
+            "Specify either flash object + phase idx or EoS object to EoSDensity"
+        )
+        if flash_ev is not None and phase_idx is not None:
+            warnings.warn(
+                "Both flash and EoS objects defined, using Flash object", stacklevel=2
+            )
+
+        # Flash object
+        self.flash_ev = flash_ev
+
+        # EoS object and RootFlag
+        self.eos = eos
+        self.root_flag = root_flag
+
+        # Ions and combined ions
+        self.ions = ions
+        self.combined_ions_stoichiometry = combined_ions_stoichiometry
+
+    def evaluate(self, pressure, temperature, x):
+        """
+        Evaluates the EoS for phase (ideal + residual) enthalpy at given pressure, temperature and composition x.
+
+        :param pressure: Pressure in bar
+        :type pressure: float
+        :param temperature: Temperature in Kelvin
+        :type temperature: float
+        :param x: Phase composition in mole fractions/mole numbers
+        :type x: list
+
+        :returns: Phase enthalpy in J/mol
+        :rtype: float
+        """
+        if self.flash_ev is not None:
+            flash_results = self.flash_ev.get_flash_results(derivs=False)
+            eos_results = self.flash_ev.get_phase_properties(
+                flash_results=flash_results,
+                phase_idx=self.phase_idx,
+                calc_enthalpy=True,
+            )
+            return eos_results.get_phase_enthalpy().value
+
+        else:
+            self.eos.set_root_flag(self.root_flag)
+
+            if self.combined_ions_stoichiometry is not None:
+                xi = np.append(
+                    x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry)
+                )
+            else:
+                xi = x
+
+            H = self.eos.H(pressure, temperature, xi)  # H/R
+            return H * R  # J/mol == kJ/kmol
+
+
+class EoSFugacity:
+    """
+    This class evaluates component fugacities from an EoS, either through Flash or directly from EoS.
+    """
+
+    def __init__(
+        self,
+        flash_ev: DARTSFlash = None,
+        phase_idx: int = None,
+        eos: EoS = None,
+        root_flag: EoS.RootFlag = EoS.RootFlag.STABLE,
+        ions: list = None,
+        combined_ions_stoichiometry: list = None,
+    ):
+        """
+        Constructor of EoSFugacity object. Option to either provide flash object + phase idx, or EoS object directly.
+
+        :param flash_ev: Flash object
+        :type flash_ev: DARTSFlash
+        :param phase_idx: Phase index of specified phase in FlashResults
+        :type phase_idx: int
         :param eos: Derived object from :class:`dartsflash.libflash.EoS`
         :type eos: EoS
         :param Mw: Molar weights of components [g/mol]
@@ -28,10 +203,22 @@ class EoSDensity:
         :param ions: List of ions, default is None
         :param combined_ions_stoichiometry: List of normalized ion stoichiometry in case they have been lumped in flash output, default is None
         """
+        assert (flash_ev is not None and phase_idx is not None) or eos is not None, (
+            "Specify either flash object + phase idx or EoS object to "
+        )
+        if flash_ev is not None and phase_idx is not None:
+            warnings.warn(
+                "Both flash and EoS objects defined, using Flash object", stacklevel=2
+            )
+
+        # Flash object
+        self.flash_ev = flash_ev
+
+        # EoS object and RootFlag
         self.eos = eos
         self.root_flag = root_flag
-        self.Mw = Mw
 
+        # Ions and combined ions
         self.ions = ions
         self.combined_ions_stoichiometry = combined_ions_stoichiometry
 
@@ -50,66 +237,26 @@ class EoSDensity:
         :returns: Phase density in kg/m3
         :rtype: float
         """
-        self.eos.set_root_flag(self.root_flag)
+        if self.flash_ev is not None:
+            flash_results = self.flash_ev.get_flash_results(derivs=False)
+            eos_results = self.flash_ev.get_phase_properties(
+                flash_results=flash_results,
+                phase_idx=self.phase_idx,
+                calc_fugacity=True,
+            )
+            return eos_results.get_phase_fugacity().value
 
-        if self.combined_ions_stoichiometry is not None:
-            xi = np.append(x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry))
         else:
-            xi = x
+            self.eos.set_root_flag(self.root_flag)
 
-        MW = np.sum(xi * np.array(self.Mw)) * 1e-3  # kg/mol
-        return MW / self.eos.V(pressure, temperature, xi)  # kg/mol / m3/mol -> kg/m3
+            if self.combined_ions_stoichiometry is not None:
+                xi = np.append(
+                    x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry)
+                )
+            else:
+                xi = x
 
-
-class EoSEnthalpy:
-    """
-    This class can evaluate phase enthalpy. It evaluates ideal gas enthalpy and EoS-derived residual enthalpy.
-    """
-
-    def __init__(
-        self,
-        eos: EoS,
-        root_flag: EoS.RootFlag = EoS.RootFlag.STABLE,
-        ions: list = None,
-        combined_ions_stoichiometry: list = None,
-    ):
-        """
-        :param eos: Derived object from :class:`dartsflash.libflash.EoS`
-        :type eos: EoS
-        :param root_flag: EoS root flag, 0) STABLE, 1) MIN (Liquid), 2) MAX (Vapour); default is STABLE
-        :param ions: List of ions, default is None
-        :param combined_ions_stoichiometry: List of normalized ion stoichiometry in case they have been lumped in flash output, default is None
-        """
-        self.eos = eos
-        self.root_flag = root_flag
-
-        self.ions = ions
-        self.combined_ions_stoichiometry = combined_ions_stoichiometry
-
-    def evaluate(self, pressure, temperature, x):
-        """
-        Evaluates the EoS for residual enthalpy at given pressure, temperature and composition x.
-        Evaluates the ideal gas enthalpy at temperature and composition x.
-
-        :param pressure: Pressure in bar
-        :type pressure: float
-        :param temperature: Temperature in Kelvin
-        :type temperature: float
-        :param x: Phase composition in mole fractions/mole numbers
-        :type x: list
-
-        :returns: Phase enthalpy in J/mol
-        :rtype: float
-        """
-        self.eos.set_root_flag(self.root_flag)
-
-        if self.combined_ions_stoichiometry is not None:
-            xi = np.append(x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry))
-        else:
-            xi = x
-
-        H = self.eos.H(pressure, temperature, xi)  # H/R
-        return H * R  # J/mol == kJ/kmol
+            return self.eos.lnphi(pressure, temperature, xi)
 
 
 class VdWPDensity:
