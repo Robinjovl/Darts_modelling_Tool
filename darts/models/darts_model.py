@@ -215,6 +215,7 @@ class DartsModel:
             well.ms_type == ms_well.MS_Type.DFM for well in self.reservoir.wells
         )
         if self.has_dfm_well:
+            assert platform == "cpu", "DFM wells require platform='cpu'"
             self.timer.node["simulation"].node["dfm_well_velocity_calculation"] = (
                 timer_node()
             )
