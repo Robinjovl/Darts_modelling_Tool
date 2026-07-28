@@ -1719,7 +1719,7 @@ class ChokeModel:
             [self._flow_state(p, cache).inv_momentum_density for p in pressures],
             dtype=float,
         )
-        return float(np.trapz(inv_rho_m, pressures * 1e5))
+        return float(np.trapezoid(inv_rho_m, pressures * 1e5))
 
     def _mass_rate_from_throat_pressure(
         self,
