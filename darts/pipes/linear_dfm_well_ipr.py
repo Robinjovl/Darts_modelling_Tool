@@ -60,9 +60,9 @@ class LinearDFMWellIPR:
             return
 
         resolved_connections = self._get_resolved_connections()
-        rhs = np.array(self.model.physics.engine.RHS, copy=False)
-        jac_vals = np.array(self.model.physics.engine.jac_vals, copy=False)
-        X = np.array(self.model.physics.engine.X, copy=False)
+        rhs = np.asarray(self.model.physics.engine.RHS)
+        jac_vals = np.asarray(self.model.physics.engine.jac_vals)
+        X = np.asarray(self.model.physics.engine.X)
 
         n_vars = self.model.physics.n_vars
         n_jac_block_size = n_vars * n_vars
@@ -129,7 +129,7 @@ class LinearDFMWellIPR:
         if self._resolved_connections is not None:
             return self._resolved_connections
 
-        jac_diags = np.array(self.model.physics.engine.jac_diags, copy=False)
+        jac_diags = np.asarray(self.model.physics.engine.jac_diags)
         resolved = []
         for connection in self.connections:
             well = self.model.reservoir.get_well(connection.well_name)
@@ -166,8 +166,8 @@ class LinearDFMWellIPR:
         return self._resolved_connections
 
     def _find_csr_block_position(self, row_block: int, col_block: int) -> int:
-        jac_rows = np.array(self.model.physics.engine.jac_rows, copy=False)
-        jac_cols = np.array(self.model.physics.engine.jac_cols, copy=False)
+        jac_rows = np.asarray(self.model.physics.engine.jac_rows)
+        jac_cols = np.asarray(self.model.physics.engine.jac_cols)
         row_start = jac_rows[row_block]
         row_end = jac_rows[row_block + 1]
         off_pos = np.where(jac_cols[row_start:row_end] == col_block)[0]
