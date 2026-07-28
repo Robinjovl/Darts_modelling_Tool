@@ -3,19 +3,19 @@ import warnings
 from dartsflash.components import CompData
 from dartsflash.mixtures import Mixture
 
-from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy, EoSFugacity
-from darts.physics.super.physics import (
-    Compositional,
+from darts.physics.base.physics import (
     HistoryField,
     Iterable,
+    PhysicsBase,
     timer_node,
 )
+from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy, EoSFugacity
 
 
-class EoSMixture(Compositional, Mixture):
+class EoSMixture(PhysicsBase, Mixture):
     """
     Implementation of EoS-based Physics
-    - Multiple inheritance of Compositional and DARTS-flash Mixture classes
+    - Multiple inheritance of PhysicsBase and DARTS-flash Mixture classes
 
     Mixture-specific (see dartsflash.mixtures.Mixture class for description)
     - set_*_eos() methods wrap EoS definition
@@ -39,13 +39,13 @@ class EoSMixture(Compositional, Mixture):
         epsilon_z: float = 1e-9,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
-        state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
+        state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
         history_fields: Iterable[HistoryField] | None = None,
         mixture_name: str = None,
     ):
         """
-        Constructor initializes both Compositional and Mixture parts
+        Constructor initializes both PhysicsBase and Mixture parts
 
         :param phases:
 
@@ -64,8 +64,8 @@ class EoSMixture(Compositional, Mixture):
                 stacklevel=2,
             )
 
-        # Call Compositional constructor
-        Compositional.__init__(
+        # Call PhysicsBase constructor
+        PhysicsBase.__init__(
             self,
             components=comp_data.components,
             phases=phases,
@@ -105,8 +105,8 @@ class EoSMixture(Compositional, Mixture):
         """
         Initialize physics and check consistency of flash definition: do the phase types correspond to EoS objects?
         """
-        # Call Compositional.init_physics() logic
-        Compositional.init_physics(
+        # Call PhysicsBase.init_physics() logic
+        PhysicsBase.init_physics(
             self,
             discr_type=discr_type,
             platform=platform,
