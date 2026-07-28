@@ -22,7 +22,6 @@ from darts.engines import (
 from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
 from darts.interpolators import op_vector
-from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
 
@@ -887,9 +886,6 @@ class DartsModel:
             # apply RHS flux
             self.apply_rhs_flux(dt, t)
 
-            if self.has_dfm_well:
-                self.apply_dfm_well_lateral_heat_flux(dt, t)
-
             if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
@@ -1047,49 +1043,6 @@ class DartsModel:
             if w.ms_type == ms_well.MS_Type.DFM:
                 self.wells[w.name].accept_pipe_state()
 
-    def apply_dfm_well_lateral_heat_flux(self, dt, t):
-        for well in self.reservoir.wells:
-            lateral_heat_ev = self.wells[well.name].lateral_heat_rate_eval
-            if well.ms_type == ms_well.MS_Type.DFM and lateral_heat_ev is not None:
-                # Get temperatures of segments
-                if self.physics.state_spec == self.physics.StateSpecification.PT:
-                    T_segments = self.physics.engine.X[
-                        well.well_head_idx * self.physics.n_vars
-                        + (self.physics.n_vars - 1) : (
-                            well.well_head_idx + well.num_segments
-                        )
-                        * self.physics.n_vars
-                        + (self.physics.n_vars - 1) : self.physics.n_vars
-                    ]
-                elif self.physics.state_spec == self.physics.StateSpecification.PH:
-                    T_segments = np.zeros(well.num_segments)
-                    for i in range(well.num_segments):
-                        state = self.physics.engine.X[
-                            (well.well_head_idx + i) * self.physics.n_vars : (
-                                well.well_head_idx + i + 1
-                            )
-                            * self.physics.n_vars
-                        ]
-                        self.physics.property_containers[0].evaluate(state)
-                        T_segments[i] = self.physics.property_containers[0].temperature
-
-                # Evaluate lateral heat rates and add them to the rhs
-                if isinstance(lateral_heat_ev, SemiAnalyticalWellLateralHeatTransfer):
-                    lateral_heat_rate = lateral_heat_ev.evaluate(T_segments, t + dt)
-                    rhs = np.asarray(self.physics.engine.RHS)
-                    rhs[
-                        well.well_head_idx * self.physics.n_vars
-                        + (self.physics.n_vars - 1) : (
-                            well.well_head_idx + well.num_segments
-                        )
-                        * self.physics.n_vars
-                        + (self.physics.n_vars - 1) : self.physics.n_vars
-                    ] -= lateral_heat_rate * dt
-                else:
-                    raise TypeError(
-                        f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!"
-                    )
-
     def line_search(
         self,
         dt: float,
@@ -1192,8 +1145,6 @@ class DartsModel:
                 self.update_dfm_well_vels_and_ders(dt, t, newton_iter_counter)
             self.physics.engine.assemble_linear_system(dt)
             self.apply_rhs_flux(dt, t)
-            if self.has_dfm_well:
-                self.apply_dfm_well_lateral_heat_flux(dt, t)
             if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()

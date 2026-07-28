@@ -263,6 +263,65 @@ class SemiAnalyticalWellLateralHeatTransfer:
         )  # Multiplying the heat rate by 24 * 60 * 60 / 1000 converts the unit from Joule/second to kJ/day
 
 
+class SemiAnalyticalWellLateralHeatTransferHook:
+    """
+    Hook that connects a SemiAnalyticalWellLateralHeatTransfer evaluator to the Newton solver.
+
+    At each Newton iteration, it reads the current segment temperatures from the engine
+    state vector, evaluates the lateral heat rates, and subtracts them from the energy
+    equation entries of the RHS vector.
+
+    Create an instance in set_wells() and register it by appending to model.rhs_flux_hooks::
+
+        lateral_heat_ev = SemiAnalyticalWellLateralHeatTransfer(...)
+        self.rhs_flux_hooks.append(
+            SemiAnalyticalWellLateralHeatTransferHook(self, self.reservoir.get_well(well_name), lateral_heat_ev)
+        )
+    """
+
+    def __init__(self, model, well, lateral_heat_ev):
+        self.model = model
+        self.well = well
+        self.lateral_heat_ev = lateral_heat_ev
+
+    def apply(self, dt: float, t: float):
+        physics = self.model.physics
+        well = self.well
+        n_vars = physics.n_vars
+
+        if physics.state_spec == physics.StateSpecification.PT:
+            T_segments = physics.engine.X[
+                well.well_head_idx * n_vars + (n_vars - 1) : (
+                    well.well_head_idx + well.num_segments
+                )
+                * n_vars
+                + (n_vars - 1) : n_vars
+            ]
+        elif physics.state_spec == physics.StateSpecification.PH:
+            T_segments = np.zeros(well.num_segments)
+            for i in range(well.num_segments):
+                state = physics.engine.X[
+                    (well.well_head_idx + i) * n_vars : (well.well_head_idx + i + 1)
+                    * n_vars
+                ]
+                physics.property_containers[0].evaluate(state)
+                T_segments[i] = physics.property_containers[0].temperature
+        else:
+            raise NotImplementedError(
+                f"SemiAnalyticalWellLateralHeatTransferHook does not support state_spec={physics.state_spec!r}."
+            )
+
+        lateral_heat_rate = self.lateral_heat_ev.evaluate(T_segments, t + dt)
+        rhs = np.asarray(physics.engine.RHS)
+        rhs[
+            well.well_head_idx * n_vars + (n_vars - 1) : (
+                well.well_head_idx + well.num_segments
+            )
+            * n_vars
+            + (n_vars - 1) : n_vars
+        ] -= lateral_heat_rate * dt
+
+
 def add_numerical_well_lateral_heat_transfer(
     well_name: str,
     well_geometry: PipeGeometry,
