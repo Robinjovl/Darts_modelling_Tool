@@ -55,7 +55,7 @@ public:
   const static uint8_t N_VARS_SQ = N_VARS * N_VARS;
 
   uint8_t get_n_vars() const override { return N_VARS; };
-  uint8_t get_n_ops() const override { return N_OPS; };
+  uint16_t get_n_ops() const override { return N_OPS; };
   uint8_t get_n_dim() const { return ND_; };
   uint8_t get_n_comps() const override { return NC_; };
   uint8_t get_z_var_idx() const override { return Z_VAR; };
@@ -108,6 +108,8 @@ public:
   std::vector<value_t> calc_newton_dev();
   int apply_newton_update(value_t dt);
   value_t dev_u, dev_p, dev_g, dev_u_prev, dev_p_prev, dev_g_prev, well_residual_prev_dt;
+  // well residual of the current timestep (engine-internal convergence tracking)
+  value_t well_residual_last_dt;
   int output_counter;
 
   std::vector<pm::contact> contacts;

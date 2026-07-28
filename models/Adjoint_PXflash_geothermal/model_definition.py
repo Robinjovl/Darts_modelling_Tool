@@ -1,6 +1,7 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import ms_well
+from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
 from darts.models.opt.opt_module_settings import OptModuleSettings
@@ -9,7 +10,7 @@ from darts.input.input_data import InputData
 
 
 class Model(CICDModel, OptModuleSettings):
-    def __init__(self, T, report_step=120, perm=300, poro=0.2, iapws_physics=False, n_points=128):
+    def __init__(self, T, report_step=120, perm=300, poro=0.2, iapws_physics=False):
         # call base class constructor
         CICDModel.__init__(self)
         OptModuleSettings.__init__(self)
@@ -22,9 +23,10 @@ class Model(CICDModel, OptModuleSettings):
 
         self.set_reservoir(perm, poro)
         self.iapws_physics = iapws_physics
-        self.set_input_data(n_points=n_points)
+        self.set_input_data()
         self.set_physics()
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1000, tol_newton=1e-3, tol_linear=1e-6)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1000, tol_linear=1e-6)
 
         self.init_pressure = 200.
         self.init_temperature = 350.
@@ -104,7 +106,7 @@ class Model(CICDModel, OptModuleSettings):
                                 pxflash_switch_ttol=1e-1, pxflash_ftol=1e-10)
 
             # Define PropertyContainer
-            from darts.physics.super.property_container import PropertyContainer
+            from darts.physics.base.property_container import PropertyContainer
             zero = 1e-10
             epsilon = 1e-11
             property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, eps_z=epsilon)
@@ -129,10 +131,15 @@ class Model(CICDModel, OptModuleSettings):
             property_container.output_props = {'temperature': lambda: property_container.temperature,
                                                'satAq': lambda: property_container.sat[0]}
 
-            from darts.physics.super.physics import Compositional
-            self.physics = Compositional(components, phases, self.timer, state_spec=Compositional.StateSpecification.PH,
-                                         n_points=1001, min_p=1, max_p=400, min_z=0., max_z=1., epsilon_z=epsilon,
-                                         min_t=273.15, max_t=373.15, cache=False, extrapolation_flag=True)
+            from darts.physics.base.physics import PhysicsBase
+            # PH: [p, z_1, ..., z_{nc-1}, H]
+            nz = len(components) - 1
+            ax_step = [0.4] + [1e-3] * nz + [0.1]
+            ax_origin = [1.0] + [epsilon] * nz + [273.15]
+            self.physics = PhysicsBase(components, phases, self.timer,
+                                         state_spec=PhysicsBase.StateSpecification.PH,
+                                         axes_step=ax_step, axes_origin=ax_origin,
+                                         epsilon_z=epsilon, cache=False, extrapolation_flag=True)
             self.physics.add_property_region(property_container)
 
         return
@@ -181,7 +188,7 @@ class Model(CICDModel, OptModuleSettings):
                 ith_step += 1
                 self.output_to_vtk(ith_step=ith_step, output_directory=output_path, output_properties=output_props)
 
-    def set_input_data(self, n_points):
+    def set_input_data(self):
         # init_type = 'uniform'
         init_type = 'gradient'
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
@@ -234,8 +241,7 @@ class Model(CICDModel, OptModuleSettings):
         #     self.idata.wells.controls.prod_bhp_constraint = 70 # lower limit for bhp, bars
         # self.idata.wells.controls.inj_bht = 300  # K
 
-        self.idata.obl.n_points = n_points
-        self.idata.obl.min_p = 1.
-        self.idata.obl.max_p = 351.
-        self.idata.obl.min_e = 1000.  # kJ/kmol, will be overwritten in PHFlash physics
-        self.idata.obl.max_e = 10000.  # kJ/kmol, will be overwritten in PHFlash physics
+        self.idata.obl.p_step = 0.5   # bar
+        self.idata.obl.p_origin = 1.0
+        self.idata.obl.e_step = 10.0  # kJ/kmol
+        self.idata.obl.e_origin = 1000.0

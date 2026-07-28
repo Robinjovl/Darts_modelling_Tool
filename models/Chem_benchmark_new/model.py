@@ -4,14 +4,15 @@ from darts.engines import sim_params, value_vector, operator_set_evaluator_iface
 import numpy as np
 from copy import deepcopy
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.kinetics import KineticBasic
 
-from darts.physics.super.operator_evaluator import ReservoirOperators
+from darts.physics.base.operator_evaluator import ReservoirOperators
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 import matplotlib.pyplot as plt
 
@@ -52,8 +53,10 @@ class Model(CICDModel):
         self.set_reservoir(grid_1D, res, solid_init)
         self.set_physics(grid_1D, solid_init, custom_physics)
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=0.1, runtime=50, tol_newton=1e-3, tol_linear=1e-5,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
+                                           chop=ChopSpec(mode='local'))
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=0.1, runtime=50, tol_linear=1e-5,
+                            it_linear=50)
 
         self.timer.node["initialization"].stop()
 
@@ -182,7 +185,7 @@ class Model(CICDModel):
 
         thermal = 0
         ne = nc + thermal
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
 
         """ properties correlations """
         if self.combined_ions:
@@ -207,17 +210,20 @@ class Model(CICDModel):
         """ Activate physics """
         delta_volume = self.dx * self.dy * 10
         num_well_blocks = int(self.ny / 2)
+        # 1 p axis + (nc - 1) z axes
+        ax_step = [2.5] + [2.5e-3] * (len(components) - 1)
+        ax_origin = [1.0] + [epsilon] * (len(components) - 1)
         if custom_physics:  # custom_physics inherits operators and physics for regions with source term
             self.physics = CustomPhysics(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+                                         axes_step=ax_step, axes_origin=ax_origin, epsilon_z=epsilon,
                                          state_spec=state_spec, cache=0, volume=delta_volume, num_wells=num_well_blocks,
                                          extrapolation_flag=True)
         else:  # default physics adds mass source term to kinetic operator in regions with source term
             mass_sources = [None,
                             MassSource(0, 1000, delta_volume, num_well_blocks),
                             MassSource(2, 200, delta_volume, num_well_blocks)]
-            self.physics = Compositional(components, phases, self.timer,
-                                         n_points=401, min_p=1, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
+            self.physics = PhysicsBase(components, phases, self.timer,
+                                         axes_step=ax_step, axes_origin=ax_origin, epsilon_z=epsilon,
                                          state_spec=state_spec, cache=0, extrapolation_flag=True)
 
         for i in range(3):
@@ -479,16 +485,17 @@ class MassSource:
         return self.rate / self.num_well_blocks / self.delta_volume * dens_m_pure, None
 
 
-class CustomPhysics(Compositional):
-    def __init__(self, components, phases, timer, n_points, min_p, max_p, min_z, max_z, epsilon_z, min_t=-1, max_t=-1,
-                 state_spec = Compositional.StateSpecification.P, cache=False, extrapolation_flag=True, volume=0, num_wells=0):
+class CustomPhysics(PhysicsBase):
+    def __init__(self, components, phases, timer, axes_step, axes_origin=None, epsilon_z=1e-9,
+                 state_spec=PhysicsBase.StateSpecification.P, cache=False, extrapolation_flag=True,
+                 volume=0, num_wells=0):
 
         self.delta_volume = volume
         self.num_well_blocks = num_wells
 
-        super().__init__(components=components, phases=phases, timer=timer, n_points=n_points, min_p=min_p, max_p=max_p,
-                         min_z=min_z, max_z=max_z, epsilon_z=epsilon_z, min_t=min_t, max_t=max_t, state_spec=state_spec,
-                         cache=cache, extrapolation_flag=extrapolation_flag)
+        super().__init__(components=components, phases=phases, timer=timer,
+                         axes_step=axes_step, axes_origin=axes_origin, epsilon_z=epsilon_z,
+                         state_spec=state_spec, cache=cache, extrapolation_flag=extrapolation_flag)
 
     def set_operators(self):  # default definition of operators
         # Call base implementation

@@ -23,6 +23,7 @@ docs/_build
 darts/__pycache__/
 models/__pycache__/
 **/.cache/
+*.fastcache
 
 # building info
 darts/build_info.txt

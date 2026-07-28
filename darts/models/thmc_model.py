@@ -7,15 +7,14 @@ from darts.engines import (
     linear_solver_params,
     mech_operators,
     sim_params,
-    value_vector,
 )
 from darts.models.darts_model import DartsModel
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import SinglePhase
-from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 
 
@@ -71,14 +70,19 @@ class THMCModel(DartsModel):
         )
 
     def set_solver_params(self):
-        self.params.tolerance_newton = (
-            1e-6  # Tolerance of newton residual norm ||residual||<tol_newt
-        )
-        self.params.newton_type = (
-            sim_params.newton_global_chop
-        )  # Type of newton method (related to chopping strategy?)
-        self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
-        self.params.max_i_newton = 10
+        self.set_solver()
+        spec = self.nonlinear_solver.spec
+        spec.tolerance = 1e-6  # Tolerance of newton residual norm ||residual||<tol_newt
+        spec.chop.mode = "global"
+        spec.chop.factor = 0.2
+        spec.max_iterations = 10
+        # geomechanics engines converge on a deviatoric per-component residual and
+        # apply the C++ apply_newton_update composite directly: swap the runtime to
+        # the shared MechanicsNewtonSolver (replaces the per-model copied loops).
+        from darts.nonlinear_solvers import MechanicsNewtonSolver
+
+        self.nonlinear_solver = MechanicsNewtonSolver(spec)
+        self.nonlinear_solver.bind(self)
 
         if self.discretizer_name == 'mech_discretizer':
             self.params.tolerance_linear = (
@@ -156,18 +160,25 @@ class THMCModel(DartsModel):
                 if thermal
                 else Poroelasticity.StateSpecification.P
             )
+            # Poroelasticity thermal: [p, z_1, ..., z_{nc-1}, T]
+            nz = len(components) - 1
+            ax_step = (
+                [self.idata.obl.p_step]
+                + [self.idata.obl.z_step] * nz
+                + [self.idata.obl.t_step]
+            )
+            ax_origin = (
+                [self.idata.obl.p_origin]
+                + [self.idata.obl.z_origin] * nz
+                + [self.idata.obl.t_origin]
+            )
             self.physics = Poroelasticity(
                 components,
                 phases,
                 self.timer,
-                n_points=self.idata.obl.n_points,
-                min_p=self.idata.obl.min_p,
-                max_p=self.idata.obl.max_p,
-                min_z=self.idata.obl.min_z,
-                max_z=self.idata.obl.max_z,
+                axes_step=ax_step,
+                axes_origin=ax_origin,
                 epsilon_z=self.idata.obl.epsilon_z,
-                min_t=self.idata.obl.min_t,
-                max_t=self.idata.obl.max_t,
                 state_spec=state_spec,
                 discretizer=self.discretizer_name,
                 extrapolation_flag=True,
@@ -179,15 +190,16 @@ class THMCModel(DartsModel):
                 if thermal
                 else Poroelasticity.StateSpecification.P
             )
+            # Poroelasticity isothermal: [p, z_1, ..., z_{nc-1}]
+            nz = len(components) - 1
+            ax_step = [self.idata.obl.p_step] + [self.idata.obl.z_step] * nz
+            ax_origin = [self.idata.obl.p_origin] + [self.idata.obl.z_origin] * nz
             self.physics = Poroelasticity(
                 components,
                 phases,
                 self.timer,
-                n_points=self.idata.obl.n_points,
-                min_p=self.idata.obl.min_p,
-                max_p=self.idata.obl.max_p,
-                min_z=self.idata.obl.min_z,
-                max_z=self.idata.obl.max_z,
+                axes_step=ax_step,
+                axes_origin=ax_origin,
                 epsilon_z=self.idata.obl.epsilon_z,
                 state_spec=state_spec,
                 discretizer=self.discretizer_name,
@@ -324,17 +336,20 @@ class THMCModel(DartsModel):
         perf_data['reservoir blocks'] = self.reservoir.mesh.n_blocks
 
         if is_last_ts:
-            perf_data['OBL resolution'] = list(self.physics.n_axes_points)
+            perf_data['OBL axes_step'] = list(self.physics.axes_step)
+            perf_data['OBL axes_origin'] = list(self.physics.axes_origin)
             perf_data['operators'] = self.physics.n_ops
-            perf_data['timesteps'] = self.physics.engine.stat.n_timesteps_total
-            perf_data['wasted timesteps'] = self.physics.engine.stat.n_timesteps_wasted
-            perf_data['newton iterations'] = self.physics.engine.stat.n_newton_total
-            perf_data['wasted newton iterations'] = (
-                self.physics.engine.stat.n_newton_wasted
+            perf_data['timesteps'] = self.nonlinear_solver.stats.n_timesteps_total
+            perf_data['wasted timesteps'] = (
+                self.nonlinear_solver.stats.n_timesteps_wasted
             )
-            perf_data['linear iterations'] = self.physics.engine.stat.n_linear_total
+            perf_data['newton iterations'] = self.nonlinear_solver.stats.n_newton_total
+            perf_data['wasted newton iterations'] = (
+                self.nonlinear_solver.stats.n_newton_wasted
+            )
+            perf_data['linear iterations'] = self.nonlinear_solver.stats.n_linear_total
             perf_data['wasted linear iterations'] = (
-                self.physics.engine.stat.n_linear_wasted
+                self.nonlinear_solver.stats.n_linear_wasted
             )
 
             sim = self.timer.node['simulation']

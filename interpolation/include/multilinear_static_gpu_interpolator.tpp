@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <limits>
+#include <stdexcept>
 #include <algorithm>
 #include <thrust/host_vector.h>
 
@@ -12,7 +13,7 @@
 
 #define USE_THREAD_PER_OPERATOR_KERNEL
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void
 multilinear_static_interpolate_thread_per_state_kernel(const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
                                                        const int *axis_points_d, const index_t *axis_hypercube_mult_d,
@@ -21,7 +22,7 @@ multilinear_static_interpolate_thread_per_state_kernel(const unsigned int n_stat
                                                        const value_t *hypercube_data_d,
                                                        double *values_d, double *derivatives_d);
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void
 multilinear_static_interpolate_thread_per_operator_kernel(const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
                                                           const int *axis_points_d, const index_t *axis_hypercube_mult_d,
@@ -30,12 +31,12 @@ multilinear_static_interpolate_thread_per_operator_kernel(const unsigned int n_s
                                                           const value_t *hypercube_data_d,
                                                           double *values_d, double *derivatives_d);
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinear_static_gpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
-                                                                                                          const std::vector<int> &axes_points,
-                                                                                                          const std::vector<double> &axes_min,
-                                                                                                          const std::vector<double> &axes_max)
-    : multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_points, axes_min, axes_max)
+                                                                                                          const std::vector<double> &axes_origin,
+                                                                                                          const std::vector<double> &axes_step,
+                                                                                                          const std::vector<int> &axes_points)
+    : multilinear_gpu_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_origin, axes_step, axes_points)
 
 {
   this->n_points_used = this->n_points_total;
@@ -59,9 +60,24 @@ multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinea
 #endif
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
 {
+  // Static interpolator strictly requires a bounded grid (dense vector storage). The
+  // base ctor no longer throws on overflow (the adaptive variant tolerates it), so
+  // validate here before allocating - mirrors the CPU static interpolator.
+  {
+    double int_type_max = static_cast<double>(std::numeric_limits<index_t>::max());
+    if (this->n_points_total_fp > int_type_max)
+    {
+      throw std::range_error(
+          "static GPU interpolator requires a bounded grid; n_points_total (" +
+          std::to_string(this->n_points_total_fp) +
+          ") exceeds index_t range (" + std::to_string(int_type_max) +
+          "). Use the adaptive variant for unbounded grids.");
+    }
+  }
+
   // evaluate supporting point data unless it was already assigned via Python
   if (point_data.size() == 0)
   {
@@ -103,7 +119,7 @@ int multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
   return 0;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
     evaluate_with_derivatives_d(int n_states_idxs, double *states_d, int *states_idxs_d,
                                 double *values_d, double *derivatives_d)
@@ -116,7 +132,7 @@ int multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
   multilinear_static_interpolate_thread_per_operator_kernel<index_t, value_t, N_DIMS, N_OPS>
       KERNEL_1D_THREAD(n_states_idxs * N_OPS, this->kernel_block_size)(n_states_idxs, states_idxs_d, states_d,
                                                                        thrust::raw_pointer_cast(this->axes_points_d.data()), thrust::raw_pointer_cast(this->axis_hypercube_mult_d.data()),
-                                                                       thrust::raw_pointer_cast(this->axes_min_d.data()), thrust::raw_pointer_cast(this->axes_max_d.data()),
+                                                                       thrust::raw_pointer_cast(this->axes_origin_d.data()), thrust::raw_pointer_cast(this->axes_max_d.data()),
                                                                        thrust::raw_pointer_cast(this->axes_step_d.data()), thrust::raw_pointer_cast(this->axes_step_inv_d.data()),
                                                                        thrust::raw_pointer_cast(hypercube_data_d.data()),
                                                                        values_d, derivatives_d);
@@ -124,7 +140,7 @@ int multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
   multilinear_static_interpolate_thread_per_state_kernel<index_t, value_t, N_DIMS, N_OPS>
       KERNEL_1D_THREAD(n_states_idxs, this->kernel_block_size)(n_states_idxs, states_idxs_d, states_d,
                                                                thrust::raw_pointer_cast(this->axes_points_d.data()), thrust::raw_pointer_cast(this->axis_hypercube_mult_d.data()),
-                                                               thrust::raw_pointer_cast(this->axes_min_d.data()), thrust::raw_pointer_cast(this->axes_max_d.data()),
+                                                               thrust::raw_pointer_cast(this->axes_origin_d.data()), thrust::raw_pointer_cast(this->axes_max_d.data()),
                                                                thrust::raw_pointer_cast(this->axes_step_d.data()), thrust::raw_pointer_cast(this->axes_step_inv_d.data()),
                                                                thrust::raw_pointer_cast(hypercube_data_d.data()),
                                                                values_d, derivatives_d);
@@ -135,7 +151,7 @@ int multilinear_static_gpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::
   return 0;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void
 multilinear_static_interpolate_thread_per_state_kernel(const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
                                                        const int *axis_points_d, const index_t *axis_hypercube_mult_d,
@@ -170,7 +186,7 @@ multilinear_static_interpolate_thread_per_state_kernel(const unsigned int n_stat
                                                              derivatives_d + state_idx * N_OPS * N_DIMS);
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 __global__ void
 multilinear_static_interpolate_thread_per_operator_kernel(const unsigned int n_states_idxs, const int *states_idxs_d, const double *states_d,
                                                           const int *axis_points_d, const index_t *axis_hypercube_mult_d,

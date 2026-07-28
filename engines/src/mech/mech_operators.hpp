@@ -15,8 +15,11 @@ namespace pm
 		pm_discretizer* discr;
 		uint8_t P_VAR, Z_VAR, U_VAR;
 		uint8_t P_VAR_T, U_VAR_T;
-		uint8_t N_VARS, N_VARS_SQ, N_OPS, NC;
-		uint8_t ACC_OP, FLUX_OP, GRAV_OP;
+		// N_VARS_SQ (up to 34²=1156 super-elastic) and N_OPS (up to 273) widened to
+		// uint16_t at NC=30/NP=3 thermal. Operator indices reach 257..272 — also widened.
+		uint8_t N_VARS, NC;
+		uint16_t N_VARS_SQ, N_OPS;
+		uint16_t ACC_OP, FLUX_OP, GRAV_OP;
 		static const uint8_t ND = 3;
 		static const uint8_t NT = 4;
 		static const uint8_t N_TRANS_SQ = NT * NT;
@@ -25,12 +28,12 @@ namespace pm
 	public:
 		mech_operators();
 		~mech_operators();
-		void init(conn_mesh* _mesh, pm_discretizer* _discr, uint8_t _P_VAR, uint8_t _Z_VAR, uint8_t _U_VAR, 
-			uint8_t _N_VARS, uint8_t _N_OPS, uint8_t _NC, uint8_t _ACC_OP, uint8_t _FLUX_OP, uint8_t _GRAV_OP);
+		void init(conn_mesh* _mesh, pm_discretizer* _discr, uint8_t _P_VAR, uint8_t _Z_VAR, uint8_t _U_VAR,
+			uint8_t _N_VARS, uint16_t _N_OPS, uint8_t _NC, uint16_t _ACC_OP, uint16_t _FLUX_OP, uint16_t _GRAV_OP);
 
 		void init(conn_mesh* _mesh, pm_discretizer* _discr, uint8_t _P_VAR, uint8_t _Z_VAR, uint8_t _U_VAR,
-			uint8_t _P_VAR_T, uint8_t _U_VAR_T,	uint8_t _N_VARS, uint8_t _N_OPS, uint8_t _NC, uint8_t _ACC_OP, uint8_t _FLUX_OP, uint8_t _GRAV_OP);
-		
+			uint8_t _P_VAR_T, uint8_t _U_VAR_T,	uint8_t _N_VARS, uint16_t _N_OPS, uint8_t _NC, uint16_t _ACC_OP, uint16_t _FLUX_OP, uint16_t _GRAV_OP);
+
 		// prepare matrices for reconstruction
 		std::vector<Matrix> mat_stress, mat_flux;
 		void prepare();

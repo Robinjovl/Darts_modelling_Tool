@@ -7,7 +7,7 @@ import os
 
 restart = False
 
-m = Model(iapws_physics=True)
+m = Model(formulation='PT')  # 'PT' (IAPWS PT-flash) or 'PH' (PXFlash enthalpy)
 m.init() #(platform='gpu')
 m.set_output()
 
@@ -48,7 +48,7 @@ time_data_dict = m.output.store_well_time_data(save_output_files=True)
 # # plt.show()
 
 if restart:
-    m_restarted = Model(iapws_physics=True)
+    m_restarted = Model(formulation='PT')
     m_restarted.init()
     m_restarted.set_output(output_folder='output/restarted', save_initial=False, all_phase_props=True)
 

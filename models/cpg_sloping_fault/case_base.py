@@ -34,8 +34,10 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.DataTS.dt_first = 0.01
     idata.sim.DataTS.dt_mult = 2
     idata.sim.DataTS.dt_max = 92
-    idata.sim.DataTS.newton_tol = 1e-2
     idata.sim.DataTS.linear_tol = 1e-4
+    # Nonlinear (Newton) tolerance: set on idata (not DataTS); Model_CPG.set_solver()
+    # reads it and applies it to the nonlinear-solver spec.
+    idata.sim.newton_tolerance = 1e-2
     # use direct linear solver:
     #idata.sim.DataTS.linear_type = sim_params.linear_solver_t.cpu_superlu
     # optional: use PETSc linear solver
