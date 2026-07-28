@@ -4,7 +4,7 @@ from enum import Enum
 import numpy as np
 
 from darts.engines import ms_well, value_vector
-from darts.physics.base.physics_base import PhysicsBase
+from darts.physics.base.physics import PhysicsBase
 
 
 class PI_Type(Enum):

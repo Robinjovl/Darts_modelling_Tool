@@ -8,7 +8,7 @@ from dartsflash.libflash import EoS
 from scipy.optimize import brentq, minimize_scalar
 
 from darts.engines import value_vector
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.property_container import PropertyContainer
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.upstream_ramp_up_rate import UpstreamRampUpRate
 
