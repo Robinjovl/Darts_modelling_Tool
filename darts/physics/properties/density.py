@@ -13,38 +13,6 @@ class Density:
         pass
 
 
-class IdealGasDensity(Density):
-    """
-    Ideal gas density evaluator.
-
-    The evaluator uses the ideal gas relation
-
-        rho = p MW * 1.0e-3 / (R T)
-
-    where p is absolute pressure in Pa, MW is molecular weight in kg/kmol, R is
-    the universal gas constant, and T is temperature in K.
-    """
-
-    def __init__(self, mw):
-        super().__init__()
-        self.mw = mw
-        self.gas_constant = 8.31446261815324  # J/mol/K
-
-    def evaluate(self, pressure, temperature, x):
-        """
-        Evaluate gas density.
-
-        :param pressure: Absolute pressure [bar].
-        :param temperature: Temperature [K].
-        :param x: Phase composition. This ideal-gas evaluator ignores
-            composition because the molecular weight is supplied in the
-            constructor.
-        :returns: Gas density [kg/m3].
-        """
-        pressure_pa = pressure * 1.0e5
-        return pressure_pa * self.mw * 1.0e-3 / (self.gas_constant * temperature)
-
-
 class DensityBasic(Density):
     def __init__(self, dens0, compr=0.0, p0=1.0):
         super().__init__()
