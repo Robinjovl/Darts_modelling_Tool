@@ -26,10 +26,10 @@ output_props = coupled_model.physics.vars + coupled_model.output.properties
 coupled_model.output.well_output_to_vtp(ith_step=0, output_properties=output_props)  # saves initial well conditions
 
 time_steps = [
-    # 5 min for well profiles validation
+    # 5 min for well profiles benchmark
     5 / 60 / 24,
 
-    # 1 hour for time series validation
+    # 1 hour for time series benchmark
     # 20 / 60 / 24,
     # 20 / 60 / 24,
     # 20 / 60 / 24,
