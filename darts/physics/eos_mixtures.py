@@ -1,184 +1,169 @@
+import warnings
+
 from dartsflash.components import CompData
-from dartsflash.libflash import EoS
 from dartsflash.mixtures import Mixture
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy, EoSFugacity
+from darts.physics.super.physics import (
+    Compositional,
+    HistoryField,
+    Iterable,
+    timer_node,
+)
 
 
 class EoSMixture(Compositional, Mixture):
     """
     Implementation of EoS-based Physics
+    - Multiple inheritance of Compositional and DARTS-flash Mixture classes
 
-    Multiple inheritance of Compositional and DARTS-flash Mixture classes
-    - Constructor defaults to Compositional constructor
-    - set_mixture() method calls Mixture constructor and specifies EoS objects
-    - init_flash() method calls Mixture.init_flash() method to initialize Flash object
+    Mixture-specific (see dartsflash.mixtures.Mixture class for description)
+    - set_*_eos() methods wrap EoS definition
+        - set_vl_eos(): Set V/L phases EoS object (e.g., PR, SRK, CPA, ...)
+        - set_aq_eos(): Set aqueous phase EoS object
+        - set_ice_eos(): Set ice phase EoS object
+        - set_salt_eos(): Set salt phase EoS object (NaCl, CaCl2, KCl)
+        - set_h_eos(): Set hydrate phase EoS object (sI, sII, sH)
+    - init_*flash() method calls Mixture.init_*flash() method to initialize Flash object (ptflash, pxflash, negativeflash)
     """
 
-    def set_mixture(
+    def __init__(
         self,
-        components: list = None,
+        phases: list,
+        timer: timer_node,
+        axes_step: list[float],
+        axes_origin: list[float] = None,
         comp_data: CompData = None,
+        components: list = None,
+        salt_components: list = None,
+        epsilon_z: float = 1e-9,
+        sim_eps_multiplier: float = 10,
+        extrapolation_flag: bool = True,
+        state_spec: Compositional.StateSpecification = Compositional.StateSpecification.P,
+        cache: bool = False,
+        history_fields: Iterable[HistoryField] | None = None,
         mixture_name: str = None,
-        vl_eos: str | EoS = None,
-        vl_trial_comps: list = None,
-        vl_root_order: list = None,
-        vl_rich_phase_order: list = None,
-        vl_stability_tol: float = 1e-20,
-        vl_stability_switch_tol: float = 1e-3,
-        vl_active_comp_idxs: list = None,
-        aq_eos: str | EoS = None,
-        aq_stability_tol: float = 1e-20,
-        aq_stability_switch_tol: float = 1e-3,
-        aq_active_comp_idxs: list = None,
-        ice_eos: str | EoS = None,
-        salt_eos: str | EoS | list = None,
-        si_eos: str | EoS = None,
-        si_stability_tol: float = 1e-20,
-        si_stability_switch_tol: float = 1e2,
-        si_active_comp_idxs: list = None,
-        sii_eos: str | EoS = None,
-        sii_stability_tol: float = 1e-20,
-        sii_stability_switch_tol: float = 1e2,
-        sii_active_comp_idxs: list = None,
-        sh_eos: str | EoS = None,
-        sh_stability_tol: float = 1e-20,
-        sh_stability_switch_tol: float = 1e2,
-        sh_active_comp_idxs: list = None,
     ):
         """
-        Specify mixture: components, phase types, EoS and EoS parameters
+        Constructor initializes both Compositional and Mixture parts
 
-        :param components: List of components, only used to initialize CompData object if no CompData has been provided
-        :param comp_data: CompData object
-        :param mixture_name: Name of mixture for filename
-        :param vl_eos: V/L EoS object or name for EoS factory
-        :param vl_trial_comps: Trial compositions for V/L EoS stability test
-        :param vl_root_order: Root order for V/L EoS
-        :param vl_rich_phase_order: Rich phase order for V/L EoS
-        :param vl_stability_tol: Tolerance for V/L EoS stability test
-        :param vl_stability_switch_tol: Switch tolerance for V/L EoS stability test
-        :param vl_active_comp_idxs: Indices of active components in V/L phases
-        :param aq_eos: Aq EoS object or name for EoS factory
-        :param aq_stability_tol: Tolerance for Aq EoS stability test
-        :param aq_stability_switch_tol: Switch tolerance for Aq EoS stability test
-        :param aq_active_comp_idxs: Indices of active components in Aq phase
-        :param ice_eos: Ice EoS object or name for EoS factory
-        :param salt_eos: (List of) salt EoS object or name(s) for EoS factory
-        :param si_eos: sI EoS object or name for EoS factory
-        :param si_stability_tol: Tolerance for sI EoS stability test
-        :param si_stability_switch_tol: Switch tolerance for sI EoS stability test
-        :param si_active_comp_idxs: Indices of active components in sI phase
-        :param sii_eos: sII EoS object or name for EoS factory
-        :param sii_stability_tol: Tolerance for sII EoS stability test
-        :param sii_stability_switch_tol: Switch tolerance for sII EoS stability test
-        :param sii_active_comp_idxs: Indices of active components in sII phase
-        :param sh_eos: sH EoS object or name for EoS factory
-        :param sh_stability_tol: Tolerance for sH EoS stability test
-        :param sh_stability_switch_tol: Switch tolerance for sH EoS stability test
-        :param sh_active_comp_idxs: Indices of active components in sH phase
+        :param phases:
+
         """
         # If no CompData object has been provided, create instance from list of components
         if comp_data is None:
             assert components is not None, (
-                "Neither of CompData object and components list are not provided"
+                "Neither CompData object nor components list are provided"
             )
             comp_data = CompData(
-                components=components, salt_components=None, setprops=True
+                components=components, salt_components=salt_components, setprops=True
+            )
+        elif components is not None:
+            warnings.warn(
+                "CompData AND components provided, continuing simulation with CompData",
+                stacklevel=2,
             )
 
-        # Initialize Mixture constructor
+        # Call Compositional constructor
+        Compositional.__init__(
+            self,
+            components=comp_data.components,
+            phases=phases,
+            timer=timer,
+            axes_step=axes_step,
+            axes_origin=axes_origin,
+            epsilon_z=epsilon_z,
+            sim_eps_multiplier=sim_eps_multiplier,
+            extrapolation_flag=extrapolation_flag,
+            state_spec=state_spec,
+            cache=cache,
+            history_fields=history_fields,
+        )
+
+        # Call Mixture constructor
         Mixture.__init__(
             self,
             comp_data=comp_data,
             mixture_name=mixture_name,
-            vl_phase=True,
-            hybrid_aq=aq_eos is not None,
-            ice_phase=ice_eos is not None,
-            salt_phase=salt_eos is not None,
-            si_phase=si_eos is not None,
-            sii_phase=sii_eos is not None,
-            sh_phase=sh_eos is not None,
         )
 
-        # Set V/L EoS object
-        if vl_eos is not None:
-            Mixture.set_vl_eos(
-                self,
-                vl_eos=vl_eos is not None,
-                root_order=vl_root_order,
-                trial_comps=vl_trial_comps,
-                rich_phase_order=vl_rich_phase_order,
-                stability_tol=vl_stability_tol,
-                switch_tol=vl_stability_switch_tol,
-                active_components=vl_active_comp_idxs,
-            )
-
-        # Set Aq EoS object
-        if aq_eos is not None:
-            Mixture.set_aq_eos(
-                self,
-                aq_eos=aq_eos is not None,
-                stability_tol=aq_stability_tol,
-                switch_tol=aq_stability_switch_tol,
-                use_gmix=True,
-                active_components=aq_active_comp_idxs,
-            )
-
-        # Set Ice EoS object
-        if ice_eos is not None:
-            Mixture.set_ice_eos(
-                self,
-                ice_eos=ice_eos,
-                use_gmix=True,
-            )
-
-        # Set hydrate EoSs
-        for name, hydrate_type in zip(
-            ["si", "sii", "sh"], ["sI", "sII", "sH"], strict=False
-        ):
-            if eval(name + "_eos") is not None:
-                Mixture.set_h_eos(
-                    self,
-                    hydrate_type=hydrate_type,
-                    vdwp_type="Ballard",
-                    stability_tol=eval(name + "_stability_tol"),
-                    switch_tol=eval(name + "_stability_switch_tol"),
-                    use_gmix=True,
-                    gmix_tol=eval(name + "_stability_tol"),
-                    gmix_switch_tol=eval(name + "_stability_switch_tol"),
-                    active_components=eval(name + "_active_comp_idxs"),
-                )
-
-    def set_properties(self, regions: list):
+    def init_physics(
+        self,
+        discr_type: str = 'tpfa',
+        platform: str = 'cpu',
+        itor_type: str = 'multilinear',
+        itor_mode: str = 'adaptive',
+        itor_precision: str = 'd',
+        verbose: bool = False,
+        is_barycentric: bool = False,
+        n_solid: int | None = None,
+        parallel_evaluation: bool = False,
+        n_workers: int | None = None,
+        evaluator_factory_hook=None,
+        verbose_evaluators: bool = False,
+    ):
         """
-        Create PropertyContainer for each region.
-        In addition, set properties directly related to thermodynamics: flash, density and enthalpy
+        Initialize physics and check consistency of flash definition: do the phase types correspond to EoS objects?
         """
-        from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+        # Call Compositional.init_physics() logic
+        Compositional.init_physics(
+            self,
+            discr_type=discr_type,
+            platform=platform,
+            itor_type=itor_type,
+            itor_mode=itor_mode,
+            itor_precision=itor_precision,
+            verbose=verbose,
+            is_barycentric=is_barycentric,
+            n_solid=n_solid,
+            parallel_evaluation=parallel_evaluation,
+            n_workers=n_workers,
+            evaluator_factory_hook=evaluator_factory_hook,
+            verbose_evaluators=verbose_evaluators,
+        )
 
-        for region in regions:
-            pc = PropertyContainer(
-                phases_name=self.phases,
-                components_name=self.components,
-                Mw=self.comp_data.Mw,
-                eps_z=self.epsilon_z * self.sim_eps_multiplier,
-            )
-            self.add_property_region(pc, region)
+        # Check that phases argument is consistent with flash definition
+        assert len(self.nph) == self.flash_params.np_max, (
+            "More phases are specified in self.phases than in FlashParams"
+        )
 
-            # Point to self for flash_ev
-            pc.flash_ev = self
+        # TODO: check that phase labels correspond to phase types specified in flash setup
+        # for phase in self.phases:
 
-            # Set EoSDensity and EoSEnthalpy methods for each phase
-            for phase in self.phases:
-                pc.density_ev[phase] = EoSDensity(
-                    eos=self.eos[phase],
-                    Mw=self.comp_data.Mw,
-                    root_flag=self.root_type[phase],
-                    ions=self.salt_components,
-                    combined_ions_stoichiometry=None,
-                )
-                pc.enthalpy_ev[phase] = EoSEnthalpy(eos=self.eos[phase])
+    def get_flash_ev(self, region: int = None):
+        """
+        This class serves as flash_ev object for PropertyContainer objects: return self
 
-        return
+        - TODO: In a future version, we may have different flash definitions among regions
+            -> return flash instance associated to specific region
+
+        :param region: Key of property region in PropertyContainers
+        """
+        return self
+
+    def get_density_from_flash(
+        self,
+        phase_idx: int,
+    ):
+        """
+        Get EoSDensity object that evaluates phase mass density for specified phase from FlashResults
+
+        :param phase_idx: Phase index in flash output
+        """
+        return EoSDensity(flash_ev=self, phase_idx=phase_idx)
+
+    def get_enthalpy_from_flash(self, phase_idx: int):
+        """
+        Get EoSEnthalpy object that evaluates phase enthalpy for specified phase from FlashResults
+
+        :param phase_idx: Phase index in flash output
+        """
+        return EoSEnthalpy(flash_ev=self, phase_idx=phase_idx)
+
+    def get_fugacity_from_flash(self, phase_idx: int):
+        """
+        Get EoSFugacity object that evaluates component fugacities for specified phase from FlashResults
+
+        :param phase_idx: Phase index in flash output
+        """
+        return EoSFugacity(flash_ev=self, phase_idx=phase_idx)
