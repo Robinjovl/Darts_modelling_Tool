@@ -494,7 +494,7 @@ class DartsModel:
         self.op_list = [
             self.physics.acc_flux_itor[region] for region in self.physics.regions
         ] + [self.physics.acc_flux_w_itor]
-        self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
+        self.op_num = np.asarray(self.reservoir.mesh.op_num)
         self.op_num[self.reservoir.mesh.n_res_blocks :] = len(self.op_list) - 1
 
     def set_sim_params_data_ts(self, data_ts):
@@ -764,7 +764,7 @@ class DartsModel:
                 self.accept_pipe_states()
                 self.after_converged_timestep()
 
-                x = np.array(self.physics.engine.X, copy=False)[: nb * nc]
+                x = np.asarray(self.physics.engine.X)[: nb * nc]
                 dt_mult_new = data_ts.dt_mult
                 for i in range(nc):
                     max_dx[i] = np.max(abs(xn[i::nc] - x[i::nc]))
@@ -797,7 +797,7 @@ class DartsModel:
                 if save_well_data_after_run:
                     # store well data to save later
                     self.output.well_time_labels.append(self.physics.engine.t)
-                    X = np.array(self.physics.engine.X, copy=False)
+                    X = np.asarray(self.physics.engine.X)
 
                     self.output.well_data.append(
                         X.reshape(self.reservoir.mesh.n_blocks, self.physics.n_vars)[
@@ -1075,7 +1075,7 @@ class DartsModel:
                 # Evaluate lateral heat rates and add them to the rhs
                 if isinstance(lateral_heat_ev, SemiAnalyticalWellLateralHeatTransfer):
                     lateral_heat_rate = lateral_heat_ev.evaluate(T_segments, t + dt)
-                    rhs = np.array(self.physics.engine.RHS, copy=False)
+                    rhs = np.asarray(self.physics.engine.RHS)
                     rhs[
                         well.well_head_idx * self.physics.n_vars
                         + (self.physics.n_vars - 1) : (
@@ -1282,7 +1282,7 @@ class DartsModel:
         ):
             # If there is no user-defined RHS contribution and no Python hook, pass
             return
-        rhs = np.array(self.physics.engine.RHS, copy=False)
+        rhs = np.asarray(self.physics.engine.RHS)
         if type(self).set_rhs_flux is not DartsModel.set_rhs_flux:
             rhs += self.set_rhs_flux(t) * dt
         for hook in self.rhs_flux_hooks:
@@ -1489,8 +1489,8 @@ class DartsModel:
         indices = np.asarray(self.physics.engine.jac_cols)
         data = np.asarray(self.physics.engine.jac_vals)
 
-        rhs = np.array(self.physics.engine.RHS, copy=False)
-        sol = np.array(self.physics.engine.dX, copy=False)
+        rhs = np.asarray(self.physics.engine.RHS)
+        sol = np.asarray(self.physics.engine.dX)
 
         nonzeros = indices.size
 
