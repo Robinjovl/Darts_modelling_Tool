@@ -19,7 +19,7 @@ from dartsflash.mixtures import DARTSFlash, VLAq
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.linear_dfm_well_ipr import (
-    LinearDFMWellIPR,
+    LinearDFMWellIPRHook,
     LinearDFMWellIPRConnection,
     PI_Type,
 )
@@ -199,7 +199,7 @@ class Model(CICDModel):
                                        )
 
         self.rhs_flux_hooks.append(
-            LinearDFMWellIPR(
+            LinearDFMWellIPRHook(
                 self,
                 [
                     LinearDFMWellIPRConnection(

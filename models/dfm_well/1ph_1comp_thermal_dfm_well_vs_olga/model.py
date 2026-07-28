@@ -17,7 +17,7 @@ from darts.pipes.set_initial_conditions import LinearAmbientTemperature
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 from darts.pipes.linear_dfm_well_ipr import (
-    LinearDFMWellIPR,
+    LinearDFMWellIPRHook,
     LinearDFMWellIPRConnection,
     PI_Type,
 )
@@ -181,7 +181,7 @@ class Model(CICDModel):
                                        )
 
         self.rhs_flux_hooks.append(
-            LinearDFMWellIPR(
+            LinearDFMWellIPRHook(
                 self,
                 [
                     LinearDFMWellIPRConnection(
