@@ -2,7 +2,6 @@ import numpy as np
 
 from darts.engines import index_vector, value_vector
 from darts.physics.base.operator_evaluator import PropertyOperators
-from darts.physics.base.physics import PhysicsBase
 
 
 class Initialize:
@@ -109,7 +108,7 @@ class Initialize:
         self.secondary_specs = {}
 
         # If PH-formulation, evaluate_PT method must be called in the evaluate() during Initialize
-        self.evaluate_PT_bool = physics.state_spec > PhysicsBase.StateSpecification.PT
+        self.evaluate_PT_bool = physics.state_spec > physics.StateSpecification.PT
 
         # Create PropertyOperators and interpolators
         self.etor = PropertyOperators(

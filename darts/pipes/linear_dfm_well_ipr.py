@@ -4,7 +4,6 @@ from enum import Enum
 import numpy as np
 
 from darts.engines import ms_well, value_vector
-from darts.physics.base.physics import PhysicsBase
 
 
 class PI_Type(Enum):
@@ -385,7 +384,7 @@ class LinearDFMWellIPRHook:
     def _state_molar_enthalpy(self, state: np.ndarray) -> float:
         if not self.model.physics.thermal:
             return 0.0
-        if self.model.physics.state_spec == PhysicsBase.StateSpecification.PH:
+        if self.model.physics.state_spec == self.model.physics.StateSpecification.PH:
             return float(state[-1])
         state_vector = value_vector(state.tolist())
         return float(
