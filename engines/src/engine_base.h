@@ -67,6 +67,41 @@ class ms_well;
 class operator_set_gradient_evaluator_iface;
 class operator_set_gradient_evaluator_iface;
 
+/// @brief A well represented as a source term in its perforated reservoir blocks.
+///
+/// Unlike ms_well this introduces no well block, no wellbore equation and no control
+/// equation: each perforation contributes `WI * lambda_p * (p_block - bhp)` straight into
+/// the residual and Jacobian of the reservoir block it sits in, exactly as an ordinary
+/// connection does against a ghost block held at `bhp`. That removes the well degrees of
+/// freedom -- and with them a well block whose composition rows are close to rank
+/// deficient -- at the cost of prescribing the bottom-hole pressure rather than solving
+/// for it.
+///
+/// It is assembled from inside `assemble_jacobian_array`, so the adjoint's backward sweep
+/// picks it up on the same footing as the forward Newton loop: both reach the source term
+/// through that one call, which is what makes this formulation differentiable.
+struct source_well
+{
+	/// @brief well name, used as the key of its rate columns in `time_data`
+	std::string name;
+
+	/// @brief perforated reservoir block indices
+	std::vector<index_t> blocks;
+
+	/// @brief well index of each perforation [same units as connection transmissibility]
+	std::vector<value_t> well_indices;
+
+	/// @brief true when the well injects `inj_state` rather than producing block fluid
+	bool is_injector = false;
+
+	/// @brief injected composition, as a full state vector; its pressure entry is unused
+	/// because the upstream pressure of an injector is the well's own bhp
+	std::vector<value_t> inj_state;
+
+	/// @brief prescribed bottom-hole pressure [bar]
+	value_t bhp = 0;
+};
+
 /// This class defines infrastructure for simulation
 class engine_base
 {
@@ -377,6 +412,92 @@ public:
 
 	/// @brief vector of wells
 	std::vector<ms_well *> wells;
+
+	/// @brief wells carried as source terms in the reservoir blocks (see `source_well`)
+	std::vector<source_well> source_wells;
+
+	/// @brief bottom-hole pressures of the source wells at every stored timestep, so the
+	/// adjoint's backward sweep can restore the control the forward run actually applied
+	std::vector<std::vector<value_t>> source_well_bhp_t;
+
+	/// @brief the same for the producer/injector role, which a schedule may switch part way
+	/// through a run (a well converted from depletion to injection, say)
+	std::vector<std::vector<char>> source_well_injecting_t;
+
+	/// @brief phase volumetric rates of every source well perforation, filled by the last
+	/// `assemble_jacobian_array` and reported per well and phase into `time_data`.
+	/// Layout: [well][perforation * n_phases + phase], positive out of the reservoir.
+	std::vector<std::vector<value_t>> source_well_phase_rates;
+
+	/// @brief phase names of the source wells, in operator order; needed to key their rate
+	/// columns in `time_data` the way ms_well does
+	std::vector<std::string> source_well_phase_names;
+
+	/// @brief derivatives of the *reported* source well phase rates with respect to the
+	/// state of the block each perforation sits in, filled by the assembly because that is
+	/// where the physics-specific operators live, and consumed by `prepare_dj_dx`, which is
+	/// physics agnostic. Layout: [well][(perforation * n_phases + phase) * n_vars + var].
+	std::vector<std::vector<value_t>> source_well_rate_ders;
+
+	// --- source well index as an optimisation control ---------------------------------
+	// The source term is *linear* in the well index, so both derivatives it needs are the
+	// corresponding quantity divided by WI. They are stored rather than recomputed because
+	// the assembly already has them and it is the only place that knows the operators.
+
+	/// @brief d(residual)/d(WI) of each perforation, on the block it perforates.
+	/// Layout: [well][perforation * n_vars + component].
+	std::vector<std::vector<value_t>> source_well_unit_residual;
+
+	/// @brief d(reported phase rate)/d(WI). Layout: [well][perforation * n_phases + phase].
+	std::vector<std::vector<value_t>> source_well_rate_wi_ders;
+
+	/// @brief control slot of each perforation's well index, flattened in definition order;
+	/// -1 for a perforation that is not being optimised. Set from Python alongside
+	/// `col_dT_du`, which plays the same role for the transmissibilities.
+	std::vector<int> source_well_control_idx;
+
+	/// @brief accumulators of the two terms of eq. (20) for the source well indices, summed
+	/// over timesteps during the backward sweep and added into `derivatives` at the end
+	std::vector<value_t> source_wi_gradient, source_wi_dj_du;
+
+	/// @brief define a well carried as a source term in `blocks`; see `source_well`
+	void add_source_well(const std::string &name, const std::vector<index_t> &blocks,
+	                     const std::vector<value_t> &well_indices, bool is_injector,
+	                     const std::vector<value_t> &inj_state);
+
+	/// @brief set the bottom-hole pressure of every source well, in definition order
+	void set_source_well_bhp(const std::vector<value_t> &bhp);
+
+	/// @brief set which source wells currently inject, in definition order; a schedule that
+	/// converts producers to injectors has to keep this in step with the bottom-hole
+	/// pressures, and the backward sweep restores both
+	void set_source_well_injecting(const std::vector<index_t> &is_injector);
+
+	/// @brief set the well index of every source well perforation, flattened in definition
+	/// order; this is the control the adjoint differentiates with respect to
+	void set_source_well_index(const std::vector<value_t> &well_indices);
+
+	/// @brief the same, flattened, so a modifier can read the current values back
+	std::vector<value_t> get_source_well_index() const;
+
+	/// @brief append the current source well rates to `time_data`, per well and phase
+	void report_source_well_rates();
+
+	/// @brief restore the source wells' bottom-hole pressures of a stored timestep, so the
+	/// adjoint re-assembles about the control the forward run actually used
+	void restore_source_well_bhp(int idx_sim_ts);
+
+	/// @brief add a source well's objective derivative into `Temp_dj_dx`, if `name` is one
+	/// @param dj_dq objective weight per observed phase of this well
+	/// @param sign  +1 for the production term, -1 for injection: the objective negates the
+	///              simulated production rates and leaves the injection rates alone
+	/// @return true when `name` is a source well and has been handled here
+	bool add_source_well_dj_dx(const std::string &name,
+	                           const std::vector<std::string> &opt_phase_names,
+	                           const std::vector<value_t> &dj_dq, value_t sign);
+
+	/// @brief accumulate `lambda^T dg/dWI` of this timestep into `source_wi_gradient`
+	void accumulate_source_well_wi_gradient(const std::vector<value_t> &lambda);
 
 	/// @brief unsorted map containing well information (BHP, rates)
 	std::unordered_map<std::string, std::vector<value_t>> time_data;
