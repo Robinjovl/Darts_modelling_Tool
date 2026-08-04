@@ -2486,7 +2486,12 @@ class Output:
             physics, "n_well_ctrl_itor_ops", physics.well_ctrl_operators.n_ops
         )
         n_reservoir_ops = physics.reservoir_operators[0].n_ops
+        # Mechanics engines store displacement unknowns in addition to the
+        # flow variables consumed by the property interpolators. Use the
+        # engine width to identify that stored layout, but keep n_vars as the
+        # flow-state width used below for interpolation.
         n_vars = physics.n_vars
+        engine_n_vars = physics.engine.N_VARS
         # The reservoir / well-control interpolators consume the full OBL state
         # [primary | history] (n_state axes), but the well H5 stores only the primary
         # Newton state (n_vars-wide). Pad the missing history columns with each field's
@@ -2503,13 +2508,18 @@ class Output:
 
         states_m = h5_well_data["dynamic"]["X"][time_idx, cell_m]
         states_p = h5_well_data["dynamic"]["X"][time_idx, cell_p]
-        if states_m.shape[-1] != n_vars:
+        if states_m.shape[-1] == engine_n_vars and engine_n_vars != n_vars:
             # Mechanics engines also store displacement unknowns. Select the
             # contiguous flow state consumed by the property interpolators.
             flow_start = getattr(physics.engine, "P_VAR", 0)
             flow_vars = slice(flow_start, flow_start + n_vars)
             states_m = states_m[..., flow_vars]
             states_p = states_p[..., flow_vars]
+        elif states_m.shape[-1] != n_vars:
+            raise ValueError(
+                f'Well-state width {states_m.shape[-1]} matches neither the '
+                f'engine width {engine_n_vars} nor flow width {n_vars}'
+            )
 
         # State clipping to the OBL window has been removed — adaptive interpolators
         # cache cells on demand wherever the solver lands.
