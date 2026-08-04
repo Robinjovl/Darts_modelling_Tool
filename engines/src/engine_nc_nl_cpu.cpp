@@ -257,16 +257,9 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	n_ops = get_n_ops();
 	nc = get_n_comps();
 	z_var_idx = get_z_var_idx();
-	if (params->log_transform == 0)
-	{
-		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
-		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
-	}
-	else if (params->log_transform == 1)
-	{
-		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
-		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
-	}
+	// Physical-simplex clipping; OBL window no longer constrains Newton — see engine_base.h
+	min_axis_z = 0.0;
+	max_axis_z = 1.0;
 	min_sim_z = min_axis_z + params->sim_eps;
 	max_sim_z = max_axis_z - params->sim_eps;
 
@@ -297,7 +290,6 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
 
-	stat = sim_stat();
 
 	print_header();
 
@@ -333,7 +325,7 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	}
 
 	Xn = X = X_init;
-	dt = params->first_ts;
+	dt = 0.0; // timestep sizing is owned by the Python driver
 	prev_usual_dt = dt;
 
 	// initialize arrays for every operator set
@@ -344,14 +336,8 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 	// initialize arrays for every operator set
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
+		// op_axis_min/op_axis_max left empty — disables apply_obl_axis_local_correction
 		block_idxs[r].clear();
-		op_axis_min[r].resize(n_vars);
-		op_axis_max[r].resize(n_vars);
-		for (int j = 0; j < n_vars; j++)
-		{
-			op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-			op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-		}
 	}
 
 	// create a block list for every operator set
@@ -983,7 +969,7 @@ int engine_nc_nl_cpu<NC>::solve_linear_equation()
 {
 	int r_code;
 	char buffer[1024];
-	linear_solver_error_last_dt = 0;
+	last_linear_iters = 0;
 	timer->node["linear solver setup"].start();
 	r_code = linear_solver->setup(Jacobian);
 	timer->node["linear solver setup"].stop();
@@ -992,11 +978,7 @@ int engine_nc_nl_cpu<NC>::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver setup returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		//Jacobian->write_matrix_to_file("jac_linear_setup_fail.csr");
-		linear_solver_error_last_dt = 1;
-		return linear_solver_error_last_dt;
+		return 1;
 	}
 
 	timer->node["linear solver solve"].start();
@@ -1023,17 +1005,12 @@ int engine_nc_nl_cpu<NC>::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		linear_solver_error_last_dt = 2;
-		return linear_solver_error_last_dt;
+		return 2;
 	}
 	else
 	{
-		sprintf(buffer, "\t #%d (%.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1, newton_residual_last_dt,
-				well_residual_last_dt, linear_solver->get_n_iters(), linear_solver->get_residual());
-		std::cout << buffer << std::flush;
-		n_linear_last_dt += linear_solver->get_n_iters();
+		last_linear_iters = linear_solver->get_n_iters();
+		last_linear_residual = linear_solver->get_residual();
 	}
 	return 0;
 }

@@ -294,16 +294,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	z_var_idx = get_z_var_idx();
 	if (NC_ > 1)
 	{
-		if (params->log_transform == 0)
-		{
-			min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
-			max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
-		}
-		else if (params->log_transform == 1)
-		{
-			min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
-			max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
-		}
+		// Physical-simplex clipping; OBL window no longer constrains Newton — see engine_base.h
+		min_axis_z = 0.0;
+		max_axis_z = 1.0;
 		min_sim_z = min_axis_z + params->sim_eps;
 		max_sim_z = max_axis_z - params->sim_eps;
 	}
@@ -380,7 +373,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
 
-	stat = sim_stat();
 
 	print_header();
 
@@ -416,7 +408,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	}
 
 	Xn = X = X_init;
-	dt = params->first_ts;
+	dt = 0.0; // timestep sizing is owned by the Python driver
 	prev_usual_dt = dt;
 
 	// initialize arrays for every operator set
@@ -425,14 +417,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	op_axis_max.resize(acc_flux_op_set_list.size());
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
+		// op_axis_min/op_axis_max left empty — disables apply_obl_axis_local_correction
 		block_idxs[r].clear();
-		op_axis_min[r].resize(nc + THERMAL);
-		op_axis_max[r].resize(nc + THERMAL);
-		for (int j = 0; j < nc + THERMAL; j++)
-		{
-			op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-			op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-		}
 	}
 
 	// create a block list for every operator set
@@ -1466,7 +1452,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update(value_t dt)
 	timer->node["newton update"].node["composition correction"].start();
 	if (nc > 1)
 	{
-		if (params->log_transform == 1)
+		if (log_transform == 1)
 		{
 			apply_composition_correction_new(X, dX);
 		}
@@ -1477,9 +1463,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update(value_t dt)
 	}
 	timer->node["newton update"].node["composition correction"].stop();
 
-	if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
+	if (newton_chop_mode == sim_params::NEWTON_GLOBAL_CHOP)
 	{
-		if (params->log_transform == 1)
+		if (log_transform == 1)
 		{
 			apply_global_chop_correction_new(X, dX);
 		}
@@ -1489,9 +1475,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update(value_t dt)
 		}
 	}
 	// apply local chop only if number of components is 2 and more
-	/*else if (params->newton_type == sim_params::NEWTON_LOCAL_CHOP && nc > 1)
+	/*else if (newton_chop_mode == sim_params::NEWTON_LOCAL_CHOP && nc > 1)
 	{
-		if (params->log_transform == 1)
+		if (log_transform == 1)
 		{
 			apply_local_chop_correction_new(X, dX);
 		}
@@ -1530,7 +1516,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 {
 	int r_code;
 	char buffer[1024];
-	linear_solver_error_last_dt = 0;
+	last_linear_iters = 0;
 
 	/*if (1) //changed this to write jacobian to file!
 	{
@@ -1556,11 +1542,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver setup returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		//Jacobian->write_matrix_to_file("jac_linear_setup_fail.csr");
-		linear_solver_error_last_dt = 1;
-		return linear_solver_error_last_dt;
+		return 1;
 	}
 
 	timer->node["linear solver solve"].start();
@@ -1594,18 +1576,16 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		linear_solver_error_last_dt = 2;
-		return linear_solver_error_last_dt;
+		return 2;
 	}
 	else
 	{
-		sprintf(buffer, "\t #%d (%.4e, %.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1,
+		sprintf(buffer, "\t (%.4e, %.4e, %.4e): lin %d (%.1e)\n",
 			dev_p, dev_u, well_residual_last_dt,
 			linear_solver->get_n_iters(), linear_solver->get_residual());
 		std::cout << buffer << std::flush;
-		n_linear_last_dt += linear_solver->get_n_iters();
+		last_linear_iters = linear_solver->get_n_iters();
+		last_linear_residual = linear_solver->get_residual();
 	}
 	return 0;
 }
@@ -1613,57 +1593,21 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, value_t time, index_t converged)
 {
-	char buffer[1024];
-	double well_tolerance_coefficient = 1e2;
-
-	if (linear_solver_error_last_dt == 1) // linear solver setup failed
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (linear solver setup failed) \n", deltat);
-	}
-	else if (linear_solver_error_last_dt == 2) // linear solver solve failed
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (linear solver solve failed) \n", deltat);
-	}
-	else if (newton_residual_last_dt >= params->tolerance_newton) // no reservoir convergence reached
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (newton residual reservoir) \n", deltat);
-	}
-	else if (well_residual_last_dt > well_tolerance_coefficient * params->tolerance_newton) // no well convergence reached
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (newton residual wells) \n", deltat);
-	}
-	else
-	{
-		converged *= 1;
-	}
-
 	dev_u = dev_p = dev_e = std::numeric_limits<value_t>::infinity();
 	fill(dev_z, dev_z + NC_, std::numeric_limits<value_t>::infinity());
+	well_residual_last_dt = std::numeric_limits<value_t>::infinity();
 
 	if (!converged)
 	{
-		stat.n_newton_wasted += n_newton_last_dt;
-		stat.n_linear_wasted += n_linear_last_dt;
-		stat.n_timesteps_wasted++;
-		converged = 0;
-
 		X = Xn;
 		Xref = Xn_ref;
 		std::copy(hooke_forces_n.begin(), hooke_forces_n.end(), hooke_forces.begin());
 		std::copy(biot_forces_n.begin(), biot_forces_n.end(), biot_forces.begin());
 		if constexpr (THERMAL)
 		  std::copy(thermal_forces_n.begin(), thermal_forces_n.end(), thermal_forces.begin());
-		std::cout << buffer << std::flush;
 	}
 	else //convergence reached
 	{
-		stat.n_newton_total += n_newton_last_dt;
-		stat.n_linear_total += n_linear_last_dt;
-		stat.n_timesteps_total++;
-		converged = 1;
-
-		print_timestep(time + deltat, deltat);
-
 		time_data["time"].push_back(time + deltat);
 
 		for (ms_well *w : wells)
@@ -1694,7 +1638,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 		if constexpr (THERMAL)
 		  std::copy(thermal_forces.begin(), thermal_forces.end(), thermal_forces_n.begin());
 		op_vals_arr_n = op_vals_arr;
-		t += dt;
+		t = time + deltat;
 	}
 	return converged;
 }
@@ -1702,7 +1646,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 std::vector<value_t> engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev()
 {
-	/*switch (params->nonlinear_norm_type)
+	/*switch (residual_norm_type)
 	{
 	case sim_params::L1:
 	{
@@ -1859,14 +1803,14 @@ void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_global_chop_correction(std
 		}
 	}
 
-	if (max_ratio > params->newton_params[0])
+	if (max_ratio > newton_chop_factor)
 	{
 		std::cout << "Apply global chop with max changes = " << max_ratio << "\n";
 		for (size_t i = 0; i < n_blocks; i++)
 		{
 			for (uint8_t c = 1; c < NC; c++)
 			{
-				dX[i * N_VARS + P_VAR + c] *= params->newton_params[0] / max_ratio;
+				dX[i * N_VARS + P_VAR + c] *= newton_chop_factor / max_ratio;
 			}
 		}
 	}
@@ -1878,7 +1822,7 @@ void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_global_chop_correction_new
 	value_t max_ratio = 0, temp_zc = 0, temp_dz = 0, ratio;
 	index_t ind, n_blocks = mesh->n_blocks;
 
-	if (params->log_transform == 0)
+	if (log_transform == 0)
 	{
 		for (index_t i = 0; i < n_blocks; i++)
 		{
@@ -1893,19 +1837,19 @@ void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_global_chop_correction_new
 			}
 		}
 
-		if (max_ratio > params->newton_params[0])
+		if (max_ratio > newton_chop_factor)
 		{
 			std::cout << "Apply global chop with max changes = " << max_ratio << "\n";
 			for (index_t i = 0; i < n_blocks; i++)
 			{
 				for (uint8_t c = 1; c < NC; c++)
 				{
-					dX[i * N_VARS + P_VAR + c] *= params->newton_params[0] / max_ratio;
+					dX[i * N_VARS + P_VAR + c] *= newton_chop_factor / max_ratio;
 				}
 			}
 		}
 	}
-	/*else if (params->log_transform == 1)
+	/*else if (log_transform == 1)
 	{
 		for (index_t i = 0; i < n_blocks; i++)
 		{
@@ -1929,12 +1873,12 @@ void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_global_chop_correction_new
 			}
 		}
 
-		if (max_ratio > params->newton_params[0])
+		if (max_ratio > newton_chop_factor)
 		{
 			std::cout << "Apply global chop with max changes = " << max_ratio << "\n";
 			for (size_t i = 0; i < n_vars_total; i++)
 			{
-				dX[i] *= params->newton_params[0] / max_ratio; //log based composition
+				dX[i] *= newton_chop_factor / max_ratio; //log based composition
 			}
 		}
 	}*/

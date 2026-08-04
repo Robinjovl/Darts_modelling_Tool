@@ -8,22 +8,36 @@
 
 #include "multilinear_static_cpu_interpolator.hpp"
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::multilinear_static_cpu_interpolator(operator_set_evaluator_iface *supporting_point_evaluator,
-                                                                                                          const std::vector<int> &axes_points,
-                                                                                                          const std::vector<double> &axes_min,
-                                                                                                          const std::vector<double> &axes_max)
-    : multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_points, axes_min, axes_max)
+                                                                                                          const std::vector<double> &axes_origin,
+                                                                                                          const std::vector<double> &axes_step,
+                                                                                                          const std::vector<int> &axes_points)
+    : multilinear_interpolator_base<index_t, value_t, N_DIMS, N_OPS>(supporting_point_evaluator, axes_origin, axes_step, axes_points)
 
 {
   this->n_points_used = this->n_points_total;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
 {
   // initialize base class first
   interpolator_base::init();
+
+  // Static interpolator strictly requires a bounded grid (dense vector storage).
+  // Validate here, post-base ctor's warning, before allocating.
+  {
+    double int_type_max = static_cast<double>(std::numeric_limits<index_t>::max());
+    if (this->n_points_total_fp > int_type_max)
+    {
+      throw std::range_error(
+          "static interpolator requires a bounded grid; n_points_total (" +
+          std::to_string(this->n_points_total_fp) +
+          ") exceeds index_t range (" + std::to_string(int_type_max) +
+          "). Use the adaptive variant for unbounded grids.");
+    }
+  }
 
   // evaluate supporting point data unless it was already assigned via Python
   if (point_data.size() == 0)
@@ -66,15 +80,15 @@ int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::init()
   return 0;
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 const typename multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::hypercube_data_t &multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::get_hypercube_data(const index_t hypercube_index)
 {
 
   return hypercube_data[hypercube_index];
 }
 
-template <typename index_t, typename value_t, uint8_t N_DIMS, uint8_t N_OPS>
-int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::write_to_file(const std::string filename)
+template <typename index_t, typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::write_to_file(const std::string &filename)
 {
   std::ofstream txtFile;
 
@@ -86,7 +100,7 @@ int multilinear_static_cpu_interpolator<index_t, value_t, N_DIMS, N_OPS>::write_
     txtFile << this->get_n_dims() << " " << this->get_n_ops() << std::endl;
     for (int k = 0; k < N_DIMS; k++)
     {
-      txtFile << this->axes_points[k] << " " << this->axes_min[k] << " " << this->axes_max[k] << std::endl;
+      txtFile << this->axes_points[k] << " " << this->axes_origin[k] << " " << this->axes_max[k] << std::endl;
     }
 
     for (index_t k = 0; k < point_data.size(); ++k)

@@ -7,6 +7,13 @@
         - systemd-run --scope -p MemoryMax=30000M -p MemoryHigh=20000M --user darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
+        # test interpolators from outside the checkout so Python imports the installed wheel
+        - |
+          PROJECT_DIR="${CI_PROJECT_DIR:-$PWD}"
+          INTERPOLATOR_TEST_WORKDIR="$(mktemp -d)"
+          cd "$INTERPOLATOR_TEST_WORKDIR" || exit
+          python -m pytest "$PROJECT_DIR/tests" -v
+          cd "$PROJECT_DIR" || exit
         # test discretizer
         - cd discretizer/tests/compare_discretizers
         - python main.py
@@ -44,14 +51,15 @@ test-linux-oahu-gpu:
     variables:
         CONDAPATH: /oahu/data/gitlabrunner/anaconda3
     before_script:
-        - module load cuda/23.5
+        - module load cuda/13.3
         - source ${CONDAPATH}/bin/activate
         - conda create -n ${CONDA_ENV} python=${PY_VER} --yes
         - conda activate ${CONDA_ENV}
         # upgrade pip package first
         - python -m pip install --upgrade pip
         - pip uninstall open-darts-flash  --yes
-        - pip install ./dist/*.whl
+        - export WHEEL_PATH="$(ls ./dist/*.whl | head -n 1)"
+        - pip install "${WHEEL_PATH}[test]"
     after_script:
         - *archive_logic  # parent's commands
         - source ${CONDAPATH}/bin/activate
@@ -74,7 +82,8 @@ test-linux-oahu-gpu:
         # upgrade pip package first
         - python -m pip install --upgrade pip
         - pip uninstall open-darts-flash --yes
-        - pip install ./dist/*.whl
+        - export WHEEL_PATH="$(ls ./dist/*.whl | head -n 1)"
+        - pip install "${WHEEL_PATH}[test]"
     after_script:
         - spack env activate open_darts_gcc134
         - . "${CONDAPATH}/etc/profile.d/conda.sh"
@@ -111,7 +120,8 @@ test-linux-tahiti-image-gpu:
             # make sure pip is fresh and reinstall your wheel
             python -m pip install --upgrade pip && \
             pip uninstall open-darts-flash --yes && \
-            pip install ./dist/*.whl --force-reinstall
+            WHEEL_PATH=\$(ls ./dist/*.whl | head -n 1) && \
+            pip install \"\${WHEEL_PATH}[test]\" --force-reinstall
             "
     script:
         - |
@@ -123,6 +133,12 @@ test-linux-tahiti-image-gpu:
             darts run_test_suite2.py LOG && \
             echo 'run_test_suite2 returned' $? && \
             cd .. && \
+            # test interpolators from outside the checkout so Python imports the installed wheel
+            PROJECT_DIR=\${CI_PROJECT_DIR:-\$PWD} && \
+            INTERPOLATOR_TEST_WORKDIR=\$(mktemp -d) && \
+            cd \"\$INTERPOLATOR_TEST_WORKDIR\" && \
+            python -m pytest \"\$PROJECT_DIR/tests\" -v && \
+            cd \"\$PROJECT_DIR\" && \
             # test discretizer
             cd discretizer/tests/compare_discretizers && \
             python main.py && \

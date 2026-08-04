@@ -7,7 +7,7 @@ from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 import os
 
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -36,12 +36,13 @@ class Model(THMCModel):
         super().set_solver_params()
         self.params.linear_type = sim_params.cpu_gmres_fs_cpr
         #self.params.linear_type = sim_params.cpu_superlu
-        self.params.first_ts = 0.0001
-        self.params.mult_ts = 2
-        self.params.max_ts = 5
-        self.params.tolerance_newton = 1e-6
+        self.set_solver()
+        self.data_ts.dt_first = 0.0001
+        self.data_ts.dt_mult = 2
+        self.data_ts.dt_max = 5
+        self.nonlinear_solver.spec.tolerance = 1e-6
         self.params.tolerance_linear = 1e-8
-        self.params.max_i_newton = 20
+        self.nonlinear_solver.spec.max_iterations = 20
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, fluid_vars=self.physics.vars,
@@ -113,14 +114,13 @@ class Model(THMCModel):
         bnd_tags['BND_Z+'] = 996
         self.idata.mesh.matrix_tags = [99991]
 
-        self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-9
-        self.idata.obl.min_p = 0.0
-        self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = 273.15 + 20
-        self.idata.obl.max_t = 273.15 + 200
-        self.idata.obl.min_z = 0.
-        self.idata.obl.max_z = 1.
+        self.idata.obl.p_step = 2.5
+        self.idata.obl.p_origin = 0.0
+        self.idata.obl.z_step = 2.5e-3
+        self.idata.obl.z_origin = self.idata.obl.zero / 10
+        self.idata.obl.t_step = 0.45
+        self.idata.obl.t_origin = 273.15 + 20
         self.idata.obl.epsilon_z = self.idata.obl.zero/10
         super().set_input_data()
 
@@ -186,13 +186,17 @@ class Model(THMCModel):
                                                        ('oil', ConstFunc(1.))])
 
         property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
-        # create physics
+        # create physics: [p, z_1, ..., z_{nc-1}, T?]
         state_spec = Poroelasticity.StateSpecification.PT if self.thermal else Poroelasticity.StateSpecification.P
-        self.physics = Poroelasticity(components, phases, self.timer, state_spec=state_spec, n_points=self.idata.obl.n_points,
-                                      min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
-                                      min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
+        nz = len(components) - 1
+        ax_step = [self.idata.obl.p_step] + [self.idata.obl.z_step] * nz
+        ax_origin = [self.idata.obl.p_origin] + [self.idata.obl.z_origin] * nz
+        if self.thermal:
+            ax_step.append(self.idata.obl.t_step)
+            ax_origin.append(self.idata.obl.t_origin)
+        self.physics = Poroelasticity(components, phases, self.timer, state_spec=state_spec,
+                                      axes_step=ax_step, axes_origin=ax_origin,
                                       epsilon_z=self.idata.obl.epsilon_z,
-                                      min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
                                       discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
 

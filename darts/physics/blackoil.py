@@ -1,10 +1,10 @@
 from darts.input.input_data import FluidProps, InputData
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.black_oil import *
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
 
 
-class BlackOilBase(Compositional):
+class BlackOilBase(PhysicsBase):
     def __init__(self, idata, timer):
         super().__init__(idata, timer, BlackOilProperties)
 
@@ -15,25 +15,30 @@ class BlackOilBase(Compositional):
         self.add_property_region(property_container)
 
 
-class BlackOil(Compositional):
+class BlackOil(PhysicsBase):
     def __init__(self, idata: InputData, timer, thermal):
         state_spec = (
-            Compositional.StateSpecification.PT
+            PhysicsBase.StateSpecification.PT
             if thermal
-            else Compositional.StateSpecification.P
+            else PhysicsBase.StateSpecification.P
         )
+        # Build axes_step / axes_origin from idata.obl. The grid is uniform: same z_step
+        # across all composition axes. (idata.obl.* now carries axes_step / axes_origin
+        # — see darts.input.input_data.)
+        nc = len(idata.fluid.components)
+        nz = nc - 1
+        ax_step = [idata.obl.p_step] + [idata.obl.z_step] * nz
+        ax_origin = [idata.obl.p_origin] + [idata.obl.z_origin] * nz
+        if thermal:
+            ax_step.append(idata.obl.t_step)
+            ax_origin.append(idata.obl.t_origin)
         super().__init__(
             components=idata.fluid.components,
             phases=idata.fluid.phases,
             timer=timer,
-            n_points=idata.obl.n_points,
-            min_p=idata.obl.min_p,
-            max_p=idata.obl.max_p,
-            min_z=idata.obl.min_z,
-            max_z=idata.obl.max_z,
+            axes_step=ax_step,
+            axes_origin=ax_origin,
             epsilon_z=idata.obl.epsilon_z,
-            min_t=idata.obl.min_t,
-            max_t=idata.obl.max_t,
             state_spec=state_spec,
             extrapolation_flag=True,
         )

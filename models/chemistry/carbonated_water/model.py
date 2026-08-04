@@ -15,7 +15,7 @@ from darts.physics.chemistry.property_container import (
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
-from darts.engines import sim_params, well_control_iface, value_vector, timer_node, ms_well
+from darts.engines import sim_params, well_control_iface, value_vector, index_vector, timer_node, ms_well
 from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
@@ -23,6 +23,7 @@ from darts.physics.properties.kinetics import (
 from darts.physics.properties.phreeqc import Flash as PhreeqcFlash, PhreeqcFlashError
 from darts.physics.properties.reaktoro import Flash as ReaktoroFlash
 from darts.physics.properties.flash_exceptions import FlashError
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec, Norm
 
 from iapws._iapws import _Viscosity
 from conversions import convert_composition, correct_composition, calculate_injection_stream, \
@@ -153,16 +154,22 @@ class Model(CICDModel):
         # initialize wormhole propagation ratio
         self.reservoir.wh_propagation_ratio = 0.0
 
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-4, tol_linear=1e-6, it_newton=15, it_linear=200)
-        self.params.newton_type = sim_params.newton_local_chop
-        # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
-        # self.params.linear_type = sim_params.cpu_superlu
-        self.params.newton_params[0] = 0.2
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
+                                           chop=ChopSpec(mode='local', factor=0.2))
+        # self.nonlinear_solver.spec.norm = Norm.LINF
+        # self.data_ts.linear_type = sim_params.cpu_superlu
+        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_linear=1e-6, it_linear=200)
         self.runtime = 1
         # default timestep control thresholds (overridable by callers)
         self.ni_dt_increase_cutoff = 5
         self.ni_dt_decrease_cutoff = 8
         self.n_good_ts = 10
+        # Persistent count of consecutive "good" timesteps (at dt_max with few Newton
+        # iterations). Kept on self so streaks accumulate ACROSS m.run() invocations:
+        # the driver in main.py advances the simulation through many short run() calls,
+        # and a per-call counter could never reach n_good_ts within a single short call,
+        # freezing dt_max even when Newton convergence is trivial.
+        self._n_good_steps = 0
         # Max number of Newton iterations within a timestep that may rely on the PHREEQC
         # dilution fallback before the timestep is abandoned and cut. The fallback handles
         # unreachable, over-concentrated OBL supporting points; if more than this many
@@ -353,11 +360,26 @@ class Model(CICDModel):
 
         output_property_container = OutputPropertyContainer(property_container)
 
+        axes_min_arr = np.asarray(self.axes_min, dtype=float)
+        axes_max_arr = np.asarray(self.axes_max, dtype=float)
+        n_points_arr = np.asarray(self.n_points, dtype=float)
+        axes_step = ((axes_max_arr - axes_min_arr) / np.maximum(n_points_arr - 1, 1)).tolist()
+        axes_origin = axes_min_arr.tolist()
+
         self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=phase_name,
-                                                n_points=self.n_points, axes_min=self.axes_min, axes_max=self.axes_max,
+                                                axes_step=axes_step, axes_origin=axes_origin,
                                                 epsilon_z=property_container.eps_z, extrapolation_flag=False,
                                                 cache=True)
         self.physics.add_property_region(property_container, output_property_container, 0)
+
+        # Bound the in-memory derived hypercube cache so the adaptive 8-D OBL
+        # interpolator cannot exhaust RAM. The hypercube payloads are a pure derived,
+        # never-persisted cache (rebuilt from supporting points with no flash), so
+        # capping them does NOT touch the supporting-point cache or its *.pkl/*.fastcache
+        # files. Read by PhysicsBase.create_interpolator. Sized to ~20x the reservoir
+        # cell count (>> the per-Newton-iteration working set) so the hot-path hit rate
+        # stays ~100%.
+        self.physics.hypercube_cap = max(200_000, 20 * int(self.n_res_blocks))
 
         # Flashes whose per-iteration dilution fallback we police in run_timestep /
         # apply_rhs_flux. Only those exposing pop_dilution_report() (PHREEQC) qualify; the
@@ -532,26 +554,44 @@ class Model(CICDModel):
         self.solid_frac = np.zeros((self.n_res_blocks, self.n_solid))
         self.initial_comp = np.zeros((self.n_res_blocks + 2, self.nc - 1))
 
-        # Interpolated values of non-solid volume (second value always 0 due to no (5,1) interpolator)
-        values = value_vector([0] * self.physics.n_comp_itor_ops)
-        values_np = np.asarray(values)
+        # The fluid composition is identical for every reservoir block; only the per-block
+        # solid saturation varies. Compute the composition once, assemble all per-block OBL
+        # states in one contiguous array, and evaluate the initialization interpolator for
+        # every block in a SINGLE batched call. The batch path materializes all missing
+        # supporting points through evaluate_batch() (the parallel worker pool) in one shot,
+        # instead of one point at a time through the single-point evaluate() (which runs
+        # every reaktoro flash serially in the main process and used to dominate init time).
+        # The numerical result is identical to the former per-block loop.
+        composition_full = convert_composition(self.initial_comp_components, self.E)
+        composition = correct_composition(composition_full, self.min_z)
+        comp_tail = np.ascontiguousarray(composition[self.n_solid:], dtype=np.float64)
 
-        # Iterate over solid saturation and call interpolator
-        for i in range(len(self.solid_sat)):
-            # There are 5 values in the state
-            composition_full = convert_composition(self.initial_comp_components, self.E)
-            composition = correct_composition(composition_full, self.min_z)
-            init_state = value_vector(np.hstack((self.pressure_init, self.solid_sat[i],
-                                                 composition[self.n_solid:])))
+        n_blocks = self.n_res_blocks
+        n_ops = self.physics.n_comp_itor_ops
+        n_dims = 1 + self.n_solid + comp_tail.size  # [pressure | solid_sat | comp_tail]
 
-            # Call interpolator
-            self.physics.comp_itor[0].evaluate(init_state, values)
+        # One contiguous [n_blocks, n_dims] state array (row-major == point-major layout the
+        # interpolator expects after ravel()).
+        states = np.empty((n_blocks, n_dims), dtype=np.float64)
+        states[:, 0] = self.pressure_init
+        states[:, 1:1 + self.n_solid] = self.solid_sat
+        states[:, 1 + self.n_solid:] = comp_tail  # broadcast the shared fluid tail
 
-            # Assemble initial composition
-            self.solid_frac[i] = values_np[:self.n_solid]
-            initial_comp_with_solid = composition_full # np.multiply(composition_full, 1 - self.solid_frac[i])
-            initial_comp_with_solid[:self.n_solid] = self.solid_frac[i]
-            self.initial_comp[i, :] = initial_comp_with_solid[:-1] # correct_composition(initial_comp_with_solid, self.min_z)
+        # Single batched interpolation over all blocks; missing supporting points are
+        # materialized in parallel via evaluate_batch(). Derivatives are required by the
+        # C++ signature but unused here.
+        values = value_vector(np.zeros(n_blocks * n_ops))
+        dvalues = value_vector(np.zeros(n_blocks * n_ops * n_dims))
+        block_idxs = index_vector(np.arange(n_blocks, dtype=np.int32))
+        self.physics.comp_itor[0].evaluate_with_derivatives(
+            value_vector(states.ravel()), block_idxs, values, dvalues)
+        values_np = np.asarray(values).reshape(n_blocks, n_ops)
+
+        # Assemble the initial composition: per-block solid fractions + the shared fluid
+        # tail (vectorized over all blocks).
+        self.solid_frac[:] = values_np[:, :self.n_solid]
+        self.initial_comp[:n_blocks, :self.n_solid] = self.solid_frac
+        self.initial_comp[:n_blocks, self.n_solid:] = composition_full[self.n_solid:-1]
 
         # Define initial composition for wells
         # for i in range(n_matrix, n_matrix + 2):
@@ -657,7 +697,7 @@ class Model(CICDModel):
             # Mirror the base method's per-step history bookkeeping for the failed step.
             try:
                 self.time.append(t)
-                self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
+                self.n_newton_iters.append(self.nonlinear_solver.status.n_newton)
                 self.time_step_size.append(dt)
             except Exception:
                 pass
@@ -711,7 +751,7 @@ class Model(CICDModel):
             save_well_data: bool = True,
             save_reservoir_data: bool = True,
             save_well_data_after_run: bool = True,
-            verbose: bool = True):
+            verbose: int | None = None):
         """
         Method to run simulation for specified time. Optional argument to specify dt to restart simulation with.
 
@@ -719,9 +759,12 @@ class Model(CICDModel):
         :type days: float
         :param restart_dt: Restart value for timestep size [days, optional]
         :type restart_dt: float
-        :param verbose: Switch for verbose, default is True
-        :type verbose: bool
+        :param verbose: Verbosity level (``int``; ``bool`` accepted). Defaults to
+            ``None``, meaning inherit :attr:`self.verbose`. ``>=VERBOSE_TIMERS`` (2)
+            additionally prints timers at the end of every run() invocation.
+        :type verbose: int
         """
+        verbose = self.verbose if verbose is None else verbose
         assert hasattr(self, 'output'), "self.output does not exist, please call m.set_output() after m.init()"
         days = days if days is not None else self.runtime
         data_ts = self.data_ts
@@ -759,18 +802,31 @@ class Model(CICDModel):
         nb = self.reservoir.mesh.n_res_blocks
         max_dx = np.zeros(nc)
 
-        n_good_steps = 0
+        # NOTE: self._n_good_steps is deliberately NOT reset here so the good-step streak
+        # carries across consecutive run() calls (see __init__).
         n_bad_steps = 0
+        # Whether the dt of the step about to be taken was shortened only to land exactly
+        # on stop_time (a reporting boundary). Such a step is not at dt_max by physics, so
+        # it must not break the good-step streak.
+        dt_truncated = False
 
         if np.fabs(data_ts.dt_mult - 1) < 1e-10:
             omega = 0.
         else:
             omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
 
+        # Per-timestep Python orchestration outside run_timestep (state copies, dt/CFL
+        # control, well-data accumulation) is otherwise untimed; bracket it into the
+        # "run loop overhead" node instead of leaving it in the root "Total elapsed" gap.
+        overhead = self.timer.node["run loop overhead"]
         while t < stop_time:
+            overhead.start()
             xn = np.array(self.physics.engine.Xn, copy=True)[:nb * nc]  # need to copy since Xn will be updated Xn = X
+            overhead.stop()
             converged = self.run_timestep(dt, t, verbose)
+            status = self.nonlinear_solver.status
 
+            overhead.start()
             if converged:
                 t += dt
                 self.physics.engine.t = t
@@ -785,30 +841,39 @@ class Model(CICDModel):
                         dt_mult_new = mult
 
                 if verbose:
-                    print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tdX=%4s"
-                          % (ts, t, dt, self.physics.engine.n_newton_last_dt, self.physics.engine.n_linear_last_dt,
-                             dt_mult_new, np.round(max_dx, 3)))
+                    max_dx_str = '[' + ', '.join(f'{v:.1e}' for v in max_dx) + ']'
+                    print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d\tDT_MULT=%3.3g\tdX=%s"
+                          % (ts, t, dt, status.n_newton, status.n_linear,
+                             dt_mult_new, max_dx_str))
 
-                if fabs(dt - data_ts.dt_max) < 1.e-10 and self.physics.engine.n_newton_last_dt < self.ni_dt_increase_cutoff:
-                    n_good_steps += 1
+                if dt_truncated:
+                    # Boundary-truncated step: it carries no information about whether
+                    # dt_max is sustainable, so leave the streak untouched (neither
+                    # increment nor reset).
+                    pass
+                elif fabs(dt - data_ts.dt_max) < 1.e-10 and status.n_newton < self.ni_dt_increase_cutoff:
+                    self._n_good_steps += 1
                 else:
-                    n_good_steps = 0
+                    self._n_good_steps = 0
 
-                if self.physics.engine.n_newton_last_dt > self.ni_dt_decrease_cutoff:
+                if status.n_newton > self.ni_dt_decrease_cutoff:
                     data_ts.dt_max /= 2 * data_ts.dt_mult
-                    n_good_steps = 0
+                    self._n_good_steps = 0
 
-                if n_good_steps > self.n_good_ts:
+                if self._n_good_steps > self.n_good_ts:
                     data_ts.dt_max *= 2 * data_ts.dt_mult
-                    n_good_steps = 0
+                    self._n_good_steps = 0
 
                 dt = min(dt * dt_mult_new, data_ts.dt_max)
 
+                dt_truncated = False
                 if np.fabs(t + dt - stop_time) < data_ts.dt_min:
                     dt = stop_time - t
+                    dt_truncated = True
 
                 if t + dt > stop_time:
                     dt = stop_time - t
+                    dt_truncated = True
                 else:
                     self.prev_dt = dt
 
@@ -816,7 +881,11 @@ class Model(CICDModel):
 
                 # save well data at every converged time step
                 if save_well_data and save_well_data_after_run is False:
+                    # save_data_to_h5 brackets its own output/saving_well_data timer; pause
+                    # the overhead bracket so the h5 write is not double-counted.
+                    overhead.stop()
                     self.output.save_data_to_h5(kind="well")
+                    overhead.start()
                 else:
                     self.output.well_time_labels.append(self.physics.engine.t)
                     X = np.array(self.physics.engine.X, copy=False)
@@ -834,7 +903,8 @@ class Model(CICDModel):
                 else:
                     dt /= data_ts.dt_mult
                     n_bad_steps += 1
-                n_good_steps = 0
+                self._n_good_steps = 0
+                dt_truncated = False
 
                 if n_bad_steps > 1:
                     data_ts.dt_max /= 2.
@@ -844,8 +914,11 @@ class Model(CICDModel):
                     print("Cut timestep to %2.10f (solver rc=%d)"
                           % (dt, getattr(self, '_linear_solver_rc_last', 0)))
                 if dt <= data_ts.dt_min:
+                    overhead.stop()  # keep the bracket balanced before aborting the run
                     raise RuntimeError('Stop simulation. Reason: reached min. timestep '
                                        + str(data_ts.dt_min) + ' dt=' + str(dt))
+
+            overhead.stop()
 
         # update current engine time
         self.physics.engine.t = stop_time
@@ -868,14 +941,23 @@ class Model(CICDModel):
 
         # Flush OBL adaptive cache between snapshots so progress survives SIGTERM / job cancel.
         if getattr(self.physics, 'cache', False):
+            self.timer.node["cache I/O"].start()
             self.physics.write_cache()
+            self.timer.node["cache I/O"].stop()
 
         if verbose:
+            stats = self.nonlinear_solver.stats
             print(
-                f"----- TS = {self.physics.engine.stat.n_timesteps_total:d}({self.physics.engine.stat.n_timesteps_wasted:d}), "
-                f"NI = {self.physics.engine.stat.n_newton_total:d}({self.physics.engine.stat.n_newton_wasted:d}), "
-                f"LI = {self.physics.engine.stat.n_linear_total:d}({self.physics.engine.stat.n_linear_wasted:d}) -----"
+                f"----- TS = {stats.n_timesteps_total:d}({stats.n_timesteps_wasted:d}), "
+                f"NI = {stats.n_newton_total:d}({stats.n_newton_wasted:d}), "
+                f"LI = {stats.n_linear_total:d}({stats.n_linear_wasted:d}) -----"
             )
+
+        # At higher verbosity, print the timer breakdown at the end of every run()
+        # invocation (mirrors DartsModel.run(), which this override otherwise bypasses).
+        # Automatic prints go to the redirected darts log rather than stdout.
+        if verbose >= self.VERBOSE_TIMERS:
+            self.print_timers(to_log=True)
 
         return 0
 

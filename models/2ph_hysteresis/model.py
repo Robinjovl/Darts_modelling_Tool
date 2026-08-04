@@ -7,7 +7,8 @@ import numpy as np
 
 from darts.engines import value_vector
 from darts.models.cicd_model import CICDModel
-from darts.physics.base.physics_base import HistoryField, PhysicsBase
+from darts.nonlinear_solvers import NewtonSolver
+from darts.physics.base.physics import PhysicsBase, HistoryField
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import ConstantK
@@ -15,8 +16,8 @@ from darts.physics.properties.hysteresis import (
     KilloughCapillaryPressureTable,
     KilloughRelPermTable,
 )
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
 from dartsflash.components import CompData
 from dartsflash.libflash import AQEoS, CubicEoS, FlashParams
@@ -105,14 +106,13 @@ class Model(CICDModel):
             start_injection_h2o_days=self.start_injection_h2o_days,
             water_injection_rate=self.water_injection_rate,
         )
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=16)
         self.set_sim_params(
             first_ts=1e-4,
             mult_ts=1.5,
             max_ts=1.0,
             runtime=1000.0,
-            tol_newton=1e-3,
             tol_linear=1e-3,
-            it_newton=16,
             it_linear=20,
         )
         self.data_ts.eta[-1] = 0.05
@@ -273,9 +273,15 @@ class Model(CICDModel):
         phases = ["Aq", "V"]
         comp_data = CompData(components, setprops=True)
 
-        axes_min = [1.0, zero / 10.0]
-        axes_max = [500.0, 1.0 - zero / 10.0]
-        n_axes_points = [n_points, n_points]
+        if n_points < 2:
+            raise ValueError("n_points must be at least 2 to derive OBL axis steps")
+
+        pressure_origin = 1.0
+        pressure_step = (500.0 - pressure_origin) / (n_points - 1)
+        co2_origin = zero / 10.0
+        co2_step = (1.0 - zero / 10.0 - co2_origin) / (n_points - 1)
+        axes_origin = [pressure_origin, co2_origin]
+        axes_step = [pressure_step, co2_step]
         state_spec = (
             PhysicsBase.StateSpecification.PT
             if thermal
@@ -284,33 +290,34 @@ class Model(CICDModel):
         if thermal:
             temp_min = min(273.15, temperature, self.injection_temperature)
             temp_max = max(450.0, temperature, self.injection_temperature)
-            axes_min.append(temp_min)
-            axes_max.append(temp_max)
-            n_axes_points.append(max(3, int(temperature_points)))
+            temp_points = max(3, int(temperature_points))
+            axes_origin.append(temp_min)
+            axes_step.append((temp_max - temp_min) / (temp_points - 1))
 
         # sg_max history is only declared when hysteresis is enabled. Without it the OBL state
         # stays at the primary vars and the Killough evaluators fall back to pure drainage.
         history_fields = (
-            [HistoryField(label="sg_max", axis_min=0.0, axis_max=1.0, n_axis_points=n_points, default=0.0)]
+            [
+                HistoryField(
+                    label="sg_max",
+                    axes_origin=0.0,
+                    axes_step=1.0 / (n_points - 1),
+                    default=0.0,
+                )
+            ]
             if self.hys
             else []
         )
 
-        self.physics = Compositional(
+        self.physics = PhysicsBase(
             components,
             phases,
             self.timer,
-            n_points,
-            min_p=200,
-            max_p=300,
-            min_z=zero / 10.0,
-            max_z=1.0 - zero / 10.0,
+            axes_step=axes_step,
+            axes_origin=axes_origin,
             epsilon_z=zero / 10.0,
             state_spec=state_spec,
             cache=False,
-            axes_min=axes_min,
-            axes_max=axes_max,
-            n_axes_points=n_axes_points,
             history_fields=history_fields,
         )
 

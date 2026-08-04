@@ -2,11 +2,12 @@ import numpy as np
 
 from darts.models.cicd_model import CICDModel
 from darts.engines import sim_params, ms_well, value_vector
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
@@ -33,10 +34,11 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_newton=1e-3, tol_linear=1e-4,
-                            it_newton=10, it_linear=10,
-                            newton_type=sim_params.newton_local_chop,
-                            coupled_well_res_norm_method=2,
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
+                                           chop=ChopSpec(mode='local'),
+                                           coupled_well_res_norm_method=2)
+        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_linear=1e-4,
+                            it_linear=10,
                             runtime = 100 / 60 / 60 / 24,  # This runtime will be used when CI test is conducted without the main file
                             )
 
@@ -84,10 +86,12 @@ class Model(CICDModel):
         epsilon = self.zero / 10
 
         """ Define state specification and initialize physics object """
-        state_spec = Compositional.StateSpecification.P
-        self.physics = Compositional(components_names, phases_names, self.timer, state_spec=state_spec,
-                                     n_points=10000, min_p=1, max_p=500, min_z=0, max_z=1, epsilon_z=epsilon,
-                                     min_t=150, max_t=500)
+        state_spec = PhysicsBase.StateSpecification.P
+        # state_spec=P for 2-comp isothermal → axes [p, z]
+        self.physics = PhysicsBase(components_names, phases_names, self.timer, state_spec=state_spec,
+                                     axes_step=[0.05, 1e-4],  # p [bar], z
+                                     axes_origin=[1.0, epsilon],
+                                     epsilon_z=epsilon)
 
         """ PropertyContainer object and correlations """
         system_temperature = 25 + 273.15

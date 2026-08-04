@@ -101,6 +101,10 @@ public:
 		is_fickian_energy_transport_on = true;
 		newton_update_coefficient = 1.0;
 		n_solid = 0;
+		newton_chop_mode = sim_params::NEWTON_LOCAL_CHOP;
+		newton_chop_factor = 0.1;
+		log_transform = 0;
+		residual_norm_type = sim_params::L2;
 	};
 
 	~engine_base()
@@ -123,8 +127,10 @@ public:
 	// get the number of primary unknowns (per block)
 	virtual uint8_t get_n_vars() const = 0;
 
-	// get the number of operators (per block)
-	virtual uint8_t get_n_ops() const = 0;
+	// get the number of operators (per block) — widened to uint16_t: super-engine
+	// N_OPS up to 272 (273 for super-elastic) at NC=30 / NP=3 thermal exceeds uint8_t.
+	// Every override across CPU/GPU/elastic/mech engines must match this signature.
+	virtual uint16_t get_n_ops() const = 0;
 
 	// get the number of components
 	virtual uint8_t get_n_comps() const = 0;
@@ -148,7 +154,8 @@ public:
 
 	// Allocate / resize the history-aware scratch buffers used by build_Xop and project_xop_ders.
 	// No-op when no history variables are active.
-	void ensure_history_buffers(const index_t n_total, const uint8_t n_ops_)
+	// n_ops_ widened to uint16_t to receive super-engine N_OPS up to 273 without truncation.
+	void ensure_history_buffers(const index_t n_total, const uint16_t n_ops_)
 	{
 		const uint8_t n_history = get_n_history();
 		if (n_history == 0)
@@ -203,6 +210,23 @@ public:
 
 	virtual void apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX);
 
+	// Staged nonlinear-update kernels operating on the engine's own X/dX.
+	// Each guards its own applicability; the Python nonlinear solver composes
+	// them into the pre-update pipeline prescribed by the solver spec.
+	void correct_composition();
+	void correct_chop_global();
+	void correct_chop_local();
+	void correct_obl_axes();
+	/// @brief populate op_axis_min/op_axis_max (broadcast to every operator
+	/// region) from the per-variable bounds prescribed by the nonlinear solver
+	/// spec (OBLBoundsSpec.axis_min/axis_max; +/-inf entries leave an axis
+	/// unbounded) and run the per-axis clamp kernel
+	void correct_obl_axes(const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max);
+	void correct_thermal();
+	/// @brief plain Newton update X -= newton_update_coefficient * dX (resets the coefficient)
+	virtual int apply_update(value_t dt);
+
+	/// @brief legacy composite: correction pipeline selected by newton_chop_mode + apply_update
 	virtual int apply_newton_update(value_t dt);
 
 	// Here we make the same thing as inside interpolation, but during Newton update
@@ -211,7 +235,8 @@ public:
 
 	// output routines
 
-	virtual int print_timestep(value_t time, value_t deltat);
+	virtual int print_timestep(value_t time, value_t deltat, index_t n_newton, index_t n_linear,
+							   value_t newton_residual, value_t well_residual);
 
 	int print_header();
 
@@ -228,7 +253,9 @@ public:
 	/// @brief report for one newton iteration
 	virtual int assemble_linear_system(value_t deltat);
 	virtual int solve_linear_equation();
-	virtual int post_newtonloop(value_t deltat, value_t time);
+	/// @brief commit (converged) or roll back (failed) the timestep state;
+	/// the convergence decision is made by the Python nonlinear solver
+	virtual int post_newtonloop(value_t deltat, value_t time, index_t converged);
 
 	/// @brief reports complete information about well regimes
 	virtual int report();
@@ -348,9 +375,6 @@ public:
 	/// @brief simulation parameters
 	sim_params *params;
 
-	/// @brief simulation statistics
-	sim_stat stat;
-
 	/// @brief vector of wells
 	std::vector<ms_well *> wells;
 
@@ -386,7 +410,9 @@ public:
 	operator_set_gradient_evaluator_iface* thermal_var_etor;
 
 	uint8_t n_vars;
-	uint8_t n_ops;
+	// Widened to uint16_t: caches get_n_ops() up to 273 at NC=30 / NP=3 thermal. Used as
+	// stride into op_vals_arr / op_ders_arr; uint8_t would silently truncate to 16 mod 256.
+	uint16_t n_ops;
 	uint8_t nc;
 	uint8_t z_var_idx;
 	// number of mineral/solid species
@@ -439,12 +465,23 @@ public:
 
 	// statistics
 	value_t CFL_max; // maximum value of CFL for last Jacobian assebly
-	index_t n_newton_last_dt, n_linear_last_dt;
-	double newton_residual_last_dt;
-	double well_residual_last_dt;
-	int linear_solver_error_last_dt;
+
+	/// @brief linear iterations/residual of the last solve_linear_equation() call
+	/// (accumulated per timestep by the Python nonlinear solver)
+	index_t last_linear_iters;
+	value_t last_linear_residual;
+
+	index_t get_last_linear_iters() const { return last_linear_iters; }
+	value_t get_last_linear_residual() const { return last_linear_residual; }
 
 	value_t newton_update_coefficient; // Newton update coefficient for line search
+
+	// nonlinear update controls, owned by the Python nonlinear solver spec
+	// (darts.nonlinear_solvers) and synced before every timestep solve
+	index_t newton_chop_mode;   // sim_params::newton_solver_t: 0 = none, 1 = global chop, 2 = local chop
+	value_t newton_chop_factor; // max composition change per nonlinear update
+	index_t log_transform;      // 1 = log-transformed composition variables
+	index_t residual_norm_type; // sim_params::nonlinear_norm_t: 0 = L1, 1 = L2, 2 = LINF
 
 	timer_node *timer;
 	timer_node full_step_timer;
@@ -938,16 +975,12 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
 	mesh->n_vars = n_vars;
 
-	if (params->log_transform == 0)
-	{
-		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
-		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
-	}
-	else if (params->log_transform == 1)
-	{
-		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
-		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
-	}
+	// Composition is clipped to the physical simplex [0, 1] ± sim_eps. The adaptive
+	// interpolator cache grows on demand outside the prescribed OBL window, so the
+	// solver may freely explore state space; (min_axis_z, max_axis_z) now reflect
+	// only the physical bound, not the OBL grid.
+	min_axis_z = 0.0;
+	max_axis_z = 1.0;
 	min_sim_z = min_axis_z + params->sim_eps;
 	max_sim_z = max_axis_z - params->sim_eps;
 
@@ -982,7 +1015,6 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
 
-	stat = sim_stat();
 
 	print_header();
 
@@ -1023,7 +1055,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	}
 
 	Xn = X = X_init;
-	dt = params->first_ts;
+	dt = 0.0; // timestep sizing is owned by the Python driver
 	prev_usual_dt = dt;
 
 	// initialize arrays for every operator set
@@ -1031,18 +1063,14 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	op_axis_min.resize(acc_flux_op_set_list.size());
 	op_axis_max.resize(acc_flux_op_set_list.size());
 
-	// initialize arrays for every operator set
-
+	// op_axis_min/op_axis_max are intentionally left empty (default-constructed inner
+	// vectors with .size() == 0). The size() == 0 check in apply_newton_update gates
+	// apply_obl_axis_local_correction, so leaving these empty disables the per-axis
+	// clamp — Newton may freely explore state space and the adaptive cache grows on
+	// demand. The per-region block_idxs map below is still populated normally.
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
 		block_idxs[r].clear();
-		op_axis_min[r].resize(n_vars);
-		op_axis_max[r].resize(n_vars);
-		for (int j = 0; j < n_vars; j++)
-		{
-			op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-			op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-		}
 	}
 
 	// create a block list for every operator set

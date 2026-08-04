@@ -14,8 +14,8 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
     else:
         runtime = m.runtime
 
-    mult_dt = m.params.mult_ts
-    max_dt = m.params.max_ts
+    mult_dt = m.data_ts.dt_mult
+    max_dt = m.data_ts.dt_max
     m.e = m.physics.engine
 
     # get current engine time
@@ -23,11 +23,11 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
 
     # same logic as in engine.run
     if np.fabs(t) < 1e-15:
-        dt = m.params.first_ts
+        dt = m.data_ts.dt_first
     elif restart_dt > 0:
         dt = restart_dt
     else:
-        dt = m.params.max_ts
+        dt = m.data_ts.dt_max
 
     # evaluate end time
     runtime += t
@@ -47,12 +47,12 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
             m.reservoir.update_trans(dt, m.physics.engine.X)
             m.timer.node["update"].stop()
 
-        converged = run_timestep_python(m, dt, t)
+        converged = m.nonlinear_solver.run_timestep(dt, t)
         if converged:
             t += dt
             ts = ts + 1
             print("# %d \tT = %f\tDT = %f\tNI = %d\tLI=%d"
-                  % (ts, t, dt, m.e.n_newton_last_dt, m.e.n_linear_last_dt))
+                  % (ts, t, dt, m.nonlinear_solver.status.n_newton, m.nonlinear_solver.status.n_linear))
 
             # Use the configured multiplier for successful growth as well as
             # failed-step reduction instead of a separate hard-coded factor.
@@ -73,54 +73,10 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
         # save well data at every converged time step
         m.output.save_data_to_h5(kind="well")
 
-    print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (m.e.stat.n_timesteps_total, m.e.stat.n_timesteps_wasted,
-                                                     m.e.stat.n_newton_total, m.e.stat.n_newton_wasted,
-                                                     m.e.stat.n_linear_total, m.e.stat.n_linear_wasted))
-def run_timestep_python(m, dt, t):
-    self = m
-    max_newt = self.params.max_i_newton
-    self.e.n_linear_last_dt = 0
-    well_tolerance_coefficient = 1e2
-    self.timer.node['simulation'].start()
-    for i in range(max_newt + 1):
-        self.e.assemble_linear_system(dt)
-        res = self.e.calc_newton_dev()#self.e.calc_newton_residual()
-        self.e.dev_p = res[0]
-        self.e.dev_u = res[1]
-        dev_e = 0
-        if self.reservoir.thermoporoelasticity:
-            self.e.dev_e = res[2]
-            dev_e = res[2]
-
-        self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + dev_e ** 2)        #self.e.newton_residual_last_dt = self.e.calc_newton_residual()
-        self.e.well_residual_last_dt = self.e.calc_well_residual()
-        print(str(i) + ': ' + 'rp = ' + fmt_e(self.e.dev_p) + '\t' + 'ru = ' + fmt_e(self.e.dev_u) + '\t' + \
-                    're = ' + fmt_e(dev_e) + '\t' + 'rwell = ' + fmt_e(self.e.well_residual_last_dt) + '\t' + 'CFL = ' + fmt_e(self.e.CFL_max))
-
-        self.e.n_newton_last_dt = i
-        #  check tolerance if it converges
-        if ((self.e.dev_p < self.params.tolerance_newton and self.e.dev_u < self.params.tolerance_newton and dev_e < self.params.tolerance_newton
-           and self.e.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton )
-              or self.e.n_newton_last_dt == self.params.max_i_newton):
-            if (i > 0):  # min_i_newton
-                if i < max_newt:
-                    converged = 1
-                else:
-                    converged = 0
-                break
-
-        r_code = self.e.solve_linear_equation()
-        self.timer.node["newton update"].start()
-        self.e.apply_newton_update(dt)
-        self.timer.node["newton update"].stop()
-        if i < max_newt:
-            converged = 1
-
-    # End of newton loop
-    converged = self.e.post_newtonloop(dt, t, converged)
-    self.timer.node['simulation'].stop()
-    return converged
-
+    stats = m.nonlinear_solver.stats
+    print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (stats.n_timesteps_total, stats.n_timesteps_wasted,
+                                                     stats.n_newton_total, stats.n_newton_wasted,
+                                                     stats.n_linear_total, stats.n_linear_wasted))
 def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90., plot_vtk_timesteps=[],
         clear_output_dir=False, solver_type='fs_cpr'):
@@ -194,7 +150,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     m.reservoir.set_equilibrium(zero_conduction=True)
     m.physics.engine.find_equilibrium = True
     dt_init = 1.e+8 # days
-    m.params.first_ts = dt_init
+    m.data_ts.dt_first = dt_init
     run_python(m, dt_init, init_step=True)
     m.reinit(zero_conduction=True)
     m.physics.engine.find_equilibrium = False
@@ -202,12 +158,9 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     max_dt = report_step
     m.max_dt = max_dt
-    m.params.max_ts = max_dt
-    # Ramp from a small transient step to the report-time ceiling.
-    first_ts = min(transient_first_ts, report_step)
-    m.params.first_ts = first_ts
-    print(f'Transient timesteps: first={first_ts:g} days, multiplier={m.params.mult_ts:g}, '
-          f'max/report={max_dt:g} days')
+    m.data_ts.dt_max = max_dt
+    first_ts = report_step
+    m.data_ts.dt_first = first_ts
     m.set_boundary_conditions_after_initialization()
 
     if m.decouple_geomech:
