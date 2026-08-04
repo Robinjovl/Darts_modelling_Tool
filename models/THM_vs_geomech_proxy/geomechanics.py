@@ -79,6 +79,43 @@ class geomech():
         from _proxygeomech import set_platform
         set_platform(platform)
 
+    def set_adaptive_sources(self, prisms, quadrature_prisms, cell_sizes,
+                             delta_pressure, delta_temperature, near_factor=2.5):
+        from _proxygeomech import value_vector
+
+        def native_array(values):
+            values = np.asarray(values)
+            return values.astype(values.dtype.newbyteorder('='), copy=False)
+
+        self._adaptive_prisms = value_vector(native_array(prisms).ravel())
+        self._adaptive_quadrature_prisms = value_vector(
+            native_array(quadrature_prisms).ravel()
+        )
+        self._adaptive_cell_sizes = value_vector(native_array(cell_sizes))
+        self._adaptive_pressure = value_vector(native_array(delta_pressure))
+        self._adaptive_temperature = value_vector(native_array(delta_temperature))
+        self.adaptive_near_factor = near_factor
+
+    def calc_displacements_adaptive_cpp(self, points):
+        from _proxygeomech import compute_geomech_adaptive
+        from _proxygeomech import value_vector
+
+        vector_points = value_vector(points.transpose().flatten())
+        result = compute_geomech_adaptive(
+            vector_points, self._adaptive_prisms,
+            self._adaptive_quadrature_prisms, self._adaptive_cell_sizes,
+            self._adaptive_pressure, self.poisson, self.young,
+            self._adaptive_temperature, self.thermal_expansion,
+            self.adaptive_near_factor,
+        )
+        ux_p = np.array(result['ux_p'], copy=True) * self.biot
+        uy_p = np.array(result['uy_p'], copy=True) * self.biot
+        uz_p = np.array(result['uz_p'], copy=True) * self.biot
+        ux_t = np.array(result['ux_t'], copy=True)
+        uy_t = np.array(result['uy_t'], copy=True)
+        uz_t = np.array(result['uz_t'], copy=True)
+        return ux_p, uy_p, uz_p, ux_t, uy_t, uz_t
+
     def calc_displacements(self, points, prisms, delta_pressure, delta_temperature):
         '''
         arg: points: points where to compute
@@ -330,6 +367,80 @@ class geomech():
         return stress_p, strain_p, stress_total_p, \
                stress_t, strain_t, stress_total_t, \
                stress_pt, strain_pt, stress_total_pt
+
+    def calc_strain_stress_adaptive_cpp(self, fault_surface, delta_pressure,
+                                        delta_temperature, step=1.0):
+        from _proxygeomech import compute_geomech_adaptive_gradient
+        from _proxygeomech import value_vector
+
+        vector_points = value_vector(fault_surface.transpose().flatten())
+        result = compute_geomech_adaptive_gradient(
+            vector_points, self._adaptive_prisms,
+            self._adaptive_quadrature_prisms, self._adaptive_cell_sizes,
+            self._adaptive_pressure, self.poisson, self.young,
+            self._adaptive_temperature, self.thermal_expansion,
+            self.adaptive_near_factor, step,
+        )
+
+        derivatives = []
+        for field in ('p', 't'):
+            multiplier = self.biot if field == 'p' else 1.0
+            derivatives.append({
+                name: np.array(result[f'{name}_{field}'], copy=True) * multiplier
+                for name in (
+                    'dux_dx', 'dux_dy', 'dux_dz',
+                    'duy_dx', 'duy_dy', 'duy_dz',
+                    'duz_dx', 'duz_dy', 'duz_dz',
+                )
+            })
+        derivatives.append({
+            name: derivatives[0][name] + derivatives[1][name]
+            for name in derivatives[0]
+        })
+
+        n_points = fault_surface.shape[1]
+        kronecker = np.array(n_points * [1, 1, 1, 0, 0, 0]).reshape(
+            n_points, 6
+        ).transpose()
+        delta_temperature_points = gd(
+            (self.centroids[:, 1], self.centroids[:, 0], self.centroids[:, 2]),
+            delta_temperature,
+            (fault_surface[1, :], fault_surface[0, :], fault_surface[2, :]),
+            method='nearest', fill_value=0.,
+        )
+        delta_pressure_points = gd(
+            (self.centroids[:, 1], self.centroids[:, 0], self.centroids[:, 2]),
+            delta_pressure,
+            (fault_surface[1, :], fault_surface[0, :], fault_surface[2, :]),
+            method='nearest', fill_value=0.,
+        )
+
+        output = []
+        for field_index, gradient in enumerate(derivatives):
+            strain = np.vstack([
+                gradient['dux_dx'], gradient['duy_dy'], gradient['duz_dz'],
+                0.5 * (gradient['duy_dz'] + gradient['duz_dy']),
+                0.5 * (gradient['dux_dz'] + gradient['duz_dx']),
+                0.5 * (gradient['dux_dy'] + gradient['duy_dx']),
+            ])
+            volumetric_strain = -(
+                gradient['dux_dx'] + gradient['duy_dy'] + gradient['duz_dz']
+            )
+            stress = self.young * (
+                -strain + self.poisson / (1 - 2 * self.poisson)
+                * volumetric_strain * kronecker
+            ) / (1 + self.poisson)
+            if field_index in (1, 2):
+                stress += (
+                    self.young * self.thermal_expansion
+                    * delta_temperature_points / (1 - 2 * self.poisson) * kronecker
+                )
+            stress_total = stress.copy()
+            if field_index in (0, 2):
+                stress_total += self.biot * delta_pressure_points
+            output.extend((stress, strain, stress_total))
+
+        return tuple(output)
 
     def get_stress_on_fault(self, stress_tensor, fault):
         stress_n = stress_tensor @ fault.normal @ fault.normal

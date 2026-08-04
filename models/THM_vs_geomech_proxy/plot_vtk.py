@@ -11,6 +11,197 @@ import numpy as np
 if pv is not None:
     pv.global_theme.jupyter_backend = 'static' # do not print Widget(...) output messages - they appear in case of pyvista[jupyter] is installed
 
+
+# Standard open-DARTS field names.  Callers can pass field_map when a proxy
+# writer uses different names, while this default keeps the common case terse.
+DEFAULT_GEOMECH_FIELD_MAP = {
+    'displacement_x': ('ux', 'ux'),
+    'displacement_y': ('uy', 'uy'),
+    'displacement_z': ('uz', 'uz'),
+    'strain': ('strain', 'strain'),
+    'effective_stress_change': ('delta_eff_stress', 'delta_eff_stress'),
+    'total_stress_change': ('delta_tot_stress', 'delta_tot_stress'),
+}
+
+
+def _first_vtk_dataset(mesh, filename):
+    """
+    Return the first non-empty dataset from a VTK file.
+
+    :param mesh: Dataset or multiblock object returned by PyVista.
+    :param filename: Input filename, used in error messages.
+    :return: A PyVista dataset.
+    :rtype: pyvista.DataSet
+    """
+    if not isinstance(mesh, pv.MultiBlock):
+        return mesh
+    for block in mesh:
+        if block is not None and block.n_points:
+            return block
+    raise ValueError(f'No non-empty dataset found in {filename!r}')
+
+
+def _same_vtk_geometry(first, second):
+    """
+    Test whether two datasets use the same points and number of cells.
+
+    :param first: First PyVista dataset.
+    :param second: Second PyVista dataset.
+    :return: True when values can be compared without interpolation.
+    :rtype: bool
+    """
+    return (
+        first.n_points == second.n_points
+        and first.n_cells == second.n_cells
+        and np.allclose(first.points, second.points, rtol=0.0, atol=1.e-10)
+    )
+
+
+def _sample_proxy_array(proxy, thm, proxy_name, association, same_geometry):
+    """
+    Evaluate one proxy array at THM points or cell centres.
+
+    :param proxy: Proxy PyVista dataset.
+    :param thm: THM PyVista dataset defining the comparison geometry.
+    :param proxy_name: Name of the proxy array.
+    :param association: THM association, either ``cell`` or ``point``.
+    :param same_geometry: Whether both datasets have identical geometry.
+    :return: Proxy values aligned with the requested THM association.
+    :rtype: numpy.ndarray
+    """
+    if proxy_name not in proxy.cell_data and proxy_name not in proxy.point_data:
+        raise KeyError(f'Proxy array {proxy_name!r} was not found')
+    if same_geometry:
+        # Preserve piecewise-constant cell values when possible. Converting
+        # them to point data would otherwise smooth material discontinuities.
+        if association == 'cell' and proxy_name in proxy.cell_data:
+            return np.asarray(proxy.cell_data[proxy_name])
+        if association == 'point' and proxy_name in proxy.point_data:
+            return np.asarray(proxy.point_data[proxy_name])
+
+    source = proxy
+    if proxy_name in proxy.cell_data:
+        # VTK samples point data, so interpolation is needed only when the
+        # association or geometry prevents a direct array comparison.
+        source = proxy.cell_data_to_point_data(pass_cell_data=False)
+    locations = thm.cell_centers() if association == 'cell' else pv.PolyData(thm.points)
+    sampled = locations.sample(source)
+    if proxy_name not in sampled.point_data:
+        raise RuntimeError(f'PyVista could not sample proxy array {proxy_name!r}')
+    values = np.asarray(sampled.point_data[proxy_name], dtype=float)
+    valid = np.asarray(sampled.point_data.get(
+        'vtkValidPointMask', np.ones(values.shape[0], dtype=np.uint8)
+    )).astype(bool)
+    if not np.all(valid):
+        # Do not report out-of-domain samples as zero-valued proxy results.
+        values = values.copy()
+        values[~valid] = np.nan
+    return values
+
+
+def compare_geomech_vtk_solutions(
+        proxy_filename, thm_filename, output_filename, field_map=None,
+        relative_tolerance=1.e-12):
+    """
+    Write a 3-D, field-by-field comparison of proxy and THM VTK solutions.
+
+    The output retains the THM mesh. For every requested parameter it stores
+    ``*_proxy``, ``*_thm``, ``*_difference`` (THM minus proxy), and
+    ``*_relative_difference_percent``. Arrays are compared directly when the
+    meshes coincide; otherwise proxy data are sampled at THM points or cell
+    centres. Both inputs must use the same physical units.
+
+    :param proxy_filename: Proxy ``.vtk`` or ``.vtu`` filename.
+    :param thm_filename: THM ``.vtk`` or ``.vtu`` filename.
+    :param output_filename: Comparison output ``.vtk`` or ``.vtu`` filename.
+    :param field_map: Mapping ``output_name -> (proxy_name, thm_name)``. Missing
+        fields in the default mapping are skipped; explicitly requested missing
+        fields raise ``KeyError``.
+    :param relative_tolerance: THM magnitude below which relative differences
+        are stored as NaN.
+    :return: Per-field absolute and relative error statistics.
+    :rtype: dict
+    """
+    if pv is None:
+        raise ImportError('PyVista is required to compare VTK solutions')
+    proxy = _first_vtk_dataset(pv.read(proxy_filename), proxy_filename)
+    thm = _first_vtk_dataset(pv.read(thm_filename), thm_filename)
+    output = thm.copy(deep=True)
+    # The comparison file remains directly usable by existing THM plotting
+    # tools because it retains the THM topology and all original THM arrays.
+    same_geometry = _same_vtk_geometry(proxy, thm)
+    fields = DEFAULT_GEOMECH_FIELD_MAP if field_map is None else field_map
+    skip_missing = field_map is None
+    statistics = {}
+
+    for output_name, (proxy_name, thm_name) in fields.items():
+        if thm_name in thm.cell_data:
+            association = 'cell'
+            thm_values = np.asarray(thm.cell_data[thm_name], dtype=float)
+            output_data = output.cell_data
+        elif thm_name in thm.point_data:
+            association = 'point'
+            thm_values = np.asarray(thm.point_data[thm_name], dtype=float)
+            output_data = output.point_data
+        elif skip_missing:
+            print(f'Skipping {output_name}: THM array {thm_name!r} not found')
+            continue
+        else:
+            raise KeyError(f'THM array {thm_name!r} was not found')
+
+        try:
+            proxy_values = _sample_proxy_array(
+                proxy, thm, proxy_name, association, same_geometry
+            )
+        except KeyError:
+            if skip_missing:
+                print(f'Skipping {output_name}: proxy array {proxy_name!r} not found')
+                continue
+            raise
+        if proxy_values.shape != thm_values.shape:
+            raise ValueError(
+                f'Shape mismatch for {output_name!r}: proxy '
+                f'{proxy_values.shape}, THM {thm_values.shape}'
+            )
+
+        # Match the sign convention used by the existing 1-D and 2-D reports.
+        difference = thm_values - proxy_values
+        denominator = np.abs(thm_values)
+        relative = np.full(difference.shape, np.nan, dtype=float)
+        # Relative errors around a zero THM reference are undefined; keeping
+        # them as NaN prevents misleading extreme percentages in ParaView.
+        np.divide(
+            difference * 100.0, denominator, out=relative,
+            where=denominator > relative_tolerance,
+        )
+        output_data[f'{output_name}_proxy'] = proxy_values
+        output_data[f'{output_name}_thm'] = thm_values
+        output_data[f'{output_name}_difference'] = difference
+        output_data[f'{output_name}_relative_difference_percent'] = relative
+
+        finite_difference = np.abs(difference[np.isfinite(difference)])
+        finite_relative = np.abs(relative[np.isfinite(relative)])
+        statistics[output_name] = {
+            'max_absolute_difference': (
+                float(finite_difference.max()) if finite_difference.size else np.nan
+            ),
+            'mean_absolute_difference': (
+                float(finite_difference.mean()) if finite_difference.size else np.nan
+            ),
+            'max_relative_difference_percent': (
+                float(finite_relative.max()) if finite_relative.size else np.nan
+            ),
+            'mean_relative_difference_percent': (
+                float(finite_relative.mean()) if finite_relative.size else np.nan
+            ),
+        }
+
+    if not statistics:
+        raise ValueError('No common geomechanical arrays were found to compare')
+    output.save(output_filename)
+    print(f'Saved 3-D proxy/THM comparison to {output_filename}')
+    return statistics
+
 def plot_slice_matplotlib(slice_plane, arr_name, tensor, component_index, scale,
                           arr_name_plot, contour, rsv_top, rsv_bottom,
                           well_markers, plot_points_xy,

@@ -54,7 +54,9 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
             print("# %d \tT = %f\tDT = %f\tNI = %d\tLI=%d"
                   % (ts, t, dt, m.e.n_newton_last_dt, m.e.n_linear_last_dt))
 
-            dt *= 1.5
+            # Use the configured multiplier for successful growth as well as
+            # failed-step reduction instead of a separate hard-coded factor.
+            dt *= mult_dt
             if dt > max_dt:
                 dt = max_dt
 
@@ -181,6 +183,10 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     m.has_dfm_well = any(well.ms_type == ms_well.MS_Type.DFM for well in m.reservoir.wells)
     m.set_output(output_folder=m.output_directory, all_phase_props=True, save_initial=False)
 
+    # Preserve the transient first timestep while equilibrium initialization
+    # temporarily replaces it with its intentionally very large timestep.
+    transient_first_ts = m.params.first_ts
+
     # For geomechanics equilibrium intialization, we initially run the simulation for a long time
     # to get the equilibrium, then store that initial displacements internally.
     # Further-timestep displacements will be relative to the initial ones.
@@ -197,8 +203,11 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     max_dt = report_step
     m.max_dt = max_dt
     m.params.max_ts = max_dt
-    first_ts = report_step
+    # Ramp from a small transient step to the report-time ceiling.
+    first_ts = min(transient_first_ts, report_step)
     m.params.first_ts = first_ts
+    print(f'Transient timesteps: first={first_ts:g} days, multiplier={m.params.mult_ts:g}, '
+          f'max/report={max_dt:g} days')
     m.set_boundary_conditions_after_initialization()
 
     if m.decouple_geomech:

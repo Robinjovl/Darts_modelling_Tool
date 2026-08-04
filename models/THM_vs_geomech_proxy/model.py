@@ -98,8 +98,9 @@ class Model(THMCModel):
         else:
             raise ValueError(f"Unknown solver_type: {self.solver_type!r}, "
                               f"expected 'superlu', 'fs_cpr' or 'by_env_var'")
-        self.params.first_ts = 0.0001
-        self.params.mult_ts = 2
+        # Start thermal transients conservatively, then grow/cut by a factor 8.
+        self.params.first_ts = 0.01
+        self.params.mult_ts = 8
         self.params.max_ts = 5
         self.params.tolerance_newton = 1e-6
         self.params.tolerance_linear = 1e-8

@@ -17,7 +17,7 @@ def input_data_case_5():
     idata.other.rsv_top = 2830.0    # [m]
     idata.other.rsv_bottom = 3030.0  # [m]
     idata.other.rsv_xy = 10000. # 4500.0      # [m]
-
+    idata.other.well_rate_m3_day = 8000
     # well placement (overrides defaults: doublet_shift=500, cell_shift=0)
     idata.other.doublet_shift = 500.0  # [m]
     #idata.other.cell_shift = 500.0     # [m]
@@ -42,6 +42,9 @@ def input_data_case_5():
 
     idata.other.points_xy = []  # no black reference line for case_1
     idata.other.use_mesh_bounds_in_plot = True
+    # Plot proxy/THM slices over the complete physical mesh domain.  Other
+    # cases retain the historical reservoir-focused slice bounds.
+    idata.other.proxy_plot_use_mesh_bounds = True
 
     idata.other.set_props_by_tags = True
 
