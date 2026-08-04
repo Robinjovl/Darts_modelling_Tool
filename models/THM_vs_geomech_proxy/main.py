@@ -141,7 +141,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     # Preserve the transient first timestep while equilibrium initialization
     # temporarily replaces it with its intentionally very large timestep.
-    transient_first_ts = m.params.first_ts
+    transient_first_ts = m.data_ts.dt_first
 
     # For geomechanics equilibrium intialization, we initially run the simulation for a long time
     # to get the equilibrium, then store that initial displacements internally.
@@ -159,8 +159,11 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     max_dt = report_step
     m.max_dt = max_dt
     m.data_ts.dt_max = max_dt
-    first_ts = report_step
+    # Ramp from a small transient step to the report-time ceiling.
+    first_ts = min(transient_first_ts, report_step)
     m.data_ts.dt_first = first_ts
+    print(f'Transient timesteps: first={first_ts:g} days, multiplier={m.data_ts.dt_mult:g}, '
+          f'max/report={max_dt:g} days')
     m.set_boundary_conditions_after_initialization()
 
     if m.decouple_geomech:

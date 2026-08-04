@@ -16,6 +16,7 @@ from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.engines import value_vector, sim_params
 from darts.tools.keyword_file_tools import load_single_keyword
 from darts.physics.base.initialize import Initialize
+from darts.physics.properties.viscosity import MaoDuan2009
 
 from reservoir import UnstructReservoirCustom
 
@@ -88,8 +89,9 @@ class Model(THMCModel):
         self.params.linear_type = sim_params.cpu_gmres_fs_cpr
         #self.params.linear_type = sim_params.cpu_superlu
         self.set_solver()
-        self.data_ts.dt_first = 0.0001
-        self.data_ts.dt_mult = 2
+        # Start thermal transients conservatively, then grow/cut by a factor 8.
+        self.data_ts.dt_first = 0.01
+        self.data_ts.dt_mult = 8
         self.data_ts.dt_max = 5
         self.nonlinear_solver.spec.tolerance = 1e-6
         self.params.tolerance_linear = 1e-8
