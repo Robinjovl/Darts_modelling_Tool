@@ -201,14 +201,14 @@ def _set_mesh_tags(idata):
 
 
 def _set_obl(idata):
-    idata.obl.n_points = 400
+    n_points = 400
     idata.obl.zero = 1e-9
-    idata.obl.min_p = 0.0
-    idata.obl.max_p = 1000.0
-    idata.obl.min_t = -50.0
-    idata.obl.max_t = 50.0
-    idata.obl.min_z = idata.obl.zero
-    idata.obl.max_z = 1 - idata.obl.zero
+    idata.obl.p_step = (1000.0 - 0.0) / (n_points - 1)
+    idata.obl.p_origin = 0.0
+    idata.obl.t_step = (50.0 - (-50.0)) / (n_points - 1)
+    idata.obl.t_origin = -50.0
+    idata.obl.z_step = (1.0 - 2.0 * idata.obl.zero) / (n_points - 1)
+    idata.obl.z_origin = idata.obl.zero
     idata.obl.epsilon_z = 1e-10
 
 
