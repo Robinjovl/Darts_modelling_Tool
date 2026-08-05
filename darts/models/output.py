@@ -1321,7 +1321,11 @@ class Output:
                     else self.physics.property_itor
                 )
                 for region, prop_itor in prop_itor_dict.items():
-                    block_idx = np.where(self.op_num == region)[0].astype(np.int32)
+                    # op_num also contains well blocks, while the state and output
+                    # buffers passed here contain reservoir blocks only.
+                    block_idx = np.where(self.op_num[:nb] == region)[0].astype(
+                        np.int32
+                    )
                     prop_itor.evaluate_with_derivatives(
                         state, index_vector(block_idx), values, dvalues
                     )

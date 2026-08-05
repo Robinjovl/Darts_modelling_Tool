@@ -7,6 +7,7 @@ from darts.engines import (
     linear_solver_params,
     mech_operators,
     sim_params,
+    timer_node
 )
 from darts.models.darts_model import DartsModel
 from darts.physics.base.property_container import PropertyContainer
