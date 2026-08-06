@@ -168,6 +168,7 @@ class EoSPhysics(PhysicsBase):
 
         :param region: Key of property region in PropertyContainers, defaults to 0
         """
+        region = region if region is not None else 0
         return self.flash_evs[region]
 
     def get_density_ev_from_flash(self, phase_idx: int, region: int = None):
