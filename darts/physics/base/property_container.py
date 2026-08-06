@@ -248,7 +248,11 @@ class PropertyContainer:
     def compute_saturation(self, ph):
         # Get saturations [volume fraction]
         vol = [self.nu[j] / self.dens_m[j] for j in ph]
-        self.sat[ph] = vol / np.sum(vol)
+        try:
+            self.sat[ph] = vol / np.sum(vol)
+        except: 
+            print('failed flash')
+            print(pressure, state_spec_2, zc)
 
         return
 
@@ -348,6 +352,8 @@ class PropertyContainer:
         """
         # Composition vector and pressure from state:
         pressure, state_spec_2, zc = self.get_state(state)
+        
+        # print(pressure, state_spec_2, zc)
 
         self.clean_arrays()
 
