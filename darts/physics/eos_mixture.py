@@ -1,7 +1,4 @@
-import warnings
-
-from dartsflash.components import CompData
-from dartsflash.mixtures import Mixture
+from dartsflash.mixtures import DARTSFlash, Mixture
 
 from darts.physics.base.physics import (
     HistoryField,
@@ -11,63 +8,64 @@ from darts.physics.base.physics import (
 )
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy, EoSFugacity
 
+# Which DARTSFlash.FlashType(s) a given PhysicsBase.StateSpecification may be paired with.
+# P/PT are both PT-based (isothermal P uses a fixed T at evaluate() time)
+# PH/PS each require the matching PXFlash flash type
+_EXPECTED_FLASH_TYPES = {
+    PhysicsBase.StateSpecification.P: (
+        DARTSFlash.FlashType.PTFlash,
+        DARTSFlash.FlashType.NegativeFlash,
+    ),
+    PhysicsBase.StateSpecification.PT: (
+        DARTSFlash.FlashType.PTFlash,
+        DARTSFlash.FlashType.NegativeFlash,
+    ),
+    PhysicsBase.StateSpecification.PH: (DARTSFlash.FlashType.PHFlash,),
+    PhysicsBase.StateSpecification.PS: (DARTSFlash.FlashType.PSFlash,),
+}
 
-class EoSMixture(PhysicsBase, Mixture):
+
+class EoSPhysics(PhysicsBase):
     """
     Implementation of EoS-based Physics
-    - Multiple inheritance of PhysicsBase and DARTS-flash Mixture classes
+    - Inherited from PhysicsBase only; constructor signature matches PhysicsBase exactly
+    - Composes a DARTS-flash Mixture instance, attached separately via :meth:`set_mixture`
+    - Checks physics consistency with EoS and flash definition (components, phases, state specification)
 
-    Mixture-specific (see dartsflash.mixtures.Mixture class for description)
-    - set_*_eos() methods wrap EoS definition
-        - set_vl_eos(): Set V/L phases EoS object (e.g., PR, SRK, CPA, ...)
-        - set_aq_eos(): Set aqueous phase EoS object
-        - set_ice_eos(): Set ice phase EoS object
-        - set_salt_eos(): Set salt phase EoS object (NaCl, CaCl2, KCl)
-        - set_h_eos(): Set hydrate phase EoS object (sI, sII, sH)
-    - init_*flash() method calls Mixture.init_*flash() method to initialize Flash object (ptflash, pxflash, negativeflash)
+    Usage:
+        physics = EoSPhysics(components, phases, timer, axes_step, ...)  # same args as PhysicsBase
+        mixture = Mixture(comp_data=comp_data)
+        mixture.set_vl_eos(...); mixture.set_aq_eos(...); ...
+        mixture.init_*flash(eos_order=[...])                            # init_ptflash/init_pxflash/init_negativeflash
+        physics.set_mixture(mixture)                                    # checks components immediately
+        physics.init_physics(...)                                       # checks phases/correlations
     """
 
     def __init__(
         self,
+        components: list,
         phases: list,
         timer: timer_node,
         axes_step: list[float],
         axes_origin: list[float] = None,
-        comp_data: CompData = None,
-        components: list = None,
-        salt_components: list = None,
         epsilon_z: float = 1e-9,
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
         history_fields: Iterable[HistoryField] | None = None,
-        mixture_name: str = None,
     ):
         """
-        Constructor initializes both PhysicsBase and Mixture parts
+        Constructor initializes PhysicsBase only.
+        Attach a Mixture separately via :meth:`set_mixture` once it has been built
+        (components must match ``components`` here).
 
-        :param phases:
-
+        :param phases: List of phase labels, expected in flash output order (see
+            ``self.flash_evs[region].flash_params.eos_order`` and per-EoS ``root_order``)
         """
-        # If no CompData object has been provided, create instance from list of components
-        if comp_data is None:
-            assert components is not None, (
-                "Neither CompData object nor components list are provided"
-            )
-            comp_data = CompData(
-                components=components, salt_components=salt_components, setprops=True
-            )
-        elif components is not None:
-            warnings.warn(
-                "CompData AND components provided, continuing simulation with CompData",
-                stacklevel=2,
-            )
-
-        # Call PhysicsBase constructor
         PhysicsBase.__init__(
             self,
-            components=comp_data.components,
+            components=components,
             phases=phases,
             timer=timer,
             axes_step=axes_step,
@@ -80,12 +78,49 @@ class EoSMixture(PhysicsBase, Mixture):
             history_fields=history_fields,
         )
 
-        # Call Mixture constructor
-        Mixture.__init__(
-            self,
-            comp_data=comp_data,
-            mixture_name=mixture_name,
+        self.flash_evs: dict[str | int | None, Mixture] = {}
+
+    def set_mixture(
+        self, mixture: Mixture, phases_to_eos: dict[tuple] = None, region: int = None
+    ) -> None:
+        """
+        Attach a DARTS-flash Mixture instance to this physics object as ``self.flash_evs[region]``.
+
+        Checks that:
+        - Mixture components + salts match the Physics.components
+        - TODO:
+        - Mixture.FlashType is compatible with Physics.StateSpecification
+
+        :param mixture: Configured Mixture instance
+        :param phases_to_eos: Dictionary of phase labels to phase types, default is None which throws warning
+        :param region: Key of property region in PropertyContainers, defaults to 0
+        """
+        assert isinstance(mixture, Mixture), (
+            "Provide an object of type dartsflash.Mixture"
         )
+
+        # Assert that the physics' component list matches the composed Mixture's ``comp_data``.
+        assert list(self.components) == list(mixture.comp_data.species_with_salts), (
+            f"Physics components {self.components} do not match mixture.comp_data.species_with_salts "
+            f"{mixture.comp_data.species_with_salts}"
+        )
+
+        # Assert that the physics' StateSpecification is compatible with the mixture's FlashType
+        # P/PT expect a PT-based flash (PTFlash/NegativeFlash with ``init_ptflash()``/``init_negativeflash()``)
+        # PH expects a PH-flash (PHFlash with ``init_pxflash(flash_type=DARTSFlash.FlashType.PHFlash)``)
+        # PS expects a PS-flash (PSFlash with ``init_pxflash(flash_type=DARTSFlash.FlashType.PSFlash)``)
+        # Mismatches here mean the flash is being asked for state variables the physics never provides
+        expected = _EXPECTED_FLASH_TYPES.get(self.state_spec)
+        assert expected is not None, f"Unknown state_spec {self.state_spec!r}"
+        assert mixture.flash_type in expected, (
+            f"Physics state_spec is {self.state_spec.name}, but mixture.flash_type is "
+            f"{mixture.flash_type.name} - call the matching mixture.init_*flash() method "
+            f"({'/'.join(t.name for t in expected)} expected)"
+        )
+
+        # Assign flash evaluator to region
+        region = region if region is not None else 0
+        self.flash_evs[region if region is not None else 0] = mixture
 
     def init_physics(
         self,
@@ -101,10 +136,20 @@ class EoSMixture(PhysicsBase, Mixture):
         n_workers: int | None = None,
         evaluator_factory_hook=None,
         verbose_evaluators: bool = False,
+        label_map: dict[str, str] | None = None,
     ):
         """
-        Initialize physics and check consistency of flash definition: do the phase types correspond to EoS objects?
+        Initialize physics, then check consistency between the physics phase definition and each
+        attached Mixture's flash definition (eos_order, phase types, state specification).
+
+        :param label_map: Optional strict mapping from ``"<eos_name>:<RootFlag>"`` (e.g.
+            ``"VL:MAX"``) to the expected phase label (e.g. ``"V"``), checked as a hard
+            assertion. Omit to fall back to best-effort heuristic warnings.
         """
+        assert len(self.flash_evs) > 0, (
+            "No Mixture attached - call set_mixture() before init_physics()"
+        )
+
         # Call PhysicsBase.init_physics() logic
         PhysicsBase.init_physics(
             self,
@@ -122,48 +167,41 @@ class EoSMixture(PhysicsBase, Mixture):
             verbose_evaluators=verbose_evaluators,
         )
 
-        # Check that phases argument is consistent with flash definition
-        assert len(self.nph) == self.flash_params.np_max, (
-            "More phases are specified in self.phases than in FlashParams"
-        )
-
-        # TODO: check that phase labels correspond to phase types specified in flash setup
-        # for phase in self.phases:
-
     def get_flash_ev(self, region: int = None):
         """
-        This class serves as flash_ev object for PropertyContainer objects: return self
+        This class serves as flash_ev provider for PropertyContainer objects: return the
+        composed Mixture instance
 
-        - TODO: In a future version, we may have different flash definitions among regions
-            -> return flash instance associated to specific region
-
-        :param region: Key of property region in PropertyContainers
+        :param region: Key of property region in PropertyContainers, defaults to 0
         """
-        return self
+        return self.flash_evs[region]
 
-    def get_density_from_flash(
-        self,
-        phase_idx: int,
-    ):
+    def get_density_ev_from_flash(self, phase_idx: int, region: int = None):
         """
         Get EoSDensity object that evaluates phase mass density for specified phase from FlashResults
 
         :param phase_idx: Phase index in flash output
+        :param region: Key of property region in PropertyContainers, defaults to 0
         """
-        return EoSDensity(flash_ev=self, phase_idx=phase_idx)
+        region = region if region is not None else 0
+        return EoSDensity(flash_ev=self.flash_evs[region], phase_idx=phase_idx)
 
-    def get_enthalpy_from_flash(self, phase_idx: int):
+    def get_enthalpy_ev_from_flash(self, phase_idx: int, region: int = None):
         """
         Get EoSEnthalpy object that evaluates phase enthalpy for specified phase from FlashResults
 
         :param phase_idx: Phase index in flash output
+        :param region: Key of property region in PropertyContainers, defaults to 0
         """
-        return EoSEnthalpy(flash_ev=self, phase_idx=phase_idx)
+        region = region if region is not None else 0
+        return EoSEnthalpy(flash_ev=self.flash_evs[region], phase_idx=phase_idx)
 
-    def get_fugacity_from_flash(self, phase_idx: int):
+    def get_fugacity_ev_from_flash(self, phase_idx: int, region: int = None):
         """
         Get EoSFugacity object that evaluates component fugacities for specified phase from FlashResults
 
         :param phase_idx: Phase index in flash output
+        :param region: Key of property region in PropertyContainers, defaults to 0
         """
-        return EoSFugacity(flash_ev=self, phase_idx=phase_idx)
+        region = region if region is not None else 0
+        return EoSFugacity(flash_ev=self.flash_evs[region], phase_idx=phase_idx)
