@@ -213,48 +213,60 @@ class Model(DartsModel):
 
     def set_vl_physics(self, components):
         from darts.physics.base.physics import PhysicsBase
-        from dartsflash.mixtures import DARTSFlash, CompData, EoS, VL
+        from darts.physics.eos_physics import EoSPhysics
+        from dartsflash.mixtures import DARTSFlash, Mixture, CompData, EoS
 
         from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
         from darts.physics.properties.viscosity import Fenghour1998
         """Physical properties"""
         # Create property containers:
+        comp_data = CompData(components=components, setprops=True)
         phases = ['V', 'L']
         nc = len(components)
         zero = 1e-12
 
-        comp_data = CompData(components=components, setprops=True)
-
-        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw, eps_z=zero)
-
-        """ properties correlations """
+        """ Create instance of EoSPhysics """
         pt = False
-        flash_ev = VL(comp_data)
-        flash_ev.set_vl_eos("PR")
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash)
-        property_container.flash_ev = flash_ev
-        property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["VL"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
-                                              ('L', EoSDensity(eos=flash_ev.eos["VL"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN))])
-        property_container.viscosity_ev = dict([('V', Fenghour1998()),
-                                                ('L', Fenghour1998())])
-        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MAX)),
-                                               ('L', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MIN))])
-        property_container.rel_perm_ev = dict([('V', PhaseRelPerm("gas", swc=0.2)),
-                                               ('L', PhaseRelPerm("oil", swc=0.2))])
-        property_container.conductivity_ev = dict([('V', ConstFunc(10.)),
-                                                   ('L', ConstFunc(180.)), ])
-
-
-        """ Activate physics """
         state_spec = PhysicsBase.StateSpecification.PT if pt else PhysicsBase.StateSpecification.PH
         # [p, z_1, ..., z_{nc-1}, T] (PT) or [p, z_1, ..., z_{nc-1}, H] (PH)
         nz = nc - 1
         ax_step = [2.0] + [5e-3] * nz + [0.8]
         ax_origin = [1.0] + [zero] * nz + [273.15]
-        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
-                                     axes_step=ax_step, axes_origin=ax_origin,
-                                     epsilon_z=zero)
+        self.physics = EoSPhysics(components=components, phases=phases, timer=self.timer, state_spec=state_spec,
+                                  axes_step=ax_step, axes_origin=ax_origin, epsilon_z=zero
+                                  )
+        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
+                                               eps_z=zero)
         self.physics.add_property_region(property_container)
+
+        """ Specify Mixture object """
+        mixture = Mixture(comp_data)
+        mixture.set_vl_eos(vl_eos_name="VL", root_order=[EoS.MAX, EoS.MIN])
+        mixture.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash)
+        self.physics.set_mixture(mixture)
+
+        """ properties correlations """
+        flash_ev = self.physics.get_flash_ev()  # returns self.physics.mixture
+        property_container.flash_ev = flash_ev
+        property_container.density_ev = dict([('V', self.physics.get_density_ev_from_flash(phase_idx=0)),
+                                              ('L', self.physics.get_density_ev_from_flash(phase_idx=1))])
+        # property_container.density_ev = dict([('V', EoSDensity(flash_ev=flash_ev, phase_idx=0)),
+        #                                       ('L', EoSDensity(flash_ev=flash_ev, phase_idx=1))])
+        # property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MAX)),
+        #                                       ('L', EoSDensity(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MIN))])
+        property_container.viscosity_ev = dict([('V', Fenghour1998()),
+                                                ('L', Fenghour1998())])
+        property_container.enthalpy_ev = dict([('V', self.physics.get_enthalpy_ev_from_flash(phase_idx=0)),
+                                               ('L', self.physics.get_enthalpy_ev_from_flash(phase_idx=1))])
+        # property_container.enthalpy_ev = dict([('V', EoSEnthalpy(flash_ev=flash_ev, phase_idx=0)),
+        #                                        ('L', EoSEnthalpy(flash_ev=flash_ev, phase_idx=1))])
+        # property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MAX)),
+        #                                        ('L', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MIN))])
+        property_container.rel_perm_ev = dict([('V', PhaseRelPerm("gas", swc=0.2)),
+                                               ('L', PhaseRelPerm("oil", swc=0.2))])
+        property_container.conductivity_ev = dict([('V', ConstFunc(10.)),
+                                                   ('L', ConstFunc(180.)), ])
+
         return
 
     def set_iapws_physics(self):
@@ -280,12 +292,16 @@ class Model(DartsModel):
         flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
         flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash)
         property_container.flash_ev = flash_ev
-        property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
-                                              ('L', EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN))])
+        property_container.density_ev = dict([('V', EoSDensity(flash_ev=flash_ev, phase_idx=0)),
+                                              ('L', EoSDensity(flash_ev=flash_ev, phase_idx=1))])
+        # property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
+        #                                       ('L', EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN))])
         property_container.viscosity_ev = dict([('V', Fenghour1998()),
                                                 ('L', Fenghour1998())])
-        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX)),
-                                               ('L', EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN))])
+        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(flash_ev=flash_ev, phase_idx=0)),
+                                               ('L', EoSEnthalpy(flash_ev=flash_ev, phase_idx=1))])
+        # property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX)),
+        #                                        ('L', EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN))])
         property_container.rel_perm_ev = dict([('V', PhaseRelPerm("gas", swc=0.2)),
                                                ('L', PhaseRelPerm("oil", swc=0.2))])
         property_container.conductivity_ev = dict([('V', ConstFunc(10.)),
