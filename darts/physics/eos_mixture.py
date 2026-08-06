@@ -88,7 +88,7 @@ class EoSPhysics(PhysicsBase):
 
         Checks that:
         - Mixture components + salts match the Physics.components
-        - TODO:
+        - TODO: Phase labels in Physics object are consistent with phase types specified in Mixture
         - Mixture.FlashType is compatible with Physics.StateSpecification
 
         :param mixture: Configured Mixture instance
@@ -136,15 +136,9 @@ class EoSPhysics(PhysicsBase):
         n_workers: int | None = None,
         evaluator_factory_hook=None,
         verbose_evaluators: bool = False,
-        label_map: dict[str, str] | None = None,
     ):
         """
-        Initialize physics, then check consistency between the physics phase definition and each
-        attached Mixture's flash definition (eos_order, phase types, state specification).
-
-        :param label_map: Optional strict mapping from ``"<eos_name>:<RootFlag>"`` (e.g.
-            ``"VL:MAX"``) to the expected phase label (e.g. ``"V"``), checked as a hard
-            assertion. Omit to fall back to best-effort heuristic warnings.
+        Check that set_mixture() has been called and call PhysicsBase.init_physics() wrapper
         """
         assert len(self.flash_evs) > 0, (
             "No Mixture attached - call set_mixture() before init_physics()"
