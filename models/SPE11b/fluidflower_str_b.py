@@ -84,7 +84,7 @@ class FluidFlowerStruct(StructReservoir):
         if self.specs['RHS']:
             for name, center in self.well_centers.items():
                 cell_index = self.find_cell_index(center)
-                self.well_cells.append(cell_index)
+                self.well_cells.append([cell_index])
 
         else:
             self.well_cells = []

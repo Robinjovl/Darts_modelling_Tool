@@ -126,6 +126,10 @@ class SolidFlash(Flash):
         except ValueError as e:
             print(e.args[0], pressure, temperature, zc)
             error_output += 1
+            # failed flash left X mis-shaped; keep going with NaN phase
+            # compositions so the error is detectable downstream instead of
+            # crashing on the undefined local
+            x = np.full((self.np_fl, self.nc_fl), np.nan)
 
         # Re-normalize solids and append to nu, x
         NU = np.zeros(self.np_fl + self.np_sol)

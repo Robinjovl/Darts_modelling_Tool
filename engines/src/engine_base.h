@@ -101,6 +101,10 @@ public:
 		is_fickian_energy_transport_on = true;
 		newton_update_coefficient = 1.0;
 		n_solid = 0;
+		newton_chop_mode = sim_params::NEWTON_LOCAL_CHOP;
+		newton_chop_factor = 0.1;
+		log_transform = 0;
+		residual_norm_type = sim_params::L2;
 	};
 
 	~engine_base()
@@ -123,8 +127,10 @@ public:
 	// get the number of primary unknowns (per block)
 	virtual uint8_t get_n_vars() const = 0;
 
-	// get the number of operators (per block)
-	virtual uint8_t get_n_ops() const = 0;
+	// get the number of operators (per block) — widened to uint16_t: super-engine
+	// N_OPS up to 272 (273 for super-elastic) at NC=30 / NP=3 thermal exceeds uint8_t.
+	// Every override across CPU/GPU/elastic/mech engines must match this signature.
+	virtual uint16_t get_n_ops() const = 0;
 
 	// get the number of components
 	virtual uint8_t get_n_comps() const = 0;
@@ -135,6 +141,32 @@ public:
 
 	// get the number of solid/mineral species
 	virtual uint8_t get_n_solid() const { return n_solid; };
+
+	// Number of per-cell history variables fed to OBL interpolation but not part of the Newton
+	// system (e.g. trapped/max-gas saturation for Killough hysteresis). Python sets this before
+	// engine.init() via `engine.n_history_runtime = k`; 0 disables the Xop / Xhistory code paths.
+	uint8_t n_history_runtime = 0;
+
+	virtual uint8_t get_n_history() const { return n_history_runtime; };
+
+	// get the dimension of the OBL interpolation state: Newton unknowns + history variables
+	virtual uint8_t get_n_state() const { return get_n_vars() + get_n_history(); };
+
+	// Allocate / resize the history-aware scratch buffers used by build_Xop and project_xop_ders.
+	// No-op when no history variables are active.
+	// n_ops_ widened to uint16_t to receive super-engine N_OPS up to 273 without truncation.
+	void ensure_history_buffers(const index_t n_total, const uint16_t n_ops_)
+	{
+		const uint8_t n_history = get_n_history();
+		if (n_history == 0)
+			return;
+
+		const uint8_t n_state = get_n_state();
+		if (Xhistory.size() < (size_t)n_total * n_history)
+			Xhistory.assign((size_t)n_total * n_history, 0.0);
+		Xop.resize((size_t)n_total * n_state);
+		op_ders_arr_ext.resize((size_t)n_total * n_ops_ * n_state);
+	}
 
 	// initialization
 	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_) = 0;
@@ -178,6 +210,23 @@ public:
 
 	virtual void apply_thermal_var_correction(std::vector<value_t>& X, std::vector<value_t>& dX);
 
+	// Staged nonlinear-update kernels operating on the engine's own X/dX.
+	// Each guards its own applicability; the Python nonlinear solver composes
+	// them into the pre-update pipeline prescribed by the solver spec.
+	void correct_composition();
+	void correct_chop_global();
+	void correct_chop_local();
+	void correct_obl_axes();
+	/// @brief populate op_axis_min/op_axis_max (broadcast to every operator
+	/// region) from the per-variable bounds prescribed by the nonlinear solver
+	/// spec (OBLBoundsSpec.axis_min/axis_max; +/-inf entries leave an axis
+	/// unbounded) and run the per-axis clamp kernel
+	void correct_obl_axes(const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max);
+	void correct_thermal();
+	/// @brief plain Newton update X -= newton_update_coefficient * dX (resets the coefficient)
+	virtual int apply_update(value_t dt);
+
+	/// @brief legacy composite: correction pipeline selected by newton_chop_mode + apply_update
 	virtual int apply_newton_update(value_t dt);
 
 	// Here we make the same thing as inside interpolation, but during Newton update
@@ -186,14 +235,27 @@ public:
 
 	// output routines
 
-	virtual int print_timestep(value_t time, value_t deltat);
+	virtual int print_timestep(value_t time, value_t deltat, index_t n_newton, index_t n_linear,
+							   value_t newton_residual, value_t well_residual);
 
 	int print_header();
+
+	// Build Xop = [X | Xhistory] for reservoir + boundary cells when n_history > 0. No-op otherwise.
+	// mesh->Xhistory_bounds supplies the history values to use at boundary cells.
+	void build_Xop();
+
+	// After interpolating into op_ders_arr_ext (sized by n_state), copy the first n_vars derivative
+	// columns into op_ders_arr (the Newton-sized buffer) so the assembly kernels can consume it
+	// with the standard compile-time N_VARS stride. Derivatives w.r.t. history are dropped, which is
+	// correct because history values are not Newton unknowns.
+	void project_xop_ders();
 
 	/// @brief report for one newton iteration
 	virtual int assemble_linear_system(value_t deltat);
 	virtual int solve_linear_equation();
-	virtual int post_newtonloop(value_t deltat, value_t time);
+	/// @brief commit (converged) or roll back (failed) the timestep state;
+	/// the convergence decision is made by the Python nonlinear solver
+	virtual int post_newtonloop(value_t deltat, value_t time, index_t converged);
 
 	/// @brief reports complete information about well regimes
 	virtual int report();
@@ -313,9 +375,6 @@ public:
 	/// @brief simulation parameters
 	sim_params *params;
 
-	/// @brief simulation statistics
-	sim_stat stat;
-
 	/// @brief vector of wells
 	std::vector<ms_well *> wells;
 
@@ -351,7 +410,9 @@ public:
 	operator_set_gradient_evaluator_iface* thermal_var_etor;
 
 	uint8_t n_vars;
-	uint8_t n_ops;
+	// Widened to uint16_t: caches get_n_ops() up to 273 at NC=30 / NP=3 thermal. Used as
+	// stride into op_vals_arr / op_ders_arr; uint8_t would silently truncate to 16 mod 256.
+	uint16_t n_ops;
 	uint8_t nc;
 	uint8_t z_var_idx;
 	// number of mineral/solid species
@@ -379,6 +440,12 @@ public:
 	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
 	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components
 	std::vector<value_t> dispersivity;		// [n_regions * NP * NC] dispersion coefficients
+	// History variables: per-cell quantities that feed OBL interpolation but are not Newton unknowns.
+	// Used for path-dependent state such as sg_max in Killough hysteresis, while keeping the storage
+	// generic for future OBL history variables.
+	std::vector<value_t> Xhistory;				// [(n_blocks + n_bounds) * n_history] history values (reservoir cells then boundary cells)
+	std::vector<value_t> Xop;				// [(n_blocks + n_bounds) * n_state] extended state vector fed to interpolator; empty unless n_history > 0
+	std::vector<value_t> op_ders_arr_ext;	// [(n_blocks + n_bounds) * n_ops * n_state] scratch for interpolator derivative output when n_history > 0
 
 	// rates, bhps, FIPs, etc
 	std::unordered_map<std::string, std::vector<value_t>> time_data_report;
@@ -398,12 +465,23 @@ public:
 
 	// statistics
 	value_t CFL_max; // maximum value of CFL for last Jacobian assebly
-	index_t n_newton_last_dt, n_linear_last_dt;
-	double newton_residual_last_dt;
-	double well_residual_last_dt;
-	int linear_solver_error_last_dt;
+
+	/// @brief linear iterations/residual of the last solve_linear_equation() call
+	/// (accumulated per timestep by the Python nonlinear solver)
+	index_t last_linear_iters;
+	value_t last_linear_residual;
+
+	index_t get_last_linear_iters() const { return last_linear_iters; }
+	value_t get_last_linear_residual() const { return last_linear_residual; }
 
 	value_t newton_update_coefficient; // Newton update coefficient for line search
+
+	// nonlinear update controls, owned by the Python nonlinear solver spec
+	// (darts.nonlinear_solvers) and synced before every timestep solve
+	index_t newton_chop_mode;   // sim_params::newton_solver_t: 0 = none, 1 = global chop, 2 = local chop
+	value_t newton_chop_factor; // max composition change per nonlinear update
+	index_t log_transform;      // 1 = log-transformed composition variables
+	index_t residual_norm_type; // sim_params::nonlinear_norm_t: 0 = L1, 1 = L2, 2 = LINF
 
 	timer_node *timer;
 	timer_node full_step_timer;
@@ -897,16 +975,12 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
 	mesh->n_vars = n_vars;
 
-	if (params->log_transform == 0)
-	{
-		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
-		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
-	}
-	else if (params->log_transform == 1)
-	{
-		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
-		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
-	}
+	// Composition is clipped to the physical simplex [0, 1] ± sim_eps. The adaptive
+	// interpolator cache grows on demand outside the prescribed OBL window, so the
+	// solver may freely explore state space; (min_axis_z, max_axis_z) now reflect
+	// only the physical bound, not the OBL grid.
+	min_axis_z = 0.0;
+	max_axis_z = 1.0;
 	min_sim_z = min_axis_z + params->sim_eps;
 	max_sim_z = max_axis_z - params->sim_eps;
 
@@ -931,12 +1005,16 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	op_vals_arr.resize(n_ops * mesh->n_blocks);
 	op_ders_arr.resize(n_ops * n_vars * mesh->n_blocks);
 
+	// History buffers: allocated only if the engine reports n_history > 0 (see engine_base::get_n_history).
+	// Xhistory stores per-cell history values for reservoir cells followed by boundary cells; boundary
+	// entries are seeded from mesh->Xhistory_bounds by build_Xop.
+	ensure_history_buffers(mesh->n_blocks + mesh->n_bounds, n_ops);
+
 	t = 0;
 
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
 
-	stat = sim_stat();
 
 	print_header();
 
@@ -977,7 +1055,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	}
 
 	Xn = X = X_init;
-	dt = params->first_ts;
+	dt = 0.0; // timestep sizing is owned by the Python driver
 	prev_usual_dt = dt;
 
 	// initialize arrays for every operator set
@@ -985,18 +1063,14 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	op_axis_min.resize(acc_flux_op_set_list.size());
 	op_axis_max.resize(acc_flux_op_set_list.size());
 
-	// initialize arrays for every operator set
-
+	// op_axis_min/op_axis_max are intentionally left empty (default-constructed inner
+	// vectors with .size() == 0). The size() == 0 check in apply_newton_update gates
+	// apply_obl_axis_local_correction, so leaving these empty disables the per-axis
+	// clamp — Newton may freely explore state space and the adaptive cache grows on
+	// demand. The per-region block_idxs map below is still populated normally.
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
 		block_idxs[r].clear();
-		op_axis_min[r].resize(n_vars);
-		op_axis_max[r].resize(n_vars);
-		for (int j = 0; j < n_vars; j++)
-		{
-			op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-			op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-		}
 	}
 
 	// create a block list for every operator set
@@ -1006,8 +1080,18 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		block_idxs[op_region].emplace_back(idx++);
 	}
 
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-		acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+	if (get_n_history() > 0)
+	{
+		build_Xop();
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(Xop, block_idxs[r], op_vals_arr, op_ders_arr_ext);
+		project_xop_ders();
+	}
+	else
+	{
+		for (int r = 0; r < (int)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->evaluate_with_derivatives(X, block_idxs[r], op_vals_arr, op_ders_arr);
+	}
 	op_vals_arr_n = op_vals_arr;
 
 	time_data.clear();

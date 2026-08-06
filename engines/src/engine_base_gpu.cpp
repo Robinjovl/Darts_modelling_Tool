@@ -45,6 +45,7 @@ engine_base_gpu::~engine_base_gpu()
   free_device_data(Xn_d);
   free_device_data(dX_d);
   free_device_data(RHS_d);
+  free_device_data(Xop_d);
   free_device_data(RHS_wells_d);
   free_device_data(PV_d);
   free_device_data(mesh_tran_d);
@@ -52,15 +53,46 @@ engine_base_gpu::~engine_base_gpu()
   free_device_data(op_vals_arr_d);
   free_device_data(op_vals_arr_n_d);
   free_device_data(op_ders_arr_d);
+  free_device_data(op_ders_arr_ext_d);
   for (int op_region = 0; op_region < block_idxs.size(); op_region++)
   {
     free_device_data(block_idxs_d[op_region]);
   }
 }
 
-int engine_base_gpu::post_newtonloop(value_t deltat, value_t time)
+int engine_base_gpu::evaluate_operators_d()
 {
-	int converged = engine_base::post_newtonloop(deltat, time);
+  if (get_n_history() > 0)
+  {
+    build_Xop();
+    copy_data_to_device(Xop, Xop_d);
+    for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+    {
+      int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(
+          block_idxs[r].size(), Xop_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_ext_d);
+      if (result < 0)
+        return result;
+    }
+
+    copy_data_to_host(op_ders_arr_ext, op_ders_arr_ext_d);
+    project_xop_ders();
+    copy_data_to_device(op_ders_arr, op_ders_arr_d);
+    return 0;
+  }
+
+  for (int r = 0; r < acc_flux_op_set_list.size(); r++)
+  {
+    int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(
+        block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
+    if (result < 0)
+      return result;
+  }
+  return 0;
+}
+
+int engine_base_gpu::post_newtonloop(value_t deltat, value_t time, index_t converged_in)
+{
+	int converged = engine_base::post_newtonloop(deltat, time, converged_in);
 	if (!converged)
 	{
 		copy_data_to_device(X, X_d);
@@ -86,12 +118,8 @@ int engine_base_gpu::assemble_linear_system(value_t deltat)
 	// evaluate all operators and their derivatives
 	timer->node["jacobian assembly"].node["interpolation"].start_gpu();
 
-	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-	{
-		int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
-		if (result < 0)
-			return 0;
-	}
+	if (evaluate_operators_d() < 0)
+		return 0;
 
 	timer->node["jacobian assembly"].node["interpolation"].stop_gpu();
 
@@ -112,7 +140,7 @@ int engine_base_gpu::solve_linear_equation()
 {
 	int r_code;
 	char buffer[1024];
-	linear_solver_error_last_dt = 0;
+	last_linear_iters = 0;
 
 	timer->node["linear solver setup"].start_gpu();
 	if (params->assembly_kernel == 13)
@@ -129,11 +157,7 @@ int engine_base_gpu::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver setup returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		//Jacobian->write_matrix_to_file("jac_linear_setup_fail.csr");
-		linear_solver_error_last_dt = 1;
-		return linear_solver_error_last_dt;
+		return 1;
 	}
 
 	timer->node["linear solver solve"].start_gpu();
@@ -164,25 +188,20 @@ int engine_base_gpu::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		linear_solver_error_last_dt = 2;
-		return linear_solver_error_last_dt;
+		return 2;
 	}
 	else
 	{
-		sprintf(buffer, "\t #%d (%.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1, newton_residual_last_dt,
-			well_residual_last_dt, linear_solver->get_n_iters(), linear_solver->get_residual());
-		std::cout << buffer << std::flush;
-		n_linear_last_dt += linear_solver->get_n_iters();
+		last_linear_iters = linear_solver->get_n_iters();
+		last_linear_residual = linear_solver->get_residual();
 	}
 
 	return 0;
 }
 
-int engine_base_gpu::apply_newton_update(value_t dt)
+int engine_base_gpu::apply_update(value_t dt)
 {
-	engine_base::apply_newton_update(dt);
+	engine_base::apply_update(dt);
 
 	timer->node["host<->device_overhead"].start_gpu();
 	copy_data_to_device(X, X_d);
@@ -205,17 +224,17 @@ void engine_base_gpu::apply_global_chop_correction(std::vector<value_t> &X, std:
     }
   }
 
-  if (max_ratio > params->newton_params[0])
+  if (max_ratio > newton_chop_factor)
   {
     std::cout << "Apply global chop with max changes = " << max_ratio << "\n";
     for (size_t i = 0; i < n_vars_total; i++)
-      dX[i] *= params->newton_params[0] / max_ratio;
+      dX[i] *= newton_chop_factor / max_ratio;
   }
 }
 
 void engine_base_gpu::apply_local_chop_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
-  value_t max_dx = params->newton_params[0];
+  value_t max_dx = newton_chop_factor;
   value_t ratio, dx;
   index_t n_corrected = 0;
 
@@ -278,12 +297,8 @@ int engine_base_gpu::test_assembly(int n_times, int kernel_number, int dump_jaco
   timer->node["jacobian assembly"].node["interpolation"].start_gpu();
   for (int i = 0; i < n_times; i++)
   {
-    for (int r = 0; r < acc_flux_op_set_list.size(); r++)
-    {
-      int result = acc_flux_op_set_list[r]->evaluate_with_derivatives_d(block_idxs[r].size(), X_d, block_idxs_d[r], op_vals_arr_d, op_ders_arr_d);
-      if (result < 0)
-        return 0;
-    }
+    if (evaluate_operators_d() < 0)
+      return 0;
   }
   timer->node["jacobian assembly"].node["interpolation"].stop_gpu();
   for (int i = 0; i < n_times; i++)

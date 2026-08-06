@@ -69,7 +69,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_GLOBAL_PUBLI
 
 # Install the library file of engines_global
 install(TARGETS engines_global
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
@@ -149,7 +149,7 @@ target_include_directories(engines_build_info
 
 # Install the library file of engines_build_info
 install(TARGETS engines_build_info
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
@@ -222,7 +222,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_CONN_MESH_PU
 
 # Install the library file of engines_conn_mesh
 install(TARGETS engines_conn_mesh
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
@@ -295,7 +295,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_WELLS_PUBLIC
 
 # Install the library file of engines_wells
 install(TARGETS engines_wells
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
@@ -318,8 +318,6 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/
 # First the source files (private headers should also go here)
 set(OD_ENGINES_ENGINES_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_base.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_nl_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/logging.cpp
 )
@@ -328,8 +326,6 @@ set(OD_ENGINES_ENGINES_SRC_FILES
 # Then the public headers
 set(OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_base.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_cpu.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_nl_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_cpu.tpp
@@ -350,8 +346,6 @@ if (CUDA)
 
   target_sources(engines_engines PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/engine_base_gpu.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_gpu.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_gpu.cu
   )
 endif()
 
@@ -396,7 +390,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${OD_ENGINES_ENGINES_PUBL
 
 # Install the library file of engines_engines
 install(TARGETS engines_engines
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 

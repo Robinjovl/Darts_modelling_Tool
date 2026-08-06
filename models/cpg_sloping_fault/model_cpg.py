@@ -18,6 +18,16 @@ class Model_CPG(CICDModel):
     def __init__(self):
         super().__init__()
 
+    def set_solver(self):
+        # Nonlinear solver tuning shared by all CPG cases: apply the Newton
+        # tolerance specified on idata (idata.sim.newton_tolerance) to the
+        # nonlinear-solver spec (the canonical location). None -> keep the
+        # spec default.
+        super().set_solver()
+        idata = getattr(self, 'idata', None)
+        if idata is not None and idata.sim.newton_tolerance is not None:
+            self.nonlinear_solver.spec.tolerance = idata.sim.newton_tolerance
+
     def init_input_arrays(self):
         if self.idata.generate_grid:
             if self.idata.grid_out_dir is None:

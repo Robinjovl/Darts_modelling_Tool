@@ -5,7 +5,7 @@
 
    The order in a **state** vector is:
    * Geothermal: Pressure, Enthalpy
-   * Compositional: Pressure, Compositions, Temperature, Displacements (x,y,z)
+   * PhysicsBase: Pressure, Compositions, Temperature, Displacements (x,y,z)
 3. Why there are two variable `n_blocks `and `n_res_blocks `in the mesh object?
 
    There are 2 additional cells per well are internally added by open-DARTS for the non-multi-segment well case, so `n_blocks = n_res_blocks = 2 * n_wells`
