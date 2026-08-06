@@ -1,7 +1,6 @@
 import abc
 
 import numpy as np
-from numba import jit
 
 
 class Flash:
@@ -37,42 +36,17 @@ class ConstantK(Flash):
     def __init__(self, nc, ki, eps=1e-11):
         super().__init__(nph=2, nc=nc)
 
+        from dartsflash.libflash import RR_EqConvex2
+
+        self.rr = RR_EqConvex2(nc=nc, min_z=eps, rr_tol=1e-12, max_iter=100)
         self.rr_eps = eps
         self.K_values = np.array(ki)
 
     def evaluate(self, pressure, temperature, zc):
-        self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
+        self.rr.solve_rr(zc, self.K_values)
+        self.nu, self.X = self.rr.getnu(), self.rr.getx()
         self.temperature = temperature
         return 0
-
-
-@jit(nopython=True)
-def RR2(k, zc, eps):
-    a = 1 / (1 - np.max(k)) + eps
-    b = 1 / (1 - np.min(k)) - eps
-    k_minus_1 = k - 1
-
-    max_iter = 200  # use enough iterations for V to converge
-    tol = 1e-12  # convergence tolerance
-
-    for _i in range(1, max_iter):
-        V = 0.5 * (a + b)
-        r = np.sum(zc * k_minus_1 / (V * k_minus_1 + 1))
-        if abs(r) < tol:
-            break
-
-        if r > 0:
-            a = V
-        else:
-            b = V
-
-    if _i >= max_iter:
-        print("Flash warning!!!")
-
-    x = zc / (V * k_minus_1 + 1)
-    y = k * x
-
-    return [V, 1 - V], [y, x]
 
 
 class SolidFlash(Flash):
