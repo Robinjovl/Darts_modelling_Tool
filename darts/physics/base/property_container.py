@@ -110,7 +110,7 @@ class PropertyContainer:
             ph: ConstFunc(np.zeros(self.nc_fl)) for ph in phases_name[: self.np_fl]
         }
         self.kinetic_rate_ev = {}
-        self.energy_source_ev = []
+        self.energy_source_ev = {}
         self.flash_ev: Flash = 0
         self.permporo_mult_ev = ConstFunc(1.0)
 
@@ -154,7 +154,6 @@ class PropertyContainer:
             self.density_ev,
             self.viscosity_ev,
             self.diffusion_ev,
-            self.capillary_pressure_ev,
             self.rel_perm_ev,
         ] + ([self.enthalpy_ev, self.conductivity_ev] if self.thermal else [])
 
@@ -488,8 +487,8 @@ class PropertyContainer:
 
         # Heat source and Reaction enthalpy
         self.energy_source = 0.0
-        if self.energy_source_ev:
-            self.energy_source += self.energy_source_ev.evaluate(state)
+        for _, energy_source in self.energy_source_ev.items():
+            self.energy_source += energy_source.evaluate(state)
 
         for _, reaction in self.kinetic_rate_ev.items():
             self.energy_source += reaction.evaluate_enthalpy(
