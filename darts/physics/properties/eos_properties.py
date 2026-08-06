@@ -39,13 +39,15 @@ class EoSDensity:
         assert (flash_ev is not None and phase_idx is not None) or eos is not None, (
             "Specify either flash object + phase idx or EoS object to "
         )
-        if flash_ev is not None and phase_idx is not None:
+        if flash_ev is not None and eos is not None:
             warnings.warn(
                 "Both flash and EoS objects defined, using Flash object", stacklevel=2
             )
 
         # Flash object
         self.flash_ev = flash_ev
+        self.phase_idx = phase_idx
+        self.evaluate_PT_bool = False
 
         # EoS object and RootFlag
         self.eos = eos
@@ -70,12 +72,22 @@ class EoSDensity:
         :rtype: float
         """
         if self.flash_ev is not None:
-            flash_results = self.flash_ev.get_flash_results(derivs=False)
-            eos_results = self.flash_ev.get_phase_properties(
-                flash_results=flash_results,
-                phase_idx=self.phase_idx,
-                calc_mass_density=True,
+            flash_results = self.flash_ev.get_flash_results(
+                derivs=False, evaluate_PT=self.evaluate_PT_bool
             )
+            # In case of PX-flash, we need to evaluate PT-flash and properties for initialization
+            if self.evaluate_PT_bool:
+                eos_results = self.flash_ev.f.get_pt_phase_properties(
+                    flash_results=flash_results,
+                    phase_idx=self.phase_idx,
+                    calc_mass_density=True,
+                )
+            else:
+                eos_results = self.flash_ev.f.get_phase_properties(
+                    flash_results=flash_results,
+                    phase_idx=self.phase_idx,
+                    calc_mass_density=True,
+                )
             return eos_results.get_phase_mass_density().value
 
         else:
@@ -121,13 +133,15 @@ class EoSEnthalpy:
         assert (flash_ev is not None and phase_idx is not None) or eos is not None, (
             "Specify either flash object + phase idx or EoS object to EoSDensity"
         )
-        if flash_ev is not None and phase_idx is not None:
+        if flash_ev is not None and eos is not None:
             warnings.warn(
                 "Both flash and EoS objects defined, using Flash object", stacklevel=2
             )
 
         # Flash object
         self.flash_ev = flash_ev
+        self.phase_idx = phase_idx
+        self.evaluate_PT_bool = False
 
         # EoS object and RootFlag
         self.eos = eos
@@ -152,13 +166,23 @@ class EoSEnthalpy:
         :rtype: float
         """
         if self.flash_ev is not None:
-            flash_results = self.flash_ev.get_flash_results(derivs=False)
-            eos_results = self.flash_ev.get_phase_properties(
-                flash_results=flash_results,
-                phase_idx=self.phase_idx,
-                calc_enthalpy=True,
+            flash_results = self.flash_ev.get_flash_results(
+                derivs=False, evaluate_PT=self.evaluate_PT_bool
             )
-            return eos_results.get_phase_enthalpy().value
+            # In case of PX-flash, we need to evaluate PT-flash and properties for initialization
+            if self.evaluate_PT_bool:
+                eos_results = self.flash_ev.f.get_pt_phase_properties(
+                    flash_results=flash_results,
+                    phase_idx=self.phase_idx,
+                    calc_enthalpy=True,
+                )
+            else:
+                eos_results = self.flash_ev.f.get_phase_properties(
+                    flash_results=flash_results,
+                    phase_idx=self.phase_idx,
+                    calc_enthalpy=True,
+                )
+            return eos_results.get_phase_enthalpy().value * R
 
         else:
             self.eos.set_root_flag(self.root_flag)
@@ -206,13 +230,15 @@ class EoSFugacity:
         assert (flash_ev is not None and phase_idx is not None) or eos is not None, (
             "Specify either flash object + phase idx or EoS object to "
         )
-        if flash_ev is not None and phase_idx is not None:
+        if flash_ev is not None and eos is not None:
             warnings.warn(
                 "Both flash and EoS objects defined, using Flash object", stacklevel=2
             )
 
         # Flash object
         self.flash_ev = flash_ev
+        self.phase_idx = phase_idx
+        self.evaluate_PT_bool = False
 
         # EoS object and RootFlag
         self.eos = eos
@@ -238,12 +264,22 @@ class EoSFugacity:
         :rtype: float
         """
         if self.flash_ev is not None:
-            flash_results = self.flash_ev.get_flash_results(derivs=False)
-            eos_results = self.flash_ev.get_phase_properties(
-                flash_results=flash_results,
-                phase_idx=self.phase_idx,
-                calc_fugacity=True,
+            flash_results = self.flash_ev.get_flash_results(
+                derivs=False, evaluate_PT=self.evaluate_PT_bool
             )
+            # In case of PX-flash, we need to evaluate PT-flash and properties for initialization
+            if self.evaluate_PT_bool:
+                eos_results = self.flash_ev.f.get_pt_phase_properties(
+                    flash_results=flash_results,
+                    phase_idx=self.phase_idx,
+                    calc_fugacity=True,
+                )
+            else:
+                eos_results = self.flash_ev.f.get_phase_properties(
+                    flash_results=flash_results,
+                    phase_idx=self.phase_idx,
+                    calc_fugacity=True,
+                )
             return eos_results.get_phase_fugacity().value
 
         else:

@@ -313,9 +313,11 @@ class PropertyContainer:
         # Compute molar enthalpy of multiphase mixture
         enthalpy = 0.0
         for j in ph:
+            self.enthalpy_ev[self.phases_name[j]].evaluate_PT_bool = True
             enthalpy += self.nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(
                 pressure, temperature, self.x[j, :]
             )  # kJ/kmol
+            self.enthalpy_ev[self.phases_name[j]].evaluate_PT_bool = False
 
         return enthalpy
 
