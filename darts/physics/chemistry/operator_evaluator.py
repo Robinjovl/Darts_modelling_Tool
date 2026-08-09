@@ -188,6 +188,97 @@ class ReservoirOperators(OperatorsSuper):
         pass  # TODO: implement thermal evaluation
 
 
+class WellOperators(ReservoirOperators):
+    """
+    Well operators working with the same state as ReservoirOperators.
+
+    Compared to reservoir operators, well operators omit diffusion- and
+    capillarity-related terms and use a unit permeability multiplier.
+    """
+
+    def evaluate(self, state, values):
+        """
+        Class methods which evaluates the state operators for
+        the element-based formulation of reactive flow physics in wells.
+        :param state: state variables [p, z_{1}, ..., z_{n_m}, z_{n_m+1}, ..., z_{n_c-1}]
+        :type state: value_vector
+        :param values: values of the operators (used for storing the operator values)
+        :type values: value_vector
+        :rtype: int
+        """
+        # Check if extrapolation needs to be applied
+        if super().apply_extrapolation(state, values):
+            return 0
+
+        # state and values numpy vectors:
+        state_np = state.to_numpy()
+        values_np = values.to_numpy()
+        values_np[:] = 0
+
+        # get overall molar composition
+        z = self.get_overall_composition(state_np)
+        # call property:
+        self.property.evaluate(state_np)
+
+        # Densities
+        rho_t = (
+            np.sum(
+                self.property.dens_m * self.property.sat_overall[: self.property.nph]
+            )
+            + self.property.dens_m_solid * self.property.sat_overall[self.property.nph]
+        )
+        rho_f = np.sum(self.property.dens_m * self.property.sat)
+
+        nc = self.property.nc
+        ns = self.property.n_solid
+        nph = self.property.nph
+        ne = nc
+
+        """ CONSTRUCT OPERATORS HERE """
+
+        """ Alpha operator represents accumulation term: """
+        values_np[self.ACC_OP : self.ACC_OP + ns] = z[:ns] * rho_t
+        values_np[self.ACC_OP + ns : self.ACC_OP + nc] = (
+            (1 - self.property.sat_overall[self.property.nph]) * z[ns:] * rho_f
+        )
+
+        """ Beta operator represents flux term: """
+        for j in range(nph):
+            values_np[self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + nc] = (
+                self.property.x[j] * self.property.dens_m[j]
+            )
+
+        """ Delta operator for reaction """
+        for i in range(ne):
+            values_np[self.KIN_OP + i] = (
+                self.property.stoich_matrix[:, i] * self.property.kin_rates
+            ).sum()
+
+        """ Gravity operators """
+        values_np[self.GRAV_OP + self.property.ph] = self.property.dens[
+            self.property.ph
+        ]
+
+        """ Permeability multiplier """
+        values_np[self.MULT_OP] = 1.0
+
+        """ Lambda operator for velocity calculations """
+        values_np[self.LAMBDA_OP + self.property.ph] = (
+            self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+        )
+
+        """ Saturation operator """
+        values_np[self.SAT_OP + self.property.ph] = self.property.sat[self.property.ph]
+
+        """ Pressure operator """
+        values_np[self.PRES_OP] = state_np[0]
+
+        if self.thermal:
+            self.evaluate_thermal(state_np, values_np)
+
+        return 0
+
+
 class ConversionOperators(ReservoirOperators):
     """
     Operator required for initialization, to convert given volume fraction to molar one
