@@ -68,7 +68,7 @@ class Model(CICDModel):
         # foam parameter, fmmob, fmdry, epdry, fmmob = 0 no foam generation
         foam_paras = np.array([100, 0.35, 1000])
 
-        ki = np.array([44.5, 2.05e-2])
+        ki = np.array([1./44.5, 1./2.05e-2])
         # ki = np.array([40, 2.47e-4])
         property_container.flash_ev = ConstantK(nc=len(components), ki=ki, eps_z=1e-12)
         # property_container.flash_ev = Flash(components)

@@ -101,7 +101,7 @@ class ModelCCS(Model_CPG):
         property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
                                                min_z=self.zero, temperature=350)
 
-        # property_container.flash_ev = ConstantK(nc=2, ki=[0.001, 100])
+        # property_container.flash_ev = ConstantK(nc=2, ki=[1e3, 1e-2])
         property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
         property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw)),
                                               ('wat', Garcia2001(self.components)), ])

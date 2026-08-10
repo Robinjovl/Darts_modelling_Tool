@@ -187,7 +187,7 @@ class Model(DartsModel):
         property_container = CompProperties(phases_name=phases, components_name=components, Mw=Mw, eps_z=zero)
 
         """ properties correlations """
-        property_container.flash_ev = ConstantK(nc - 1, [4, 2, 1e-2], zero)
+        property_container.flash_ev = ConstantK(nc - 1, [0.25, 0.5, 1e2], zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
                                               ('oil', DensityBasic(compr=1e-5, dens0=600)),
                                               ('wat', DensityBrineCO2(components, compr=1e-5, dens0=1000, co2_mult=0))])
