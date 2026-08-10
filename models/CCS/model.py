@@ -156,7 +156,7 @@ class Model(DartsModel):
         self.physics.add_property_region(property_container)
 
         property_container.flash_ev = self.physics.get_flash_ev()
-        property_container.density_ev = dict([('V', EoSDensity(eos=mixture.eos["VL"], root_flag=EoS.MAX)),
+        property_container.density_ev = dict([('V', EoSDensity(eos=mixture.eos["VL"], root_flag=EoS.MAX if vl_phases else EoS.STABLE)),
                                               ('L', EoSDensity(eos=mixture.eos["VL"], root_flag=EoS.MIN)),
                                               ('Aq', Garcia2001(components, ions=None, combined_ions=None)), ])
         property_container.viscosity_ev = dict([('V', Fenghour1998()),
@@ -167,6 +167,9 @@ class Model(DartsModel):
                                                 ('L', ConstFunc(np.ones(nc) * diff)),
                                                 ('Aq', ConstFunc(np.ones(nc) * diff * 1e-3))])
 
+        # property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=mixture.eos["VL"], root_flag=EoS.MAX if vl_phases else EoS.STABLE)),
+        #                                        ('L', EoSEnthalpy(eos=mixture.eos["VL"], root_flag=EoS.MIN)),
+        #                                        ('Aq', EoSEnthalpy(eos=mixture.eos["Aq"])), ])
         property_container.enthalpy_ev = dict([('V', self.physics.get_enthalpy_ev_from_flash(phase_idx=1)),
                                                ('L', self.physics.get_enthalpy_ev_from_flash(phase_idx=2)),
                                                ('Aq', self.physics.get_enthalpy_ev_from_flash(phase_idx=0)), ])

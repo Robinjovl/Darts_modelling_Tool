@@ -79,7 +79,7 @@ class Model(CICDModel):
         mixture = Mixture(comp_data)
         mixture.set_vl_eos(vl_eos_name="PR", hybrid_aq_eos_name="Aq",
                            root_order=[EoS.STABLE],
-                           trial_comps=[EoSParams.Yi.Wilson, 1],
+                           trial_comps=[EoSParams.Yi.Wilson],
                            stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
                            )
         pr = mixture.eos["PR"]
@@ -103,8 +103,10 @@ class Model(CICDModel):
         property_container.rel_perm_ev = dict([('CO2_rich_phase', PhaseRelPerm("gas")),
                                                ('aq', PhaseRelPerm("oil"))])
 
-        property_container.enthalpy_ev = dict([('CO2_rich_phase', self.physics.get_enthalpy_ev_from_flash(phase_idx=1)),
-                                               ('aq', self.physics.get_enthalpy_ev_from_flash(phase_idx=0))])
+        property_container.enthalpy_ev = dict([('CO2_rich_phase', EoSEnthalpy(eos=pr)),
+                                               ('aq', EoSEnthalpy(eos=mixture.eos["Aq"]))])
+        # property_container.enthalpy_ev = dict([('CO2_rich_phase', self.physics.get_enthalpy_ev_from_flash(phase_idx=1)),
+        #                                        ('aq', self.physics.get_enthalpy_ev_from_flash(phase_idx=0))])
         property_container.conductivity_ev = dict([('CO2_rich_phase', ConstFunc(10.)),
                                                    ('aq', ConstFunc(180.)), ])
 
