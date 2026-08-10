@@ -88,7 +88,10 @@ class EoSDensity:
                     phase_idx=self.phase_idx,
                     calc_mass_density=True,
                 )
-            return eos_results.get_phase_mass_density().value
+            # TODO: Mistake in darts-flash v0.13.0, returns N * Mw / Vm
+            # Divide by phase mole numbers to obtain molar density
+            nu_phase = np.array(flash_results.nu)[self.phase_idx]
+            return eos_results.get_phase_mass_density().value / nu_phase
 
         else:
             self.eos.set_root_flag(self.root_flag)
@@ -183,7 +186,10 @@ class EoSEnthalpy:
                     phase_idx=self.phase_idx,
                     calc_enthalpy=True,
                 )
-            return eos_results.get_phase_enthalpy().value * R
+            # TODO: Mistake in darts-flash v0.13.0, returns total enthalpy, not molar enthalpy
+            # Divide by phase mole numbers to obtain molar enthalpy
+            nu_phase = np.array(flash_results.nu)[self.phase_idx]
+            return eos_results.get_phase_enthalpy().value * R / nu_phase
 
         else:
             self.eos.set_root_flag(self.root_flag)
