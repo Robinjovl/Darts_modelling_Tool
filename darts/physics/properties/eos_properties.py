@@ -100,7 +100,8 @@ class EoSDensity:
             else:
                 xi = x
 
-            return self.eos.rho(pressure, temperature, xi)  # kg/m3
+            Mw = np.sum(xi * self.eos.get_comp_data().Mw)
+            return Mw * 1e-3 / self.eos.V(pressure, temperature, xi)  # kg/m3
 
 
 class EoSEnthalpy:
