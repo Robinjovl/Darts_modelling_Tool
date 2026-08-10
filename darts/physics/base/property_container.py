@@ -148,22 +148,31 @@ class PropertyContainer:
         """
         Check consistency of input properties
         """
-        # Check that all phases have a density/viscosity/diffusion/capillary pressure/relperm evaluator
-        # and enthalpy/conductivity evaluators in case of thermal
-        evs = [
+        # Check that all phases have a density and enthalpy/conductivity evaluator in case of thermal
+        # and all mobile phases have a viscosity/diffusion/capillary pressure/relperm evaluator
+        acc_evs = [
             self.density_ev,
+        ] + ([self.enthalpy_ev, self.conductivity_ev] if self.thermal else [])
+        flux_evs = [
             self.viscosity_ev,
             self.diffusion_ev,
             self.rel_perm_ev,
-        ] + ([self.enthalpy_ev, self.conductivity_ev] if self.thermal else [])
+        ]
 
-        for ev in evs:
+        for ev in acc_evs:
             assert np.all(
                 [
                     phase in ev.keys() and ev[phase] is not None
                     for phase in self.phases_name
                 ]
-            ), "Evaluator for phase missing"
+            ), "Acc evaluator for phase missing"
+        for ev in flux_evs:
+            assert np.all(
+                [
+                    phase in ev.keys() and ev[phase] is not None
+                    for phase in self.phases_name[: self.np_fl]
+                ]
+            ), "Flux evaluator for phase missing"
 
         for kinetic_ev in self.kinetic_rate_ev.items():
             assert kinetic_ev is not None, "Evaluator for kinetic rate missing"
