@@ -40,8 +40,9 @@ namespace opendarts
         vector algebra runs through cuBLAS. The small Hessenberg
         least-squares problem (Givens rotations) is solved on the host.
 
-        Semantics follow the proprietary solver: restart length
-        m = min(max_iters, 50), zero-vector-tolerant relative convergence
+        Semantics follow the proprietary solver: effective restart length
+        m = max(1, min(max_iters, restart_requested)), with a default requested
+        restart of 50; zero-vector-tolerant relative convergence
         (||r|| <= tol * ||b||, falling back to ||r0|| when ||b|| ~ 0), one
         preconditioner application + one SpMV per iteration, and a single
         preconditioner application on the combined basis update at each
@@ -87,7 +88,7 @@ namespace opendarts
 
       opendarts::config::mat_float get_residual() override;
 
-      /** Restart length; clamped to max_iters at init(). */
+      /** Requested restart length; clamped to [1, max_iters] at init(). */
       void set_restart(int m) { restart_requested = m; }
 
       // Preconditioner applied at every iteration (owned once set).
@@ -119,7 +120,7 @@ namespace opendarts
       std::vector<double> hh, cs, sn, rs, y;
 
       int restart_requested; // requested restart length (default 50)
-      int m;                 // effective restart length after init()
+      int m;                 // effective restart length; workspace capacity follows it
 
       // Length of the (scalar) solution vector, n_rows * N_BLOCK_SIZE.
       int n;

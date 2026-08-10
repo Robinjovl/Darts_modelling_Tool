@@ -126,7 +126,19 @@ __global__ void average_operator_kernel(const value_t *op_vals, const index_t n_
 engine_base_gpu::~engine_base_gpu()
 {
   for (void *p : pinned_host_ptrs)
-    cudaHostUnregister(p);
+  {
+    const cudaError_t unpin_status = cudaHostUnregister(p);
+    if (unpin_status != cudaSuccess)
+    {
+      std::cerr << "WARNING: cudaHostUnregister failed: "
+                << cudaGetErrorString(unpin_status) << " (" << unpin_status
+                << ")" << std::endl;
+      // Do not let a teardown-only failure poison AMGX's subsequent CUDA
+      // last-error check in the engine_base destructor.
+      (void)cudaGetLastError();
+    }
+  }
+  pinned_host_ptrs.clear();
   free_device_data(residual_scratch_d);
   free_device_data(X_d);
   free_device_data(Xn_d);

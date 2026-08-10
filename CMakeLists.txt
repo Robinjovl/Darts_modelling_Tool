@@ -469,7 +469,14 @@ if(CUDA)
            AND EXISTS "${_cccl_system_header}"
            AND EXISTS "${_cccl_override_header}")
             message(STATUS "Applying CCCL workaround for CUDA ${CUDAToolkit_VERSION} block_load_to_shared.cuh ambiguity")
-            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -I${_cccl_override_dir}")
+            # Use CMake's include-directory machinery instead of appending a
+            # raw ``-I`` token to CMAKE_CUDA_FLAGS. The latter is split by the
+            # shell when the checkout path contains spaces, causing nvcc to
+            # interpret the path fragments as additional input files.
+            include_directories(
+              BEFORE
+                "$<$<COMPILE_LANGUAGE:CUDA>:${_cccl_override_dir}>"
+            )
         endif()
         unset(_cccl_override_dir)
         unset(_cccl_override_header)
@@ -564,6 +571,20 @@ target_link_options(opendarts_compiler_flags
 # as nvcc. (The cudart link itself is provided where the symbols are used.)
 if(CUDA)
   target_include_directories(opendarts_compiler_flags INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
+
+  # CMake obtains cudadevrt/cudart_static from nvcc's implicit link line. With
+  # a toolkit installed below a path containing spaces, CUDA 13.2's verbose
+  # output can leave CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES truncated at the
+  # first space. Add the already-discovered runtime directory explicitly so
+  # ordinary C++ link steps can resolve those implicit ``-l`` entries.
+  if(CUDAToolkit_LIBRARY_DIR)
+    target_link_directories(
+      opendarts_compiler_flags
+      BEFORE
+      INTERFACE
+        "${CUDAToolkit_LIBRARY_DIR}"
+    )
+  endif()
 endif()
 # ------------------------------------------------------------------------------
 

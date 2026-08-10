@@ -752,10 +752,38 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 
   // Pin the per-Newton host transfer buffers: pageable copies run ~9 GB/s on
   // this host class vs ~26 GB/s pinned. Registration is best-effort.
+  // Reserve before registering so recording a successful registration cannot
+  // itself allocate and throw, which would lose the pointer needed to unpin.
+  pinned_host_ptrs.reserve(pinned_host_ptrs.size() + 4);
   auto pin_host_buffer = [this](std::vector<value_t> &v)
   {
-    if (!v.empty() && cudaHostRegister(v.data(), v.size() * sizeof(value_t), cudaHostRegisterDefault) == cudaSuccess)
+    if (v.empty())
+      return;
+
+    const cudaError_t pin_status =
+      cudaHostRegister(v.data(), v.size() * sizeof(value_t), cudaHostRegisterDefault);
+    if (pin_status == cudaSuccess)
+    {
       pinned_host_ptrs.push_back(v.data());
+    }
+    else
+    {
+      // Registration is deliberately best-effort: separate std::vector
+      // allocations can occupy overlapping host pages, and systems can reject
+      // or run out of page-lockable memory. Report unexpected failures, but in
+      // every case clear the ignored sticky CUDA status so a later AMGX
+      // cudaCheckError() does not attribute it to AMGX_matrix_destroy and skip
+      // the actual matrix destruction.
+      if (pin_status != cudaErrorHostMemoryAlreadyRegistered &&
+          pin_status != cudaErrorMemoryAllocation &&
+          pin_status != cudaErrorNotSupported)
+      {
+        std::cerr << "WARNING: cudaHostRegister failed: "
+                  << cudaGetErrorString(pin_status) << " (" << pin_status
+                  << "); continuing with pageable host memory" << std::endl;
+      }
+      (void)cudaGetLastError();
+    }
   };
   pin_host_buffer(X);
   pin_host_buffer(dX);

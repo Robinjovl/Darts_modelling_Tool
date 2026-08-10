@@ -86,22 +86,31 @@ namespace opendarts
       }
 
       // Reference parity: restart length capped by the iteration budget.
-      m = restart_requested;
-      if (m > max_iters)
-        m = max_iters;
-      if (m < 1)
-        m = 1;
+      // Keep the previous effective restart until after the workspace-size
+      // check below. The adjoint path initializes this solver first with the
+      // forward linear-iteration budget and then reinitializes it with the
+      // (usually larger) adjoint budget. Reusing V_d solely because the
+      // matrix dimension is unchanged leaves a too-small Krylov basis and
+      // causes out-of-bounds device writes once the old restart is exceeded.
+      int m_new = restart_requested;
+      if (m_new > max_iters)
+        m_new = max_iters;
+      if (m_new < 1)
+        m_new = 1;
 
       const int n_new = A_input->n_rows * N_BLOCK_SIZE;
-      if (n_new != n || !V_d)
+      if (n_new != n || m_new != m || !V_d)
       {
         if (V_d)
           cudaFree(V_d);
+        V_d = w_d = z_d = h_d = nullptr;
         n = n_new;
+        m = m_new;
         // One contiguous block: V ((m+1)*n) | w (n) | z (n) | h (m+1).
+        const std::size_t m_plus_one = static_cast<std::size_t>(m) + 1;
         const std::size_t total =
-            static_cast<std::size_t>(m + 1) * n + 2 * static_cast<std::size_t>(n)
-            + (m + 1);
+            m_plus_one * static_cast<std::size_t>(n)
+            + 2 * static_cast<std::size_t>(n) + m_plus_one;
         cudaError_t cudaStat = cudaMalloc((void **)&V_d, sizeof(double) * total);
         if (cudaStat != cudaSuccess)
         {
@@ -109,7 +118,7 @@ namespace opendarts
           V_d = nullptr;
           return -2;
         }
-        w_d = V_d + static_cast<std::size_t>(m + 1) * n;
+        w_d = V_d + m_plus_one * static_cast<std::size_t>(n);
         z_d = w_d + n;
         h_d = z_d + n;
       }
