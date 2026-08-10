@@ -99,6 +99,9 @@ class PropertyContainer(BasePropertyContainer):
         self.rock_density_ev = {}
         self.rock_compr_ev = {}
 
+    def check_properties(self):
+        pass
+
     @staticmethod
     def _build_phase_index(phases: dict[str, int]) -> dict:
         """
