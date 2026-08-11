@@ -135,8 +135,10 @@ class Model(CICDModel):
             'L': MaoDuan2009(components),  # cP, liquid water (pressure/temperature-dependent)
         }
         pc.enthalpy_ev = {
-            'V': self.physics.get_enthalpy_ev_from_flash(phase_idx=0),
-            'L': self.physics.get_enthalpy_ev_from_flash(phase_idx=1),
+            'V': EoSEnthalpy(eos=mixture.eos["IAPWS"], root_flag=EoS.MAX),
+            'L': EoSEnthalpy(eos=mixture.eos["IAPWS"], root_flag=EoS.MIN),
+            # 'V': self.physics.get_enthalpy_ev_from_flash(phase_idx=0),
+            # 'L': self.physics.get_enthalpy_ev_from_flash(phase_idx=1),
         }
         pc.rel_perm_ev = {
             'V': PhaseRelPerm("gas", swc=0.0),
