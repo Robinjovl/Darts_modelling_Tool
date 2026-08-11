@@ -13,9 +13,12 @@
         TEST_GPU: '1'
         PY_VER: $DEFAULT_PY_VER
         CONDA_ENV: "darts_gpu_${CI_JOB_ID}"
+        OD_CMAKE_ARGS: "-DOPENDARTS_INTERPOLATOR_PROFILE=FULL -DOPENDARTS_MAX_DIMS=12"
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
-        - ./helper_scripts/build_install_darts_gpu.sh -c -p -j 20
+        - ./helper_scripts/build_install_darts_gpu.sh -c -p -j 1
+        - grep -q '^OPENDARTS_INTERPOLATOR_PROFILE:STRING=FULL$' build/CMakeCache.txt
+        - grep -q '^OPENDARTS_MAX_DIMS:STRING=12$' build/CMakeCache.txt
         - |
           WARN_COUNT=$(grep -oP 'OPENDARTS_WARNING_COUNT=\K[0-9]+' make_darts.log 2>/dev/null | tail -1)
           WARN_COUNT=${WARN_COUNT:-0}
@@ -108,9 +111,13 @@ build-linux-tahiti-image-gpu:
                 source /opt/conda/etc/profile.d/conda.sh && \
                 # activate your env
                 conda activate ${CONDA_ENV} && \
+                # preserve the pipeline's CMake configuration inside Apptainer
+                export OD_CMAKE_ARGS='${OD_CMAKE_ARGS}' && \
                 # _this_ is your real build
-                ./helper_scripts/build_install_darts_gpu.sh -c -p -j 16
+                ./helper_scripts/build_install_darts_gpu.sh -c -p -j 1
             "
+        - grep -q '^OPENDARTS_INTERPOLATOR_PROFILE:STRING=FULL$' build/CMakeCache.txt
+        - grep -q '^OPENDARTS_MAX_DIMS:STRING=12$' build/CMakeCache.txt
         - |
           WARN_COUNT=$(grep -oP 'OPENDARTS_WARNING_COUNT=\K[0-9]+' make_darts.log 2>/dev/null | tail -1)
           WARN_COUNT=${WARN_COUNT:-0}

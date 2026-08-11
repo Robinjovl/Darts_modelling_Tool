@@ -6,11 +6,10 @@
         - linux
     variables:
         CONDA_ENV: "darts-${CI_JOB_ID}"
-        # MINIMAL drops the linear adaptive interpolator from the compile set,
-        # cutting per-TU memory enough that the shared 8 GB docker runner does
-        # not OOM-kill cc1plus at -j 8 on the heavy
-        # py_operator_set_interpolator_*_part*.cpp translation units.
-        OD_CMAKE_ARGS: "-D OPENDARTS_INTERPOLATOR_PROFILE=MINIMAL"
+        # Compile linear interpolators and support up to 12 engine components.
+        # The build is serialized below to constrain memory use on the
+        # template-heavy interpolator translation units.
+        OD_CMAKE_ARGS: "-DOPENDARTS_INTERPOLATOR_PROFILE=FULL -DOPENDARTS_MAX_DIMS=12"
     before_script:
         - echo 'before build-linux'
         - source /opt/conda/bin/activate
@@ -21,6 +20,8 @@
     script:
         - echo "build *.so on linux started with ODLS=$ODLS"
         - ./helper_scripts/build_darts_cmake.sh -c -w -t -m -j 1 $ODLS -p
+        - grep -q '^OPENDARTS_INTERPOLATOR_PROFILE:STRING=FULL$' build/CMakeCache.txt
+        - grep -q '^OPENDARTS_MAX_DIMS:STRING=12$' build/CMakeCache.txt
     after_script:
         - source /opt/conda/bin/activate
         - conda env remove -n ${CONDA_ENV} --yes || true

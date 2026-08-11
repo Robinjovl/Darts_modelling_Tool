@@ -20,7 +20,9 @@ build-linux-valgrind:
         PY_VER: "$DEFAULT_PY_VER"
     script:
         - echo ">>> Starting debug build (valgrind instrumentation) <<<"
-        - ./helper_scripts/build_darts_cmake.sh -c -w -m -j 8 -v $ODLS -p
+        - ./helper_scripts/build_darts_cmake.sh -c -w -m -j 1 -v $ODLS -p
+        - grep -q '^OPENDARTS_INTERPOLATOR_PROFILE:STRING=FULL$' build/CMakeCache.txt
+        - grep -q '^OPENDARTS_MAX_DIMS:STRING=12$' build/CMakeCache.txt
     artifacts:
       paths:
         - './dist/*.whl'
