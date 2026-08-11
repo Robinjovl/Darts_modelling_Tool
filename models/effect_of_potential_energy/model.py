@@ -79,10 +79,9 @@ class Model(CICDModel):
         mixture = Mixture(comp_data)
         mixture.set_vl_eos(vl_eos_name="PR", hybrid_aq_eos_name="Aq",
                            root_order=[EoS.STABLE],
-                           trial_comps=[EoSParams.Yi.Wilson],
+                           trial_comps=[EoSParams.Yi.Wilson, 1],
                            stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
                            )
-        pr = mixture.eos["PR"]
         mixture.set_aq_eos(aq_eos_name="Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
 
         mixture.init_flash(eos_order=["Aq", "PR"],
@@ -96,14 +95,14 @@ class Model(CICDModel):
         self.physics.add_property_region(property_container)
 
         property_container.flash_ev = self.physics.get_flash_ev()
-        property_container.density_ev = dict([('CO2_rich_phase', EoSDensity(eos=pr)),
+        property_container.density_ev = dict([('CO2_rich_phase', EoSDensity(eos=mixture.eos["PR"])),
                                               ('aq', Garcia2001(components))])
         property_container.viscosity_ev = dict([('CO2_rich_phase', Fenghour1998()),
                                                 ('aq', Islam2012(components))])
         property_container.rel_perm_ev = dict([('CO2_rich_phase', PhaseRelPerm("gas")),
                                                ('aq', PhaseRelPerm("oil"))])
 
-        property_container.enthalpy_ev = dict([('CO2_rich_phase', EoSEnthalpy(eos=pr)),
+        property_container.enthalpy_ev = dict([('CO2_rich_phase', EoSEnthalpy(eos=mixture.eos["PR"])),
                                                ('aq', EoSEnthalpy(eos=mixture.eos["Aq"]))])
         # property_container.enthalpy_ev = dict([('CO2_rich_phase', self.physics.get_enthalpy_ev_from_flash(phase_idx=1)),
         #                                        ('aq', self.physics.get_enthalpy_ev_from_flash(phase_idx=0))])
