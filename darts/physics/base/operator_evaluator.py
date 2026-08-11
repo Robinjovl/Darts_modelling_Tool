@@ -58,11 +58,15 @@ class OperatorsBase(operator_set_evaluator_iface):
         self.thermal = thermal
 
         self.nc = property_container.nc
-        self.nc_fl = property_container.nc_fl
-        self.ns = property_container.ns
         self.ne = self.nc + self.thermal
         self.nph = property_container.nph
-        self.np_fl = property_container.np_fl
+
+        # Some containers (e.g. chemistry's output-only OutputPropertyContainer) have
+        # no solid/fluid phase split of their own; default to "no solid components",
+        # matching PropertyContainer's own defaults (nc_sol=0, np_sol=0).
+        self.ns = getattr(property_container, 'ns', 0)
+        self.nc_fl = getattr(property_container, 'nc_fl', self.nc)
+        self.np_fl = getattr(property_container, 'np_fl', self.nph)
 
         self.n_ops: int = None
 
