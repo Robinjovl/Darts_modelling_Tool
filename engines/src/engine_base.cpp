@@ -7,6 +7,8 @@
 #include <iostream>
 #include <functional>  // adjoint method -- function 'bind1st'
 #include <limits>
+#include <map>     // adjoint method -- grouping injected streams by (well, region)
+#include <utility>
 #ifdef __GNUC__
 #include <cxxabi.h>
 #endif
@@ -439,6 +441,336 @@ engine_base::init_adjoint_structure(csr_matrix_base* init_adjoint)
 
 
 
+void
+engine_base::add_source_well(const std::string &name, const std::vector<index_t> &blocks,
+                             const std::vector<value_t> &well_indices, bool is_injector,
+                             const std::vector<value_t> &inj_state)
+{
+	if (blocks.size() != well_indices.size())
+		throw std::runtime_error("source well '" + name + "': " + std::to_string(blocks.size())
+		                         + " perforated blocks against " + std::to_string(well_indices.size())
+		                         + " well indices");
+
+	source_well sw;
+	sw.name = name;
+	sw.blocks = blocks;
+	sw.well_indices = well_indices;
+	sw.is_injector = is_injector;
+	sw.inj_state = inj_state;
+	source_wells.push_back(sw);
+}
+
+void
+engine_base::set_source_well_bhp(const std::vector<value_t> &bhp)
+{
+	if (bhp.size() != source_wells.size())
+		throw std::runtime_error("expected " + std::to_string(source_wells.size())
+		                         + " bottom-hole pressures, got " + std::to_string(bhp.size()));
+
+	for (size_t w = 0; w < source_wells.size(); w++)
+		source_wells[w].bhp = bhp[w];
+}
+
+void
+engine_base::set_source_well_injecting(const std::vector<index_t> &is_injector)
+{
+	if (is_injector.size() != source_wells.size())
+		throw std::runtime_error("expected " + std::to_string(source_wells.size())
+		                         + " roles, got " + std::to_string(is_injector.size()));
+
+	for (size_t w = 0; w < source_wells.size(); w++)
+		source_wells[w].is_injector = (is_injector[w] != 0);
+}
+
+void
+engine_base::set_source_well_index(const std::vector<value_t> &well_indices)
+{
+	size_t n = 0;
+	for (const source_well &sw : source_wells)
+		n += sw.blocks.size();
+
+	if (well_indices.size() != n)
+		throw std::runtime_error("expected " + std::to_string(n) + " well indices, got "
+		                         + std::to_string(well_indices.size()));
+
+	size_t k = 0;
+	for (source_well &sw : source_wells)
+		for (size_t p = 0; p < sw.well_indices.size(); p++)
+			sw.well_indices[p] = well_indices[k++];
+}
+
+std::vector<value_t>
+engine_base::get_source_well_index() const
+{
+	std::vector<value_t> out;
+	for (const source_well &sw : source_wells)
+		out.insert(out.end(), sw.well_indices.begin(), sw.well_indices.end());
+	return out;
+}
+
+bool
+engine_base::add_source_well_dj_dx(const std::string &name,
+                                   const std::vector<std::string> &opt_phase_names,
+                                   const std::vector<value_t> &dj_dq, value_t sign)
+{
+	// which source well, if any, this objective entry refers to
+	int idx = -1;
+	for (size_t w = 0; w < source_wells.size(); w++)
+		if (source_wells[w].name == name)
+		{
+			idx = (int)w;
+			break;
+		}
+
+	if (idx < 0)
+		return false;
+
+	if ((size_t)idx >= source_well_rate_ders.size())
+		return true;   // defined but never assembled: nothing to contribute
+
+	const source_well &sw = source_wells[idx];
+	const std::vector<value_t> &ders = source_well_rate_ders[idx];
+	const size_t n_phases = source_well_phase_names.size();
+
+	// where this well's perforations start in the flattened well-index control vector
+	size_t control_base = 0;
+	for (int prev = 0; prev < idx; prev++)
+		control_base += source_wells[prev].blocks.size();
+
+	const bool wi_is_control = !source_well_control_idx.empty();
+	const std::vector<value_t> &wi_ders = (idx < (int)source_well_rate_wi_ders.size())
+	                                      ? source_well_rate_wi_ders[idx]
+	                                      : std::vector<value_t>();
+
+	// `Temp_dj_dx` holds -dj/dx, the right-hand side of eq. (18)-(19) in Tian et al.
+	// (2022). A source well has no well block, so the whole contribution lands on the
+	// reservoir blocks it perforates.
+	for (size_t k = 0; k < sw.blocks.size(); k++)
+	{
+		const index_t i = sw.blocks[k];
+		for (size_t p = 0; p < n_phases; p++)
+		{
+			// match the engine's phase to its slot in the observation data
+			size_t obs = 0;
+			bool observed = false;
+			for (size_t o = 0; o < opt_phase_names.size(); o++)
+				if (opt_phase_names[o] == source_well_phase_names[p])
+				{
+					obs = o;
+					observed = true;
+					break;
+				}
+
+			if (!observed || obs >= dj_dq.size())
+				continue;
+
+			for (uint8_t v = 0; v < n_vars; v++)
+			{
+				const size_t at = (k * n_phases + p) * n_vars + v;
+				if (at < ders.size())
+					Temp_dj_dx[i * n_vars + v] += sign * ders[at] * dj_dq[obs];
+			}
+
+			// the dj/du half of eq. (20): unlike transmissibility, which reaches the
+			// objective only through the state, the well index scales the rate directly
+			if (wi_is_control && control_base + k < source_well_control_idx.size())
+			{
+				const int ctrl = source_well_control_idx[control_base + k];
+				if (ctrl >= 0 && ctrl < (int)source_wi_dj_du.size()
+				    && k * n_phases + p < wi_ders.size())
+				{
+					source_wi_dj_du[ctrl] -= sign * wi_ders[k * n_phases + p] * dj_dq[obs];
+				}
+			}
+
+			// The same half for the mobility operator. The rate is bilinear in WI and
+			// lambda, so this term is as large as the one above and omitting it leaves a
+			// gradient that is not merely inaccurate but uncorrelated with the truth.
+			if (record_op_gradient && lambda_op_index >= 0
+			    && idx < (int)source_well_rate_lambda_ders.size())
+			{
+				const std::vector<value_t> &lam_ders = source_well_rate_lambda_ders[idx];
+				if (k * n_phases + p < lam_ders.size())
+				{
+					const value_t coef = -sign * lam_ders[k * n_phases + p] * dj_dq[obs];
+					const index_t op = lambda_op_index + (index_t)p;
+					if (sw.is_injector)
+						inj_op_dj_entries.emplace_back(idx, mesh->op_num[i], op, coef);
+					else
+						op_dj_entries.emplace_back(i, op, coef);
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
+void
+engine_base::accumulate_operator_gradient(const std::vector<value_t> &lambda,
+                                          const std::vector<value_t> &states)
+{
+	// dJ/d(operator value at a supporting point), in two steps.
+	//
+	// [1] lambda^T dg/d(op) per block. `op_grad_entries` holds one term of that product per
+	//     (residual row, block, operator) the assembly touched, so this is a scatter-add.
+	//
+	// [2] push each block's gradient back through the interpolation that produced its
+	//     operator values. That is the interpolator's job -- it owns the weights -- and it
+	//     accumulates into buckets keyed by supporting point, which persist across the whole
+	//     backward sweep because a point is generally visited at many timesteps.
+	//
+	// The split matters: [1] is physics and lives here, [2] is the OBL parameterisation and
+	// lives with the table. Neither needs to know the control variables, which is why this
+	// costs the same whether one Corey parameter is being fitted or fifty.
+	if (!op_grad_entries.empty() || !op_dj_entries.empty())
+	{
+		op_grad_arr.assign((size_t)mesh->n_blocks * n_ops, 0);
+		for (const op_grad_entry &e : op_grad_entries)
+			op_grad_arr[(size_t)e.cell * n_ops + e.op] += lambda[e.row] * e.coef;
+		// the direct half carries no lambda -- see `op_dj_entry`
+		for (const op_dj_entry &e : op_dj_entries)
+			op_grad_arr[(size_t)e.cell * n_ops + e.op] += e.coef;
+
+		for (index_t r = 0; r < (index_t)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->accumulate_operator_gradient(states, block_idxs[r], op_grad_arr);
+	}
+
+	// Injected streams sit at their own point of the table, one per (well, region), so each
+	// is scattered as a one-state batch at the state the assembly evaluated it at. `bhp` is
+	// the value `restore_source_well_bhp` put back for this timestep, so rebuilding the
+	// state here reproduces the one the residual was assembled with.
+	if (!inj_op_grad_entries.empty() || !inj_op_dj_entries.empty())
+	{
+		std::map<std::pair<index_t, index_t>, std::vector<value_t>> streams;
+		auto bucket = [&](index_t well, index_t region) -> std::vector<value_t> & {
+			auto key = std::make_pair(well, region);
+			auto item = streams.find(key);
+			if (item == streams.end())
+				item = streams.emplace(key, std::vector<value_t>(n_ops, 0)).first;
+			return item->second;
+		};
+		for (const inj_op_grad_entry &e : inj_op_grad_entries)
+			bucket(e.well, e.region)[e.op] += lambda[e.row] * e.coef;
+		for (const inj_op_dj_entry &e : inj_op_dj_entries)
+			bucket(e.well, e.region)[e.op] += e.coef;
+
+		std::vector<int> one_state_idx(1, 0);
+		for (const auto &kv : streams)
+		{
+			const source_well &sw = source_wells[kv.first.first];
+			std::vector<value_t> state = sw.inj_state;
+			if (state.empty())
+				continue;
+			state[0] = sw.bhp;   // pressure is the first entry of the state vector
+			acc_flux_op_set_list[kv.first.second]->accumulate_operator_gradient(
+				state, one_state_idx, kv.second);
+		}
+	}
+}
+
+void
+engine_base::clear_operator_gradient()
+{
+	for (index_t r = 0; r < (index_t)acc_flux_op_set_list.size(); r++)
+		acc_flux_op_set_list[r]->clear_operator_gradient();
+}
+
+void
+engine_base::accumulate_source_well_wi_gradient(const std::vector<value_t> &lambda)
+{
+	// The lambda^T dg/du half of eq. (20). The source term is linear in the well index, so
+	// dg/dWI is `source_well_unit_residual`, which the assembly stored for this timestep.
+	if (source_wells.empty() || source_well_control_idx.empty())
+		return;
+
+	size_t control_base = 0;
+	for (size_t w = 0; w < source_wells.size(); w++)
+	{
+		const source_well &sw = source_wells[w];
+		if (w < source_well_unit_residual.size())
+		{
+			const std::vector<value_t> &unit = source_well_unit_residual[w];
+			for (size_t k = 0; k < sw.blocks.size(); k++)
+			{
+				if (control_base + k >= source_well_control_idx.size())
+					break;
+
+				const int ctrl = source_well_control_idx[control_base + k];
+				if (ctrl < 0 || ctrl >= (int)source_wi_gradient.size())
+					continue;
+
+				const index_t i = sw.blocks[k];
+				value_t contribution = 0;
+				for (uint8_t c = 0; c < n_vars; c++)
+				{
+					const size_t at = k * n_vars + c;
+					if (at < unit.size())
+						contribution += lambda[i * n_vars + c] * unit[at];
+				}
+				source_wi_gradient[ctrl] += contribution;
+			}
+		}
+		control_base += sw.blocks.size();
+	}
+}
+
+void
+engine_base::restore_source_well_bhp(int idx_sim_ts)
+{
+	// The counterpart of restoring `well_control_arr` for ms_well: the source wells'
+	// bottom-hole pressures follow the schedule, so re-assembling a past timestep with the
+	// current ones would linearise about the wrong control.
+	if (source_wells.empty() || idx_sim_ts < 0 || idx_sim_ts >= (int)source_well_bhp_t.size())
+		return;
+
+	const std::vector<value_t> &bhp = source_well_bhp_t[idx_sim_ts];
+	for (size_t w = 0; w < source_wells.size() && w < bhp.size(); w++)
+		source_wells[w].bhp = bhp[w];
+
+	if (idx_sim_ts < (int)source_well_injecting_t.size())
+	{
+		const std::vector<char> &injecting = source_well_injecting_t[idx_sim_ts];
+		for (size_t w = 0; w < source_wells.size() && w < injecting.size(); w++)
+			source_wells[w].is_injector = (injecting[w] != 0);
+	}
+}
+
+void
+engine_base::report_source_well_rates()
+{
+	if (source_wells.empty())
+		return;
+
+	// `source_well_phase_rates` is per perforation while the objective is per well, so the
+	// perforations are summed here.
+	//
+	// Sign: reported **negative for production**, which is ms_well's own orientation --
+	// `calc_rates` uses `p_diff = p_head - p_body`, the reverse of the assembly's
+	// `dp = p_block - bhp`. It matters because `OptModuleSettings` negates the simulated
+	// rates and does not negate the observations, so a source well reporting production
+	// positive would be compared against the truth with the sign flipped.
+	const size_t n_phases = source_well_phase_names.size();
+	for (size_t w = 0; w < source_wells.size(); w++)
+	{
+		const source_well &sw = source_wells[w];
+		static const std::vector<value_t> no_rates;
+		const std::vector<value_t> &rates = (w < source_well_phase_rates.size())
+		                                    ? source_well_phase_rates[w]
+		                                    : no_rates;
+
+		for (size_t p = 0; p < n_phases; p++)
+		{
+			value_t total = 0;
+			for (size_t k = 0; k * n_phases + p < rates.size(); k++)
+				total += rates[k * n_phases + p];
+
+			time_data[sw.name + " : " + source_well_phase_names[p] + " rate (m3/day)"].push_back(-total);
+		}
+		time_data[sw.name + " : BHP (bar)"].push_back(sw.bhp);
+	}
+}
+
 int
 engine_base::calc_adjoint_gradient_dirac_all()
 {
@@ -612,6 +944,15 @@ engine_base::calc_adjoint_gradient_dirac_all()
 	derivatives = Temp_2;
 	//gradient = Temp_2;
 
+	// the two halves of eq. (20) for the source well indices, summed over the sweep
+	source_wi_gradient.assign(n_control_vars, 0);
+	source_wi_dj_du.assign(n_control_vars, 0);
+
+	// supporting-point operator gradients accumulate over the whole sweep, so they start
+	// from empty here and are read once it has finished
+	clear_operator_gradient();
+	record_op_gradient = true;
+
 
 
 
@@ -631,6 +972,7 @@ engine_base::calc_adjoint_gradient_dirac_all()
 		w = &(well_control_arr[idx_sim_ts][idx_well]);
 		idx_well++;
 	}
+	restore_source_well_bhp(idx_sim_ts);
 
 
 	// evaluate all operators and their derivatives
@@ -680,6 +1022,8 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 
 	lambda_n = lambda_temp;
+	accumulate_source_well_wi_gradient(lambda_temp);
+	accumulate_operator_gradient(lambda_temp, *X_state);
 
 	(static_cast<csr_matrix<1>*>(dg_dT_general))->matrix_vector_product_t(&lambda_temp[0], &temp_1[0]);
 	index_t well_numeration = 0;
@@ -711,6 +1055,7 @@ engine_base::calc_adjoint_gradient_dirac_all()
 			w = &(well_control_arr[idx_sim_ts][idx_well]);
 			idx_well++;
 		}
+		restore_source_well_bhp(idx_sim_ts);
 
 
 		// evaluate all operators and their derivatives
@@ -765,6 +1110,8 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 
 		lambda_n = lambda_temp;
+		accumulate_source_well_wi_gradient(lambda_temp);
+		accumulate_operator_gradient(lambda_temp, *X_state);
 
 
 
@@ -789,9 +1136,17 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 	std::transform(derivatives.begin(), derivatives.end(), gradient_u.begin(), derivatives.begin(), std::plus<double>());
 
+	// the source well indices are not interfaces, so they bypass dT_du and are added here
+	std::transform(derivatives.begin(), derivatives.end(), source_wi_gradient.begin(), derivatives.begin(), std::plus<double>());
+	std::transform(derivatives.begin(), derivatives.end(), source_wi_dj_du.begin(), derivatives.begin(), std::plus<double>());
+
 
 
 	deriv_old = derivatives;
+
+	// the forward Newton loop assembles through the same call, and must not pay for entries
+	// only the sweep consumes
+	record_op_gradient = false;
 
 	return 0;
 
@@ -989,7 +1344,17 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
             //    }
             //}
 
+			// a well carried as a source term has no well block: its rate is a function of
+			// the perforated reservoir blocks alone, and the assembly has already stored the
+			// derivatives, so it is handled here and skipped below
+			if (add_source_well_dj_dx(well_, prod_phase_name, q_Q[ww], 1.0))
+			{
+				ww++;
+				continue;
+			}
+
 			// recover the well definition from forward simulation, e.g. control and constraints
+			w = nullptr;
 			idx_well = 0;
 			for (ms_well* well : wells)
 			{
@@ -999,6 +1364,9 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 				}
 				idx_well++;
 			}
+			if (!w)
+				throw std::runtime_error("objective references well '" + well_
+				                         + "', which is neither an ms_well nor a source well");
 
             // find upstream state
             value_t p_diff = X[w->well_head_idx * w->n_block_size + w->P_VAR] - X[w->well_body_idx * w->n_block_size + w->P_VAR];
@@ -1096,7 +1464,17 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
             //    }
             //}
 
+			// source-term wells, as in the production branch above. The sign is the
+			// opposite one because the objective negates the simulated *production* rates
+			// and leaves the injection rates alone.
+			if (add_source_well_dj_dx(well_, inj_phase_name, q_inj_Q[ww], -1.0))
+			{
+				ww++;
+				continue;
+			}
+
 			// recover the well definition from forward simulation, e.g. control and constraints
+			w = nullptr;
 			idx_well = 0;
 			for (ms_well* well : wells)
 			{
@@ -1106,6 +1484,9 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 				}
 				idx_well++;
 			}
+			if (!w)
+				throw std::runtime_error("objective references injector '" + well_
+				                         + "', which is neither an ms_well nor a source well");
 
 			// find upstream state
 			value_t p_diff = X[w->well_head_idx * w->n_block_size + w->P_VAR] - X[w->well_body_idx * w->n_block_size + w->P_VAR];
@@ -3188,6 +3569,8 @@ int engine_base::post_newtonloop(value_t deltat, value_t time, index_t converged
 			}
 		}
 
+		report_source_well_rates();
+
 		// calculate FIPS
 		FIPS.assign(nc, 0);
 		for (index_t i = 0; i < mesh->n_res_blocks; i++)
@@ -3241,6 +3624,20 @@ int engine_base::post_newtonloop(value_t deltat, value_t time, index_t converged
 
 			well_control_arr.push_back(well_arr);
 
+			// the same for the source wells: their bottom-hole pressure is prescribed and
+			// generally varies with the schedule, so the backward sweep has to restore the
+			// value this timestep actually ran with before it re-assembles
+			std::vector<value_t> source_bhp;
+			std::vector<char> source_injecting;
+			source_bhp.reserve(source_wells.size());
+			source_injecting.reserve(source_wells.size());
+			for (const source_well& sw : source_wells)
+			{
+				source_bhp.push_back(sw.bhp);
+				source_injecting.push_back(sw.is_injector ? 1 : 0);
+			}
+			source_well_bhp_t.push_back(source_bhp);
+			source_well_injecting_t.push_back(source_injecting);
 		}
 
 		// evaluate the customized operators and their derivatives

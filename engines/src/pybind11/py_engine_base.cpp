@@ -48,6 +48,27 @@ void pybind_engine_base (py::module &m)
 	   .def_readwrite("region_cell_idx", &engine_base::block_idxs) \
 	   .def_readwrite("time_data", &engine_base::time_data) \
 	   .def_readwrite("time_data_report", &engine_base::time_data_report) \
+	   .def("add_source_well", &engine_base::add_source_well, \
+	        "Define a well carried as a source term in its perforated blocks: no well " \
+	        "block, no control equation, and differentiable by the adjoint.", \
+	        py::arg("name"), py::arg("blocks"), py::arg("well_indices"), \
+	        py::arg("is_injector") = false, \
+	        py::arg("inj_state") = std::vector<value_t>()) \
+	   .def("set_source_well_bhp", &engine_base::set_source_well_bhp, \
+	        "Set the bottom-hole pressure of every source well, in definition order.", \
+	        py::arg("bhp")) \
+	   .def("set_source_well_injecting", &engine_base::set_source_well_injecting, \
+	        "Set which source wells currently inject, in definition order. A schedule that " \
+	        "converts producers to injectors must keep this in step with the bhp.", \
+	        py::arg("is_injector")) \
+	   .def("set_source_well_index", &engine_base::set_source_well_index, \
+	        "Set every source well perforation's well index, flattened in definition " \
+	        "order; this is the control the adjoint differentiates.", \
+	        py::arg("well_indices")) \
+	   .def("get_source_well_index", &engine_base::get_source_well_index, \
+	        "Every source well perforation's well index, flattened in definition order.") \
+	   .def_readwrite("source_well_phase_names", &engine_base::source_well_phase_names) \
+	   .def_readwrite("source_well_control_idx", &engine_base::source_well_control_idx) \
 	   .def_readwrite("engine_name", &engine_base::engine_name) \
 	   .def_readwrite("params", &engine_base::params) \
 	   .def_readwrite("print_linear_system", &engine_base::print_linear_system) \

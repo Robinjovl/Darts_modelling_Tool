@@ -69,6 +69,37 @@ py::tuple bulk_get_point_data_arrays(const interpolator_class &self)
   return py::make_tuple(std::move(keys), std::move(vals));
 }
 
+// ---------------------------------------------------------------------------
+// Contiguous export of the adjoint's supporting-point gradient buckets. Same
+// (keys, vals) shape as bulk_get_point_data_arrays and keyed the same way, so a
+// caller aligns the two by multi-index rather than by position -- neither map
+// promises an iteration order, and the gradient holds only the points that
+// actually contributed.
+//   keys : int32   [M, N_DIMS]
+//   vals : float64 [M, N_OPS]
+// ---------------------------------------------------------------------------
+template <typename interpolator_class, uint8_t N_DIMS, uint16_t N_OPS>
+py::tuple bulk_get_operator_gradient_arrays(const interpolator_class &self)
+{
+  const size_t n = self.op_gradient.size();
+  py::array_t<int32_t> keys({static_cast<py::ssize_t>(n), static_cast<py::ssize_t>(N_DIMS)});
+  py::array_t<double> vals({static_cast<py::ssize_t>(n), static_cast<py::ssize_t>(N_OPS)});
+  int32_t *kp = keys.mutable_data();
+  double *vp = vals.mutable_data();
+  size_t i = 0;
+  for (const auto &kv : self.op_gradient)
+  {
+    int32_t *krow = kp + i * static_cast<size_t>(N_DIMS);
+    for (uint8_t d = 0; d < N_DIMS; ++d)
+      krow[d] = kv.first.idx[d];
+    double *vrow = vp + i * static_cast<size_t>(N_OPS);
+    for (uint16_t op = 0; op < N_OPS; ++op)
+      vrow[op] = static_cast<double>(kv.second[op]);
+    ++i;
+  }
+  return py::make_tuple(std::move(keys), std::move(vals));
+}
+
 template <typename interpolator_class, uint8_t N_DIMS, uint16_t N_OPS>
 void bulk_set_point_data_arrays(interpolator_class &self,
                                 py::array_t<int32_t, py::array::c_style | py::array::forcecast> keys,
@@ -312,6 +343,16 @@ struct interpolator_exposer
               return bulk_get_point_data_arrays<interpolator_class, N_DIMS, N_OPS>(self);
             },
             "Export the whole cache as (keys:int32[N,N_DIMS], vals:float64[N,N_OPS]) arrays")
+          .def("get_operator_gradient_arrays",
+            [](const interpolator_class &self) {
+              return bulk_get_operator_gradient_arrays<interpolator_class, N_DIMS, N_OPS>(self);
+            },
+            "Adjoint gradient of the objective with respect to the operator values at each "
+            "supporting point, as (keys:int32[M,N_DIMS], vals:float64[M,N_OPS]). Keyed like "
+            "get_point_data_arrays, so align the two by key. Filled by the engine adjoint "
+            "sweep; empty otherwise.")
+          .def("clear_operator_gradient", &interpolator_class::clear_operator_gradient,
+            "Drop every accumulated supporting-point gradient bucket")
           .def("set_point_data_arrays",
             [](interpolator_class &self,
                py::array_t<int32_t, py::array::c_style | py::array::forcecast> keys,

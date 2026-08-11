@@ -97,6 +97,18 @@ void engine_super_cpu<NC, NP, THERMAL>::enable_flux_output()
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
 {
+    // Both operator-gradient lists are rebuilt from here: this call is the first of the
+    // pair that the backward sweep makes for a timestep (source wells here, reservoir
+    // fluxes in `adjoint_gradient_assembly`), so clearing anywhere later would discard the
+    // well terms that this call is about to record.
+    if (this->record_op_gradient)
+    {
+        this->op_grad_entries.clear();
+        this->inj_op_grad_entries.clear();
+        this->op_dj_entries.clear();
+        this->inj_op_dj_entries.clear();
+    }
+
     index_t n_blocks = mesh->n_blocks;
     index_t n_res_blocks = mesh->n_res_blocks;
     index_t n_conns = mesh->n_conns;
@@ -832,7 +844,168 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
       }
   }
 
+  assemble_source_wells(dt, X, jacobian, RHS);
+
   return 0;
+};
+
+/// @brief Add the source wells to the residual and Jacobian of their perforated blocks.
+///
+/// Each perforation is an ordinary Darcy connection against a ghost block held at the
+/// well's bottom-hole pressure, so it reuses the operators the reservoir connections use:
+/// mobility `LAMBDA_OP` for the phase rate and `FLUX_OP` for the component split. With
+/// `dp = p_block - bhp`,
+///
+///     q_p    = WI * lambda_p(w) * dp                       [m3/day, positive out]
+///     mass_c = sum_p q_p * alpha^flux_{p,c}(w)             [kmol/day]
+///
+/// evaluated upstream: at the block's own state when fluid leaves the reservoir, and at
+/// the injected state when it enters. The engine's residual is accumulation + outflux, so
+/// production enters with a plus sign and injection with a minus.
+///
+/// Called from `assemble_jacobian_array`, which is the point of the whole exercise: the
+/// adjoint's backward sweep re-assembles through that same call, so `dg/dx` carries the
+/// source term there exactly as it does in the forward Newton loop. A Python-side residual
+/// hook cannot do this -- the backward sweep never returns to Python.
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+int engine_super_cpu<NC, NP, THERMAL>::assemble_source_wells(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
+{
+    if (source_wells.empty())
+        return 0;
+
+    const std::vector<index_t>& op_num = mesh->op_num;
+    value_t* Jac = jacobian->get_values();
+    index_t* diag_ind = jacobian->get_diag_ind();
+
+    // operator values of the injected stream, evaluated per well and only when needed
+    std::vector<value_t> inj_vals(N_OPS), inj_ders(N_OPS * N_VARS);
+    std::vector<value_t> inj_state(N_VARS);
+    std::vector<index_t> inj_block_idx = { 0 };
+
+    source_well_phase_rates.resize(source_wells.size());
+    source_well_rate_ders.resize(source_wells.size());
+    source_well_unit_residual.resize(source_wells.size());
+    source_well_rate_wi_ders.resize(source_wells.size());
+    source_well_rate_lambda_ders.resize(source_wells.size());
+    this->lambda_op_index = LAMBDA_OP;   // see engine_base::lambda_op_index
+
+    for (size_t w = 0; w < source_wells.size(); w++)
+    {
+        source_well& sw = source_wells[w];
+        source_well_phase_rates[w].assign(sw.blocks.size() * NP, 0.0);
+        source_well_rate_ders[w].assign(sw.blocks.size() * NP * N_VARS, 0.0);
+        source_well_unit_residual[w].assign(sw.blocks.size() * N_VARS, 0.0);
+        source_well_rate_wi_ders[w].assign(sw.blocks.size() * NP, 0.0);
+        source_well_rate_lambda_ders[w].assign(sw.blocks.size() * NP, 0.0);
+
+        for (size_t k = 0; k < sw.blocks.size(); k++)
+        {
+            const index_t i = sw.blocks[k];
+            const value_t wi = sw.well_indices[k];
+            const value_t dp = X[i * N_VARS + P_VAR] - sw.bhp;
+
+            // A well whose drawdown has reversed is shut for this iterate: no flow, and no
+            // derivative either. That is the physical closure -- an injector must not
+            // produce, nor a producer inject -- and it keeps the residual consistent with
+            // the rates reported to the objective.
+            const bool producing = (dp > 0);
+            if (producing == sw.is_injector)
+                continue;
+
+            // same convention as the accumulation and connection terms above:
+            // `diag_ind` already holds the global index of the block's diagonal
+            const index_t diag_idx = N_VARS_SQ * diag_ind[i];
+
+            if (!sw.is_injector)
+            {
+                // ---- production: everything is a function of this block's own state ----
+                for (uint8_t p = 0; p < NP; p++)
+                {
+                    const value_t lambda = op_vals_arr[i * N_OPS + LAMBDA_OP + p];
+                    const value_t q_p = wi * lambda * dp;
+                    source_well_phase_rates[w][k * NP + p] = q_p;
+
+                    // derivative of the *reported* rate (negated -- see
+                    // report_source_well_rates) for the objective's dj/dx
+                    for (uint8_t v = 0; v < N_VARS; v++)
+                    {
+                        source_well_rate_ders[w][(k * NP + p) * N_VARS + v] =
+                            -wi * (op_ders_arr[(i * N_OPS + LAMBDA_OP + p) * N_VARS + v] * dp
+                                   + (v == P_VAR ? lambda : 0.0));
+                    }
+
+                    // linear in WI, so d/dWI is the quantity itself over WI
+                    source_well_rate_wi_ders[w][k * NP + p] = -lambda * dp;
+                    // and bilinear, so d/dLambda is the same swap
+                    source_well_rate_lambda_ders[w][k * NP + p] = -wi * dp;
+
+                    for (uint8_t c = 0; c < NE; c++)
+                    {
+                        const value_t flux_op = op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c];
+                        RHS[i * N_VARS + c] += q_p * flux_op * dt;
+                        source_well_unit_residual[w][k * N_VARS + c] += lambda * dp * flux_op * dt;
+
+                        // dg/d(mobility): the source term is bilinear in WI and Lambda, so
+                        // this is the line above with WI in place of Lambda
+                        const value_t dg_dlambda = wi * dp * flux_op * dt;
+                        if (this->record_op_gradient && dg_dlambda != 0.0)
+                            this->op_grad_entries.emplace_back(i * N_VARS + c, i, LAMBDA_OP + p, dg_dlambda);
+
+                        for (uint8_t v = 0; v < N_VARS; v++)
+                        {
+                            // d(q_p)/dv, with d(dp)/dp_block = 1
+                            const value_t dq = wi * (op_ders_arr[(i * N_OPS + LAMBDA_OP + p) * N_VARS + v] * dp
+                                                     + (v == P_VAR ? lambda : 0.0));
+                            Jac[diag_idx + c * N_VARS + v] += (dq * flux_op
+                                + q_p * op_ders_arr[(i * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v]) * dt;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // ---- injection: the stream is prescribed, so the operators do not depend
+                // on the block state and the only derivative is through dp ----
+                inj_state = sw.inj_state;
+                inj_state[P_VAR] = sw.bhp;
+                inj_block_idx[0] = 0;
+                acc_flux_op_set_list[op_num[i]]->evaluate_with_derivatives(inj_state, inj_block_idx, inj_vals, inj_ders);
+
+                for (uint8_t p = 0; p < NP; p++)
+                {
+                    const value_t lambda = inj_vals[LAMBDA_OP + p];
+                    const value_t q_p = wi * lambda * dp;   // dp < 0 here: flow into the block
+                    source_well_phase_rates[w][k * NP + p] = q_p;
+
+                    // the injected stream is prescribed, so the only dependence on the
+                    // block state is through dp
+                    source_well_rate_ders[w][(k * NP + p) * N_VARS + P_VAR] = -wi * lambda;
+                    source_well_rate_wi_ders[w][k * NP + p] = -lambda * dp;
+                    source_well_rate_lambda_ders[w][k * NP + p] = -wi * dp;
+
+                    for (uint8_t c = 0; c < NE; c++)
+                    {
+                        const value_t flux_op = inj_vals[FLUX_OP + p * NE + c];
+                        RHS[i * N_VARS + c] += q_p * flux_op * dt;
+                        source_well_unit_residual[w][k * N_VARS + c] += lambda * dp * flux_op * dt;
+                        // d(q_p)/dp_block = wi * lambda, the stream's operators being fixed
+                        Jac[diag_idx + c * N_VARS + P_VAR] += wi * lambda * flux_op * dt;
+
+                        // dg/d(mobility of the injected stream). Recorded against the well
+                        // rather than the block: this operator was interpolated at
+                        // `inj_state`, so it belongs to that point of the table and not to
+                        // the perforated cell's.
+                        const value_t dg_dlambda = wi * dp * flux_op * dt;
+                        if (this->record_op_gradient && dg_dlambda != 0.0)
+                            this->inj_op_grad_entries.emplace_back(i * N_VARS + c, (index_t)w,
+                                                                   op_num[i], LAMBDA_OP + p, dg_dlambda);
+                    }
+                }
+            }
+        }
+    }
+
+    return 0;
 };
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
@@ -893,7 +1066,6 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
 
   memset(Jac_n, 0, (n_conns + n_blocks) * N_VARS_SQ * sizeof(value_t));
   memset(value_dg_dT, 0, n_conns * N_VARS * sizeof(value_t));
-
 
   double value_g_u = 0.0;
   index_t N_element = 0;
@@ -1025,6 +1197,10 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
 
         double phase_gamma_p_diff = trans_mult * tran[conn_idx] * dt * phase_p_diff;
 
+        // The upwind block, whose mobility and flux operators carry this phase. Recorded
+        // once so the dg/dLambda entries below cannot drift from the branch taken.
+        const index_t up = (phase_p_diff < 0) ? i : j;
+
         if (phase_p_diff < 0)
         {
           // mass and energy outflow with effect of gravity and capillarity
@@ -1052,6 +1228,22 @@ int engine_super_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std
             idx = count + c * N_element + temp_num[k_count];
             value_dg_dT[idx] -= value_g_u;
           }
+        }
+
+        // dg/d(mobility), the same product with the mobility swapped for the
+        // transmissibility -- the convective term is T * Lambda * (rest), so the two are
+        // interchangeable factors and this needs no new derivative. Written as a product
+        // rather than as `value_g_u * tran / Lambda` on purpose: a phase that is absent has
+        // Lambda = 0, and the division would be 0/0 exactly where the entry still matters.
+        //
+        // The upwind switch itself is not differentiated, matching how dg/dT already treats
+        // it: `phase_p_diff` is held fixed and only the operator factors are varied.
+        for (uint8_t c = 0; c < NE; c++)
+        {
+          const value_t dg_dlambda = -phase_p_diff * trans_mult * dt * tran[conn_idx]
+                                     * op_vals_arr[up * N_OPS + FLUX_OP + p * NE + c];
+          if (dg_dlambda != 0.0)
+            this->op_grad_entries.emplace_back(i * N_VARS + c, up, LAMBDA_OP + p, dg_dlambda);
         }
 
       } // end of loop over number of phases for convective operator with gravity and capillarity

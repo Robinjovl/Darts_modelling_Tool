@@ -159,6 +159,30 @@ public:
    uint64_t eval_index = 0;
 
    /**
+    * @brief Adjoint of interpolation: dJ/d(operator value at each supporting point).
+    *
+    * Keyed exactly like `point_data`, so a bucket and its supporting point are the same
+    * multi-index and Python can align the two by key without relying on any iteration
+    * order. Only the operators the caller actually wrote a gradient for are ever nonzero,
+    * so the full N_OPS width costs nothing but keeps this usable for any operator rather
+    * than only the mobility.
+    *
+    * Empty until `accumulate_operator_gradient` is called; the engine clears it at the
+    * start of each adjoint sweep.
+    */
+   std::unordered_map<key_t, std::array<value_t, N_OPS>, key_hash_t> op_gradient;
+
+   /**
+    * @brief Scatter per-state operator gradients onto supporting points. See
+    *        `operator_set_gradient_evaluator_iface::accumulate_operator_gradient`.
+    */
+   int accumulate_operator_gradient(const std::vector<double> &states,
+                                    const std::vector<int> &states_idxs,
+                                    const std::vector<double> &gradient) override;
+
+   void clear_operator_gradient() override { op_gradient.clear(); }
+
+   /**
     * @brief Single-point interpolation; overrides base to use multi-index path.
     */
    int interpolate(const std::vector<double> &point, std::vector<double> &values) override;

@@ -67,6 +67,41 @@ class ms_well;
 class operator_set_gradient_evaluator_iface;
 class operator_set_gradient_evaluator_iface;
 
+/// @brief A well represented as a source term in its perforated reservoir blocks.
+///
+/// Unlike ms_well this introduces no well block, no wellbore equation and no control
+/// equation: each perforation contributes `WI * lambda_p * (p_block - bhp)` straight into
+/// the residual and Jacobian of the reservoir block it sits in, exactly as an ordinary
+/// connection does against a ghost block held at `bhp`. That removes the well degrees of
+/// freedom -- and with them a well block whose composition rows are close to rank
+/// deficient -- at the cost of prescribing the bottom-hole pressure rather than solving
+/// for it.
+///
+/// It is assembled from inside `assemble_jacobian_array`, so the adjoint's backward sweep
+/// picks it up on the same footing as the forward Newton loop: both reach the source term
+/// through that one call, which is what makes this formulation differentiable.
+struct source_well
+{
+	/// @brief well name, used as the key of its rate columns in `time_data`
+	std::string name;
+
+	/// @brief perforated reservoir block indices
+	std::vector<index_t> blocks;
+
+	/// @brief well index of each perforation [same units as connection transmissibility]
+	std::vector<value_t> well_indices;
+
+	/// @brief true when the well injects `inj_state` rather than producing block fluid
+	bool is_injector = false;
+
+	/// @brief injected composition, as a full state vector; its pressure entry is unused
+	/// because the upstream pressure of an injector is the well's own bhp
+	std::vector<value_t> inj_state;
+
+	/// @brief prescribed bottom-hole pressure [bar]
+	value_t bhp = 0;
+};
+
 /// This class defines infrastructure for simulation
 class engine_base
 {
@@ -378,6 +413,102 @@ public:
 	/// @brief vector of wells
 	std::vector<ms_well *> wells;
 
+	/// @brief wells carried as source terms in the reservoir blocks (see `source_well`)
+	std::vector<source_well> source_wells;
+
+	/// @brief bottom-hole pressures of the source wells at every stored timestep, so the
+	/// adjoint's backward sweep can restore the control the forward run actually applied
+	std::vector<std::vector<value_t>> source_well_bhp_t;
+
+	/// @brief the same for the producer/injector role, which a schedule may switch part way
+	/// through a run (a well converted from depletion to injection, say)
+	std::vector<std::vector<char>> source_well_injecting_t;
+
+	/// @brief phase volumetric rates of every source well perforation, filled by the last
+	/// `assemble_jacobian_array` and reported per well and phase into `time_data`.
+	/// Layout: [well][perforation * n_phases + phase], positive out of the reservoir.
+	std::vector<std::vector<value_t>> source_well_phase_rates;
+
+	/// @brief phase names of the source wells, in operator order; needed to key their rate
+	/// columns in `time_data` the way ms_well does
+	std::vector<std::string> source_well_phase_names;
+
+	/// @brief derivatives of the *reported* source well phase rates with respect to the
+	/// state of the block each perforation sits in, filled by the assembly because that is
+	/// where the physics-specific operators live, and consumed by `prepare_dj_dx`, which is
+	/// physics agnostic. Layout: [well][(perforation * n_phases + phase) * n_vars + var].
+	std::vector<std::vector<value_t>> source_well_rate_ders;
+
+	// --- source well index as an optimisation control ---------------------------------
+	// The source term is *linear* in the well index, so both derivatives it needs are the
+	// corresponding quantity divided by WI. They are stored rather than recomputed because
+	// the assembly already has them and it is the only place that knows the operators.
+
+	/// @brief d(residual)/d(WI) of each perforation, on the block it perforates.
+	/// Layout: [well][perforation * n_vars + component].
+	std::vector<std::vector<value_t>> source_well_unit_residual;
+
+	/// @brief d(reported phase rate)/d(WI). Layout: [well][perforation * n_phases + phase].
+	std::vector<std::vector<value_t>> source_well_rate_wi_ders;
+
+	/// @brief control slot of each perforation's well index, flattened in definition order;
+	/// -1 for a perforation that is not being optimised. Set from Python alongside
+	/// `col_dT_du`, which plays the same role for the transmissibilities.
+	std::vector<int> source_well_control_idx;
+
+	/// @brief accumulators of the two terms of eq. (20) for the source well indices, summed
+	/// over timesteps during the backward sweep and added into `derivatives` at the end
+	std::vector<value_t> source_wi_gradient, source_wi_dj_du;
+
+	/// @brief define a well carried as a source term in `blocks`; see `source_well`
+	void add_source_well(const std::string &name, const std::vector<index_t> &blocks,
+	                     const std::vector<value_t> &well_indices, bool is_injector,
+	                     const std::vector<value_t> &inj_state);
+
+	/// @brief set the bottom-hole pressure of every source well, in definition order
+	void set_source_well_bhp(const std::vector<value_t> &bhp);
+
+	/// @brief set which source wells currently inject, in definition order; a schedule that
+	/// converts producers to injectors has to keep this in step with the bottom-hole
+	/// pressures, and the backward sweep restores both
+	void set_source_well_injecting(const std::vector<index_t> &is_injector);
+
+	/// @brief set the well index of every source well perforation, flattened in definition
+	/// order; this is the control the adjoint differentiates with respect to
+	void set_source_well_index(const std::vector<value_t> &well_indices);
+
+	/// @brief the same, flattened, so a modifier can read the current values back
+	std::vector<value_t> get_source_well_index() const;
+
+	/// @brief append the current source well rates to `time_data`, per well and phase
+	void report_source_well_rates();
+
+	/// @brief restore the source wells' bottom-hole pressures of a stored timestep, so the
+	/// adjoint re-assembles about the control the forward run actually used
+	void restore_source_well_bhp(int idx_sim_ts);
+
+	/// @brief add a source well's objective derivative into `Temp_dj_dx`, if `name` is one
+	/// @param dj_dq objective weight per observed phase of this well
+	/// @param sign  +1 for the production term, -1 for injection: the objective negates the
+	///              simulated production rates and leaves the injection rates alone
+	/// @return true when `name` is a source well and has been handled here
+	bool add_source_well_dj_dx(const std::string &name,
+	                           const std::vector<std::string> &opt_phase_names,
+	                           const std::vector<value_t> &dj_dq, value_t sign);
+
+	/// @brief accumulate `lambda^T dg/dWI` of this timestep into `source_wi_gradient`
+	void accumulate_source_well_wi_gradient(const std::vector<value_t> &lambda);
+
+	/// @brief accumulate `lambda^T dg/d(operator)` of this timestep onto the supporting
+	///        points, through the interpolation weights that produced the cell values
+	/// @param lambda adjoint state of this timestep
+	/// @param states the parameter-space coordinates this timestep was assembled at
+	void accumulate_operator_gradient(const std::vector<value_t> &lambda,
+	                                  const std::vector<value_t> &states);
+
+	/// @brief drop every supporting-point gradient bucket, on all operator sets
+	void clear_operator_gradient();
+
 	/// @brief unsorted map containing well information (BHP, rates)
 	std::unordered_map<std::string, std::vector<value_t>> time_data;
 
@@ -436,6 +567,106 @@ public:
 	std::vector<value_t> op_vals_arr;	// [N_OPS * n_blocks] array of values of operators
 	std::vector<value_t> op_ders_arr;	// [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
 	std::vector<value_t> op_vals_arr_n; // [N_OPS * n_blocks] array of values of operators from the last timestep
+
+	/**
+	 * @brief One residual row's dependence on one interpolated operator value, recorded by
+	 *        `adjoint_gradient_assembly` for the adjoint's operator-space gradient.
+	 *
+	 * The residual is assembled from operator values multiplied by geometry, so dg/d(op) is
+	 * a coefficient the assembly already forms -- it is only ever thrown away because the
+	 * chain rule to the state, dg/d(op) * d(op)/dx, is what the Jacobian needs. Recording
+	 * it here costs one store and lets the backward sweep contract it with lambda.
+	 *
+	 * Held as a flat list rather than a sparse matrix because it is rebuilt every timestep
+	 * and consumed immediately: `adjoint_gradient_assembly` runs before lambda is solved
+	 * for, so the coefficients have to survive from one to the other and no further.
+	 */
+	struct op_grad_entry
+	{
+		index_t row;	///< residual row, block * n_vars + component
+		index_t cell;	///< block whose interpolated operator this is (upwind, for a flux)
+		index_t op;		///< operator index within n_ops
+		value_t coef;	///< dg[row] / d(op value at `cell`)
+
+		op_grad_entry(index_t row_, index_t cell_, index_t op_, value_t coef_)
+			: row(row_), cell(cell_), op(op_), coef(coef_) {}
+	};
+	std::vector<op_grad_entry> op_grad_entries;
+	std::vector<value_t> op_grad_arr;	// [n_ops * n_blocks] dJ/d(operator value) per block
+
+	/**
+	 * @brief The same, for operators evaluated at an injector's prescribed stream.
+	 *
+	 * An injection source term takes its mobility from `source_well::inj_state`, not from
+	 * the perforated block, so those operator values sit at a different point in parameter
+	 * space and cannot be addressed by a block index. Easy to overlook, and dropping it
+	 * silently loses the whole dependence of an injector's rate on the water curve -- which
+	 * on a waterflood is most of what the rel-perm controls are for.
+	 */
+	struct inj_op_grad_entry
+	{
+		index_t row;	///< residual row, block * n_vars + component
+		index_t well;	///< index into `source_wells`
+		index_t region;	///< operator set the stream was evaluated against
+		index_t op;		///< operator index within n_ops
+		value_t coef;	///< dg[row] / d(op value at the stream state)
+
+		inj_op_grad_entry(index_t row_, index_t well_, index_t region_, index_t op_, value_t coef_)
+			: row(row_), well(well_), region(region_), op(op_), coef(coef_) {}
+	};
+	std::vector<inj_op_grad_entry> inj_op_grad_entries;
+
+	/**
+	 * @brief The dj/du half of eq. (20) for the mobility operator: dJ/d(op) that does NOT
+	 *        pass through the state, so it carries no lambda factor.
+	 *
+	 * Exactly the trap the well index fell into. A source well reports the rate
+	 * `WI * lambda_p * dp`, so the mobility scales an observed quantity directly, and an
+	 * adjoint built only from `lambda^T dg/d(op)` silently omits it. For transmissibility
+	 * there is no such term -- it reaches the objective only through the state -- which is
+	 * why the omission is easy to carry over from working transmissibility code.
+	 */
+	struct op_dj_entry
+	{
+		index_t cell;	///< block whose interpolated operator this is
+		index_t op;		///< operator index within n_ops
+		value_t coef;	///< dJ/d(op value at `cell`), direct
+
+		op_dj_entry(index_t cell_, index_t op_, value_t coef_)
+			: cell(cell_), op(op_), coef(coef_) {}
+	};
+	std::vector<op_dj_entry> op_dj_entries;
+
+	/// @brief the same for an injected stream, addressed by (well, region) like `inj_op_grad_entry`
+	struct inj_op_dj_entry
+	{
+		index_t well;
+		index_t region;
+		index_t op;
+		value_t coef;
+
+		inj_op_dj_entry(index_t well_, index_t region_, index_t op_, value_t coef_)
+			: well(well_), region(region_), op(op_), coef(coef_) {}
+	};
+	std::vector<inj_op_dj_entry> inj_op_dj_entries;
+
+	/// @brief d(reported rate)/d(mobility) per source well, perforation and phase, stored by
+	///        the assembly so `add_source_well_dj_dx` stays free of operator indices
+	std::vector<std::vector<value_t>> source_well_rate_lambda_ders;
+
+	/// @brief index of the first mobility operator within n_ops, published by the assembly
+	///        for the same reason: engine_base must not know a physics' operator layout
+	index_t lambda_op_index = -1;
+
+	/**
+	 * @brief Record dg/d(operator) while assembling. Off during the forward run.
+	 *
+	 * The source-term wells are assembled inside `assemble_jacobian_array`, which the
+	 * forward Newton loop calls several times per timestep and the backward sweep once. The
+	 * entries are only ever consumed by the sweep, so the forward path must not pay to
+	 * build them.
+	 */
+	bool record_op_gradient = false;
 
 	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
 	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components

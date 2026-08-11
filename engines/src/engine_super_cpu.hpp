@@ -118,6 +118,10 @@ public:
 
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
 
+  /// @brief add the `source_well` terms into their perforated blocks (see the definition
+  /// for the discretisation and why it lives inside `assemble_jacobian_array`)
+  int assemble_source_wells(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
+
   //double calc_newton_residual();
 
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);
