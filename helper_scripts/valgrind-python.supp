@@ -250,3 +250,139 @@
    fun:int_from_bytes
    ...
 }
+# The two suppressions above require _PyLong_FromByteArray to appear as a
+# resolved frame. On some CPython 3.11 builds (observed on conda's py311,
+# Valgrind 3.22) that frame is fully inlined into int_from_bytes and never
+# resolves, so the suppressions above silently fail to match. These variants
+# anchor on int_from_bytes only, bridging up to the PyImport_Import entry
+# point that's always present for this pattern (~once per imported module).
+{
+   cpython-int-from-bytes-import-cond
+   Memcheck:Cond
+   ...
+   fun:int_from_bytes
+   ...
+   fun:PyImport_Import
+}
+{
+   cpython-int-from-bytes-import-value8
+   Memcheck:Value8
+   ...
+   fun:int_from_bytes
+   ...
+   fun:PyImport_Import
+}
+# CPython's cyclic GC traverses freshly-created type objects (subtype_traverse,
+# invoked from deduce_unreachable/gc_collect_main) whenever an extension module
+# defines a batch of new Python types at import time (e.g. pybind11-generated
+# bindings). Reads padding/union bytes in the type/GC-head layout that memcheck
+# can't prove initialised, even though they're never used for a real decision -
+# a well-documented CPython/valgrind false positive. Scales with how many new
+# types an imported extension registers, so it's dominant for models that
+# import large binding modules (e.g. dartsflash) that other models never touch.
+{
+   cpython-gc-type-traverse-cond
+   Memcheck:Cond
+   ...
+   fun:subtype_traverse
+   ...
+   fun:gc_collect_main
+   ...
+}
+{
+   cpython-gc-type-traverse-value8
+   Memcheck:Value8
+   ...
+   fun:subtype_traverse
+   ...
+   fun:gc_collect_main
+   ...
+}
+{
+   cpython-gc-visit-reachable-value8
+   Memcheck:Value8
+   ...
+   fun:visit_reachable
+   ...
+   fun:gc_collect_main
+   ...
+}
+# Same GC/type-object false positive, on the deallocation side: type_clear /
+# subtype_dealloc walk freed-type internals during interpreter finalization
+# (Py_FinalizeEx -> finalize_modules -> gc_collect_main) or ordinary GC of
+# dynamically created types.
+{
+   cpython-gc-type-dealloc-value8
+   Memcheck:Value8
+   ...
+   fun:subtype_dealloc
+   ...
+   fun:gc_collect_main
+   ...
+}
+{
+   cpython-gc-type-clear-value8
+   Memcheck:Value8
+   ...
+   fun:type_clear
+   ...
+   fun:gc_collect_main
+   ...
+}
+# Same false positive on the allocation side: _PyObject_GC_New(Var) allocates
+# a fresh GC-tracked object (e.g. a weakref or instance method created while
+# building a new type via PyType_Ready/type_new) whose GC head padding reads
+# as uninitialised to memcheck.
+{
+   cpython-gc-new-object-value8
+   Memcheck:Value8
+   ...
+   fun:_PyObject_GC_New*
+   ...
+   fun:gc_collect_main
+   ...
+}
+# CPython 3.11's specializing adaptive interpreter (PEP 659) reads per-instruction
+# bookkeeping (Py_REFCNT/Py_TYPE via object.h macros, inlined into ceval.c) during
+# the unspecialized first pass over freshly-imported/compiled bytecode. Memcheck
+# can't prove those reads are always preceded by an initialising write in this
+# build, though CPython never treats the value as a pointer or lets it affect
+# program behaviour - the same class of interpreter-internal false positive as
+# the entries above, one level broader. Anchored so the flagged read must
+# originate directly in CPython's own frame-execution/frame-teardown code (the
+# first fun: line), not in application or extension code merely called from it.
+{
+   cpython-eval-frame-object-read-value8
+   Memcheck:Value8
+   ...
+   fun:_PyEval_EvalFrameDefault
+   ...
+}
+{
+   cpython-eval-frame-object-read-cond
+   Memcheck:Cond
+   ...
+   fun:_PyEval_EvalFrameDefault
+   ...
+}
+{
+   cpython-frame-clear-object-read-value8
+   Memcheck:Value8
+   ...
+   fun:_PyFrame_Clear
+   ...
+}
+# HDF5's chunked-storage write path flushes whole chunk buffers to disk via pwrite,
+# including don't-care padding bytes (chunk boundaries, alignment, a partially-filled
+# last chunk) that the application never wrote to. A well-known, benign HDF5-under-
+# Valgrind pattern - the padding is never read back as meaningful data. Anchored on
+# the actual write path so a real uninitialised-payload bug elsewhere in h5py/hdf5
+# usage would not be masked.
+{
+   hdf5-chunk-flush-padding-write
+   Memcheck:Param
+   pwrite64(buf)
+   ...
+   fun:H5FD_write
+   ...
+}
