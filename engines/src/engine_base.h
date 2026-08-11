@@ -499,6 +499,16 @@ public:
 	/// @brief accumulate `lambda^T dg/dWI` of this timestep into `source_wi_gradient`
 	void accumulate_source_well_wi_gradient(const std::vector<value_t> &lambda);
 
+	/// @brief accumulate `lambda^T dg/d(operator)` of this timestep onto the supporting
+	///        points, through the interpolation weights that produced the cell values
+	/// @param lambda adjoint state of this timestep
+	/// @param states the parameter-space coordinates this timestep was assembled at
+	void accumulate_operator_gradient(const std::vector<value_t> &lambda,
+	                                  const std::vector<value_t> &states);
+
+	/// @brief drop every supporting-point gradient bucket, on all operator sets
+	void clear_operator_gradient();
+
 	/// @brief unsorted map containing well information (BHP, rates)
 	std::unordered_map<std::string, std::vector<value_t>> time_data;
 
@@ -557,6 +567,106 @@ public:
 	std::vector<value_t> op_vals_arr;	// [N_OPS * n_blocks] array of values of operators
 	std::vector<value_t> op_ders_arr;	// [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
 	std::vector<value_t> op_vals_arr_n; // [N_OPS * n_blocks] array of values of operators from the last timestep
+
+	/**
+	 * @brief One residual row's dependence on one interpolated operator value, recorded by
+	 *        `adjoint_gradient_assembly` for the adjoint's operator-space gradient.
+	 *
+	 * The residual is assembled from operator values multiplied by geometry, so dg/d(op) is
+	 * a coefficient the assembly already forms -- it is only ever thrown away because the
+	 * chain rule to the state, dg/d(op) * d(op)/dx, is what the Jacobian needs. Recording
+	 * it here costs one store and lets the backward sweep contract it with lambda.
+	 *
+	 * Held as a flat list rather than a sparse matrix because it is rebuilt every timestep
+	 * and consumed immediately: `adjoint_gradient_assembly` runs before lambda is solved
+	 * for, so the coefficients have to survive from one to the other and no further.
+	 */
+	struct op_grad_entry
+	{
+		index_t row;	///< residual row, block * n_vars + component
+		index_t cell;	///< block whose interpolated operator this is (upwind, for a flux)
+		index_t op;		///< operator index within n_ops
+		value_t coef;	///< dg[row] / d(op value at `cell`)
+
+		op_grad_entry(index_t row_, index_t cell_, index_t op_, value_t coef_)
+			: row(row_), cell(cell_), op(op_), coef(coef_) {}
+	};
+	std::vector<op_grad_entry> op_grad_entries;
+	std::vector<value_t> op_grad_arr;	// [n_ops * n_blocks] dJ/d(operator value) per block
+
+	/**
+	 * @brief The same, for operators evaluated at an injector's prescribed stream.
+	 *
+	 * An injection source term takes its mobility from `source_well::inj_state`, not from
+	 * the perforated block, so those operator values sit at a different point in parameter
+	 * space and cannot be addressed by a block index. Easy to overlook, and dropping it
+	 * silently loses the whole dependence of an injector's rate on the water curve -- which
+	 * on a waterflood is most of what the rel-perm controls are for.
+	 */
+	struct inj_op_grad_entry
+	{
+		index_t row;	///< residual row, block * n_vars + component
+		index_t well;	///< index into `source_wells`
+		index_t region;	///< operator set the stream was evaluated against
+		index_t op;		///< operator index within n_ops
+		value_t coef;	///< dg[row] / d(op value at the stream state)
+
+		inj_op_grad_entry(index_t row_, index_t well_, index_t region_, index_t op_, value_t coef_)
+			: row(row_), well(well_), region(region_), op(op_), coef(coef_) {}
+	};
+	std::vector<inj_op_grad_entry> inj_op_grad_entries;
+
+	/**
+	 * @brief The dj/du half of eq. (20) for the mobility operator: dJ/d(op) that does NOT
+	 *        pass through the state, so it carries no lambda factor.
+	 *
+	 * Exactly the trap the well index fell into. A source well reports the rate
+	 * `WI * lambda_p * dp`, so the mobility scales an observed quantity directly, and an
+	 * adjoint built only from `lambda^T dg/d(op)` silently omits it. For transmissibility
+	 * there is no such term -- it reaches the objective only through the state -- which is
+	 * why the omission is easy to carry over from working transmissibility code.
+	 */
+	struct op_dj_entry
+	{
+		index_t cell;	///< block whose interpolated operator this is
+		index_t op;		///< operator index within n_ops
+		value_t coef;	///< dJ/d(op value at `cell`), direct
+
+		op_dj_entry(index_t cell_, index_t op_, value_t coef_)
+			: cell(cell_), op(op_), coef(coef_) {}
+	};
+	std::vector<op_dj_entry> op_dj_entries;
+
+	/// @brief the same for an injected stream, addressed by (well, region) like `inj_op_grad_entry`
+	struct inj_op_dj_entry
+	{
+		index_t well;
+		index_t region;
+		index_t op;
+		value_t coef;
+
+		inj_op_dj_entry(index_t well_, index_t region_, index_t op_, value_t coef_)
+			: well(well_), region(region_), op(op_), coef(coef_) {}
+	};
+	std::vector<inj_op_dj_entry> inj_op_dj_entries;
+
+	/// @brief d(reported rate)/d(mobility) per source well, perforation and phase, stored by
+	///        the assembly so `add_source_well_dj_dx` stays free of operator indices
+	std::vector<std::vector<value_t>> source_well_rate_lambda_ders;
+
+	/// @brief index of the first mobility operator within n_ops, published by the assembly
+	///        for the same reason: engine_base must not know a physics' operator layout
+	index_t lambda_op_index = -1;
+
+	/**
+	 * @brief Record dg/d(operator) while assembling. Off during the forward run.
+	 *
+	 * The source-term wells are assembled inside `assemble_jacobian_array`, which the
+	 * forward Newton loop calls several times per timestep and the backward sweep once. The
+	 * entries are only ever consumed by the sweep, so the forward path must not pay to
+	 * build them.
+	 */
+	bool record_op_gradient = false;
 
 	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
 	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components

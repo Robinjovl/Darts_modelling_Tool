@@ -219,6 +219,41 @@ public:
    virtual int evaluate_with_derivatives(const std::vector<double> &states, const std::vector<int> &states_idxs,
                                          std::vector<double> &values, std::vector<double> &derivatives) = 0;
 
+   /**
+     * @brief Scatter a per-state operator gradient back onto the supporting points it was
+     *        interpolated from. Default implementation reports "not supported".
+     *
+     * The adjoint needs dJ/d(operator value at a supporting point), while the engine can
+     * only form dJ/d(operator value at a cell). Multilinear interpolation makes the two
+     * one transpose apart: a cell's operator is
+     *
+     *     op(w) = sum_v weight_v(w) * op_v
+     *
+     * over the 2^N_DIMS vertices of the hypercube containing w, so d op(w) / d op_v is
+     * exactly weight_v(w) -- the interpolation coefficient the forward evaluation already
+     * computes. Accumulating `weight_v * cell_gradient` into a bucket per supporting point
+     * is therefore the exact adjoint of interpolation, not an approximation of it.
+     *
+     * Called once per timestep of the backward sweep with that timestep's states, so a
+     * supporting point visited at several times accumulates all of their contributions.
+     *
+     * @param[in] states         parameter-space coordinates, same layout as `evaluate_with_derivatives`
+     * @param[in] states_idxs    which states in that array to scatter
+     * @param[in] gradient       [n_states * n_ops] dJ/d(operator value) per state, engine-side
+     * @return 0 if successful, negative if this evaluator cannot scatter
+     */
+   virtual int accumulate_operator_gradient(const std::vector<double> & /*states*/,
+                                            const std::vector<int> & /*states_idxs*/,
+                                            const std::vector<double> & /*gradient*/)
+   {
+      return -1;
+   };
+
+   /**
+     * @brief Drop every accumulated supporting-point gradient bucket.
+     */
+   virtual void clear_operator_gradient(){};
+
 #ifdef WITH_GPU
    /**
    * @brief Compute operators values for specified state on device

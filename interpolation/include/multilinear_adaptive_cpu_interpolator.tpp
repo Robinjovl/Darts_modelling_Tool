@@ -469,3 +469,80 @@ int multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::interpolate_w
 
   return 0;
 }
+
+// ─── adjoint of interpolation ───────────────────────────────────────────────────
+
+template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
+int multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::accumulate_operator_gradient(
+    const std::vector<double> &states, const std::vector<int> &states_idxs,
+    const std::vector<double> &gradient)
+{
+  // The transpose of the Phase-3 kernel above. That one reads the 2^N_DIMS vertex values
+  // and contracts them with the multilinear weights to make one cell value; this one takes
+  // one cell gradient and scatters it back over the same vertices with the same weights.
+  // Both must therefore compute the weights identically -- hence the axis-index call and
+  // the MSB-first bit order below are taken from the kernel and from
+  // `get_hypercube_vertex_keys` rather than re-derived.
+  //
+  // Deliberately serial. The forward kernel parallelises because each cell writes its own
+  // output slot; here many cells write the same supporting point, so a parallel version
+  // would need atomics or per-thread maps for a loop that costs microseconds against the
+  // linear solve it sits next to.
+  static const uint32_t N_VERTS = (1u << N_DIMS);
+
+  for (size_t p = 0; p < states_idxs.size(); p++)
+  {
+    const int offset = states_idxs[p];
+    const double *state = states.data() + static_cast<size_t>(offset) * N_DIMS;
+    const double *grad = gradient.data() + static_cast<size_t>(offset) * N_OPS;
+
+    // Skip cells carrying no gradient -- the common case when a single operator block is
+    // being differentiated, and it keeps `op_gradient` to the points that contribute.
+    bool any = false;
+    for (uint16_t op = 0; op < N_OPS && !any; ++op)
+      any = (grad[op] != 0.0);
+    if (!any)
+      continue;
+
+    key_t hc_key;
+    value_t axis_low[N_DIMS];
+    value_t mult[N_DIMS];
+    for (uint8_t i = 0; i < N_DIMS; ++i)
+    {
+      hc_key.idx[i] = get_axis_interval_index_low_mult_unbounded<value_t>(
+          state[i],
+          this->axes_origin_internal[i],
+          this->axes_step_internal[i],
+          this->axes_step_inv_internal[i],
+          &axis_low[i], &mult[i]);
+    }
+
+    hypercube_vertex_keys_t vertex_keys;
+    this->get_hypercube_vertex_keys(hc_key, vertex_keys);
+
+    for (uint32_t v = 0; v < N_VERTS; ++v)
+    {
+      // weight_v = prod_i (bit_i ? mult_i : 1 - mult_i), bits MSB-first over the axes
+      value_t weight = 1.0;
+      for (uint8_t i = 0; i < N_DIMS; ++i)
+      {
+        const uint32_t bit = (v >> (N_DIMS - 1 - i)) & 1u;
+        weight *= bit ? mult[i] : (static_cast<value_t>(1.0) - mult[i]);
+      }
+      if (weight == 0.0)
+        continue;
+
+      auto item = op_gradient.find(vertex_keys[v]);
+      if (item == op_gradient.end())
+      {
+        std::array<value_t, N_OPS> zero;
+        zero.fill(0.0);
+        item = op_gradient.emplace(vertex_keys[v], zero).first;
+      }
+      for (uint16_t op = 0; op < N_OPS; ++op)
+        item->second[op] += weight * static_cast<value_t>(grad[op]);
+    }
+  }
+
+  return 0;
+}

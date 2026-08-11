@@ -7,6 +7,8 @@
 #include <iostream>
 #include <functional>  // adjoint method -- function 'bind1st'
 #include <limits>
+#include <map>     // adjoint method -- grouping injected streams by (well, region)
+#include <utility>
 #ifdef __GNUC__
 #include <cxxabi.h>
 #endif
@@ -580,10 +582,98 @@ engine_base::add_source_well_dj_dx(const std::string &name,
 					source_wi_dj_du[ctrl] -= sign * wi_ders[k * n_phases + p] * dj_dq[obs];
 				}
 			}
+
+			// The same half for the mobility operator. The rate is bilinear in WI and
+			// lambda, so this term is as large as the one above and omitting it leaves a
+			// gradient that is not merely inaccurate but uncorrelated with the truth.
+			if (record_op_gradient && lambda_op_index >= 0
+			    && idx < (int)source_well_rate_lambda_ders.size())
+			{
+				const std::vector<value_t> &lam_ders = source_well_rate_lambda_ders[idx];
+				if (k * n_phases + p < lam_ders.size())
+				{
+					const value_t coef = -sign * lam_ders[k * n_phases + p] * dj_dq[obs];
+					const index_t op = lambda_op_index + (index_t)p;
+					if (sw.is_injector)
+						inj_op_dj_entries.emplace_back(idx, mesh->op_num[i], op, coef);
+					else
+						op_dj_entries.emplace_back(i, op, coef);
+				}
+			}
 		}
 	}
 
 	return true;
+}
+
+void
+engine_base::accumulate_operator_gradient(const std::vector<value_t> &lambda,
+                                          const std::vector<value_t> &states)
+{
+	// dJ/d(operator value at a supporting point), in two steps.
+	//
+	// [1] lambda^T dg/d(op) per block. `op_grad_entries` holds one term of that product per
+	//     (residual row, block, operator) the assembly touched, so this is a scatter-add.
+	//
+	// [2] push each block's gradient back through the interpolation that produced its
+	//     operator values. That is the interpolator's job -- it owns the weights -- and it
+	//     accumulates into buckets keyed by supporting point, which persist across the whole
+	//     backward sweep because a point is generally visited at many timesteps.
+	//
+	// The split matters: [1] is physics and lives here, [2] is the OBL parameterisation and
+	// lives with the table. Neither needs to know the control variables, which is why this
+	// costs the same whether one Corey parameter is being fitted or fifty.
+	if (!op_grad_entries.empty() || !op_dj_entries.empty())
+	{
+		op_grad_arr.assign((size_t)mesh->n_blocks * n_ops, 0);
+		for (const op_grad_entry &e : op_grad_entries)
+			op_grad_arr[(size_t)e.cell * n_ops + e.op] += lambda[e.row] * e.coef;
+		// the direct half carries no lambda -- see `op_dj_entry`
+		for (const op_dj_entry &e : op_dj_entries)
+			op_grad_arr[(size_t)e.cell * n_ops + e.op] += e.coef;
+
+		for (index_t r = 0; r < (index_t)acc_flux_op_set_list.size(); r++)
+			acc_flux_op_set_list[r]->accumulate_operator_gradient(states, block_idxs[r], op_grad_arr);
+	}
+
+	// Injected streams sit at their own point of the table, one per (well, region), so each
+	// is scattered as a one-state batch at the state the assembly evaluated it at. `bhp` is
+	// the value `restore_source_well_bhp` put back for this timestep, so rebuilding the
+	// state here reproduces the one the residual was assembled with.
+	if (!inj_op_grad_entries.empty() || !inj_op_dj_entries.empty())
+	{
+		std::map<std::pair<index_t, index_t>, std::vector<value_t>> streams;
+		auto bucket = [&](index_t well, index_t region) -> std::vector<value_t> & {
+			auto key = std::make_pair(well, region);
+			auto item = streams.find(key);
+			if (item == streams.end())
+				item = streams.emplace(key, std::vector<value_t>(n_ops, 0)).first;
+			return item->second;
+		};
+		for (const inj_op_grad_entry &e : inj_op_grad_entries)
+			bucket(e.well, e.region)[e.op] += lambda[e.row] * e.coef;
+		for (const inj_op_dj_entry &e : inj_op_dj_entries)
+			bucket(e.well, e.region)[e.op] += e.coef;
+
+		std::vector<int> one_state_idx(1, 0);
+		for (const auto &kv : streams)
+		{
+			const source_well &sw = source_wells[kv.first.first];
+			std::vector<value_t> state = sw.inj_state;
+			if (state.empty())
+				continue;
+			state[0] = sw.bhp;   // pressure is the first entry of the state vector
+			acc_flux_op_set_list[kv.first.second]->accumulate_operator_gradient(
+				state, one_state_idx, kv.second);
+		}
+	}
+}
+
+void
+engine_base::clear_operator_gradient()
+{
+	for (index_t r = 0; r < (index_t)acc_flux_op_set_list.size(); r++)
+		acc_flux_op_set_list[r]->clear_operator_gradient();
 }
 
 void
@@ -858,6 +948,11 @@ engine_base::calc_adjoint_gradient_dirac_all()
 	source_wi_gradient.assign(n_control_vars, 0);
 	source_wi_dj_du.assign(n_control_vars, 0);
 
+	// supporting-point operator gradients accumulate over the whole sweep, so they start
+	// from empty here and are read once it has finished
+	clear_operator_gradient();
+	record_op_gradient = true;
+
 
 
 
@@ -928,6 +1023,7 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 	lambda_n = lambda_temp;
 	accumulate_source_well_wi_gradient(lambda_temp);
+	accumulate_operator_gradient(lambda_temp, *X_state);
 
 	(static_cast<csr_matrix<1>*>(dg_dT_general))->matrix_vector_product_t(&lambda_temp[0], &temp_1[0]);
 	index_t well_numeration = 0;
@@ -1015,6 +1111,7 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 		lambda_n = lambda_temp;
 		accumulate_source_well_wi_gradient(lambda_temp);
+		accumulate_operator_gradient(lambda_temp, *X_state);
 
 
 
@@ -1046,6 +1143,10 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 
 	deriv_old = derivatives;
+
+	// the forward Newton loop assembles through the same call, and must not pay for entries
+	// only the sweep consumes
+	record_op_gradient = false;
 
 	return 0;
 
