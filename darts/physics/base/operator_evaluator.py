@@ -8,8 +8,6 @@ from darts.physics.base.property_container import PropertyContainer
 
 
 class OperatorsBase(operator_set_evaluator_iface):
-    n_ops: int
-
     def __init__(
         self,
         property_container: PropertyContainer,
@@ -34,8 +32,14 @@ class OperatorsBase(operator_set_evaluator_iface):
         self.thermal = thermal
 
         self.nc = property_container.nc
+        self.nc_fl = property_container.nc_fl
+        self.ns = property_container.ns
         self.ne = self.nc + self.thermal
         self.nph = property_container.nph
+        self.np_fl = property_container.np_fl
+
+        self.n_ops: int = None
+
         self.eps_z = (
             property_container.eps_z if hasattr(property_container, 'eps_z') else 1e-13
         )
@@ -338,7 +342,7 @@ class WellCtrlOperators(OperatorsBase):
 
     def evaluate(self, state, values):
         # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
+        if self.apply_extrapolation(state, values):
             return 0
 
         state_np = state.to_numpy()
@@ -402,7 +406,7 @@ class ThermalVarOperator(OperatorsBase):
 
     def evaluate(self, state_pt, values):
         # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state_pt, values):
+        if self.apply_extrapolation(state_pt, values):
             return 0
 
         values_np = values.to_numpy()
@@ -462,7 +466,7 @@ class PropertyOperators(OperatorsBase):
         :type values: darts.interpolators.value_vector
         """
         # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
+        if self.apply_extrapolation(state, values):
             return 0
 
         state_np = state.to_numpy()
@@ -478,9 +482,7 @@ class PropertyOperators(OperatorsBase):
         return 0
 
 
-class OperatorsSuper(OperatorsBase):
-    property: PropertyContainer
-
+class ReservoirOperators(OperatorsBase):
     def __init__(
         self,
         property_container: PropertyContainer,
@@ -489,7 +491,7 @@ class OperatorsSuper(OperatorsBase):
         dz: float = None,
     ):
         """
-        Constructor of OperatorsSuper base class
+        Constructor of ReservoirOperators class
 
         :param property_container: Property container of type PropertyContainer
         :param thermal: Switch to indicate if energy conservation equation is there
@@ -500,10 +502,6 @@ class OperatorsSuper(OperatorsBase):
         super().__init__(
             property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
         )  # Initialize base-class
-
-        self.nc_fl = property_container.nc_fl
-        self.ns = property_container.ns
-        self.np_fl = property_container.np_fl
 
         # Operator order
         self.ACC_OP = 0  # accumulation operator - ne
@@ -562,8 +560,6 @@ class OperatorsSuper(OperatorsBase):
         print("TEMPERATURE, PRESSURE", values[self.TEMP_OP], values[self.PRES_OP])
         return
 
-
-class ReservoirOperators(OperatorsSuper):
     def evaluate(self, state, values):
         """
         Evaluate the non-thermal reservoir operators for the super engine
@@ -575,7 +571,7 @@ class ReservoirOperators(OperatorsSuper):
         :return: updated value for operators, stored in values
         """
         # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
+        if self.apply_extrapolation(state, values):
             return 0
 
         # Composition vector and pressure from state:
@@ -744,7 +740,7 @@ class ReservoirOperators(OperatorsSuper):
         return 0
 
 
-class WellOperators(OperatorsSuper):
+class WellOperators(ReservoirOperators):
     def evaluate(self, state, values):
         """
         Evaluate the non-thermal well operators for the super engine
@@ -756,7 +752,7 @@ class WellOperators(OperatorsSuper):
         :return: updated value for operators, stored in values
         """
         # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
+        if self.apply_extrapolation(state, values):
             return 0
 
         # Composition vector and pressure from state:
@@ -943,7 +939,7 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
 
     def print_operators(self, state, values):
         """Method for printing operators, grouped"""
-        super().print_operators(state, values)
+        self.print_operators(state, values)
         print("ROCK DENSITY", values[self.ROCK_DENS_OP])
         return
 
@@ -960,7 +956,7 @@ class SinglePhaseGeomechanicsOperators(OperatorsBase):
         :return: updated value for operators, stored in values
         """
         # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
+        if self.apply_extrapolation(state, values):
             return 0
 
         state_np = state.to_numpy()

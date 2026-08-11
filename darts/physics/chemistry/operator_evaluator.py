@@ -1,9 +1,14 @@
 import numpy as np
 
-from darts.physics.base.operator_evaluator import OperatorsSuper
+from darts.physics.base.operator_evaluator import (
+    ReservoirOperators as BaseReservoirOperators,
+)
+from darts.physics.chemistry.property_container import (
+    PropertyContainer as ChemistryPropertyContainer,
+)
 
 
-class ReservoirOperators(OperatorsSuper):
+class ReservoirOperators(BaseReservoirOperators):
     """
     Reservoir operators working with the following state:
     state:
@@ -15,15 +20,15 @@ class ReservoirOperators(OperatorsSuper):
 
     def __init__(
         self,
-        property_container,
+        property_container: ChemistryPropertyContainer,
         thermal: bool,
         extrapolation_flag: bool = False,
         dz: float = None,
     ):
         """
-        Constructor of ReservoirOperators class
+        Constructor of ReservoirOperators class, inherited from ReservoirOperators of PhysicsBase
 
-        :param property_container: Property container of type PropertyBase
+        :param property_container: Property container of chemistry type implementation
         :param thermal: Switch to indicate if energy conservation equation is there
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
         :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
@@ -75,7 +80,7 @@ class ReservoirOperators(OperatorsSuper):
         :rtype: int
         """
         # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
+        if self.apply_extrapolation(state, values):
             return 0
 
         # state and values numpy vectors:
@@ -234,7 +239,7 @@ class ConversionOperators(ReservoirOperators):
         :rtype: int
         """
         # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
+        if self.apply_extrapolation(state, values):
             return 0
 
         state_np = state.to_numpy()
