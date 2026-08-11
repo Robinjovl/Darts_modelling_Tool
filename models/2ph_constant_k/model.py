@@ -257,7 +257,7 @@ class Model(DartsModel):
 
 
         Mw = [Mw_comps[c] for c in self.components]
-        K = [K_comps[c] for c in self.components]
+        K = [1./K_comps[c] for c in self.components]  # K-values use Ki = xi1/xi0, see ConstantK description
 
         phases = ['gas', 'oil']
 

@@ -1,14 +1,6 @@
 import warnings
 
 import numpy as np
-from dartsflash.components import CompData
-from dartsflash.libflash import (
-    AQEoS,
-    CubicEoS,
-    FlashParams,
-    InitialGuess,
-    NegativeFlash,
-)
 from matplotlib import pyplot as plt
 from phreeqc_dissolution.conversions import bar2atm, convert_composition
 
@@ -242,17 +234,18 @@ def run_darts_flash(pressure, temperature, z_h2o_init):
     zc = [z_h2o_init, 1. - z_h2o_init]
 
     # darts-flash
+    from dartsflash.components import CompData
+    from dartsflash.mixtures import DARTSFlash, Mixture
+    from dartsflash.libflash import EoS, NegativeFlash
     comp_data = CompData(components, setprops=True)
-    flash_params = FlashParams(comp_data)
-    flash_params.add_eos("PR", CubicEoS(comp_data, CubicEoS.PR))
-    flash_params.add_eos("AQ", AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
-                                                 AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
-                                                 AQEoS.CompType.ion: AQEoS.Jager2003
-                                                 }))
-    flash_params.eos_order = ["PR", "AQ"]
-    darts_flash = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
-    darts_flash.evaluate(pressure, temperature, zc)
-    flash_results = darts_flash.get_flash_results()
+    flash_ev = Mixture(comp_data)
+    flash_ev.set_vl_eos(vl_eos_name="PR", hybrid_aq_eos_name="Aq", root_order=[EoS.STABLE])
+    flash_ev.set_aq_eos(aq_eos_name="Aq", )
+    flash_ev.init_flash(flash_type=DARTSFlash.FlashType.NegativeFlash, eos_order=["PR", "Aq"],
+                        nf_initial_guess=[NegativeFlash.Ki.Henry_VA])
+
+    flash_ev.evaluate(pressure, temperature, zc)
+    flash_results = flash_ev.get_flash_results()
     nu = np.array(flash_results.nu)
     x = np.array(flash_results.X).reshape(2, 2)
 

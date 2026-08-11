@@ -332,7 +332,7 @@ class Model(CICDModel):
             )
             property_container.flash_ev = ConstantK(
                 len(components),
-                [1.0 / 0.011406373765724964, 1.0 / 67.29641667035624],
+                [0.011406373765724964, 67.29641667035624],
                 zero,
             )
             property_container.density_ev = {
