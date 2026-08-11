@@ -105,6 +105,18 @@ class Poroelasticity(PhysicsBase):
         :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
+        for region, prop_container in self.property_containers.items():
+            self.flash_operators[region] = (
+                FlashOperators(
+                    prop_container,
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
+                )
+                if supports_flash_reuse(prop_container)
+                else None
+            )
+
         if self.discretizer_name == "pm_discretizer":
             for region, prop_container in self.property_containers.items():
                 self.reservoir_operators[region] = SinglePhaseGeomechanicsOperators(
@@ -112,18 +124,21 @@ class Poroelasticity(PhysicsBase):
                     self.thermal,
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
+                    flash_operators=self.flash_operators[region],
                 )
                 self.property_operators[region] = PropertyOperators(
                     prop_container,
                     self.thermal,
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
+                    flash_operators=self.flash_operators[region],
                 )
             self.well_operators = SinglePhaseGeomechanicsOperators(
                 self.property_containers[self.regions[0]],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[self.regions[0]],
             )
         else:
             for region, prop_container in self.property_containers.items():
@@ -132,18 +147,21 @@ class Poroelasticity(PhysicsBase):
                     self.thermal,
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
+                    flash_operators=self.flash_operators[region],
                 )
                 self.property_operators[region] = PropertyOperators(
                     prop_container,
                     self.thermal,
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
+                    flash_operators=self.flash_operators[region],
                 )
             self.well_operators = GeomechanicsReservoirOperators(
                 self.property_containers[self.regions[0]],
                 thermal=False,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[self.regions[0]],
             )
 
         self.well_ctrl_operators = WellCtrlOperators(

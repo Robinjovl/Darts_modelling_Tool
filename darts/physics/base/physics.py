@@ -16,11 +16,13 @@ from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.interpolators import *
 from darts.physics.base.operator_evaluator import (
+    FlashOperators,
     PropertyOperators,
     ReservoirOperators,
     ThermalVarOperator,
     WellCtrlOperators,
     WellOperators,
+    supports_flash_reuse,
 )
 from darts.tools.obl_cache import OblCacheCodec
 
@@ -97,6 +99,8 @@ class PhysicsBase:
     :type engine: :class:`engine_base`
     :ivar property_containers: Set of :class:`PropertyContainer` objects for each of the regions for evaluation of reservoir cell properties
     :type property_containers: dict
+    :ivar flash_operators: Set of :class:`FlashOperators` objects for each of the regions, shared by the region's operator sets for reuse of tabulated flash results
+    :type flash_operators: dict
     :ivar reservoir_operators: Set of :class:`ReservoirOperators` objects for each of the regions for evaluation of reservoir cell states
     :type reservoir_operators: dict
     :ivar property_operators: :class:`PropertyOperators` object for evaluation and interpolation of properties
@@ -300,6 +304,7 @@ class PhysicsBase:
 
         self.regions = []
         self.property_containers = {}
+        self.flash_operators = {}
         self.reservoir_operators = {}
         self.property_operators = {}
         # Output-side property operators/interpolators are populated lazily by
@@ -590,22 +595,41 @@ class PhysicsBase:
 
     def set_operators(self) -> None:
         """
-        Build :class:`ReservoirOperators` for each region, :class:`WellOperators` for the well cells,
-        :class:`WellCtrlOperators` for well controls, :class:`ThermalVarOperator` for the thermal
-        state variable, and :class:`PropertyOperators` for property evaluation.
+        Build
+        - :class:`FlashOperators`, :class:`ReservoirOperators` and :class:`PropertyOperators` for each region,
+        - :class:`WellOperators` for the well cells and :class:`WellCtrlOperators` for well controls,
+        - :class:`ThermalVarOperator` for the thermal state variable
+
+        All operator sets of a region share the region's :class:`FlashOperators` instance.
+        This operator tabulates the flash results per OBL supporting point
+        The flash runs only once per point regardless of which operator set evaluates it first.
+        The well-side operator sets share the first region's instance
+        Regions whose property container overrides ``evaluate`` monolithically get no FlashOperators (``None``) and evaluate as before.
         """
         for region in self.regions:
+            self.flash_operators[region] = (
+                FlashOperators(
+                    self.property_containers[region],
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
+                )
+                if supports_flash_reuse(self.property_containers[region])
+                else None
+            )
             self.reservoir_operators[region] = ReservoirOperators(
                 self.property_containers[region],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[region],
             )
             self.property_operators[region] = PropertyOperators(
                 self.property_containers[region],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[region],
             )
 
         self.well_operators = WellOperators(
@@ -613,6 +637,7 @@ class PhysicsBase:
             self.thermal,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
         self.well_ctrl_operators = WellCtrlOperators(
@@ -620,6 +645,7 @@ class PhysicsBase:
             self.thermal,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
         self.thermal_var_operator = ThermalVarOperator(
@@ -628,6 +654,7 @@ class PhysicsBase:
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
     def set_engine(

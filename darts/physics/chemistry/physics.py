@@ -1,10 +1,12 @@
 from darts.engines import timer_node
 from darts.physics.base.operator_evaluator import (
-    PropertyOperators as BasePropertyOperators,
-)
-from darts.physics.base.operator_evaluator import (
+    FlashOperators,
     ThermalVarOperator,
     WellCtrlOperators,
+    supports_flash_reuse,
+)
+from darts.physics.base.operator_evaluator import (
+    PropertyOperators as BasePropertyOperators,
 )
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.chemistry.operator_evaluator import (
@@ -68,18 +70,32 @@ class ElementBasedReactiveFlow(PhysicsBase):
         and a :class:`PropertyOperator` for the evaluation of properties.
         """
         for region in self.regions:
+            self.flash_operators[region] = (
+                FlashOperators(
+                    self.property_containers[region],
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
+                )
+                if supports_flash_reuse(self.property_containers[region])
+                else None
+            )
             self.reservoir_operators[region] = ReservoirOperators(
                 self.property_containers[region],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[region],
             )
             self.initial_operators[region] = ConversionOperators(
                 self.property_containers[region],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[region],
             )
+            # The output property container is a separate object with its own flash
+            # call; it cannot share the region's FlashOperators (different container).
             self.property_operators[region] = BasePropertyOperators(
                 self.output_property_containers[region],
                 self.thermal,
@@ -92,6 +108,7 @@ class ElementBasedReactiveFlow(PhysicsBase):
             self.thermal,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
         self.thermal_var_operator = ThermalVarOperator(
@@ -100,6 +117,7 @@ class ElementBasedReactiveFlow(PhysicsBase):
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
     def add_property_region(

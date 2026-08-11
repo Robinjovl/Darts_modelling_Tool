@@ -338,10 +338,15 @@ class PropertyContainer:
 
         return self.mass_source
 
-    def evaluate(self, state: value_vector):
+    def evaluate_flash(self, state):
         """
-        Evaluate the phase properties. Phase properties used only in the energy conservation equation
-        are evaluated using a different method.
+        Run the flash at the given state and store the results on this container.
+
+        After this call, ``ph``, ``nu``, ``x``, ``pressure`` and ``temperature`` hold
+        the flash output for `state`. Derived phase properties are computed separately
+        by :meth:`evaluate_properties`, so that tabulated flash results (see
+        :class:`~darts.physics.base.operator_evaluator.FlashOperators`) can be
+        restored via :meth:`set_flash_results` without re-flashing.
 
         :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
         :type state: value_vector
@@ -366,6 +371,54 @@ class PropertyContainer:
             "constant temperature in case of isothermal physics, "
             "self.flash.temperature in case of thermal"
         )
+
+    def get_flash_snapshot(self):
+        """
+        Return a copy of the flash results at the last evaluated state.
+
+        The snapshot is opaque to callers: it is produced here and consumed by
+        :meth:`set_flash_results` only, so subclasses can override both to snapshot
+        a different set of flash outputs.
+
+        :return: Snapshot of flash results (present phases, phase fractions,
+                 phase compositions, pressure, temperature)
+        :rtype: tuple
+        """
+        return (
+            self.ph.copy(),
+            self.nu.copy(),
+            self.x.copy(),
+            self.pressure,
+            self.temperature,
+        )
+
+    def set_flash_results(self, snapshot):
+        """
+        Restore flash results from a snapshot, skipping :meth:`run_flash`.
+
+        Leaves the container in the same state as :meth:`evaluate_flash` at the
+        state the snapshot was taken, so :meth:`evaluate_properties` can follow.
+
+        :param snapshot: Snapshot obtained from :meth:`get_flash_snapshot`
+        :type snapshot: tuple
+        """
+        ph, nu, x, pressure, temperature = snapshot
+        self.clean_arrays()
+        self.ph = ph.copy()
+        self.nu = nu.copy()
+        self.x = x.copy()
+        self.pressure = pressure
+        self.temperature = temperature
+
+    def evaluate_properties(self, state):
+        """
+        Evaluate derived phase properties from the flash results currently held by
+        this container (set by :meth:`evaluate_flash` or :meth:`set_flash_results`).
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
+        :type state: value_vector
+        """
+        _, _, zc = self.get_state(state)
 
         for j in self.ph:
             M = np.sum(self.Mw[: self.nc_fl] * self.x[j][: self.nc_fl])
@@ -434,6 +487,23 @@ class PropertyContainer:
         self.mass_source = self.evaluate_mass_source(
             self.pressure, self.temperature, zc
         )
+
+        return
+
+    def evaluate(self, state: value_vector):
+        """
+        Evaluate the phase properties. Phase properties used only in the energy conservation equation
+        are evaluated using a different method.
+
+        Composition of :meth:`evaluate_flash` and :meth:`evaluate_properties`. Subclasses
+        overriding this method monolithically opt out of flash-result reuse (see
+        :func:`~darts.physics.base.operator_evaluator.supports_flash_reuse`).
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
+        :type state: value_vector
+        """
+        self.evaluate_flash(state)
+        self.evaluate_properties(state)
 
         return
 

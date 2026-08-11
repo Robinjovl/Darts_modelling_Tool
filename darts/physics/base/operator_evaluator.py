@@ -1,10 +1,30 @@
 import warnings
+from collections import OrderedDict
 from itertools import product
 
 import numpy as np
 
 from darts.interpolators import operator_set_evaluator_iface, value_vector
 from darts.physics.base.property_container import PropertyContainer
+
+
+def supports_flash_reuse(property_container) -> bool:
+    """
+    Return whether a property container can share tabulated flash results.
+
+    Reuse requires the container's effective ``evaluate`` to be the base-class
+    composition of ``evaluate_flash`` + ``evaluate_properties``. Containers that
+    override ``evaluate`` monolithically (e.g. custom model containers) keep their
+    behaviour and are evaluated without flash reuse.
+
+    :param property_container: Property container instance to inspect
+    :type property_container: PropertyContainer
+    :return: True if flash results can be tabulated and shared between operator sets
+    :rtype: bool
+    """
+    return getattr(type(property_container), "evaluate", None) is (
+        PropertyContainer.evaluate
+    )
 
 
 class OperatorsBase(operator_set_evaluator_iface):
@@ -14,6 +34,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         thermal: bool,
         extrapolation_flag: bool = True,
         dz: float = None,
+        flash_operators: 'FlashOperators' = None,
     ):
         """
         Constructor of OperatorsBase base class
@@ -24,6 +45,11 @@ class OperatorsBase(operator_set_evaluator_iface):
         :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
                     during boundary extrapolation. Scalar (uniform spacing) or a per-axis
                     vector of length nc-1 (non-uniform cell size across composition axes).
+        :param flash_operators: Shared :class:`FlashOperators` instance of this property
+                    region for reuse of tabulated flash results; when None, a private
+                    instance is created (or reuse is disabled for containers that
+                    override ``evaluate`` monolithically).
+        :type flash_operators: FlashOperators, optional
         """
         super().__init__()
 
@@ -67,6 +93,46 @@ class OperatorsBase(operator_set_evaluator_iface):
                     f"dz must be scalar or length nc-1={self.nc - 1}, got {self.dz.size}"
                 )
                 assert np.all(self.dz > 0), "dz entries must be strictly positive"
+
+        # Flash-reuse wiring: all operator sets of a region share one FlashOperators
+        # instance that tabulates the flash results per supporting point.
+        if flash_operators is not None:
+            if flash_operators.property is not property_container:
+                raise ValueError(
+                    "flash_operators must wrap the same PropertyContainer instance "
+                    "as the operator set it is shared with"
+                )
+            self.flash = flash_operators
+        elif isinstance(self, FlashOperators):
+            self.flash = self
+        elif supports_flash_reuse(property_container):
+            # Standalone use (no shared instance passed): private tabulation
+            self.flash = FlashOperators(
+                property_container,
+                thermal,
+                extrapolation_flag=extrapolation_flag,
+                dz=dz,
+            )
+        else:
+            # Container overrides evaluate() monolithically; no flash split available
+            self.flash = None
+
+    def evaluate_property_container(self, state_np):
+        """
+        Evaluate the shared property container at a supporting point.
+
+        Reuses tabulated flash results through this region's :class:`FlashOperators`
+        when the container supports the flash/properties split; falls back to the
+        monolithic ``PropertyContainer.evaluate`` otherwise.
+
+        :param state_np: State at the supporting point [pres, comp_0, ..., comp_N-1, (temp), (history)]
+        :type state_np: np.ndarray
+        """
+        if self.flash is not None:
+            self.flash.ensure_flash(state_np)
+            self.property.evaluate_properties(state_np)
+        else:
+            self.property.evaluate(state_np)
 
     def evaluate_batch(self, states, n_points, values, n_ops):
         """
@@ -273,6 +339,156 @@ class OperatorsBase(operator_set_evaluator_iface):
         return out
 
 
+class FlashOperators(OperatorsBase):
+    """
+    Operator set that takes care of the flash / thermodynamics at OBL supporting points.
+
+    One instance is shared by all operator sets of a property region (see
+    :meth:`~darts.physics.base.physics.PhysicsBase.set_operators`): the first operator
+    set to evaluate at a supporting point computes the flash and tabulates the result;
+    every other operator set evaluating at the same point restores the tabulated result
+    via :meth:`ensure_flash` instead of recomputing it. The tabulation is keyed on the
+    primary state coordinates of the supporting point (OBL history axes are excluded —
+    the flash does not depend on them), so reuse is independent of the order in which
+    the interpolators discover their supporting points. All interpolators of a region
+    share identical axes origin/step, hence coinciding supporting points produce
+    bit-identical coordinates and exact keys match.
+
+    It also implements the evaluator interface itself, exposing phase fractions ``nu``,
+    phase compositions ``x`` and temperature as operator values, so it can back an
+    interpolator for output or diagnostics.
+    """
+
+    def __init__(
+        self,
+        property_container: PropertyContainer,
+        thermal: bool,
+        extrapolation_flag: bool = True,
+        dz: float = None,
+        max_cache_size: int = None,
+    ):
+        """
+        Constructor of FlashOperators class
+
+        :param property_container: Property container of type PropertyContainer
+        :param thermal: Switch to indicate if energy conservation equation is there
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
+                    during boundary extrapolation. Scalar (uniform spacing) or a per-axis
+                    vector of length nc-1 (non-uniform cell size across composition axes).
+        :param max_cache_size: Optional bound on the number of tabulated supporting
+                    points (LRU eviction); None (default) keeps every point.
+        :type max_cache_size: int, optional
+        """
+        super().__init__(
+            property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
+        )
+
+        # Operator layout (meaningful when the container defines a fluid-phase layout;
+        # e.g. the chemistry containers do not, and use this class for reuse only)
+        if self.np_fl > 0 and self.nc_fl > 0:
+            self.NU_OP = 0  # phase mole fraction operator - np_fl
+            self.X_OP = (
+                self.NU_OP + self.np_fl
+            )  # phase composition operator - np_fl * nc_fl
+            self.TEMP_OP = (
+                self.X_OP + self.np_fl * self.nc_fl
+            )  # temperature operator - 1
+            self.n_ops = self.TEMP_OP + 1
+            self.op_names = [
+                (self.NU_OP, "NU"),
+                (self.X_OP, "X"),
+                (self.TEMP_OP, "TEMP"),
+            ]
+        else:
+            self.n_ops = 0
+
+        self._cache = OrderedDict()
+        self.max_cache_size = max_cache_size
+        self.cache_hits = 0
+        self.cache_misses = 0
+
+    def _state_key(self, state_np):
+        """
+        Return the tabulation key for a supporting point: the primary state
+        coordinates [pres, comp_0, ..., comp_N-1, (temp)] as bytes. Appended OBL
+        history axes are excluded because the flash does not depend on them; this
+        also makes the key correct for extrapolation reference states, which are
+        constructed without the history tail.
+
+        :param state_np: State at the supporting point
+        :type state_np: np.ndarray
+        :return: Hashable key identifying the OBL grid node
+        :rtype: bytes
+        """
+        return state_np[: self.ne].tobytes()
+
+    def ensure_flash(self, state_np):
+        """
+        Make the property container hold the flash results for this supporting point.
+
+        On a miss, the flash is computed via ``PropertyContainer.evaluate_flash`` and
+        the result tabulated; on a hit, the tabulated snapshot is restored via
+        ``PropertyContainer.set_flash_results``. Restoring (rather than skipping when
+        the container "already holds" the state) makes the hit path correct regardless
+        of what ran in between (other supporting points, ``evaluate_at_cond``,
+        ``compute_total_enthalpy``, ...).
+
+        :param state_np: State at the supporting point [pres, comp_0, ..., comp_N-1, (temp), (history)]
+        :type state_np: np.ndarray
+        """
+        key = self._state_key(state_np)
+        snapshot = self._cache.get(key)
+        if snapshot is not None:
+            self._cache.move_to_end(key)
+            self.property.set_flash_results(snapshot)
+            self.cache_hits += 1
+            return
+        self.property.evaluate_flash(state_np)
+        self._cache[key] = self.property.get_flash_snapshot()
+        self.cache_misses += 1
+        if self.max_cache_size is not None and len(self._cache) > self.max_cache_size:
+            self._cache.popitem(last=False)
+
+    def clear_cache(self):
+        """
+        Drop all tabulated flash results and reset the hit/miss counters.
+        """
+        self._cache.clear()
+        self.cache_hits = 0
+        self.cache_misses = 0
+
+    def evaluate(self, state, values):
+        """
+        Evaluate the flash operators: phase mole fractions nu, phase compositions x
+        and temperature at the given state.
+
+        :param state: Vector of state variables [pres, comp_0, ..., comp_N-1, (temp)]
+        :type state: darts.interpolators.value_vector
+        :param values: Vector for storage of operator values
+        :type values: darts.interpolators.value_vector
+        :return: 0 if successful
+        :rtype: int
+        """
+        # Check if extrapolation needs to be applied
+        if self.apply_extrapolation(state, values):
+            return 0
+
+        state_np = state.to_numpy()
+        values_np = values.to_numpy()
+        values_np[:] = 0
+
+        self.ensure_flash(state_np)
+
+        values_np[self.NU_OP : self.NU_OP + self.np_fl] = self.property.nu
+        values_np[self.X_OP : self.X_OP + self.np_fl * self.nc_fl] = (
+            self.property.x.ravel()
+        )
+        values_np[self.TEMP_OP] = self.property.temperature
+
+        return 0
+
+
 class WellCtrlOperators(OperatorsBase):
     """
     Set of operators for well controls of EPM and DFM wells.
@@ -290,6 +506,7 @@ class WellCtrlOperators(OperatorsBase):
         thermal: bool,
         extrapolation_flag: bool = True,
         dz: float = None,
+        flash_operators: FlashOperators = None,
     ):
         """
         Constructor of WellCtrlOperators class
@@ -300,9 +517,15 @@ class WellCtrlOperators(OperatorsBase):
         :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
                     during boundary extrapolation. Scalar (uniform spacing) or a per-axis
                     vector of length nc-1 (non-uniform cell size across composition axes).
+        :param flash_operators: Shared :class:`FlashOperators` of this property region
+        :type flash_operators: FlashOperators, optional
         """
         super().__init__(
-            property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
+            property_container,
+            thermal,
+            extrapolation_flag=extrapolation_flag,
+            dz=dz,
+            flash_operators=flash_operators,
         )
 
         self.n_rate_ctrl_types = 4  # molar, mass, volumetric, and advective heat rates
@@ -349,7 +572,7 @@ class WellCtrlOperators(OperatorsBase):
         values_np = values.to_numpy()
         values_np[:] = 0
 
-        self.property.evaluate(state_np)
+        self.evaluate_property_container(state_np)
         if self.thermal:
             self.property.evaluate_thermal(state_np)
 
@@ -387,6 +610,7 @@ class ThermalVarOperator(OperatorsBase):
         is_pt: bool = True,
         extrapolation_flag: bool = True,
         dz: float = None,
+        flash_operators: FlashOperators = None,
     ):
         """
         Constructor of ThermalVarOperator class
@@ -398,8 +622,16 @@ class ThermalVarOperator(OperatorsBase):
         :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
                     during boundary extrapolation. Scalar (uniform spacing) or a per-axis
                     vector of length nc-1 (non-uniform cell size across composition axes).
+        :param flash_operators: Shared :class:`FlashOperators` of this property region
+        :type flash_operators: FlashOperators, optional
         """
-        super().__init__(property_container, thermal, extrapolation_flag, dz)
+        super().__init__(
+            property_container,
+            thermal,
+            extrapolation_flag,
+            dz,
+            flash_operators=flash_operators,
+        )
 
         self.n_ops = 1
         self.is_pt = is_pt
@@ -435,6 +667,7 @@ class PropertyOperators(OperatorsBase):
         props: dict = None,
         extrapolation_flag: bool = True,
         dz: float = None,
+        flash_operators: FlashOperators = None,
     ):
         """
         This is the constructor for PropertyOperator.
@@ -447,8 +680,16 @@ class PropertyOperators(OperatorsBase):
         :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
                     during boundary extrapolation. Scalar (uniform spacing) or a per-axis
                     vector of length nc-1 (non-uniform cell size across composition axes).
+        :param flash_operators: Shared :class:`FlashOperators` of this property region
+        :type flash_operators: FlashOperators, optional
         """
-        super().__init__(property_container, thermal, extrapolation_flag, dz)
+        super().__init__(
+            property_container,
+            thermal,
+            extrapolation_flag,
+            dz,
+            flash_operators=flash_operators,
+        )
 
         self.props = property_container.output_props if props is None else props
         self.props_name = [key for key in self.props.keys()]
@@ -471,9 +712,9 @@ class PropertyOperators(OperatorsBase):
 
         state_np = state.to_numpy()
         values_np = values.to_numpy()
-        _ = self.property.evaluate(state_np)
+        self.evaluate_property_container(state_np)
         if self.thermal:
-            _ = self.property.evaluate_thermal(state_np)
+            self.property.evaluate_thermal(state_np)
 
         for i, prop in enumerate(self.props_name):
             output = self.props[prop]()
@@ -489,6 +730,7 @@ class ReservoirOperators(OperatorsBase):
         thermal: bool,
         extrapolation_flag: bool = True,
         dz: float = None,
+        flash_operators: FlashOperators = None,
     ):
         """
         Constructor of ReservoirOperators class
@@ -498,9 +740,15 @@ class ReservoirOperators(OperatorsBase):
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
         :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
                     (must be equal along all composition axes in current setup)
+        :param flash_operators: Shared :class:`FlashOperators` of this property region
+        :type flash_operators: FlashOperators, optional
         """
         super().__init__(
-            property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
+            property_container,
+            thermal,
+            extrapolation_flag=extrapolation_flag,
+            dz=dz,
+            flash_operators=flash_operators,
         )  # Initialize base-class
 
         # Operator order
@@ -579,8 +827,8 @@ class ReservoirOperators(OperatorsBase):
         values_np = values.to_numpy()
         values_np[:] = 0
 
-        # Evaluate properties at current state
-        self.property.evaluate(state_np)
+        # Evaluate properties at current state, reusing tabulated flash results
+        self.evaluate_property_container(state_np)
         self.compr = self.property.rock_compr_ev.evaluate(state_np[0])
 
         density_tot = np.sum(
@@ -760,8 +1008,8 @@ class WellOperators(ReservoirOperators):
         values_np = values.to_numpy()
         values_np[:] = 0
 
-        # Evaluate properties at current state
-        self.property.evaluate(state_np)
+        # Evaluate properties at current state, reusing tabulated flash results
+        self.evaluate_property_container(state_np)
 
         density_tot = np.sum(
             self.property.sat[: self.np_fl] * self.property.dens_m[: self.np_fl]
@@ -900,6 +1148,7 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
         thermal: bool,
         extrapolation_flag: bool = True,
         dz: float = None,
+        flash_operators: FlashOperators = None,
     ):
         """
         Constructor of GeomechanicsReservoirOperators class
@@ -909,9 +1158,15 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
         :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
                     (must be equal along all composition axes in current setup)
+        :param flash_operators: Shared :class:`FlashOperators` of this property region
+        :type flash_operators: FlashOperators, optional
         """
         super().__init__(
-            property_container, thermal, extrapolation_flag, dz
+            property_container,
+            thermal,
+            extrapolation_flag,
+            dz,
+            flash_operators=flash_operators,
         )  # Initialize base-class
 
         self.ROCK_DENS_OP = self.PRES_OP + 1  # used only in mechanical engine
@@ -961,7 +1216,7 @@ class SinglePhaseGeomechanicsOperators(OperatorsBase):
 
         state_np = state.to_numpy()
         values_np = values.to_numpy()
-        self.property.evaluate(state_np)
+        self.evaluate_property_container(state_np)
         values_np[0] = self.property.dens[0]
         values_np[1] = self.property.dens[0] / self.property.mu[0]
 

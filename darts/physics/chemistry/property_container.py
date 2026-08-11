@@ -136,16 +136,69 @@ class PropertyContainer(BasePropertyContainer):
 
         return role_to_idx
 
-    def evaluate(self, state):
+    def evaluate_flash(self, state):
         """
-        Class methods which evaluates the state operators for the element based physics
+        Run the geochemical equilibrium solve at the given state and store the raw
+        flash outputs on this container.
+
+        Only the expensive third-party equilibrium call lives here; the derived
+        properties are computed from the stored outputs in :meth:`evaluate_properties`,
+        so tabulated results (see
+        :class:`~darts.physics.base.operator_evaluator.FlashOperators`) can be restored
+        via :meth:`set_flash_results` without re-solving.
 
         :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
         :type state: value_vector
-
-        :return: updated value for operators, stored in values
         """
-        nu_v, x, y, rho_phases, self.kin_state, _, _, _ = self.flash_ev.evaluate(state)
+        nu_v, x, y, rho_phases, kin_state, _, _, _ = self.flash_ev.evaluate(state)
+        self.flash_nu_v = nu_v
+        self.flash_x_aq = np.asarray(x, dtype=float).copy()
+        self.flash_y_gas = np.asarray(y, dtype=float).copy()
+        self.flash_rho_phases = dict(rho_phases)
+        self.kin_state = kin_state
+
+    def get_flash_snapshot(self):
+        """
+        Return a copy of the raw flash outputs at the last evaluated state.
+
+        :return: Snapshot of flash results (vapour fraction, aqueous and gas phase
+                 compositions, phase molar densities, kinetic state)
+        :rtype: tuple
+        """
+        return (
+            self.flash_nu_v,
+            self.flash_x_aq.copy(),
+            self.flash_y_gas.copy(),
+            dict(self.flash_rho_phases),
+            dict(self.kin_state),
+        )
+
+    def set_flash_results(self, snapshot):
+        """
+        Restore raw flash outputs from a snapshot, skipping the equilibrium solve.
+
+        :param snapshot: Snapshot obtained from :meth:`get_flash_snapshot`
+        :type snapshot: tuple
+        """
+        nu_v, x_aq, y_gas, rho_phases, kin_state = snapshot
+        self.flash_nu_v = nu_v
+        self.flash_x_aq = x_aq.copy()
+        self.flash_y_gas = y_gas.copy()
+        self.flash_rho_phases = dict(rho_phases)
+        self.kin_state = dict(kin_state)
+
+    def evaluate_properties(self, state):
+        """
+        Evaluate derived phase properties from the flash outputs currently held by
+        this container (set by :meth:`evaluate_flash` or :meth:`set_flash_results`).
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
+        :type state: value_vector
+        """
+        nu_v = self.flash_nu_v
+        x = self.flash_x_aq
+        y = self.flash_y_gas
+        rho_phases = self.flash_rho_phases
         idx_g = self.phase_idx['gas']
         idx_a = self.phase_idx['aq']
         self.nu_solid = state[self.s_mask_state]

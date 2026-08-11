@@ -24,6 +24,7 @@ class ReservoirOperators(BaseReservoirOperators):
         thermal: bool,
         extrapolation_flag: bool = False,
         dz: float = None,
+        flash_operators=None,
     ):
         """
         Constructor of ReservoirOperators class, inherited from ReservoirOperators of PhysicsBase
@@ -33,6 +34,8 @@ class ReservoirOperators(BaseReservoirOperators):
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
         :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
                     (must be equal along all composition axes in current setup)
+        :param flash_operators: Shared :class:`FlashOperators` of this property region
+        :type flash_operators: FlashOperators, optional
         """
         # set some properties to -1 to use OperatorsSuper constructor
         # TODO: refactor in future
@@ -44,6 +47,7 @@ class ReservoirOperators(BaseReservoirOperators):
             thermal=thermal,
             extrapolation_flag=extrapolation_flag,
             dz=dz,
+            flash_operators=flash_operators,
         )
 
         # Store your input parameters in self here, and initialize other parameters here in self
@@ -92,8 +96,8 @@ class ReservoirOperators(BaseReservoirOperators):
         _p = state_np[0]
         # get overall molar composition
         z = self.get_overall_composition(state_np)
-        # call property:
-        self.property.evaluate(state_np)
+        # call property, reusing tabulated flash results:
+        self.evaluate_property_container(state_np)
 
         # Densities
         rho_t = (
@@ -210,6 +214,7 @@ class ConversionOperators(ReservoirOperators):
         thermal: bool,
         extrapolation_flag: bool = False,
         dz: float = None,
+        flash_operators=None,
     ):
         """
         Constructor of ConversionOperators class
@@ -219,9 +224,15 @@ class ConversionOperators(ReservoirOperators):
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
         :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
                     (must be equal along all composition axes in current setup)
+        :param flash_operators: Shared :class:`FlashOperators` of this property region
+        :type flash_operators: FlashOperators, optional
         """
         super().__init__(
-            property_container, thermal, extrapolation_flag, dz
+            property_container,
+            thermal,
+            extrapolation_flag,
+            dz,
+            flash_operators=flash_operators,
         )  # Initialize base-class
         self.fluid_mole = self.property.flash_ev.total_moles / 1000  # mol to kmol
         self.counter = 0
