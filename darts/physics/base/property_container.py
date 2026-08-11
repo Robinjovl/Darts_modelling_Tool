@@ -110,7 +110,7 @@ class PropertyContainer:
             ph: ConstFunc(np.zeros(self.nc_fl)) for ph in phases_name[: self.np_fl]
         }
         self.kinetic_rate_ev = {}
-        self.energy_source_ev = []
+        self.energy_source_ev = {}
         self.flash_ev: Flash = 0
         self.permporo_mult_ev = ConstFunc(1.0)
 
@@ -143,6 +143,41 @@ class PropertyContainer:
         ]
 
         self.output_props = {"sat0": lambda: self.sat[0]}
+
+    def check_properties(self):
+        """
+        Check consistency of input properties
+        """
+        # Check that all phases have a density and enthalpy/conductivity evaluator in case of thermal
+        # and all mobile phases have a viscosity/diffusion/capillary pressure/relperm evaluator
+        acc_evs = [
+            self.density_ev,
+        ] + ([self.enthalpy_ev, self.conductivity_ev] if self.thermal else [])
+        flux_evs = [
+            self.viscosity_ev,
+            self.diffusion_ev,
+            self.rel_perm_ev,
+        ]
+
+        for ev in acc_evs:
+            assert np.all(
+                [
+                    phase in ev.keys() and ev[phase] is not None
+                    for phase in self.phases_name
+                ]
+            ), "Acc evaluator for phase missing"
+        for ev in flux_evs:
+            assert np.all(
+                [
+                    phase in ev.keys() and ev[phase] is not None
+                    for phase in self.phases_name[: self.np_fl]
+                ]
+            ), "Flux evaluator for phase missing"
+
+        for kinetic_ev in self.kinetic_rate_ev.items():
+            assert kinetic_ev is not None, "Evaluator for kinetic rate missing"
+        for energy_ev in self.energy_source_ev.items():
+            assert energy_ev is not None, "Energy evaluator missing"
 
     def validate_history_consistency(self) -> None:
         """Assert that every history-aware evaluator in this container that owns a
@@ -287,9 +322,11 @@ class PropertyContainer:
         # Compute molar enthalpy of multiphase mixture
         enthalpy = 0.0
         for j in ph:
+            self.enthalpy_ev[self.phases_name[j]].evaluate_PT_bool = True
             enthalpy += self.nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(
                 pressure, temperature, self.x[j, :]
             )  # kJ/kmol
+            self.enthalpy_ev[self.phases_name[j]].evaluate_PT_bool = False
 
         return enthalpy
 
@@ -461,8 +498,8 @@ class PropertyContainer:
 
         # Heat source and Reaction enthalpy
         self.energy_source = 0.0
-        if self.energy_source_ev:
-            self.energy_source += self.energy_source_ev.evaluate(state)
+        for _, energy_source in self.energy_source_ev.items():
+            self.energy_source += energy_source.evaluate(state)
 
         for _, reaction in self.kinetic_rate_ev.items():
             self.energy_source += reaction.evaluate_enthalpy(

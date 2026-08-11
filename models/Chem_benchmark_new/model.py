@@ -189,9 +189,9 @@ class Model(CICDModel):
 
         """ properties correlations """
         if self.combined_ions:
-            flash_ev = ConstantK(nc-1, [10, 1e-12, 1e-1], self.zero)
+            flash_ev = ConstantK(nc-1, [0.1, 1e12, 1e1], self.zero)
         else:
-            flash_ev = ConstantK(nc-1, [10, 1e-12, 1e-12, 1e-1], self.zero)
+            flash_ev = ConstantK(nc-1, [0.1, 1e12, 1e12, 1e1], self.zero)
 
         density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=100)),
                            ('wat', DensityBasic(compr=1e-6, dens0=1000)),

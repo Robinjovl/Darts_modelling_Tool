@@ -2,6 +2,7 @@ from darts.engines import value_vector, sim_params, well_control_iface
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 from darts.models.cicd_model import CICDModel
 from darts.physics.base.physics import PhysicsBase
+from darts.physics.iapws_physics import IAPWSPhysics
 from darts.physics.base.property_container import PropertyContainer
 from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
@@ -110,7 +111,8 @@ class Model(CICDModel):
         self.set_iapws_physics(p_step=self.idata.obl.p_step,
                                p_origin=self.idata.obl.p_origin,
                                t_step=self.idata.obl.t_step,
-                               t_origin=self.idata.obl.t_origin)
+                               t_origin=self.idata.obl.t_origin,
+                               is_ph=False)
 
         # Some tuning parameters:
         self.nonlinear_solver = NewtonSolver(tolerance=1e-4,
@@ -123,7 +125,7 @@ class Model(CICDModel):
         # End timer for model initialization:
         self.timer.node["initialization"].stop()
 
-    def set_iapws_physics(self, p_step, p_origin, t_step, t_origin, cache=False):
+    def set_iapws_physics(self, p_step, p_origin, t_step, t_origin, is_ph: bool, cache=False):
         """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PT-flash.
         Single-component water; phases are vapor ('V') and liquid ('L').
         State spec is PT so engine.X layout is [P, T, ...] and the OBL grid is sampled on (P, T).
@@ -134,24 +136,45 @@ class Model(CICDModel):
         zero = 1e-12
         comp_data = CompData(components=components, setprops=True)
 
+        # state_spec=PH -> OBL axes are [pressure, enthalpy]; state_spec=PT -> [pressure, temperature]
+        self.physics = IAPWSPhysics(
+            phases, self.timer,
+            state_spec=PhysicsBase.StateSpecification.PH if is_ph else PhysicsBase.StateSpecification.PT,
+            axes_step=[p_step, t_step],
+            axes_origin=[p_origin, t_origin],
+            cache=cache,
+        )
+
+        mixture = IAPWS(iapws_ideal=True, ice_phase=False)
+        if is_ph:
+            # PHFlash -> PXFlash(ENTHALPY) under the hood (dartsflash wrapper). Bound the
+            # PXFlash temperature root-finding to the IAPWS liquid range: the default
+            # t_min=100 K lets the solver sample far below the ice point, where IAPWS-95
+            # density bisection diverges ("LIQUID MINIMUM BISECTION not converged").
+            mixture.init_flash(flash_type=DARTSFlash.FlashType.PHFlash,
+                                t_min=273.15, t_max=575., t_init=350.)
+        else:
+            mixture.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
+        self.physics.set_mixture(mixture)
+
+        """ Set property container and define properties """
         pc = PropertyContainer(phases_name=phases, components_name=components,
                                Mw=comp_data.Mw, eps_z=zero)
+        self.physics.add_property_region(pc)
 
-        flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
-        pc.flash_ev = flash_ev
+        pc.flash_ev = self.physics.get_flash_ev()
 
         pc.density_ev = {
-            'V': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),
-            'L': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN),
+            'V': EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
+            'L': EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
         }
         pc.viscosity_ev = {
-            'V': ConstFunc(0.01),         # cP, steam
-            'L': MaoDuan2009(components),  # cP, liquid water (pressure/temperature-dependent)
+            'V': ConstFunc(0.01),                  # cP, steam
+            'L': MaoDuan2009(components),          # cP, liquid water (pressure/temperature-dependent)
         }
         pc.enthalpy_ev = {
-            'V': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
-            'L': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
+            'V': self.physics.get_enthalpy_ev_from_flash(phase_idx=0),
+            'L': self.physics.get_enthalpy_ev_from_flash(phase_idx=1),
         }
         pc.rel_perm_ev = {
             'V': PhaseRelPerm("gas", swc=0.0),
@@ -159,20 +182,11 @@ class Model(CICDModel):
         }
         pc.conductivity_ev = {
             'V': ConstFunc(0.0),
-            'L': ConstFunc(172.8),       # kJ/m/day/K, matches geothermal default
+            'L': ConstFunc(172.8),                 # kJ/m/day/K, matches geothermal default
         }
         # output_props exposes derived T (K) via the property interpolator
         pc.output_props = {'temperature': lambda: pc.temperature}
 
-        self.physics = PhysicsBase(
-            components, phases, self.timer,
-            state_spec=PhysicsBase.StateSpecification.PT,
-            axes_step=[p_step, t_step],
-            axes_origin=[p_origin, t_origin],
-            epsilon_z=zero,
-            cache=cache,
-        )
-        self.physics.add_property_region(pc)
         return pc
 
     def print_range(self, time, part='cells'):
