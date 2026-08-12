@@ -204,6 +204,7 @@ if [[ "$skip_req" == false ]]; then
 
     mkdir -p build
     echo -e "\n-- Install Hypre: START\n"
+    mkdir -p hypre/src/cmbuild
     cd hypre/src/cmbuild
     # Setup hypre build with no MPI support (we only use single processor)
     # Tests/examples are never run, only the library is used, so don't build them
@@ -211,7 +212,7 @@ if [[ "$skip_req" == false ]]; then
     # For debugging: -DHYPRE_ENABLE_PRINT
     cmake -D HYPRE_BUILD_TESTS=OFF \
           -D HYPRE_BUILD_EXAMPLES=OFF \
-          -D HYPRE_WITH_MPI=OFF \
+          -D HYPRE_ENABLE_MPI=OFF \
           -D CMAKE_INSTALL_PREFIX=../../../install \
           .. &> ../../../../make_hypre.log
     make install -j $NT &>> ../../../../make_hypre.log
