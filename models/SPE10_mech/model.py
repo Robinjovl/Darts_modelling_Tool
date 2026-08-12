@@ -313,12 +313,11 @@ class ModelProperties(PropertyContainer):
         Mw = np.ones(self.nph)
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z, temperature=None)
 
-    def evaluate(self, state):
+    def evaluate_flash(self, state):
         """
-        Class methods which evaluates the state operators for the element based physics
+        Compute the (trivial) two-phase flash: composition/phase split, pressure, temperature.
+
         :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
@@ -330,11 +329,19 @@ class ModelProperties(PropertyContainer):
 
         self.clean_arrays()
         # two-phase flash - assume water phase is always present and water component last
+        self.ph = np.array([0, 1], dtype=np.intp)
+        self.nu = zc
         for i in range(self.nph):
             self.x[i, i] = 1
 
-        self.ph = np.array([0, 1], dtype=np.intp)
 
+    def evaluate_properties(self, state):
+        """
+        Compute derived phase properties (density, viscosity, saturation, relperm)
+        from the flash results currently held by this container.
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1]
+        """
         for j in self.ph:
             # molar weight of mixture
             M = np.sum(self.x[j, :] * self.Mw)
@@ -342,16 +349,11 @@ class ModelProperties(PropertyContainer):
             self.dens_m[j] = self.dens[j] / M
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
 
-        self.nu = zc
         self.compute_saturation(self.ph)
 
         for j in self.ph:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc[j] = 0
-
-        mass_source = np.zeros(self.nc)
-
-        return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
 
     def evaluate_at_cond(self, pressure, zc):
 

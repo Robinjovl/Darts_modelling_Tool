@@ -636,21 +636,25 @@ class PhysicsBase:
         shares that region's :class:`FlashOperators` instead of building its own.
         Built in three passes below so sharing regions can be registered before or after the region they target.
         """
-        # Pass 1: build (or skip) each non-sharing region's own FlashOperators.
+        # Pass 1: build each non-sharing region's own FlashOperators.
+        # Every PropertyContainer must implement evaluate_flash()/evaluate_properties()
         for region in self.regions:
             if self.flash_region[region] != region:
                 continue
             container = self.property_containers[region]
-            if supports_flash_reuse(container):
-                assert_flash_snapshot_consistent(container)
-                self.flash_operators[region] = FlashOperators(
-                    container,
-                    self.thermal,
-                    extrapolation_flag=self.extrapolation_flag,
-                    dz=self.dz,
+            if not supports_flash_reuse(container):
+                raise ValueError(
+                    f"{type(container).__name__} (region {region}) overrides evaluate() monolithically. "
+                    f"PropertyContainer subclasses must implement evaluate_flash()/evaluate_properties() instead. "
+                    f"Monolithic evaluate() overrides are no longer supported."
                 )
-            else:
-                self.flash_operators[region] = None
+            assert_flash_snapshot_consistent(container)
+            self.flash_operators[region] = FlashOperators(
+                container,
+                self.thermal,
+                extrapolation_flag=self.extrapolation_flag,
+                dz=self.dz,
+            )
 
         # Pass 2: wire sharing regions to their target's FlashOperators.
         for region in self.regions:

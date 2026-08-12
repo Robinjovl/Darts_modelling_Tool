@@ -12,9 +12,10 @@ def supports_flash_reuse(property_container) -> bool:
     Return whether a property container can share tabulated flash results.
 
     Reuse requires the container's effective ``evaluate`` to be the base-class
-    composition of ``evaluate_flash`` + ``evaluate_properties``. Containers that
-    override ``evaluate`` monolithically (e.g. custom model containers) keep their
-    behaviour and are evaluated without flash reuse.
+    composition of ``evaluate_flash`` + ``evaluate_properties``.
+    Containers that override ``evaluate`` monolithically are no longer supported
+    Both ``OperatorsBase.__init__`` and ``PhysicsBase.set_operators`` raise ``ValueError``
+    for such a container instead of silently evaluating without flash reuse.
 
     :param property_container: Property container instance to inspect
     :type property_container: PropertyContainer
@@ -159,34 +160,34 @@ class OperatorsBase(operator_set_evaluator_iface):
                 dz=dz,
             )
         else:
-            # Container overrides evaluate() monolithically; no flash split available
-            self.flash = None
+            raise ValueError(
+                f"{type(property_container).__name__} overrides evaluate() monolithically. "
+                f"PropertyContainer subclasses must implement evaluate_flash()/evaluate_properties() "
+                f"so flash results can be tabulated and shared across operator sets. "
+                f"Monolithic evaluate() overrides are no longer supported. "
+                f"(see darts.physics.base.property_container.PropertyContainer)."
+            )
 
     def evaluate_property_container(self, state_np):
         """
         Evaluate the shared property container at a supporting point.
 
-        Reuses tabulated flash results through this region's :class:`FlashOperators`
-        when the container supports the flash/properties split; falls back to the
-        monolithic ``PropertyContainer.evaluate`` otherwise.
+        Reuses tabulated flash results through this region's :class:`FlashOperators`.
 
         :param state_np: State at the supporting point [pres, comp_0, ..., comp_N-1, (temp), (history)]
         :type state_np: np.ndarray
         """
-        if self.flash is not None:
-            self.flash.ensure_flash(state_np)
-            if self.flash.property is not self.property:
-                # This region shares another region's FlashOperators
-                # (see PhysicsBase.add_property_region's flash_region)
-                # Copy the flash results it just computed/restored onto this region's
-                # own container via the same row contract the flash point store uses,
-                # since evaluate_properties() below reads from self.property.
-                row = np.zeros(self.flash.property.flash_row_width())
-                self.flash.property.get_flash_snapshot(row)
-                self.property.set_flash_results(row)
-            self.property.evaluate_properties(state_np)
-        else:
-            self.property.evaluate(state_np)
+        self.flash.ensure_flash(state_np)
+        if self.flash.property is not self.property:
+            # This region shares another region's FlashOperators
+            # (see PhysicsBase.add_property_region's flash_region)
+            # Copy the flash results it just computed/restored onto this region's
+            # own container via the same row contract the flash point store uses,
+            # since evaluate_properties() below reads from self.property.
+            row = np.zeros(self.flash.property.flash_row_width())
+            self.flash.property.get_flash_snapshot(row)
+            self.property.set_flash_results(row)
+        self.property.evaluate_properties(state_np)
 
     def evaluate_batch(self, states, n_points, values, n_ops):
         """
