@@ -22,6 +22,7 @@ from darts.physics.base.operator_evaluator import (
     ThermalVarOperator,
     WellCtrlOperators,
     WellOperators,
+    assert_flash_snapshot_consistent,
     supports_flash_reuse,
 )
 from darts.tools.obl_cache import OblCacheCodec
@@ -304,7 +305,11 @@ class PhysicsBase:
 
         self.regions = []
         self.property_containers = {}
+
+        # C++ flash-result point store backing each region's FlashOperators,
+        # populated by set_interpolators(); None where unavailable (see set_interpolators).
         self.flash_operators = {}
+        self.flash_itor = {}
         self.reservoir_operators = {}
         self.property_operators = {}
         # Output-side property operators/interpolators are populated lazily by
@@ -605,18 +610,26 @@ class PhysicsBase:
         The flash runs only once per point regardless of which operator set evaluates it first.
         The well-side operator sets share the first region's instance
         Regions whose property container overrides ``evaluate`` monolithically get no FlashOperators (``None``) and evaluate as before.
+
+        For every other region, the property container's flash-snapshot methods
+        (``get_flash_snapshot``/``set_flash_results``/``flash_row_width``) are
+        validated once here via :func:`~darts.physics.base.operator_evaluator.assert_flash_snapshot_consistent`
+        -- a container that overrides the flash-snapshot format must override all
+        three together, and this fails fast if it doesn't, rather than silently
+        losing flash-store caching later.
         """
         for region in self.regions:
-            self.flash_operators[region] = (
-                FlashOperators(
-                    self.property_containers[region],
+            container = self.property_containers[region]
+            if supports_flash_reuse(container):
+                assert_flash_snapshot_consistent(container)
+                self.flash_operators[region] = FlashOperators(
+                    container,
                     self.thermal,
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
                 )
-                if supports_flash_reuse(self.property_containers[region])
-                else None
-            )
+            else:
+                self.flash_operators[region] = None
             self.reservoir_operators[region] = ReservoirOperators(
                 self.property_containers[region],
                 self.thermal,
@@ -767,6 +780,60 @@ class PhysicsBase:
                 region=str(region),
                 is_barycentric=is_barycentric,
             )
+
+            # FlashOperators gets its own interpolator so its supporting-point cache lives in the C++ point_data_store.
+            # Sharing the incremental disk-persistence machinery (OblCacheCodec) that acc_flux_itor/property_itor already use.
+            # Restricted to adaptive mode
+            # n_ops requests exactly the row width for its flash snapshot (see PropertyContainer.flash_row_width)
+            # This interpolator is only ever accessed as a key/row point store, never interpolated through.
+            # The container's flash-snapshot methods were already validated in set_operators()
+            # The only remaining reasons to fall back to evaluating the flash uncached every call are:
+            # - a missing compiled (n_dims, n_ops) template for this region,
+            # - static mode,
+            # - an un-rebuilt extension predating the try_get_point/set_point bindings.
+            flash_operators = self.flash_operators[region]
+            flash_itor = None
+            flash_n_slots = None
+            container = self.property_containers[region]
+            flash_row_width = (
+                container.flash_row_width() if flash_operators is not None else 0
+            )
+            if (
+                flash_operators is not None
+                and flash_row_width > 0
+                and itor_mode == 'adaptive'
+            ):
+                try:
+                    flash_itor, flash_n_slots = self.create_interpolator(
+                        flash_operators,
+                        n_ops=flash_row_width,
+                        platform=platform,
+                        algorithm=itor_type,
+                        mode=itor_mode,
+                        precision=itor_precision,
+                        timer_name=f'flash {region:d} interpolation',
+                        region=str(region),
+                        is_barycentric=is_barycentric,
+                        include_history=False,
+                    )
+                    if not (
+                        hasattr(flash_itor, 'try_get_point')
+                        and hasattr(flash_itor, 'set_point')
+                    ):
+                        flash_itor = None
+                except ValueError:
+                    # No compiled OBL interpolator template for this region's
+                    # (n_dims, n_ops) -- flash results will be recomputed uncached
+                    # (see FlashOperators.ensure_flash).
+                    flash_itor = None
+            self.flash_itor[region] = flash_itor
+            if flash_operators is not None:
+                flash_operators.attach_flash_store(
+                    flash_itor,
+                    n_slots=flash_n_slots,
+                    axes_origin=self.axes_origin,
+                    axes_step=self.axes_step,
+                )
 
         self.acc_flux_w_itor, _ = self.create_interpolator(
             self.well_operators,
