@@ -303,7 +303,10 @@ class PhysicsBase:
             atexit.register(self._finalize_cache)
             self._install_signal_handlers()
 
+        # Maps region -> the region whose FlashOperators it uses (itself by default);
+        # set by add_property_region's flash_region param, consumed by set_operators().
         self.regions = []
+        self.flash_region = {}
         self.property_containers = {}
 
         # C++ flash-result point store backing each region's FlashOperators,
@@ -578,13 +581,23 @@ class PhysicsBase:
         else:
             raise NotImplementedError()
 
-    def add_property_region(self, property_container: Any, region: int = 0) -> None:
+    def add_property_region(
+        self,
+        property_container: Any,
+        region: int = 0,
+        flash_region: int | None = None,
+    ) -> None:
         """
         Register a property container for one region and propagate history metadata.
 
         :param property_container: Object for evaluation of properties
         :type property_container: :class:`PropertyContainer`
         :param region: Tag of the region, to be used as a key in `property_containers` dict
+        :param flash_region: If set, this region shares its FlashOperators with `flash_region`
+                    instead of building its own. Avoids duplicate flash evaluation/caching when
+                    two regions have identical flash inputs.
+                    Note: Must refer to a region registered without its own `flash_region` (no chained sharing).
+        :type flash_region: int, optional
         """
         # Tell the property container how many OBL history variables the physics appends
         # to the state vector so that it can locate primary vars correctly (e.g. temperature
@@ -596,6 +609,7 @@ class PhysicsBase:
             property_container.history_labels = [h.label for h in self.history_fields]
         self.property_containers[region] = property_container
         self.regions.append(region)
+        self.flash_region[region] = flash_region if flash_region is not None else region
         return
 
     def set_operators(self) -> None:
@@ -617,8 +631,15 @@ class PhysicsBase:
         -- a container that overrides the flash-snapshot format must override all
         three together, and this fails fast if it doesn't, rather than silently
         losing flash-store caching later.
+
+        A region registered with ``flash_region=`` (see :meth:`add_property_region`)
+        shares that region's :class:`FlashOperators` instead of building its own.
+        Built in three passes below so sharing regions can be registered before or after the region they target.
         """
+        # Pass 1: build (or skip) each non-sharing region's own FlashOperators.
         for region in self.regions:
+            if self.flash_region[region] != region:
+                continue
             container = self.property_containers[region]
             if supports_flash_reuse(container):
                 assert_flash_snapshot_consistent(container)
@@ -630,6 +651,29 @@ class PhysicsBase:
                 )
             else:
                 self.flash_operators[region] = None
+
+        # Pass 2: wire sharing regions to their target's FlashOperators.
+        for region in self.regions:
+            target = self.flash_region[region]
+            if target == region:
+                continue
+            if target not in self.flash_operators:
+                raise ValueError(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"was never registered"
+                )
+            if self.flash_region[target] != target:
+                raise ValueError(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"itself aliases region {self.flash_region[target]} -- chained "
+                    f"flash_region sharing is not supported, point directly at the "
+                    f"canonical region"
+                )
+            self.flash_operators[region] = self.flash_operators[target]
+
+        # Pass 3: build the remaining per-region operator sets
+        # Each region always evaluates properties from its own container.
+        for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(
                 self.property_containers[region],
                 self.thermal,
@@ -752,6 +796,12 @@ class PhysicsBase:
         ]
         self.acc_flux_itor = {}
         self.property_itor = {}
+
+        # Dedup for regions sharing one FlashOperators
+        # (add_property_region's flash_region): id(flash_operators) -> flash_itor
+        # The shared instance's dedicated flash interpolator/point store is built and attached only once.
+        built_flash_stores = {}
+
         for region in self.regions:
             self.acc_flux_itor[region], _ = self.create_interpolator(
                 self.reservoir_operators[region],
@@ -792,9 +842,18 @@ class PhysicsBase:
             # - static mode,
             # - an un-rebuilt extension predating the try_get_point/set_point bindings.
             flash_operators = self.flash_operators[region]
+            container = self.property_containers[region]
+            if (
+                flash_operators is not None
+                and id(flash_operators) in built_flash_stores
+            ):
+                # Shares another region's FlashOperators (add_property_region's
+                # flash_region); its dedicated flash interpolator/point store was
+                # already built and attached below for that region.
+                self.flash_itor[region] = built_flash_stores[id(flash_operators)]
+                continue
             flash_itor = None
             flash_n_slots = None
-            container = self.property_containers[region]
             flash_row_width = (
                 container.flash_row_width() if flash_operators is not None else 0
             )
@@ -834,6 +893,7 @@ class PhysicsBase:
                     axes_origin=self.axes_origin,
                     axes_step=self.axes_step,
                 )
+                built_flash_stores[id(flash_operators)] = flash_itor
 
         self.acc_flux_w_itor, _ = self.create_interpolator(
             self.well_operators,

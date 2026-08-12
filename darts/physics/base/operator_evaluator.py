@@ -86,10 +86,12 @@ class OperatorsBase(operator_set_evaluator_iface):
         :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
                     during boundary extrapolation. Scalar (uniform spacing) or a per-axis
                     vector of length nc-1 (non-uniform cell size across composition axes).
-        :param flash_operators: Shared :class:`FlashOperators` instance of this property
-                    region for reuse of tabulated flash results; when None, a private
-                    instance is created (or reuse is disabled for containers that
-                    override ``evaluate`` monolithically).
+        :param flash_operators: Shared :class:`FlashOperators` instance for reuse of tabulated flash results;
+                    when None, or reuse is disabled for containers that override ``evaluate`` monolithically, a private instance is created.
+                    Usually wraps this same ``property_container``.
+                    May wrap a different one when regions share one FlashOperators
+                    (see :meth:`~darts.physics.base.physics.PhysicsBase.add_property_region`'s ``flash_region``)
+                    In that case ``evaluate_property_container`` copies the flash results onto this container before use.
         :type flash_operators: FlashOperators, optional
         """
         super().__init__()
@@ -141,12 +143,10 @@ class OperatorsBase(operator_set_evaluator_iface):
 
         # Flash-reuse wiring: all operator sets of a region share one FlashOperators
         # instance that tabulates the flash results per supporting point.
+        # It usually wraps this same property_container
+        # When it wraps a different one (see PhysicsBase.add_property_region's flash_region),
+        # evaluate_property_container() copies the results across.
         if flash_operators is not None:
-            if flash_operators.property is not property_container:
-                raise ValueError(
-                    "flash_operators must wrap the same PropertyContainer instance "
-                    "as the operator set it is shared with"
-                )
             self.flash = flash_operators
         elif isinstance(self, FlashOperators):
             self.flash = self
@@ -175,6 +175,15 @@ class OperatorsBase(operator_set_evaluator_iface):
         """
         if self.flash is not None:
             self.flash.ensure_flash(state_np)
+            if self.flash.property is not self.property:
+                # This region shares another region's FlashOperators
+                # (see PhysicsBase.add_property_region's flash_region)
+                # Copy the flash results it just computed/restored onto this region's
+                # own container via the same row contract the flash point store uses,
+                # since evaluate_properties() below reads from self.property.
+                row = np.zeros(self.flash.property.flash_row_width())
+                self.flash.property.get_flash_snapshot(row)
+                self.property.set_flash_results(row)
             self.property.evaluate_properties(state_np)
         else:
             self.property.evaluate(state_np)
