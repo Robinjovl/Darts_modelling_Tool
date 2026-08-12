@@ -153,6 +153,66 @@ void bulk_add_point_data_arrays(interpolator_class &self,
   }
 }
 
+// ---------------------------------------------------------------------------
+// Single-point O(1) cache access, bypassing the interpolation machinery entirely.
+//
+// The bulk helpers above move the WHOLE cache; callers that only need to check/read/
+// write one exact supporting point (e.g. a co-located evaluator sharing this
+// interpolator's axes, reusing its point_data as a plain keyed cache instead of
+// duplicating work in a Python-side dict) pay for a single hash lookup instead of an
+// O(N) export. try_get_point returns None on a miss (no exception on the hot path);
+// set_point mirrors the bookkeeping the interpolator's own on-miss materialization
+// path performs (dirty_point_data / dirty_point_epochs), so the normal cache-flush /
+// persistence machinery (OblCacheCodec) picks up points inserted this way exactly as
+// if they had been evaluated through interpolate().
+// ---------------------------------------------------------------------------
+template <typename interpolator_class, uint8_t N_DIMS, uint16_t N_OPS>
+py::object single_try_get_point(const interpolator_class &self,
+                                py::array_t<int32_t, py::array::c_style | py::array::forcecast> key)
+{
+  py::buffer_info kb = key.request();
+  if (kb.size != static_cast<py::ssize_t>(N_DIMS))
+    throw std::invalid_argument("try_get_point: key must have length N_DIMS");
+  typename interpolator_class::key_t k;
+  const int32_t *kp = static_cast<const int32_t *>(kb.ptr);
+  for (uint8_t d = 0; d < N_DIMS; ++d)
+    k.idx[d] = kp[d];
+  auto it = self.point_data.find(k);
+  if (it == self.point_data.end())
+    return py::none();
+  py::array_t<double> out(static_cast<py::ssize_t>(N_OPS));
+  double *op = out.mutable_data();
+  const auto &v = it->second;
+  for (uint16_t j = 0; j < N_OPS; ++j)
+    op[j] = static_cast<double>(v[j]);
+  return out;
+}
+
+template <typename interpolator_class, uint8_t N_DIMS, uint16_t N_OPS>
+void single_set_point(interpolator_class &self,
+                      py::array_t<int32_t, py::array::c_style | py::array::forcecast> key,
+                      py::array_t<double, py::array::c_style | py::array::forcecast> vals)
+{
+  py::buffer_info kb = key.request();
+  py::buffer_info vb = vals.request();
+  if (kb.size != static_cast<py::ssize_t>(N_DIMS))
+    throw std::invalid_argument("set_point: key must have length N_DIMS");
+  if (vb.size != static_cast<py::ssize_t>(N_OPS))
+    throw std::invalid_argument("set_point: vals must have length N_OPS");
+  typename interpolator_class::key_t k;
+  const int32_t *kp = static_cast<const int32_t *>(kb.ptr);
+  for (uint8_t d = 0; d < N_DIMS; ++d)
+    k.idx[d] = kp[d];
+  using mapped_t = typename std::decay_t<decltype(self.point_data)>::mapped_type;
+  mapped_t v;
+  const double *vp = static_cast<const double *>(vb.ptr);
+  for (uint16_t j = 0; j < N_OPS; ++j)
+    v[j] = static_cast<typename mapped_t::value_type>(vp[j]);
+  self.point_data[k] = v; // insert-or-overwrite (arena-shadow aware via operator[])
+  self.dirty_point_data.insert(k);
+  self.dirty_point_epochs[k] = self.eval_index;
+}
+
 // Contiguous-array export of ONLY the supporting points materialized since the last
 // clear_point_data_delta() (the dirty set). Mirrors bulk_get_point_data_arrays but over
 // dirty_point_data, so the append-on-flush path never boxes one Python tuple per point
@@ -423,6 +483,22 @@ struct interpolator_exposer
             self.point_data.mmap_arena_at(path, bitmap_off, keys_off, vals_off, capacity, count);
           }, "mmap an arena in place (O(1) load, no per-point rebuild); offsets parsed from the header by Python",
              "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
+          // ---- single-point O(1) cache access (see single_try_get_point/single_set_point) ----
+          .def("try_get_point",
+            [](const interpolator_class &self, py::array_t<int32_t, py::array::c_style | py::array::forcecast> key) {
+              return single_try_get_point<interpolator_class, N_DIMS, N_OPS>(self, key);
+            },
+            "Look up one supporting point by its int32[N_DIMS] multi-index key; "
+            "returns a float64[N_OPS] array on hit, None on miss. No interpolation, "
+            "no hypercube materialization -- a plain cache lookup.", "key"_a)
+          .def("set_point",
+            [](interpolator_class &self, py::array_t<int32_t, py::array::c_style | py::array::forcecast> key,
+               py::array_t<double, py::array::c_style | py::array::forcecast> vals) {
+              single_set_point<interpolator_class, N_DIMS, N_OPS>(self, key, vals);
+            },
+            "Insert or overwrite one supporting point (int32[N_DIMS] key, float64[N_OPS] "
+            "values), marking it dirty for the next incremental cache flush -- same "
+            "bookkeeping as a normal on-miss materialization.", "key"_a, "vals"_a)
           ;
       }
       else if constexpr (std::is_same_v<interpolator_class, linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>>)
@@ -568,6 +644,22 @@ struct interpolator_exposer
             self.point_data.mmap_arena_at(path, bitmap_off, keys_off, vals_off, capacity, count);
           }, "mmap an arena in place (O(1) load, no per-point rebuild); offsets parsed from the header by Python",
              "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
+          // ---- single-point O(1) cache access (see single_try_get_point/single_set_point) ----
+          .def("try_get_point",
+            [](const interpolator_class &self, py::array_t<int32_t, py::array::c_style | py::array::forcecast> key) {
+              return single_try_get_point<interpolator_class, N_DIMS, N_OPS>(self, key);
+            },
+            "Look up one supporting point by its int32[N_DIMS] multi-index key; "
+            "returns a float64[N_OPS] array on hit, None on miss. No interpolation, "
+            "no hypercube materialization -- a plain cache lookup.", "key"_a)
+          .def("set_point",
+            [](interpolator_class &self, py::array_t<int32_t, py::array::c_style | py::array::forcecast> key,
+               py::array_t<double, py::array::c_style | py::array::forcecast> vals) {
+              single_set_point<interpolator_class, N_DIMS, N_OPS>(self, key, vals);
+            },
+            "Insert or overwrite one supporting point (int32[N_DIMS] key, float64[N_OPS] "
+            "values), marking it dirty for the next incremental cache flush -- same "
+            "bookkeeping as a normal on-miss materialization.", "key"_a, "vals"_a)
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
       else if constexpr (std::is_same_v<interpolator_class, linear_static_cpu_interpolator<N_DIMS, N_OPS>>)
@@ -665,6 +757,25 @@ struct interpolator_exposer
             },
             "Merge (keys, vals) into the cache without clearing it or marking points dirty",
             "keys"_a, "vals"_a)
+          // ---- single-point O(1) cache access (see single_try_get_point/single_set_point) ----
+          .def("try_get_point",
+            [](const interpolator_class &self, py::array_t<int32_t, py::array::c_style | py::array::forcecast> key) {
+              return single_try_get_point<interpolator_class, N_DIMS, N_OPS>(self, key);
+            },
+            "Look up one supporting point by its int32[N_DIMS] multi-index key; "
+            "returns a float64[N_OPS] array on hit, None on miss. No interpolation, "
+            "no hypercube materialization -- a plain cache lookup. NOTE: does not "
+            "invalidate any already-materialized device hypercube containing this "
+            "point; call clear_hypercube_data() if that matters for your use case "
+            "(same caveat as the CPU adaptive interpolator).", "key"_a)
+          .def("set_point",
+            [](interpolator_class &self, py::array_t<int32_t, py::array::c_style | py::array::forcecast> key,
+               py::array_t<double, py::array::c_style | py::array::forcecast> vals) {
+              single_set_point<interpolator_class, N_DIMS, N_OPS>(self, key, vals);
+            },
+            "Insert or overwrite one supporting point (int32[N_DIMS] key, float64[N_OPS] "
+            "values), marking it dirty for the next incremental cache flush -- same "
+            "bookkeeping as evaluating through interpolate().", "key"_a, "vals"_a)
           .def("get_n_cached_points", &interpolator_class::get_n_cached_points)
           .def("get_n_cached_hypercubes", &interpolator_class::get_n_cached_hypercubes)
           .def("get_axis_overflow_count", &interpolator_class::get_axis_overflow_count,
