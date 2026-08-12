@@ -1,4 +1,4 @@
-from dartsflash.mixtures import IAPWS, DARTSFlash, Mixture
+from dartsflash.mixtures import IAPWS
 
 from darts.physics.base.physics import (
     HistoryField,
@@ -6,23 +6,7 @@ from darts.physics.base.physics import (
     PhysicsBase,
     timer_node,
 )
-from darts.physics.eos_physics import EoSPhysics
-
-# Which DARTSFlash.FlashType(s) a given PhysicsBase.StateSpecification may be paired with.
-# P/PT are both PT-based (isothermal P uses a fixed T at evaluate() time)
-# PH/PS each require the matching PXFlash flash type
-_EXPECTED_FLASH_TYPES = {
-    PhysicsBase.StateSpecification.P: (
-        DARTSFlash.FlashType.PTFlash,
-        DARTSFlash.FlashType.NegativeFlash,
-    ),
-    PhysicsBase.StateSpecification.PT: (
-        DARTSFlash.FlashType.PTFlash,
-        DARTSFlash.FlashType.NegativeFlash,
-    ),
-    PhysicsBase.StateSpecification.PH: (DARTSFlash.FlashType.PHFlash,),
-    PhysicsBase.StateSpecification.PS: (DARTSFlash.FlashType.PSFlash,),
-}
+from darts.physics.eos_physics import _EXPECTED_FLASH_TYPES, EoSPhysics
 
 
 class IAPWSPhysics(EoSPhysics):
@@ -69,26 +53,26 @@ class IAPWSPhysics(EoSPhysics):
             history_fields=history_fields,
         )
 
-        self.flash_evs: dict[str | int | None, Mixture] = {}
+        self.flash_evs: dict[str | int | None, IAPWS] = {}
 
     def set_mixture(
         self, mixture: IAPWS, phases_to_eos: dict[tuple] = None, region: int = None
     ) -> None:
         """
-        Attach a DARTS-flash Mixture instance to this physics object as ``self.flash_evs[region]``.
+        Attach a DARTS-flash IAPWS instance to this physics object as ``self.flash_evs[region]``.
 
         Checks that:
-        - Mixture components + salts match the Physics.components
-        - TODO: Phase labels in Physics object are consistent with phase types specified in Mixture
-        - Mixture.FlashType is compatible with Physics.StateSpecification
+        - IAPWS components + salts match the Physics.components
+        - TODO: Phase labels in Physics object are consistent with phase types specified in IAPWS
+        - IAPWS.FlashType is compatible with Physics.StateSpecification
 
-        :param mixture: Configured Mixture instance
+        :param mixture: Configured IAPWS instance
         :param phases_to_eos: Dictionary of phase labels to phase types, default is None which throws warning
         :param region: Key of property region in PropertyContainers, defaults to 0
         """
         assert isinstance(mixture, IAPWS), "Provide an object of type dartsflash.IAPWS"
 
-        # Assert that the physics' component list matches the composed Mixture's ``comp_data``.
+        # Assert that the physics' component list matches the composed IAPWS's ``comp_data``.
         assert list(self.components) == list(mixture.comp_data.species_with_salts), (
             f"Physics components {self.components} do not match mixture.comp_data.species_with_salts "
             f"{mixture.comp_data.species_with_salts}"
