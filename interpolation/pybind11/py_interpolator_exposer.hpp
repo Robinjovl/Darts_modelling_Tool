@@ -177,12 +177,16 @@ py::object single_try_get_point(const interpolator_class &self,
   const int32_t *kp = static_cast<const int32_t *>(kb.ptr);
   for (uint8_t d = 0; d < N_DIMS; ++d)
     k.idx[d] = kp[d];
-  auto it = self.point_data.find(k);
-  if (it == self.point_data.end())
+  if (self.point_data.find(k) == self.point_data.end())
     return py::none();
+  // Fetch via at() rather than the find()-returned const_iterator's operator->():
+  // that iterator materializes a proxy entry{} (a placement-new'd struct holding a
+  // *reference member* aliasing the stored array) purely to support the general
+  // begin()/end() iteration protocol. at() returns a direct reference to the stored
+  // std::array with no intermediate proxy -- the safer path for a single-value fetch.
+  const auto &v = self.point_data.at(k);
   py::array_t<double> out(static_cast<py::ssize_t>(N_OPS));
   double *op = out.mutable_data();
-  const auto &v = it->second;
   for (uint16_t j = 0; j < N_OPS; ++j)
     op[j] = static_cast<double>(v[j]);
   return out;
