@@ -185,12 +185,18 @@ py::object single_try_get_point(const interpolator_class &self,
   // begin()/end() iteration protocol. at() returns a direct reference to the stored
   // std::array with no intermediate proxy -- the safer path for a single-value fetch.
   const auto &v = self.point_data.at(k);
-  // Shape-list ctor, NOT the count ctor: the count ctor computes strides from the
-  // runtime dtype descriptor (dtype.itemsize()), which the vendored pybind11
-  // (2.12.0.dev1, pre-NumPy-2 descriptor layout) misreads as 0 under NumPy >= 2.0,
-  // yielding a stride-0 array (every element aliases slot 0). The shape-list ctor
-  // computes strides from the compile-time sizeof(T) and is correct on both ABIs.
-  py::array_t<double> out({static_cast<py::ssize_t>(N_OPS)});
+  // MUST be a std::vector<py::ssize_t>, not a bare {N_OPS} braced literal: array_t has
+  // two single-argument ctors -- array_t(ShapeContainer) and array_t(ssize_t count) --
+  // and a one-element {N_OPS} is a viable argument for BOTH (list-init of a scalar from
+  // a single-element list is a plain identity conversion, beating the user-defined
+  // conversion to ShapeContainer), so {N_OPS} silently binds to the count ctor and the
+  // "shape" is never used. That ctor derives strides from the runtime dtype descriptor
+  // (dtype.itemsize()), which the vendored pybind11 (2.12.0.dev1, pre-NumPy-2 descriptor
+  // layout) misreads as 0 under NumPy >= 2.0, yielding a stride-0 array (every element
+  // aliases slot 0). A std::vector has no conversion to ssize_t, so it rules out the
+  // count ctor entirely and forces ShapeContainer, whose strides come from the
+  // compile-time sizeof(T) -- correct on both ABIs.
+  py::array_t<double> out(std::vector<py::ssize_t>{static_cast<py::ssize_t>(N_OPS)});
   double *op = out.mutable_data();
   for (uint16_t j = 0; j < N_OPS; ++j)
     op[j] = static_cast<double>(v[j]);
@@ -276,9 +282,12 @@ py::tuple bulk_point_data_epoch_delta_arrays(const interpolator_class &self)
   }
   const size_t m = ebuf.size();
   py::array_t<int32_t> keys({static_cast<py::ssize_t>(m), static_cast<py::ssize_t>(N_DIMS)});
-  // Shape-list ctor (not the count ctor) for the same NumPy-2 stride reason as
-  // single_try_get_point's output array above.
-  py::array_t<uint64_t> eps({static_cast<py::ssize_t>(m)});
+  // std::vector<py::ssize_t>{m}, NOT a bare {m} braced literal -- see the comment on
+  // single_try_get_point's output array above: a one-element {m} is ambiguous between
+  // array_t's ShapeContainer and ssize_t-count ctors and silently binds to the latter
+  // (stride-0 under NumPy >= 2.0 with this vendored pybind11). A std::vector argument
+  // rules out the count ctor entirely.
+  py::array_t<uint64_t> eps(std::vector<py::ssize_t>{static_cast<py::ssize_t>(m)});
   if (m)
   {
     std::memcpy(keys.mutable_data(), kbuf.data(), kbuf.size() * sizeof(int32_t));
