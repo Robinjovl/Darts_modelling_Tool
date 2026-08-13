@@ -229,6 +229,7 @@ class DartsModel:
         n_solid: int = None,
         parallel_evaluation: bool = False,
         n_workers: int = None,
+        share_flash_operators: bool = True,
     ):
         """
         Function to initialize the model, which includes:
@@ -263,6 +264,8 @@ class DartsModel:
         :type parallel_evaluation: bool
         :param n_workers: Number of worker processes for parallel evaluation (default: os.cpu_count())
         :type n_workers: int
+        :param share_flash_operators: Option to share FlashOperators between other operator sets, default is True
+        :type share_flash_operators: bool
         """
         verbose = self.verbose if verbose is None else verbose
 
@@ -314,6 +317,7 @@ class DartsModel:
             n_workers=n_workers,
             evaluator_factory_hook=evaluator_factory_hook,
             verbose_evaluators=int(verbose) >= self.VERBOSE_EVALUATORS,
+            share_flash_operators=share_flash_operators,
         )
         init_timer.node["physics init & OBL cache load"].stop()
         if platform == "gpu":
