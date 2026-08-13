@@ -228,8 +228,6 @@ class EoSFugacity:
         :type phase_idx: int
         :param eos: Derived object from :class:`dartsflash.libflash.EoS`
         :type eos: EoS
-        :param Mw: Molar weights of components [g/mol]
-        :type Mw: list
         :param root_flag: EoS root flag, 0) STABLE, 1) MIN (Liquid), 2) MAX (Vapour); default is STABLE
         :param ions: List of ions, default is None
         :param combined_ions_stoichiometry: List of normalized ion stoichiometry in case they have been lumped in flash output, default is None
@@ -257,8 +255,7 @@ class EoSFugacity:
 
     def evaluate(self, pressure, temperature, x):
         """
-        Evaluates the EoS for molar volume at given pressure, temperature and composition x.
-        Calculates mixture molar weight MW and translates molar volume (m3/mol) to density (kg/m3)
+        Evaluates the EoS for component fugacity coefficients lnphii at given pressure, temperature and composition x.
 
         :param pressure: Pressure in bar
         :type pressure: float
@@ -267,8 +264,8 @@ class EoSFugacity:
         :param x: Phase composition in mole fractions/mole numbers
         :type x: list
 
-        :returns: Phase density in kg/m3
-        :rtype: float
+        :returns: Component fugacity coefficients lnphii
+        :rtype: list
         """
         if self.flash_ev is not None:
             flash_results = self.flash_ev.get_flash_results(

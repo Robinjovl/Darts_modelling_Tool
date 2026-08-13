@@ -149,35 +149,37 @@ class PropertyContainer:
         Check consistency of input properties
         """
         # Check that all phases have a density and enthalpy/conductivity evaluator in case of thermal
-        # and all mobile phases have a viscosity/diffusion/capillary pressure/relperm evaluator
-        acc_evs = [
-            self.density_ev,
-        ] + ([self.enthalpy_ev, self.conductivity_ev] if self.thermal else [])
-        flux_evs = [
-            self.viscosity_ev,
-            self.diffusion_ev,
-            self.rel_perm_ev,
-        ]
+        # and all mobile phases have a viscosity/diffusion/relperm evaluator
+        acc_evs = {"density": self.density_ev} | (
+            {"enthalpy": self.enthalpy_ev, "conductivity": self.conductivity_ev}
+            if self.thermal
+            else {}
+        )
+        flux_evs = {
+            "viscosity": self.viscosity_ev,
+            "diffusion": self.diffusion_ev,
+            "rel_perm": self.rel_perm_ev,
+        }
 
-        for ev in acc_evs:
-            assert np.all(
-                [
-                    phase in ev.keys() and ev[phase] is not None
-                    for phase in self.phases_name
-                ]
-            ), "Acc evaluator for phase missing"
-        for ev in flux_evs:
-            assert np.all(
-                [
-                    phase in ev.keys() and ev[phase] is not None
-                    for phase in self.phases_name[: self.np_fl]
-                ]
-            ), "Flux evaluator for phase missing"
+        for name, ev in acc_evs.items():
+            for phase in self.phases_name:
+                assert phase in ev.keys() and ev[phase] is not None, (
+                    f"Acc evaluator '{name}' missing for phase '{phase}'"
+                )
+        for name, ev in flux_evs.items():
+            for phase in self.phases_name[: self.np_fl]:
+                assert phase in ev.keys() and ev[phase] is not None, (
+                    f"Flux evaluator '{name}' missing for phase '{phase}'"
+                )
 
-        for kinetic_ev in self.kinetic_rate_ev.items():
-            assert kinetic_ev is not None, "Evaluator for kinetic rate missing"
-        for energy_ev in self.energy_source_ev.items():
-            assert energy_ev is not None, "Energy evaluator missing"
+        for name, kinetic_ev in self.kinetic_rate_ev.items():
+            assert kinetic_ev is not None, (
+                f"Kinetic rate evaluator missing for '{name}'"
+            )
+        for name, energy_ev in self.energy_source_ev.items():
+            assert energy_ev is not None, (
+                f"Energy source evaluator missing for '{name}'"
+            )
 
     def validate_history_consistency(self) -> None:
         """Assert that every history-aware evaluator in this container that owns a
