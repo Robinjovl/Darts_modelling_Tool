@@ -185,7 +185,12 @@ py::object single_try_get_point(const interpolator_class &self,
   // begin()/end() iteration protocol. at() returns a direct reference to the stored
   // std::array with no intermediate proxy -- the safer path for a single-value fetch.
   const auto &v = self.point_data.at(k);
-  py::array_t<double> out(static_cast<py::ssize_t>(N_OPS));
+  // Shape-list ctor, NOT the count ctor: the count ctor computes strides from the
+  // runtime dtype descriptor (dtype.itemsize()), which the vendored pybind11
+  // (2.12.0.dev1, pre-NumPy-2 descriptor layout) misreads as 0 under NumPy >= 2.0,
+  // yielding a stride-0 array (every element aliases slot 0). The shape-list ctor
+  // computes strides from the compile-time sizeof(T) and is correct on both ABIs.
+  py::array_t<double> out({static_cast<py::ssize_t>(N_OPS)});
   double *op = out.mutable_data();
   for (uint16_t j = 0; j < N_OPS; ++j)
     op[j] = static_cast<double>(v[j]);
@@ -271,7 +276,9 @@ py::tuple bulk_point_data_epoch_delta_arrays(const interpolator_class &self)
   }
   const size_t m = ebuf.size();
   py::array_t<int32_t> keys({static_cast<py::ssize_t>(m), static_cast<py::ssize_t>(N_DIMS)});
-  py::array_t<uint64_t> eps(static_cast<py::ssize_t>(m));
+  // Shape-list ctor (not the count ctor) for the same NumPy-2 stride reason as
+  // single_try_get_point's output array above.
+  py::array_t<uint64_t> eps({static_cast<py::ssize_t>(m)});
   if (m)
   {
     std::memcpy(keys.mutable_data(), kbuf.data(), kbuf.size() * sizeof(int32_t));
