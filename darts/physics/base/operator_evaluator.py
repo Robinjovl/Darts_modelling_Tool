@@ -515,13 +515,9 @@ class FlashOperators(OperatorsBase):
 
     def _flash_key(self, state_np):
         """
-        Return the flash-store multi-index key for a supporting point: the signed
-        per-axis grid index, mirroring the C++ derivation in
-        ``multi_index_key.hpp::get_axis_interval_index_unbounded`` (floor of the
-        origin-relative, step-scaled coordinate, saturated to int32) so this key
-        matches whatever a genuine interpolation pass over the same axes would
-        compute. History axes are excluded (self.ne) since the flash does not
-        depend on them.
+        Return the flash-store multi-index key for a supporting point:
+        the signed per-axis grid index, saturated to int32.
+        History axes are excluded (self.ne) since the flash does not depend on them.
 
         :param state_np: State at the supporting point
         :type state_np: np.ndarray
@@ -531,7 +527,7 @@ class FlashOperators(OperatorsBase):
         scaled = (
             state_np[: self.ne] - self._flash_axes_origin
         ) * self._flash_axes_step_inv
-        idx = np.clip(np.floor(scaled), -2147483648, 2147483647)
+        idx = np.clip(np.rint(scaled), -2147483648, 2147483647)
         return idx.astype(np.int32)
 
     def _ensure_flash_stored(self, state_np):
