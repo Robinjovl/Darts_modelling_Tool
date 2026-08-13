@@ -78,7 +78,7 @@ class Model(CICDModel):
                                                temperature=1., rock_comp=1e-7, eps_z=epsilon)
 
         """ properties correlations """
-        property_container.flash_ev = ConstantK(nc - 1, [0.1, 1e12, 1e1], self.zero)
+        property_container.flash_ev = ConstantK(nc - 1, [10, 1e-12, 1e-1], self.zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=100)),
                                               ('wat', DensityBasic(compr=1e-6, dens0=1000)),
                                               ('sol', ConstFunc(2000.))])

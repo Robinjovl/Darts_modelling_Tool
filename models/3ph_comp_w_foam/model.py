@@ -59,7 +59,7 @@ class Model(CICDModel):
         property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, min_z=self.zero/10)
 
         """ properties correlations """
-        property_container.flash_ev = ConstantK(nc-1, [1e-10, 1e10, 1e10], self.zero)
+        property_container.flash_ev = ConstantK(nc-1, [1e10, 1e-10, 1e-10], self.zero)
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=733)),
                                               ('oil', DensityBasic(compr=1e-5, dens0=800)),
                                               ('wat', DensityBrineCO2(components, compr=1e-6, dens0=980))])
