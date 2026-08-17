@@ -100,9 +100,10 @@ if %skip_req%==false (
   cd thirdparty
 
   echo - Install requirements: START
-  mkdir build
+  if not exist build mkdir build
 
   rem -- Install Hypre
+  if not exist hypre\src\cmbuild mkdir hypre\src\cmbuild
   cd hypre\src\cmbuild
   rem For debugging: -DHYPRE_ENABLE_PRINT
   rem Tests/examples are never run, only the library is used, so don't build
@@ -113,7 +114,7 @@ if %skip_req%==false (
   rem entirely; safe for a one-shot CI configure.
   cmake -D HYPRE_BUILD_TESTS=OFF ^
         -D HYPRE_BUILD_EXAMPLES=OFF ^
-        -D HYPRE_WITH_MPI=OFF ^
+        -D HYPRE_ENABLE_MPI=OFF ^
         -D CMAKE_SUPPRESS_REGENERATION=ON ^
         -D CMAKE_INSTALL_PREFIX=..\..\..\install .. > ..\..\..\..\make_hypre.log || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\..\make_hypre.log || goto :error

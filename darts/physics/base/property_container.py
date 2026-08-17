@@ -110,7 +110,7 @@ class PropertyContainer:
             ph: ConstFunc(np.zeros(self.nc_fl)) for ph in phases_name[: self.np_fl]
         }
         self.kinetic_rate_ev = {}
-        self.energy_source_ev = []
+        self.energy_source_ev = {}
         self.flash_ev: Flash = 0
         self.permporo_mult_ev = ConstFunc(1.0)
 
@@ -143,6 +143,43 @@ class PropertyContainer:
         ]
 
         self.output_props = {"sat0": lambda: self.sat[0]}
+
+    def check_properties(self):
+        """
+        Check consistency of input properties
+        """
+        # Check that all phases have a density and enthalpy/conductivity evaluator in case of thermal
+        # and all mobile phases have a viscosity/diffusion/relperm evaluator
+        acc_evs = {"density": self.density_ev} | (
+            {"enthalpy": self.enthalpy_ev, "conductivity": self.conductivity_ev}
+            if self.thermal
+            else {}
+        )
+        flux_evs = {
+            "viscosity": self.viscosity_ev,
+            "diffusion": self.diffusion_ev,
+            "rel_perm": self.rel_perm_ev,
+        }
+
+        for name, ev in acc_evs.items():
+            for phase in self.phases_name:
+                assert phase in ev.keys() and ev[phase] is not None, (
+                    f"Acc evaluator '{name}' missing for phase '{phase}'"
+                )
+        for name, ev in flux_evs.items():
+            for phase in self.phases_name[: self.np_fl]:
+                assert phase in ev.keys() and ev[phase] is not None, (
+                    f"Flux evaluator '{name}' missing for phase '{phase}'"
+                )
+
+        for name, kinetic_ev in self.kinetic_rate_ev.items():
+            assert kinetic_ev is not None, (
+                f"Kinetic rate evaluator missing for '{name}'"
+            )
+        for name, energy_ev in self.energy_source_ev.items():
+            assert energy_ev is not None, (
+                f"Energy source evaluator missing for '{name}'"
+            )
 
     def validate_history_consistency(self) -> None:
         """Assert that every history-aware evaluator in this container that owns a
@@ -287,9 +324,11 @@ class PropertyContainer:
         # Compute molar enthalpy of multiphase mixture
         enthalpy = 0.0
         for j in ph:
+            self.enthalpy_ev[self.phases_name[j]].evaluate_PT_bool = True
             enthalpy += self.nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(
                 pressure, temperature, self.x[j, :]
             )  # kJ/kmol
+            self.enthalpy_ev[self.phases_name[j]].evaluate_PT_bool = False
 
         return enthalpy
 
@@ -531,8 +570,8 @@ class PropertyContainer:
 
         # Heat source and Reaction enthalpy
         self.energy_source = 0.0
-        if self.energy_source_ev:
-            self.energy_source += self.energy_source_ev.evaluate(state)
+        for _, energy_source in self.energy_source_ev.items():
+            self.energy_source += energy_source.evaluate(state)
 
         for _, reaction in self.kinetic_rate_ev.items():
             self.energy_source += reaction.evaluate_enthalpy(
