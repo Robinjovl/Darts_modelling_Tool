@@ -100,7 +100,8 @@ class Model(CICDModel):
         pvt = 'Brugge_struct/physics.in'
 
         idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
-        idata.fluid = BlackOilFluidProps(pvt=pvt)  # phases: gas, oil, water; components: g, o, w
+        # water_phase_name='wat' matches this model's .pkl phase labels
+        idata.fluid = BlackOilFluidProps(pvt=pvt, water_phase_name='wat')  # phases: gas, oil, wat; components: g, o, w
 
         idata.obl.epsilon_z = epsilon
         idata.obl.p_step = 0.399  # bar
