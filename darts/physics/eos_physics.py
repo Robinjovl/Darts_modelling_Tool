@@ -136,9 +136,16 @@ class EoSPhysics(PhysicsBase):
         n_workers: int | None = None,
         evaluator_factory_hook=None,
         verbose_evaluators: bool = False,
+        share_flash_operators: bool = True,
     ):
         """
         Check that set_mixture() has been called and call PhysicsBase.init_physics() wrapper
+
+        :param share_flash_operators: If True (default), all operator sets of a region share
+            one FlashOperators instance (see :meth:`PhysicsBase.set_operators`). If False,
+            each operator set builds its own private FlashOperators with no cross-operator-set
+            reuse of tabulated flash results.
+        :type share_flash_operators: bool
         """
         assert len(self.flash_evs) > 0, (
             "No Mixture attached - call set_mixture() before init_physics()"
@@ -159,6 +166,7 @@ class EoSPhysics(PhysicsBase):
             n_workers=n_workers,
             evaluator_factory_hook=evaluator_factory_hook,
             verbose_evaluators=verbose_evaluators,
+            share_flash_operators=share_flash_operators,
         )
 
     def get_flash_ev(self, region: int = None):
