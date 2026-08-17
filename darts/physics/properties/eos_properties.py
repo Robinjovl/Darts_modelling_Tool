@@ -76,35 +76,38 @@ class EoSDensity:
                 derivs=False, evaluate_PT=self.evaluate_PT_bool
             )
             # In case of PX-flash, we need to evaluate PT-flash and properties for initialization
-            if self.evaluate_PT_bool:
-                eos_results = self.flash_ev.f.get_pt_phase_properties(
-                    flash_results=flash_results,
-                    phase_idx=self.phase_idx,
-                    calc_mass_density=True,
-                )
-            else:
-                eos_results = self.flash_ev.f.get_phase_properties(
-                    flash_results=flash_results,
-                    phase_idx=self.phase_idx,
-                    calc_mass_density=True,
-                )
+            # if self.evaluate_PT_bool:
+            #     eos_results = self.flash_ev.f.get_pt_phase_properties(
+            #         flash_results=flash_results,
+            #         phase_idx=self.phase_idx,
+            #         calc_mass_density=True,
+            #     )
+            # else:
+            #     eos_results = self.flash_ev.f.get_phase_properties(
+            #         flash_results=flash_results,
+            #         phase_idx=self.phase_idx,
+            #         calc_mass_density=True,
+            #     )
             # TODO: Mistake in darts-flash v0.13.0, returns N * Mw / Vm
             # Divide by phase mole numbers to obtain molar density
-            nu_phase = np.array(flash_results.nu)[self.phase_idx]
-            return eos_results.get_phase_mass_density().value / nu_phase
+            # TODO: Make FlashResults way stateless
+            eos_idx = flash_results.eos_idx[self.phase_idx]
+            self.root_flag = flash_results.root_type[self.phase_idx]
+            self.eos = self.flash_ev.eos[self.flash_ev.flash_params.eos_order[eos_idx]]
 
+        #     nu_phase = np.array(flash_results.nu)[self.phase_idx]
+        #     return eos_results.get_phase_mass_density().value / nu_phase
+
+        # else:
+        self.eos.set_root_flag(self.root_flag)
+
+        if self.combined_ions_stoichiometry is not None:
+            xi = np.append(x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry))
         else:
-            self.eos.set_root_flag(self.root_flag)
+            xi = x
 
-            if self.combined_ions_stoichiometry is not None:
-                xi = np.append(
-                    x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry)
-                )
-            else:
-                xi = x
-
-            Mw = np.sum(np.array(xi) * self.eos.get_comp_data().Mw)
-            return Mw * 1e-3 / self.eos.V(pressure, temperature, xi)  # kg/m3
+        Mw = np.sum(np.array(xi) * self.eos.get_comp_data().Mw)
+        return Mw * 1e-3 / self.eos.V(pressure, temperature, xi)  # kg/m3
 
 
 class EoSEnthalpy:
@@ -174,35 +177,38 @@ class EoSEnthalpy:
                 derivs=False, evaluate_PT=self.evaluate_PT_bool
             )
             # In case of PX-flash, we need to evaluate PT-flash and properties for initialization
-            if self.evaluate_PT_bool:
-                eos_results = self.flash_ev.f.get_pt_phase_properties(
-                    flash_results=flash_results,
-                    phase_idx=self.phase_idx,
-                    calc_enthalpy=True,
-                )
-            else:
-                eos_results = self.flash_ev.f.get_phase_properties(
-                    flash_results=flash_results,
-                    phase_idx=self.phase_idx,
-                    calc_enthalpy=True,
-                )
+            # if self.evaluate_PT_bool:
+            #     eos_results = self.flash_ev.f.get_pt_phase_properties(
+            #         flash_results=flash_results,
+            #         phase_idx=self.phase_idx,
+            #         calc_enthalpy=True,
+            #     )
+            # else:
+            #     eos_results = self.flash_ev.f.get_phase_properties(
+            #         flash_results=flash_results,
+            #         phase_idx=self.phase_idx,
+            #         calc_enthalpy=True,
+            #     )
             # TODO: Mistake in darts-flash v0.13.0, returns total enthalpy, not molar enthalpy
             # Divide by phase mole numbers to obtain molar enthalpy
-            nu_phase = np.array(flash_results.nu)[self.phase_idx]
-            return eos_results.get_phase_enthalpy().value * R / nu_phase
+            # TODO: Make FlashResults way stateless
+            eos_idx = flash_results.eos_idx[self.phase_idx]
+            self.root_flag = flash_results.root_type[self.phase_idx]
+            self.eos = self.flash_ev.eos[self.flash_ev.flash_params.eos_order[eos_idx]]
 
+        #     nu_phase = np.array(flash_results.nu)[self.phase_idx]
+        #     return eos_results.get_phase_enthalpy().value * R / nu_phase
+
+        # else:
+        self.eos.set_root_flag(self.root_flag)
+
+        if self.combined_ions_stoichiometry is not None:
+            xi = np.append(x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry))
         else:
-            self.eos.set_root_flag(self.root_flag)
+            xi = x
 
-            if self.combined_ions_stoichiometry is not None:
-                xi = np.append(
-                    x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry)
-                )
-            else:
-                xi = x
-
-            H = self.eos.H(pressure, temperature, xi)  # H/R
-            return H * R  # J/mol == kJ/kmol
+        H = self.eos.H(pressure, temperature, xi)  # H/R
+        return H * R  # J/mol == kJ/kmol
 
 
 class EoSFugacity:
@@ -272,31 +278,34 @@ class EoSFugacity:
                 derivs=False, evaluate_PT=self.evaluate_PT_bool
             )
             # In case of PX-flash, we need to evaluate PT-flash and properties for initialization
-            if self.evaluate_PT_bool:
-                eos_results = self.flash_ev.f.get_pt_phase_properties(
-                    flash_results=flash_results,
-                    phase_idx=self.phase_idx,
-                    calc_fugacity=True,
-                )
-            else:
-                eos_results = self.flash_ev.f.get_phase_properties(
-                    flash_results=flash_results,
-                    phase_idx=self.phase_idx,
-                    calc_fugacity=True,
-                )
-            return eos_results.get_phase_fugacity().value
+            # if self.evaluate_PT_bool:
+            #     eos_results = self.flash_ev.f.get_pt_phase_properties(
+            #         flash_results=flash_results,
+            #         phase_idx=self.phase_idx,
+            #         calc_fugacity=True,
+            #     )
+            # else:
+            #     eos_results = self.flash_ev.f.get_phase_properties(
+            #         flash_results=flash_results,
+            #         phase_idx=self.phase_idx,
+            #         calc_fugacity=True,
+            #     )
+            # TODO: Make FlashResults way stateless
+            eos_idx = flash_results.eos_idx[self.phase_idx]
+            self.root_flag = flash_results.root_type[self.phase_idx]
+            self.eos = self.flash_ev.eos[self.flash_ev.flash_params.eos_order[eos_idx]]
 
+            # return eos_results.get_phase_fugacity().value
+
+        # else:
+        self.eos.set_root_flag(self.root_flag)
+
+        if self.combined_ions_stoichiometry is not None:
+            xi = np.append(x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry))
         else:
-            self.eos.set_root_flag(self.root_flag)
+            xi = x
 
-            if self.combined_ions_stoichiometry is not None:
-                xi = np.append(
-                    x[:-1], x[-1] * np.array(self.combined_ions_stoichiometry)
-                )
-            else:
-                xi = x
-
-            return self.eos.lnphi(pressure, temperature, xi)
+        return self.eos.lnphi(pressure, temperature, xi)
 
 
 class VdWPDensity:
