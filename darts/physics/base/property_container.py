@@ -411,43 +411,57 @@ class PropertyContainer:
             "self.flash.temperature in case of thermal"
         )
 
-    def get_flash_snapshot(self):
+    def flash_row_width(self) -> int:
         """
-        Return a copy of the flash results at the last evaluated state.
+        Fixed float-row width needed to round-trip flash results through the C++ flash point store
+        (see :meth:`~darts.physics.base.operator_evaluator.FlashOperators.attach_flash_store`).
+        Part of the mandatory flash-row contract together with :meth:`get_flash_snapshot`
+        and :meth:`set_flash_results` -- a subclass overriding any one of the three must
+        override all three (see :func:`~darts.physics.base.operator_evaluator.assert_flash_snapshot_consistent`).
 
-        The snapshot is opaque to callers: it is produced here and consumed by
-        :meth:`set_flash_results` only, so subclasses can override both to snapshot
-        a different set of flash outputs.
-
-        :return: Snapshot of flash results (present phases, phase fractions,
-                 phase compositions, pressure, temperature)
-        :rtype: tuple
+        :return: Row width = nu (np_fl) + x (np_fl * nc_fl) + temperature (1) + pressure (1)
+        :rtype: int
         """
-        return (
-            self.ph.copy(),
-            self.nu.copy(),
-            self.x.copy(),
-            self.pressure,
-            self.temperature,
-        )
+        return self.np_fl + self.np_fl * self.nc_fl + 2
 
-    def set_flash_results(self, snapshot):
+    def get_flash_snapshot(self, row: np.ndarray) -> None:
         """
-        Restore flash results from a snapshot, skipping :meth:`run_flash`.
+        Pack the flash results currently held by this container (set by :meth:`evaluate_flash`) into ``row``,
+        so :meth:`set_flash_results` can restore them later without re-flashing.
+
+        ``ph`` is not stored: it is a deterministic function of ``nu`` (see
+        :meth:`set_flash_results`), so it needs no slot of its own.
+
+        :param row: Pre-allocated row of length >= :meth:`flash_row_width`
+        :type row: numpy.ndarray
+        """
+        row[: self.np_fl] = self.nu
+        row[self.np_fl : self.np_fl + self.np_fl * self.nc_fl] = self.x.ravel()
+        row[self.np_fl + self.np_fl * self.nc_fl] = self.temperature
+        row[self.np_fl + self.np_fl * self.nc_fl + 1] = self.pressure
+
+    def set_flash_results(self, row: np.ndarray) -> None:
+        """
+        Restore flash results from a row produced by :meth:`get_flash_snapshot`,
+        skipping :meth:`run_flash`.
 
         Leaves the container in the same state as :meth:`evaluate_flash` at the
-        state the snapshot was taken, so :meth:`evaluate_properties` can follow.
+        state the row was taken, so :meth:`evaluate_properties` can follow.
 
-        :param snapshot: Snapshot obtained from :meth:`get_flash_snapshot`
-        :type snapshot: tuple
+        :param row: Row obtained from :meth:`get_flash_snapshot` (or read back from
+                    the flash point store)
+        :type row: numpy.ndarray
         """
-        ph, nu, x, pressure, temperature = snapshot
         self.clean_arrays()
-        self.ph = ph.copy()
-        self.nu = nu.copy()
-        self.x = x.copy()
-        self.pressure = pressure
-        self.temperature = temperature
+        self.nu = row[: self.np_fl].copy()
+        self.x = (
+            row[self.np_fl : self.np_fl + self.np_fl * self.nc_fl]
+            .reshape(self.np_fl, self.nc_fl)
+            .copy()
+        )
+        self.ph = np.flatnonzero(self.nu > 0)
+        self.temperature = row[self.np_fl + self.np_fl * self.nc_fl]
+        self.pressure = row[self.np_fl + self.np_fl * self.nc_fl + 1]
 
     def evaluate_properties(self, state):
         """

@@ -160,35 +160,73 @@ class PropertyContainer(BasePropertyContainer):
         self.flash_rho_phases = dict(rho_phases)
         self.kin_state = kin_state
 
-    def get_flash_snapshot(self):
+    def flash_row_width(self) -> int:
         """
-        Return a copy of the raw flash outputs at the last evaluated state.
+        Fixed float-row width needed to round-trip flash results through the C++ flash point store.
+        Part of the mandatory flash-row contract together with :meth:`get_flash_snapshot`
+        and :meth:`set_flash_results` -- overriding any one of the three requires overriding all three
+        (see :func:`~darts.physics.base.operator_evaluator.assert_flash_snapshot_consistent`).
 
-        :return: Snapshot of flash results (vapour fraction, aqueous and gas phase
-                 compositions, phase molar densities, kinetic state)
-        :rtype: tuple
-        """
-        return (
-            self.flash_nu_v,
-            self.flash_x_aq.copy(),
-            self.flash_y_gas.copy(),
-            dict(self.flash_rho_phases),
-            dict(self.kin_state),
-        )
+        Layout: nu_v (1) + x_aq (nc) + y_gas (nc) + rho_phases (2: 'aq', 'gas') +
+        kin_state (3 fixed activities + one 'SR_<mineral>' per mineral).
 
-    def set_flash_results(self, snapshot):
+        :return: Row width = 2*nc + n_solid + 6
+        :rtype: int
         """
-        Restore raw flash outputs from a snapshot, skipping the equilibrium solve.
+        if len(self.flash_ev.mineral_names) != self.n_solid:
+            raise ValueError(
+                f"flash_ev.mineral_names ({len(self.flash_ev.mineral_names)}) must "
+                f"match n_solid ({self.n_solid}) for the flash row layout to be valid"
+            )
+        return 2 * self.nc + self.n_solid + 6
 
-        :param snapshot: Snapshot obtained from :meth:`get_flash_snapshot`
-        :type snapshot: tuple
+    def get_flash_snapshot(self, row) -> None:
         """
-        nu_v, x_aq, y_gas, rho_phases, kin_state = snapshot
-        self.flash_nu_v = nu_v
-        self.flash_x_aq = x_aq.copy()
-        self.flash_y_gas = y_gas.copy()
-        self.flash_rho_phases = dict(rho_phases)
-        self.kin_state = dict(kin_state)
+        Pack the raw flash outputs currently held by this container (set by :meth:`evaluate_flash`)
+        into ``row``, so :meth:`set_flash_results` can restore them later without re-solving.
+
+        :param row: Pre-allocated row of length >= :meth:`flash_row_width`
+        :type row: numpy.ndarray
+        """
+        nc = self.nc
+        row[0] = self.flash_nu_v
+        row[1 : 1 + nc] = self.flash_x_aq
+        row[1 + nc : 1 + 2 * nc] = self.flash_y_gas
+        row[1 + 2 * nc] = self.flash_rho_phases['aq']
+        row[2 + 2 * nc] = self.flash_rho_phases['gas']
+        row[3 + 2 * nc] = self.kin_state['Act(H+)']
+        row[4 + 2 * nc] = self.kin_state['Act(CO2)']
+        row[5 + 2 * nc] = self.kin_state['Act(H2O)']
+        base = 6 + 2 * nc
+        for i, mineral in enumerate(self.flash_ev.mineral_names):
+            row[base + i] = self.kin_state['SR_' + mineral]
+
+    def set_flash_results(self, row) -> None:
+        """
+        Restore raw flash outputs from a row produced by :meth:`get_flash_snapshot`,
+        skipping the equilibrium solve.
+
+        :param row: Row obtained from :meth:`get_flash_snapshot` (or read back from
+                    the flash point store)
+        :type row: numpy.ndarray
+        """
+        nc = self.nc
+        self.flash_nu_v = float(row[0])
+        self.flash_x_aq = row[1 : 1 + nc].copy()
+        self.flash_y_gas = row[1 + nc : 1 + 2 * nc].copy()
+        self.flash_rho_phases = {
+            'aq': float(row[1 + 2 * nc]),
+            'gas': float(row[2 + 2 * nc]),
+        }
+        kin_state = {
+            'Act(H+)': float(row[3 + 2 * nc]),
+            'Act(CO2)': float(row[4 + 2 * nc]),
+            'Act(H2O)': float(row[5 + 2 * nc]),
+        }
+        base = 6 + 2 * nc
+        for i, mineral in enumerate(self.flash_ev.mineral_names):
+            kin_state['SR_' + mineral] = float(row[base + i])
+        self.kin_state = kin_state
 
     def evaluate_properties(self, state):
         """
