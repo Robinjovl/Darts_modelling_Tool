@@ -6,10 +6,8 @@ import numpy as np
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from mesh_creator import mesh_creator
 
-from darts.physics.base.physics import PhysicsBase
-from darts.physics.base.property_container import PropertyContainer
-
-from darts.physics.properties.black_oil import *
+from darts.input.input_data import InputData
+from darts.physics.blackoil import BlackOil, BlackOilFluidProps
 
 
 class Model(CICDModel):
@@ -93,44 +91,24 @@ class Model(CICDModel):
 
     def set_physics(self):
         """Physical properties"""
-        # Create property containers:
-        zero = 1e-12
         epsilon = 1e-13
-        phases = ['gas', 'oil', 'wat']
-        components = ['g', 'o', 'w']
 
         self.inj_composition = [1 - 2e-8, 1e-8]
         # initial composition should be backtracked from saturations
         self.ini_stream = [0.001225901537, 0.7711341309]
 
         pvt = 'Brugge_struct/physics.in'
-        property_container = ModelProperties(phases_name=phases, components_name=components, pvt=pvt, eps_z=epsilon)
 
-        """ properties correlations """
-        property_container.flash_ev = flash_black_oil(pvt)
-        property_container.density_ev = dict([('gas', DensityGas(pvt)),
-                                              ('oil', DensityOil(pvt)),
-                                              ('wat', DensityWat(pvt))])
-        property_container.viscosity_ev = dict([('gas', ViscGas(pvt)),
-                                                ('oil', ViscOil(pvt)),
-                                                ('wat', ViscWat(pvt))])
-        property_container.rel_perm_ev = dict([('gas', GasRelPerm(pvt)),
-                                               ('oil', OilRelPerm(pvt)),
-                                               ('wat', WatRelPerm(pvt))])
-        property_container.capillary_pressure_ev = dict([('pcow', CapillaryPressurePcow(pvt)),
-                                                         ('pcgo', CapillaryPressurePcgo(pvt))])
+        idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
+        idata.fluid = BlackOilFluidProps(pvt=pvt)  # phases: gas, oil, water; components: g, o, w
 
-        property_container.rock_compress_ev = RockCompactionEvaluator(pvt)
+        idata.obl.epsilon_z = epsilon
+        idata.obl.p_step = 0.399  # bar
+        idata.obl.p_origin = 1.0
+        idata.obl.z_step = 2e-3  # 3 components -> 2 z axes, same step on both
+        idata.obl.z_origin = epsilon
 
-        """ Activate physics """
-        thermal = False
-        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
-        nc = len(components)
-        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
-                                     axes_step=[0.399] + [2e-3] * (nc - 1),  # p [bar], z (3 components → 2 z axes)
-                                     axes_origin=[1.0] + [epsilon] * (nc - 1),
-                                     epsilon_z=epsilon, extrapolation_flag=True)
-        self.physics.add_property_region(property_container)
+        self.physics = BlackOil(idata, self.timer, thermal=False)
 
         return
 
@@ -151,123 +129,3 @@ class Model(CICDModel):
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=150.)
-
-class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, pvt, eps_z=1e-11):
-        # Call base class constructor
-        self.nph = len(phases_name)
-        Mw = np.ones(self.nph)
-
-        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=1.)
-        self.pvt = pvt
-        self.surf_dens = get_table_keyword(self.pvt, 'DENSITY')[0]
-        self.surf_oil_dens = self.surf_dens[0]
-        self.surf_wat_dens = self.surf_dens[1]
-        self.surf_gas_dens = self.surf_dens[2]
-
-    def flash_row_width(self) -> int:
-        """
-        Extends the base (nu, x, temperature, pressure) row with two extra slots for
-        this container's own flash outputs (pbub, xgo) that evaluate_properties needs
-        but which aren't part of the base snapshot -- overridden together with
-        get_flash_snapshot/set_flash_results per the mandatory flash-row contract.
-        """
-        return super().flash_row_width() + 2
-
-    def get_flash_snapshot(self, row) -> None:
-        super().get_flash_snapshot(row)
-        base = super().flash_row_width()
-        row[base] = self.pbub
-        row[base + 1] = self.xgo
-
-    def set_flash_results(self, row) -> None:
-        super().set_flash_results(row)
-        base = super().flash_row_width()
-        self.pbub = row[base]
-        self.xgo = row[base + 1]
-
-    def evaluate_flash(self, state):
-        """
-        Compute the black-oil flash: bubble-point pressure, gas-oil ratio, composition,
-        phase presence, and phase mole fractions.
-
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        """
-        # Composition vector and pressure from state:
-        vec_state_as_np = np.asarray(state)
-        self.pressure = vec_state_as_np[0]
-
-        zc = np.append(vec_state_as_np[1:], 1 - np.sum(vec_state_as_np[1:]))
-
-        if zc[-1] < 0:
-            # print(zc)
-            zc = self.comp_out_of_bounds(zc)
-
-        self.clean_arrays()
-        # two-phase flash - assume water phase is always present and water component last
-        (xgo, V, self.pbub) = self.flash_ev.evaluate(self.pressure, zc)
-        self.xgo = xgo
-        for i in range(self.nph):
-            self.x[i, i] = 1
-
-        if V < 0:
-            self.ph = np.array([1, 2], dtype=np.intp)
-        else:  # assume oil and water are always exists
-            self.x[1][0] = xgo
-            self.x[1][1] = 1 - xgo
-            self.ph = np.array([0, 1, 2], dtype=np.intp)
-
-        self.nu[2] = zc[2]
-        # two phase undersaturated condition
-        if self.pressure > self.pbub:
-            self.nu[0] = 0
-            self.nu[1] = zc[1]
-        else:
-            self.nu[1] = zc[1] / (1 - xgo)
-            self.nu[0] = 1 - self.nu[1] - self.nu[2]
-
-    def evaluate_properties(self, state):
-        """
-        Compute derived phase properties (density, viscosity, saturation, relperm,
-        capillary pressure) from the flash results currently held by this container.
-
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        """
-        for j in self.ph:
-            M = 0
-            # molar weight of mixture
-            for i in range(self.nc):
-                M += self.Mw[i] * self.x[j][i]
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure, self.pbub, self.xgo)  # output in [kg/m3]
-            self.dens_m[j] = self.dens[j] / M
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(self.pressure, self.pbub)  # output in [cp]
-
-        self.compute_saturation(self.ph)
-
-        for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[0], self.sat[2])
-
-        pcow = self.capillary_pressure_ev['pcow'].evaluate(self.sat[2])
-        pcgo = self.capillary_pressure_ev['pcgo'].evaluate(self.sat[0])
-
-        self.pc = np.array([-pcgo, 0, pcow])
-
-    def evaluate_at_cond(self, pressure, zc):
-
-        self.sat[:] = 0
-
-        if zc[-1] < 0:
-            # print(zc)
-            zc = self.comp_out_of_bounds(zc)
-
-        self.ph = []
-        for j in range(self.nph):
-            if zc[j] > self.eps_z:
-                self.ph.append(j)
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].dens_sc
-
-        self.ph = np.array(self.ph)
-        self.nu = zc
-        self.compute_saturation(self.ph)
-
-        return self.sat, self.dens_m
