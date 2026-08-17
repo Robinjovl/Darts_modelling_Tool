@@ -454,9 +454,13 @@ class MyOutputPropertyContainer(OutputPropertyContainer):
             self.output_props['dens_m_solid_' + m] = lambda i=i: self.dens_m_solid[i]
             self.output_props['sat_' + m] = lambda i=i: self.sat_minerals[i]
 
-    def evaluate(self, state):
-        super().evaluate(state)
-        self.property.evaluate(state)
+    def evaluate_properties(self, state):
+        super().evaluate_properties(state)
+        # self.property is property_containers[region], the same container the region's
+        # shared FlashOperators wraps -- its flash results are already fresh by the time
+        # this runs (see evaluate_property_container()), so this only recomputes the
+        # cheap derived properties, not the flash itself.
+        self.property.evaluate_properties(state)
 
         self.dens_m = self.property.dens_m
         self.sat = self.property.sat

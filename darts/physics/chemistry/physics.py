@@ -1,8 +1,11 @@
+import warnings
+
 from darts.engines import timer_node
 from darts.physics.base.operator_evaluator import (
     FlashOperators,
     ThermalVarOperator,
     WellCtrlOperators,
+    assert_flash_snapshot_consistent,
     supports_flash_reuse,
 )
 from darts.physics.base.operator_evaluator import (
@@ -63,23 +66,87 @@ class ElementBasedReactiveFlow(PhysicsBase):
         )
         self.vars = vars
 
-    def set_operators(self):
+    def set_operators(self, share_flash_operators: bool = True) -> None:
         """
-        Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
-        and a :class:`PropertyOperator` for the evaluation of properties.
+        Function to set operator objects:
+        - :class:`ReservoirOperators` for each of the reservoir regions
+        - :class:`ConversionOperators` for initialization
+        - :class:`WellCtrlOperators` for well controls
+        - :class:`ThermalVarOperator` for the thermal state variable
+        - :class:`PropertyOperator` for the evaluation of output properties
+
+        When ``share_flash_operators`` (default), all operator sets of a region --
+        including the output :class:`PropertyOperators`, built on the separate
+        ``output_property_containers[region]`` object -- share that region's
+        :class:`FlashOperators` instance, so the geochemical equilibrium solve runs
+        only once per OBL supporting point regardless of which operator set evaluates
+        it first. ``OutputPropertyContainer`` implements the same flash-row contract as
+        ``PropertyContainer`` (see :class:`~darts.physics.chemistry.property_container.OutputPropertyContainer`),
+        so ``evaluate_property_container()`` copies the already-tabulated flash result
+        onto it instead of re-solving.
+
+        A region registered with ``flash_region=`` (see :meth:`~add_property_region`)
+        shares that region's :class:`FlashOperators` instead of building its own.
+
+        :param share_flash_operators: If True (default), all operator sets of a region
+            share one FlashOperators instance. If False, ``None`` is passed instead, so each
+            builds its own private FlashOperators with no cross-operator-set reuse.
+        :type share_flash_operators: bool
         """
+        # Pass 1: build each non-sharing region's own FlashOperators, None when share_flash_operators is False
         for region in self.regions:
+            if self.flash_region[region] != region:
+                continue
+            container = self.property_containers[region]
+            if not supports_flash_reuse(container):
+                raise ValueError(
+                    f"{type(container).__name__} (region {region}) overrides evaluate() monolithically. "
+                    f"PropertyContainer subclasses must implement evaluate_flash()/evaluate_properties() instead. "
+                    f"Monolithic evaluate() overrides are no longer supported."
+                )
+            assert_flash_snapshot_consistent(container)
             self.flash_operators[region] = (
                 FlashOperators(
-                    self.property_containers[region],
+                    container,
                     self.thermal,
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
                 )
-                if supports_flash_reuse(self.property_containers[region])
+                if share_flash_operators
                 else None
             )
+
+        # Pass 2: wire sharing regions to their target's FlashOperators.
+        for region in self.regions:
+            target = self.flash_region[region]
+            if target == region:
+                continue
+            if not share_flash_operators:
+                warnings.warn(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"is ignored because share_flash_operators=False -- region "
+                    f"{region} will build its own private FlashOperators instead "
+                    f"of sharing.",
+                    stacklevel=2,
+                )
+                self.flash_operators[region] = None
+                continue
+            if target not in self.flash_operators:
+                raise ValueError(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"was never registered"
+                )
+            if self.flash_region[target] != target:
+                raise ValueError(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"itself aliases region {self.flash_region[target]} -- chained "
+                    f"flash_region sharing is not supported, point directly at the "
+                    f"canonical region"
+                )
+            self.flash_operators[region] = self.flash_operators[target]
+
+        # Pass 3: build the remaining per-region operator sets
+        for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(
                 self.property_containers[region],
                 self.thermal,
@@ -94,13 +161,16 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 dz=self.dz,
                 flash_operators=self.flash_operators[region],
             )
-            # The output property container is a separate object with its own flash
-            # call; it cannot share the region's FlashOperators (different container).
+            # The output property container is a different object than
+            # property_containers[region], but implements the same flash-row contract
+            # (see OutputPropertyContainer), so evaluate_property_container() copies the
+            # region's already-tabulated flash results onto it instead of re-solving.
             self.property_operators[region] = BasePropertyOperators(
                 self.output_property_containers[region],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[region],
             )
 
         self.well_ctrl_operators = WellCtrlOperators(
@@ -121,9 +191,13 @@ class ElementBasedReactiveFlow(PhysicsBase):
         )
 
     def add_property_region(
-        self, property_container, output_property_container, region: int = 0
+        self,
+        property_container,
+        output_property_container,
+        region: int = 0,
+        flash_region: int | None = None,
     ):
-        super().add_property_region(property_container, region)
+        super().add_property_region(property_container, region, flash_region)
         self.output_property_containers[region] = output_property_container
 
     def _parallel_wrap_targets(self):
