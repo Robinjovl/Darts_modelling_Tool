@@ -131,24 +131,30 @@ class BlackOilProperties(PropertyContainer):
 
     def flash_row_width(self) -> int:
         """
-        Extends the base (nu, x, temperature, pressure) row with two extra slots for
-        this container's own flash outputs (pbub, xgo) that evaluate_properties needs
-        but which aren't part of the base snapshot -- overridden together with
+        Extends the base (nu, x, temperature, pressure) row with three extra slots for
+        this container's own flash outputs (pbub, xgo, V) that evaluate_properties
+        needs but which aren't part of the base snapshot -- overridden together with
         get_flash_snapshot/set_flash_results per the mandatory flash-row contract.
         """
-        return super().flash_row_width() + 2
+        return super().flash_row_width() + 3
 
     def get_flash_snapshot(self, row) -> None:
         super().get_flash_snapshot(row)
         base = super().flash_row_width()
         row[base] = self.pbub
         row[base + 1] = self.xgo
+        row[base + 2] = self.V
 
     def set_flash_results(self, row) -> None:
         super().set_flash_results(row)
         base = super().flash_row_width()
         self.pbub = row[base]
         self.xgo = row[base + 1]
+        self.V = row[base + 2]
+
+        # Base class recomputed self.ph as np.flatnonzero(self.nu > 0);
+        # rederive it instead via V < 0, exactly mirroring evaluate_flash()
+        self.ph = np.array([1, 2]) if self.V < 0 else np.array([0, 1, 2])
 
     def evaluate_flash(self, state):
         """
@@ -170,16 +176,15 @@ class BlackOilProperties(PropertyContainer):
 
         self.clean_arrays()
         # two-phase flash - assume water phase is always present and water component last
-        xgo, V, self.pbub = self.flash_ev.evaluate(self.pressure, zc)
-        self.xgo = xgo
+        self.xgo, self.V, self.pbub = self.flash_ev.evaluate(self.pressure, zc)
         for i in range(self.nph):
             self.x[i, i] = 1
 
-        if V < 0:
+        if self.V < 0:
             self.ph = np.array([1, 2])
         else:  # assume oil and water are always exists
-            self.x[1][0] = xgo
-            self.x[1][1] = 1 - xgo
+            self.x[1][0] = self.xgo
+            self.x[1][1] = 1 - self.xgo
             self.ph = np.array([0, 1, 2])
 
         self.nu[2] = zc[2]
@@ -188,7 +193,7 @@ class BlackOilProperties(PropertyContainer):
             self.nu[0] = 0
             self.nu[1] = zc[1]
         else:
-            self.nu[1] = zc[1] / (1 - xgo)
+            self.nu[1] = zc[1] / (1 - self.xgo)
             self.nu[0] = 1 - self.nu[1] - self.nu[2]
 
     def evaluate_properties(self, state):
