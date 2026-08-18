@@ -414,7 +414,7 @@ class PropertyContainer:
     def flash_row_width(self) -> int:
         """
         Fixed float-row width needed to round-trip flash results through the C++ flash point store
-        (see :meth:`~darts.physics.base.operator_evaluator.FlashOperators.attach_flash_store`).
+        (see :meth:`~darts.physics.base.operator_evaluator.FlashOperators.attach_point_store`).
         Part of the mandatory flash-row contract together with :meth:`get_flash_snapshot`
         and :meth:`set_flash_results` -- a subclass overriding any one of the three must
         override all three (see :func:`~darts.physics.base.operator_evaluator.assert_flash_snapshot_consistent`).

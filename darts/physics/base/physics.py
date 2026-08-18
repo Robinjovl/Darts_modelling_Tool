@@ -849,13 +849,22 @@ class PhysicsBase:
         self.acc_flux_itor = {}
         self.property_itor = {}
 
+        # Each operator set below gets direct get/set access to its own
+        # interpolator's supporting-point store (attach_point_store), so boundary
+        # extrapolation (OperatorsBase.extrapolate) reuses tabulated rows instead
+        # of re-evaluating supporting points. attach_point_store itself degrades
+        # to a no-op for interpolators without the single-point API (static mode,
+        # older prebuilt extensions). ParallelEvaluator-wrapped evaluators forward
+        # the attach to the parent-side serial evaluator, which also receives the
+        # supporting-point rows worker processes ship back after each batch.
+
         # Dedup for regions sharing one FlashOperators
         # (add_property_region's flash_region): id(flash_operators) -> flash_itor
         # The shared instance's dedicated flash interpolator/point store is built and attached only once.
         built_flash_stores = {}
 
         for region in self.regions:
-            self.acc_flux_itor[region], _ = self.create_interpolator(
+            self.acc_flux_itor[region], res_n_slots = self.create_interpolator(
                 self.reservoir_operators[region],
                 n_ops=self.n_ops,
                 axes_step=operator_axes_step,
@@ -868,8 +877,14 @@ class PhysicsBase:
                 region=str(region),
                 is_barycentric=is_barycentric,
             )
+            self.reservoir_operators[region].attach_point_store(
+                self.acc_flux_itor[region],
+                n_slots=res_n_slots,
+                axes_origin=operator_axes_origin,
+                axes_step=operator_axes_step,
+            )
 
-            self.property_itor[region], _ = self.create_interpolator(
+            self.property_itor[region], prop_n_slots = self.create_interpolator(
                 self.property_operators[region],
                 n_ops=self.n_ops,
                 axes_step=operator_axes_step,
@@ -881,6 +896,12 @@ class PhysicsBase:
                 timer_name=f'property {region:d} interpolation',
                 region=str(region),
                 is_barycentric=is_barycentric,
+            )
+            self.property_operators[region].attach_point_store(
+                self.property_itor[region],
+                n_slots=prop_n_slots,
+                axes_origin=operator_axes_origin,
+                axes_step=operator_axes_step,
             )
 
             # FlashOperators gets its own interpolator so its supporting-point cache lives in the C++ point_data_store.
@@ -939,7 +960,7 @@ class PhysicsBase:
                     flash_itor = None
             self.flash_itor[region] = flash_itor
             if flash_operators is not None:
-                flash_operators.attach_flash_store(
+                flash_operators.attach_point_store(
                     flash_itor,
                     n_slots=flash_n_slots,
                     axes_origin=self.axes_origin,
@@ -947,7 +968,7 @@ class PhysicsBase:
                 )
                 built_flash_stores[id(flash_operators)] = flash_itor
 
-        self.acc_flux_w_itor, _ = self.create_interpolator(
+        self.acc_flux_w_itor, well_n_slots = self.create_interpolator(
             self.well_operators,
             n_ops=self.n_ops,
             axes_step=operator_axes_step,
@@ -959,6 +980,12 @@ class PhysicsBase:
             precision=itor_precision,
             region='-1',
             is_barycentric=is_barycentric,
+        )
+        self.well_operators.attach_point_store(
+            self.acc_flux_w_itor,
+            n_slots=well_n_slots,
+            axes_origin=operator_axes_origin,
+            axes_step=operator_axes_step,
         )
 
         self.well_ctrl_itor, self.n_well_ctrl_itor_ops = self.create_interpolator(
@@ -973,6 +1000,15 @@ class PhysicsBase:
             precision=itor_precision,
             is_barycentric=is_barycentric,
         )
+        self.well_ctrl_operators.attach_point_store(
+            self.well_ctrl_itor,
+            n_slots=self.n_well_ctrl_itor_ops,
+            axes_origin=operator_axes_origin,
+            axes_step=operator_axes_step,
+        )
+        # thermal_var_itor is deliberately left without a point store: it lives on
+        # a separate PT grid (thermal_var_axes_*) that does not match the operator
+        # axes captured by attach_point_store, and it is a single cheap operator.
         # Thermal-var interpolator uses a PT-based grid; the derived physics class may
         # set self.thermal_var_axes_step / self.thermal_var_axes_origin to override the
         # default (which mirrors the main grid).

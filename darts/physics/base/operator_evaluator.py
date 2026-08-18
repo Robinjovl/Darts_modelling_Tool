@@ -34,7 +34,7 @@ def assert_flash_snapshot_consistent(property_container) -> None:
     aren't all defined together by the same class.
 
     :class:`FlashOperators` tabulates flash results as fixed-size float rows in a
-    C++ point store (see :meth:`FlashOperators.attach_flash_store`), reading
+    C++ point store (see :meth:`FlashOperators.attach_point_store`), reading
     and writing them through exactly these three methods. ``PropertyContainer``
     (base) defines all three together for the ``(nu, x, temperature, pressure)``
     layout; a subclass overriding the flash-snapshot format (e.g. chemistry's
@@ -168,11 +168,161 @@ class OperatorsBase(operator_set_evaluator_iface):
                 f"(see darts.physics.base.property_container.PropertyContainer)."
             )
 
-    def evaluate_property_container(self, state_np):
-        """
-        Evaluate the shared property container at a supporting point.
+        # C++ point-store wiring; see attach_point_store(). None (the default)
+        # means there is no cache: extrapolate() evaluates supporting points
+        # directly, and FlashOperators.ensure_flash() recomputes every flash.
+        self._point_itor = None
+        self._point_n_slots = 0
+        self._point_axes_origin = None
+        self._point_axes_step_inv = None
 
-        Reuses tabulated flash results through this region's :class:`FlashOperators`.
+    def attach_point_store(self, itor, n_slots=None, axes_origin=None, axes_step=None):
+        """
+        Wire this operator set to its own interpolator's supporting-point store,
+        so tabulated rows are read/written directly through
+        ``itor.try_get_point``/``itor.set_point``. Called by
+        :meth:`~darts.physics.base.physics.PhysicsBase.set_interpolators` once the
+        operator set's interpolator has been created (and its on-disk cache, if
+        any, loaded).
+
+        The store is the same ``point_data_store`` the interpolator materializes
+        supporting points into, keyed on the integer multi-index this
+        interpolator's OBL axes give a state (see :meth:`_point_key`). Two users
+        share this wiring:
+
+        - :meth:`extrapolate` reads/writes the operator values at extrapolation
+          supporting points instead of re-evaluating them on every boundary
+          extrapolation. Rows inserted this way are reused by later interpolation
+          (which skips ``evaluate()`` for them) and vice versa: points the
+          interpolator already materialized are extrapolation cache hits.
+        - :class:`FlashOperators` tabulates its flash-snapshot rows through the
+          identical mechanism (see :meth:`FlashOperators.ensure_flash`); for the
+          base container layout the snapshot row ``(nu, x, T, P)`` is a strict
+          prefix-superset of its operator values ``(nu, x, T)``, so both users
+          agree on the stored rows.
+
+        Rows tabulated either way are picked up by the incremental disk
+        persistence (``OblCacheCodec`` via ``PhysicsBase.write_cache``) that
+        already covers the interpolator, with no separate save/load path.
+
+        Leave unattached (or pass ``itor=None``) to disable caching entirely.
+        An ``itor`` that does not expose ``try_get_point``/``set_point`` is
+        treated as None, so static-mode interpolators (single-point store access
+        is adaptive-only) and prebuilt extensions predating those bindings
+        degrade to uncached evaluation without the caller having to check.
+        Also unattached: regions with no compiled OBL template for this
+        (n_dims, n_ops), and evaluators wrapped in ``ParallelEvaluator``
+        (worker-process evaluators are fresh instances that are never attached).
+
+        :param itor: This operator set's own adaptive interpolator, or None.
+        :param n_slots: Values per stored point: the interpolator's compiled N_OPS.
+                    May exceed ``self.n_ops`` (compiled-template fallback with
+                    spare operator slots, or an interpolator built wider than this
+                    operator set, e.g. property interpolators built with the
+                    physics-wide n_ops).
+        :param axes_origin: Per-axis OBL grid origin over this interpolator's
+                    axes set (primary + history for the reservoir/property/well
+                    interpolators; primary-only for the flash store).
+        :param axes_step: Per-axis OBL grid cell size, same length as ``axes_origin``.
+        """
+        if itor is None or not (
+            hasattr(itor, 'try_get_point') and hasattr(itor, 'set_point')
+        ):
+            self._point_itor = None
+            return
+        self._point_itor = itor
+        self._point_n_slots = n_slots
+        self._point_axes_origin = np.asarray(axes_origin, dtype=np.float64)
+        self._point_axes_step_inv = 1.0 / np.asarray(axes_step, dtype=np.float64)
+
+    def _point_key(self, state_np):
+        """
+        Return the point-store multi-index key for a supporting point: the signed
+        per-axis grid index over the first ``len(axes_origin)`` state coordinates
+        (the axes passed to :meth:`attach_point_store`), saturated to int32.
+        Axes beyond those (e.g. history axes for the flash store's primary-only
+        wiring) are excluded from the key.
+
+        :param state_np: State at the supporting point
+        :type state_np: np.ndarray
+        :return: int32 multi-index key of length len(axes_origin)
+        :rtype: np.ndarray
+        """
+        scaled = (
+            state_np[: self._point_axes_origin.size] - self._point_axes_origin
+        ) * self._point_axes_step_inv
+        idx = np.clip(np.rint(scaled), -2147483648, 2147483647)
+        return idx.astype(np.int32)
+
+    def _evaluate_supporting_point(self, ref_state):
+        """
+        Operator values at an extrapolation supporting point (a real OBL grid
+        node), as a length-``n_ops`` array. Read from the attached interpolator
+        point store when possible (see :meth:`attach_point_store`); on a miss (or
+        with no store attached) the point is evaluated through :meth:`evaluate`
+        and, when a store is attached, tabulated so later interpolation and
+        extrapolation reuse it.
+
+        :param ref_state: Full-length state at the supporting point
+        :type ref_state: np.ndarray
+        :return: Operator values at the supporting point, length ``self.n_ops``
+        :rtype: np.ndarray
+        """
+        if self._point_itor is None:
+            ref_vals = value_vector(np.zeros(self.n_ops))
+            self.evaluate(value_vector(ref_state), ref_vals)
+            return ref_vals.to_numpy()
+
+        key = self._point_key(ref_state)
+        cached = self._point_itor.try_get_point(key)
+        if cached is not None:
+            return np.asarray(cached)[: self.n_ops]
+
+        # Evaluate into a zero-initialized row of the interpolator's full N_OPS
+        # width, reproducing exactly the row C++ materialization would store.
+        ref_vals = value_vector(np.zeros(self._point_n_slots))
+        self.evaluate(value_vector(ref_state), ref_vals)
+        # evaluate() itself may have tabulated this key with a more complete row
+        # (FlashOperators.ensure_flash stores the full flash snapshot, including
+        # slots its operator values leave zero) -- never overwrite an existing row.
+        if self._point_itor.try_get_point(key) is None:
+            self._point_itor.set_point(key, ref_vals.to_numpy())
+        return ref_vals.to_numpy()[: self.n_ops]
+
+    def insert_point_rows(self, rows):
+        """
+        Insert externally computed supporting-point rows into the attached point
+        store, skipping keys already present (never overwrite). Rows narrower
+        than the store's ``n_slots`` are zero-padded on the right: a row
+        evaluated into an ``n_ops``-wide vector then padded matches the
+        ``n_slots``-wide row C++ materialization would store, whose spare
+        trailing slots stay zero.
+
+        Used by :class:`~darts.physics.base.parallel_evaluator.ParallelEvaluator`
+        to merge rows tabulated by worker-local stores during batch evaluation
+        back into the parent interpolator's store, so later interpolation,
+        extrapolation and disk persistence reuse them. No-op when no store is
+        attached.
+
+        :param rows: Iterable of ``(key, row)`` pairs: ``key`` an int sequence of
+                    the store's axes length, ``row`` a float array of length
+                    <= ``n_slots``
+        """
+        if self._point_itor is None:
+            return
+        for key, row in rows:
+            k = np.asarray(key, dtype=np.int32)
+            if self._point_itor.try_get_point(k) is None:
+                row = np.asarray(row, dtype=np.float64)
+                full = np.zeros(self._point_n_slots)
+                n = min(row.size, self._point_n_slots)
+                full[:n] = row[:n]
+                self._point_itor.set_point(k, full)
+
+    def ensure_flash_results(self, state_np):
+        """
+        Make ``self.property`` hold the flash results for this supporting point,
+        reusing tabulated results through this operator set's :class:`FlashOperators`.
 
         :param state_np: State at the supporting point [pres, comp_0, ..., comp_N-1, (temp), (history)]
         :type state_np: np.ndarray
@@ -183,10 +333,21 @@ class OperatorsBase(operator_set_evaluator_iface):
             # (see PhysicsBase.add_property_region's flash_region)
             # Copy the flash results it just computed/restored onto this region's
             # own container via the same row contract the flash point store uses,
-            # since evaluate_properties() below reads from self.property.
+            # since the callers read the results from self.property.
             row = np.zeros(self.flash.property.flash_row_width())
             self.flash.property.get_flash_snapshot(row)
             self.property.set_flash_results(row)
+
+    def evaluate_property_container(self, state_np):
+        """
+        Evaluate the shared property container at a supporting point.
+
+        Reuses tabulated flash results through this region's :class:`FlashOperators`.
+
+        :param state_np: State at the supporting point [pres, comp_0, ..., comp_N-1, (temp), (history)]
+        :type state_np: np.ndarray
+        """
+        self.ensure_flash_results(state_np)
         self.property.evaluate_properties(state_np)
 
     def evaluate_batch(self, states, n_points, values, n_ops):
@@ -234,16 +395,17 @@ class OperatorsBase(operator_set_evaluator_iface):
         When composition lies outside the simplex (∑ z_i ≠ 1 or some z_i < 0), perform exact hyperplane extrapolation:
         Fit each operator value via val = a·z + c through exactly d+1 valid reference points ,
         then evaluate at the out‑of‑bounds composition. Pressure (and temperature) remain constant.
-        State layout: [ p, z₁, …, z_d, (T) ]
+        State layout: [ p, z₁, …, z_d, (T), (history) ] -- reference states copy the
+        full incoming state and only step the compositions, so pressure, temperature
+        and any history-axis coordinates carry over unchanged.
+
+        Supporting-point operator values are read from / tabulated into the attached
+        interpolator point store when one is wired (see :meth:`attach_point_store`),
+        so repeated boundary extrapolations and ordinary interpolation share work.
         """
-        # Unpack state
+        # Unpack composition from state
         vec = state.to_numpy()
-        if self.thermal:
-            p, T = vec[0], vec[-1]
-            z = vec[1:-1].copy()
-        else:
-            p = vec[0]
-            z = vec[1:].copy()
+        z = vec[1 : self.nc].copy()
 
         zero_comps = [i for i in range(self.nc - 1) if z[i] <= 2 * self.eps_z]
         nonzero_comps = [1 if z[i] > 2 * self.eps_z else 0 for i in range(self.nc - 1)]
@@ -343,18 +505,14 @@ class OperatorsBase(operator_set_evaluator_iface):
 
         supporting_points = [c[2] for c in selected]
 
-        # Gather valid reference points
+        # Gather valid reference points, through the interpolator point store
         zps_list = []
         vals_list = []
         for zp in supporting_points:
-            if self.thermal:
-                ref_state = value_vector(np.concatenate(([p], zp, [T])))
-            else:
-                ref_state = value_vector(np.concatenate(([p], zp)))
-            ref_vals = value_vector(np.zeros(self.n_ops))
-            self.evaluate(ref_state, ref_vals)
+            ref_state = vec.copy()
+            ref_state[1 : self.nc] = zp
             zps_list.append(zp)
-            vals_list.append(ref_vals.to_numpy())
+            vals_list.append(self._evaluate_supporting_point(ref_state))
 
         # Use the first d+1 valid points to define hyperplane implicitly via val = a·z + c
         zps = np.stack(zps_list[: dims + 1])  # shape (dims+1, dims)
@@ -401,7 +559,7 @@ class FlashOperators(OperatorsBase):
     One instance is shared by all operator sets of a property region (see
     :meth:`~darts.physics.base.physics.PhysicsBase.set_operators`): the first operator
     set to evaluate at a supporting point computes the flash and tabulates the result
-    in the C++ flash point store (see :meth:`attach_flash_store`); every other operator
+    in the C++ flash point store (see :meth:`attach_point_store`); every other operator
     set evaluating at the same point restores the tabulated result via :meth:`ensure_flash`
     instead of recomputing it. The tabulation is keyed on the primary state coordinates of
     the supporting point (OBL history axes are excluded — the flash does not depend on
@@ -463,37 +621,22 @@ class FlashOperators(OperatorsBase):
         self.cache_hits = 0
         self.cache_misses = 0
 
-        # C++ flash-result point store wiring; see attach_flash_store(). None
-        # (the default) means ensure_flash() has no cache and recomputes every call.
-        self._flash_itor = None
-        self._flash_n_slots = 0
-        self._flash_axes_origin = None
-        self._flash_axes_step_inv = None
-
-    def attach_flash_store(self, itor, n_slots=None, axes_origin=None, axes_step=None):
+    def attach_point_store(self, itor, n_slots=None, axes_origin=None, axes_step=None):
         """
-        Wire this FlashOperators to its own interpolator's supporting-point store,
-        so :meth:`ensure_flash` reads/writes it directly. Called by
-        :meth:`~darts.physics.base.physics.PhysicsBase.set_interpolators` once this
-        region's dedicated flash interpolator has been created (and its on-disk
-        cache, if any, loaded).
+        Wire this FlashOperators to its dedicated interpolator's supporting-point
+        store, so :meth:`ensure_flash` reads/writes flash-snapshot rows directly
+        (same mechanism as :meth:`OperatorsBase.attach_point_store`, which see).
+        The stored rows are the container's flash snapshots -- for the base layout
+        ``(nu, x, T, P)``, a strict prefix-superset of this operator set's values
+        ``(nu, x, T)``, so :meth:`extrapolate`'s cache hits stay consistent with
+        :meth:`evaluate`. The store is keyed on the primary OBL axes only
+        (history axes are excluded -- the flash does not depend on them), so pass
+        primary-only ``axes_origin``/``axes_step``.
 
-        The flash store is the same ``point_data_store`` the interpolator itself
-        materializes points into, keyed on the integer multi-index this region's OBL
-        axes give a state -- the identical key an actual interpolation pass over
-        ``itor`` would derive. Flash results tabulated this way are therefore picked
-        up automatically by the incremental disk-persistence machinery
-        (``OblCacheCodec`` via ``PhysicsBase.write_cache``) that already covers the
-        region's other interpolators, with no separate save/load path of its own.
-
-        Pass ``itor=None`` (or leave unattached) to disable caching entirely --
-        :meth:`ensure_flash` then runs the flash directly on every call. This happens
-        when: no compiled OBL interpolator template exists for this region's
-        (n_dims, n_ops), the region uses static-mode interpolation (single-point
-        store access is adaptive-only, cpu or gpu), or the prebuilt extension
-        predates ``try_get_point``/``set_point``. (The container's flash-snapshot
-        methods are validated once, eagerly, by
-        :func:`assert_flash_snapshot_consistent` in
+        Refuses to attach when the container declares no flash row
+        (``flash_row_width() <= 0``); :meth:`ensure_flash` then runs the flash
+        directly on every call. (The container's flash-snapshot methods are
+        validated once, eagerly, by :func:`assert_flash_snapshot_consistent` in
         :meth:`~darts.physics.base.physics.PhysicsBase.set_operators`, so by the
         time this is called they're already known to be consistent.)
 
@@ -505,51 +648,32 @@ class FlashOperators(OperatorsBase):
         :param axes_origin: Per-axis OBL grid origin, length ``self.ne``.
         :param axes_step: Per-axis OBL grid cell size, length ``self.ne``.
         """
-        if itor is None or self.property.flash_row_width() <= 0:
-            self._flash_itor = None
-            return
-        self._flash_itor = itor
-        self._flash_n_slots = n_slots
-        self._flash_axes_origin = np.asarray(axes_origin, dtype=np.float64)
-        self._flash_axes_step_inv = 1.0 / np.asarray(axes_step, dtype=np.float64)
-
-    def _flash_key(self, state_np):
-        """
-        Return the flash-store multi-index key for a supporting point:
-        the signed per-axis grid index, saturated to int32.
-        History axes are excluded (self.ne) since the flash does not depend on them.
-
-        :param state_np: State at the supporting point
-        :type state_np: np.ndarray
-        :return: int32 multi-index key of length self.ne
-        :rtype: np.ndarray
-        """
-        scaled = (
-            state_np[: self.ne] - self._flash_axes_origin
-        ) * self._flash_axes_step_inv
-        idx = np.clip(np.rint(scaled), -2147483648, 2147483647)
-        return idx.astype(np.int32)
+        if self.property.flash_row_width() <= 0:
+            itor = None
+        super().attach_point_store(
+            itor, n_slots=n_slots, axes_origin=axes_origin, axes_step=axes_step
+        )
 
     def _ensure_flash_stored(self, state_np):
         """
         ``ensure_flash`` via the C++ flash point store (see
-        :meth:`attach_flash_store`). Packing/unpacking the fixed-width float row is
+        :meth:`attach_point_store`). Packing/unpacking the fixed-width float row is
         delegated to the property container's own ``get_flash_snapshot``/
         ``set_flash_results`` (validated by :func:`assert_flash_snapshot_consistent`
         in :meth:`~darts.physics.base.physics.PhysicsBase.set_operators`), so this
         method works for any container layout, not just the base NU/X/TEMP/PRES one.
         """
-        key = self._flash_key(state_np)
-        cached = self._flash_itor.try_get_point(key)
+        key = self._point_key(state_np)
+        cached = self._point_itor.try_get_point(key)
         if cached is not None:
             self.property.set_flash_results(cached)
             self.cache_hits += 1
             return
 
         self.property.evaluate_flash(state_np)
-        row = np.zeros(self._flash_n_slots)
+        row = np.zeros(self._point_n_slots)
         self.property.get_flash_snapshot(row)
-        self._flash_itor.set_point(key, row)
+        self._point_itor.set_point(key, row)
         self.cache_misses += 1
 
     def ensure_flash(self, state_np):
@@ -563,14 +687,14 @@ class FlashOperators(OperatorsBase):
         of what ran in between (other supporting points, ``compute_total_enthalpy``, ...).
 
         Tabulation goes through the C++ flash point store when one is attached (see
-        :meth:`attach_flash_store`); otherwise there is no cache and the flash is
+        :meth:`attach_point_store`); otherwise there is no cache and the flash is
         recomputed on every call (itor_mode='static', or a standalone instance never
         wired to a Physics interpolator).
 
         :param state_np: State at the supporting point [pres, comp_0, ..., comp_N-1, (temp), (history)]
         :type state_np: np.ndarray
         """
-        if self._flash_itor is not None:
+        if self._point_itor is not None:
             self._ensure_flash_stored(state_np)
             return
 
