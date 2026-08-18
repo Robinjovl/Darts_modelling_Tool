@@ -42,6 +42,58 @@ from darts.engines import operator_set_evaluator_iface, value_vector
 # In each worker process: a dict {key -> evaluator}. One evaluator per wrap key.
 _worker_evaluators: dict = {}
 
+# In each worker process: {key -> LocalPointStore} for operator-value rows
+# (extrapolation supporting points), and {region -> LocalPointStore} for flash
+# rows shared between the operator sets of one region. See _attach_worker_stores.
+_worker_op_stores: dict = {}
+_worker_flash_stores: dict = {}
+
+
+class LocalPointStore:
+    """
+    In-process, dict-backed implementation of the adaptive interpolator's
+    single-point API (``try_get_point``/``set_point``), attachable through
+    :meth:`OperatorsBase.attach_point_store
+    <darts.physics.base.operator_evaluator.OperatorsBase.attach_point_store>`.
+
+    Used in pool worker processes, which cannot reach the parent interpolator's
+    C++ point store: attached to a worker evaluator it caches extrapolation
+    supporting points across batches for the lifetime of the worker; attached to
+    the worker's FlashOperators it caches flash rows the same way (shared
+    between the operator sets of one region within the worker). With
+    ``track_fresh``, newly inserted keys are remembered in insertion order so
+    :meth:`drain_fresh` can ship the rows back to the parent process after each
+    batch (see :meth:`ParallelEvaluator.evaluate_batch` and
+    :meth:`OperatorsBase.insert_point_rows
+    <darts.physics.base.operator_evaluator.OperatorsBase.insert_point_rows>`).
+
+    :param n_slots: Row width (informational; rows are stored as given).
+    :param track_fresh: Keep newly inserted keys for :meth:`drain_fresh`.
+    """
+
+    def __init__(self, n_slots, track_fresh=False):
+        self.n_slots = n_slots
+        self.rows = {}
+        self._fresh = [] if track_fresh else None
+
+    def try_get_point(self, key):
+        row = self.rows.get(tuple(int(k) for k in key))
+        return None if row is None else row.copy()
+
+    def set_point(self, key, values):
+        k = tuple(int(i) for i in key)
+        self.rows[k] = np.asarray(values, dtype=np.float64).copy()
+        if self._fresh is not None:
+            self._fresh.append(k)
+
+    def drain_fresh(self):
+        """Return the (key, row) pairs inserted since the last drain."""
+        if not self._fresh:
+            return []
+        out = [(k, self.rows[k]) for k in self._fresh]
+        self._fresh = []
+        return out
+
 
 @contextlib.contextmanager
 def _suppress_stdout():
@@ -162,12 +214,74 @@ def _stdout_to_log():
         os.close(saved_fd)
 
 
-def _worker_init_multi(factories: dict, silence_workers: bool = True):
+def _attach_worker_stores(store_configs: dict):
+    """
+    Attach :class:`LocalPointStore` caches to the evaluators of this worker.
+
+    For every key with a store config, the evaluator gets its own operator-value
+    store (extrapolation supporting points, ``track_fresh=True`` so each batch
+    ships the new rows back to the parent), and its private ``FlashOperators``
+    gets a flash-row store keyed on the primary axes. The flash store is shared
+    between all of this worker's evaluators of the same region, so a grid node
+    flashed for one operator family (e.g. reservoir) is a hit for the others
+    (e.g. property) -- the same row contract the parent's shared flash store
+    relies on. Flash rows stay worker-local (not shipped to the parent).
+
+    :param store_configs: dict ``key -> {'axes_origin', 'axes_step',
+        'flash_axes_origin', 'flash_axes_step'}`` for the keys to wire; keys
+        without a config (e.g. thermal_var_operator, which lives on a different
+        grid) are left uncached.
+    """
+    global _worker_op_stores, _worker_flash_stores
+    _worker_op_stores = {}
+    _worker_flash_stores = {}
+    for key, evaluator in _worker_evaluators.items():
+        cfg = store_configs.get(key)
+        if cfg is None or not hasattr(evaluator, 'attach_point_store'):
+            continue
+
+        n_ops = getattr(evaluator, 'n_ops', None)
+        if n_ops:
+            store = LocalPointStore(n_ops, track_fresh=True)
+            evaluator.attach_point_store(
+                store,
+                n_slots=n_ops,
+                axes_origin=cfg['axes_origin'],
+                axes_step=cfg['axes_step'],
+            )
+            _worker_op_stores[key] = store
+
+        flash = getattr(evaluator, 'flash', None)
+        if (
+            flash is not None
+            and flash is not evaluator
+            and hasattr(flash, 'attach_point_store')
+        ):
+            width = flash.property.flash_row_width()
+            region = key[1] if isinstance(key, tuple) and len(key) == 2 else None
+            flash_store = _worker_flash_stores.get(region)
+            if flash_store is None or flash_store.n_slots != width:
+                flash_store = LocalPointStore(width)
+                _worker_flash_stores[region] = flash_store
+            flash.attach_point_store(
+                flash_store,
+                n_slots=width,
+                axes_origin=cfg['flash_axes_origin'],
+                axes_step=cfg['flash_axes_step'],
+            )
+
+
+def _worker_init_multi(
+    factories: dict, silence_workers: bool = True, store_configs: dict = None
+):
     """Build one evaluator per wrap key in this worker process.
 
     When ``silence_workers`` (the default) the worker is muted so the model's console /
     log shows only one evaluator's output; pass ``False`` (e.g. at the highest DartsModel
     verbosity) to let every worker print — routed to the run log only, never to stdout.
+
+    ``store_configs`` (see :func:`_attach_worker_stores`) wires worker-local
+    point-store caches to the freshly built evaluators.
     """
     global _worker_evaluators
     if silence_workers:
@@ -175,6 +289,8 @@ def _worker_init_multi(factories: dict, silence_workers: bool = True):
     else:
         _route_worker_to_log()
     _worker_evaluators = {key: factory() for key, factory in factories.items()}
+    if store_configs:
+        _attach_worker_stores(store_configs)
 
 
 def _worker_evaluate_chunk_multi(key, coords_flat, n_dims, n_ops):
@@ -186,7 +302,9 @@ def _worker_evaluate_chunk_multi(key, coords_flat, n_dims, n_ops):
     :param coords_flat: 1-D numpy array of shape [n_pts * n_dims]
     :param n_dims: number of dimensions per point
     :param n_ops: number of operators per point
-    :return: 1-D numpy array of shape [n_pts * n_ops]
+    :return: tuple of (1-D numpy array of shape [n_pts * n_ops], list of
+        (key, row) supporting-point rows tabulated in this worker's local point
+        store during the chunk -- see LocalPointStore.drain_fresh)
     """
     global _worker_evaluators
     evaluator = _worker_evaluators[key]
@@ -206,7 +324,10 @@ def _worker_evaluate_chunk_multi(key, coords_flat, n_dims, n_ops):
             vv_np = np.asarray(vv)
             vv_np[:] = np.nan
         results[i * n_ops : (i + 1) * n_ops] = np.asarray(vv)
-    return results
+
+    op_store = _worker_op_stores.get(key)
+    fresh_rows = op_store.drain_fresh() if op_store is not None else []
+    return results, fresh_rows
 
 
 # ── Default picklable factory: rebuild any of the model's evaluator attrs ───
@@ -360,10 +481,18 @@ class SharedEvaluatorPool:
     :param n_workers: Number of worker processes (default: ``os.cpu_count()``).
     :param start_method: Optional multiprocessing start method (``'fork'``,
         ``'spawn'``, ``'forkserver'``). ``None`` uses the platform default.
+    :param store_configs: Optional dict ``key -> axes config`` wiring worker-local
+        point-store caches to the worker evaluators (see
+        :func:`_attach_worker_stores`). Keys without a config stay uncached.
     """
 
     def __init__(
-        self, factories: dict, n_workers=None, start_method=None, silence_workers=True
+        self,
+        factories: dict,
+        n_workers=None,
+        start_method=None,
+        silence_workers=True,
+        store_configs: dict = None,
     ):
         if not factories:
             raise ValueError("SharedEvaluatorPool requires at least one factory.")
@@ -372,28 +501,31 @@ class SharedEvaluatorPool:
 
         self.n_workers = n_workers or os.cpu_count()
         self._factories = dict(factories)
+        self._store_configs = dict(store_configs) if store_configs else {}
 
         ctx = multiprocessing.get_context(start_method)
         self._pool = ctx.Pool(
             processes=self.n_workers,
             initializer=_worker_init_multi,
-            initargs=(self._factories, silence_workers),
+            initargs=(self._factories, silence_workers, self._store_configs),
         )
 
     def has_key(self, key) -> bool:
         return key in self._factories
 
-    def evaluate_batch(
-        self, key, states_np, n_points, values_np, n_dims, n_ops
-    ) -> bool:
+    def evaluate_batch(self, key, states_np, n_points, values_np, n_dims, n_ops):
         """
         Dispatch a batch under ``key`` to the worker pool. Splits the batch into
         roughly equal chunks (one per worker), gathers results back into
-        ``values_np``. Returns ``True`` on success, ``False`` if the pool raised
-        and the caller should fall back to serial evaluation.
+        ``values_np``. Returns ``(True, fresh_rows)`` on success -- where
+        ``fresh_rows`` is the merged list of (key, row) supporting-point rows the
+        workers tabulated during this batch (see LocalPointStore.drain_fresh),
+        for the caller to insert into the parent interpolator's store -- or
+        ``(False, [])`` if the pool raised and the caller should fall back to
+        serial evaluation.
         """
         if n_points == 0:
-            return True
+            return True, []
 
         chunk_size = (n_points + self.n_workers - 1) // self.n_workers
         chunks = []
@@ -414,14 +546,16 @@ class SharedEvaluatorPool:
                 f"Parallel evaluation for key {key!r} failed: {e}. Falling back to serial.",
                 stacklevel=2,
             )
-            return False
+            return False, []
 
         offset = 0
-        for r in results:
+        fresh_rows = []
+        for r, rows in results:
             n = len(r)
             values_np[offset : offset + n] = r
             offset += n
-        return True
+            fresh_rows.extend(rows)
+        return True, fresh_rows
 
     def shutdown(self):
         """Terminate and join the worker pool. Idempotent."""
@@ -559,13 +693,22 @@ class ParallelEvaluator(operator_set_evaluator_iface):
                 states_np, n_points, values_np, n_dims, n_ops
             )
 
-        succeeded = self._shared_pool.evaluate_batch(
+        succeeded, fresh_rows = self._shared_pool.evaluate_batch(
             self._key, states_np, n_points, values_np, n_dims, n_ops
         )
         if not succeeded:
             return self._serial_evaluate_batch(
                 states_np, n_points, values_np, n_dims, n_ops
             )
+        if fresh_rows:
+            # Merge supporting-point rows the workers tabulated during boundary
+            # extrapolation into the parent interpolator's point store, so later
+            # interpolation/extrapolation and disk persistence reuse them.
+            # (The serial evaluator holds the parent-side store attachment; a
+            # generic evaluator without one silently drops the rows.)
+            insert = getattr(self._serial_evaluator, 'insert_point_rows', None)
+            if insert is not None:
+                insert(fresh_rows)
         return 0
 
     def _serial_evaluate_batch(self, states_np, n_points, values_np, n_dims, n_ops):

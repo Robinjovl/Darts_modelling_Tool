@@ -17,6 +17,7 @@ from darts.engines import *
 from darts.interpolators import *
 from darts.physics.base.operator_evaluator import (
     FlashOperators,
+    OperatorsBase,
     PropertyOperators,
     ReservoirOperators,
     ThermalVarOperator,
@@ -117,7 +118,7 @@ class PhysicsBase:
     """
 
     engine: engine_base
-    well_operators: operator_set_evaluator_iface
+    well_operators: OperatorsBase
     well_ctrl_operators: WellCtrlOperators
     thermal_var_operator: ThermalVarOperator
 
@@ -829,16 +830,6 @@ class PhysicsBase:
             ``well_ctrl_operators``, ``thermal_var_operator``).
         :type evaluator_factory_hook: callable
         """
-        # Optionally wrap every evaluator with ParallelEvaluator for batch parallelism.
-        # All five wrap targets share a single multiprocessing pool so the total worker
-        # process count stays at n_workers regardless of how many evaluators are wrapped.
-        if parallel_evaluation:
-            self._wrap_evaluators_parallel(
-                self._parallel_wrap_targets(),
-                evaluator_factory_hook,
-                n_workers,
-            )
-
         # Reservoir/property/well interpolators consume the full OBL state
         # [primary vars | history vars]. The thermal-var interpolator uses a separate
         # primary PT grid for well initialization.
@@ -846,6 +837,34 @@ class PhysicsBase:
         operator_axes_origin = self.axes_origin + [
             h.axes_origin for h in self.history_fields
         ]
+
+        # Optionally wrap every evaluator with ParallelEvaluator for batch parallelism.
+        # All five wrap targets share a single multiprocessing pool so the total worker
+        # process count stays at n_workers regardless of how many evaluators are wrapped.
+        if parallel_evaluation:
+            targets = self._parallel_wrap_targets()
+            # Worker-local point-store caches (LocalPointStore): each worker
+            # evaluator caches its extrapolation supporting points (shipped back
+            # to the parent store after every batch) and shares one flash-row
+            # cache per region between its operator sets. thermal_var_operator is
+            # excluded -- it lives on a separate PT grid.
+            point_store_configs = {
+                (attr, region): {
+                    'axes_origin': operator_axes_origin,
+                    'axes_step': operator_axes_step,
+                    'flash_axes_origin': self.axes_origin,
+                    'flash_axes_step': self.axes_step,
+                }
+                for attr, region in targets
+                if attr != 'thermal_var_operator'
+            }
+            self._wrap_evaluators_parallel(
+                targets,
+                evaluator_factory_hook,
+                n_workers,
+                point_store_configs=point_store_configs,
+            )
+
         self.acc_flux_itor = {}
         self.property_itor = {}
 
@@ -1048,7 +1067,12 @@ class PhysicsBase:
         return targets
 
     def _wrap_evaluators_parallel(
-        self, targets, evaluator_factory_hook, n_workers, start_method=None
+        self,
+        targets,
+        evaluator_factory_hook,
+        n_workers,
+        start_method=None,
+        point_store_configs=None,
     ):
         """
         Replace each evaluator listed in ``targets`` with a :class:`ParallelEvaluator`
@@ -1060,6 +1084,10 @@ class PhysicsBase:
             producing a picklable factory that returns a fresh evaluator.
         :param n_workers: pool size; defaults to ``os.cpu_count()``.
         :param start_method: multiprocessing start method (``None`` = platform default).
+        :param point_store_configs: optional dict ``(attribute, region) -> axes config``
+            wiring worker-local point-store caches (extrapolation supports + flash
+            rows) to the worker evaluators; see
+            :func:`~darts.physics.base.parallel_evaluator._attach_worker_stores`.
         """
         if evaluator_factory_hook is None:
             raise ValueError(
@@ -1086,6 +1114,7 @@ class PhysicsBase:
             n_workers=n_workers,
             start_method=start_method,
             silence_workers=silence,
+            store_configs=point_store_configs,
         )
 
         for attr, region in targets:
@@ -1148,6 +1177,9 @@ class PhysicsBase:
             n_workers=n_workers,
             start_method=start_method,
             silence_workers=silence,
+            # Preserve the worker-local point-store wiring of the original pool;
+            # the newly added targets stay uncached unless configured elsewhere.
+            store_configs=old_pool._store_configs,
         )
 
         # Repoint all existing ParallelEvaluator wrappers at the new pool so
