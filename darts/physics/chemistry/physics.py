@@ -154,6 +154,12 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 dz=self.dz,
                 flash_operators=self.flash_operators[region],
             )
+            # ConversionOperators evaluates on the volumetric initialization state
+            # [p, phi_minerals, z_fluid] rather than the reservoir state, but
+            # flash_ev.evaluate is a pure function of the numeric state vector
+            # (fluid entries selected by a fixed mask), so its flash results can
+            # share the region's FlashOperators store: coinciding numeric keys
+            # yield identical flash rows for either caller.
             self.initial_operators[region] = ConversionOperators(
                 self.property_containers[region],
                 self.thermal,
@@ -250,22 +256,50 @@ class ElementBasedReactiveFlow(PhysicsBase):
         :param evaluator_factory_hook: Callable ``(attribute, region) -> factory`` for parallel evaluation
         :type evaluator_factory_hook: callable
         """
+        # The chemistry interpolators below are created without explicit axes, so
+        # create_interpolator defaults them to the primary axes plus one axis per
+        # history field -- the same axes the point-store attaches must use.
+        operator_axes_step = self.axes_step + [h.axes_step for h in self.history_fields]
+        operator_axes_origin = self.axes_origin + [
+            h.axes_origin for h in self.history_fields
+        ]
+
         # Optionally wrap every chemistry evaluator with ParallelEvaluator via a
         # single shared pool. Chemistry has no separate well_operators (well uses
         # acc_flux_itor[0]) but does have initial_operators per region.
         if parallel_evaluation:
+            targets = self._parallel_wrap_targets()
+            # Worker-local point-store caches, as in PhysicsBase.set_interpolators.
+            # ConversionOperators (initial_operators) flashes on the volumetric
+            # initialization state, but flash_ev.evaluate is a pure function of
+            # the numeric state vector, so sharing one flash cache per region
+            # between a worker's evaluators stays consistent (see set_operators).
+            point_store_configs = {
+                (attr, region): {
+                    'axes_origin': operator_axes_origin,
+                    'axes_step': operator_axes_step,
+                    'flash_axes_origin': self.axes_origin,
+                    'flash_axes_step': self.axes_step,
+                }
+                for attr, region in targets
+                if attr != 'thermal_var_operator'
+            }
             self._wrap_evaluators_parallel(
-                self._parallel_wrap_targets(),
+                targets,
                 evaluator_factory_hook,
                 n_workers,
+                point_store_configs=point_store_configs,
             )
 
         # Create actual accumulation and flux interpolator:
+        # Each operator set gets direct get/set access to its own interpolator's
+        # supporting-point store (attach_point_store), as in
+        # PhysicsBase.set_interpolators; thermal_var_operator is left uncached.
         self.acc_flux_itor = {}
         self.comp_itor = {}
         self.property_itor = {}
         for region in self.regions:
-            self.acc_flux_itor[region], _ = self.create_interpolator(
+            self.acc_flux_itor[region], res_n_slots = self.create_interpolator(
                 evaluator=self.reservoir_operators[region],
                 timer_name='reservoir interpolation',
                 n_ops=self.n_ops,
@@ -274,6 +308,12 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 mode=itor_mode,
                 precision=itor_precision,
                 is_barycentric=is_barycentric,
+            )
+            self.reservoir_operators[region].attach_point_store(
+                self.acc_flux_itor[region],
+                n_slots=res_n_slots,
+                axes_origin=operator_axes_origin,
+                axes_step=operator_axes_step,
             )
 
             # ==============================================================================================================
@@ -289,6 +329,12 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 is_barycentric=is_barycentric,
             )
             self.n_comp_itor_ops = n_comp_ops
+            self.initial_operators[region].attach_point_store(
+                self.comp_itor[region],
+                n_slots=n_comp_ops,
+                axes_origin=operator_axes_origin,
+                axes_step=operator_axes_step,
+            )
 
             # ==============================================================================================================
             # Create property interpolator:
@@ -303,6 +349,12 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 is_barycentric=is_barycentric,
             )
             self.n_property_itor_ops = n_property_ops
+            self.property_operators[region].attach_point_store(
+                self.property_itor[region],
+                n_slots=n_property_ops,
+                axes_origin=operator_axes_origin,
+                axes_step=operator_axes_step,
+            )
         self.acc_flux_w_itor = self.acc_flux_itor[0]
 
         self.well_ctrl_itor, n_well_ctrl_ops = self.create_interpolator(
@@ -315,6 +367,12 @@ class ElementBasedReactiveFlow(PhysicsBase):
             precision=itor_precision,
         )
         self.n_well_ctrl_itor_ops = n_well_ctrl_ops
+        self.well_ctrl_operators.attach_point_store(
+            self.well_ctrl_itor,
+            n_slots=n_well_ctrl_ops,
+            axes_origin=operator_axes_origin,
+            axes_step=operator_axes_step,
+        )
         self.thermal_var_itor, n_thermal_var_ops = self.create_interpolator(
             self.thermal_var_operator,
             n_ops=self.thermal_var_operator.n_ops,

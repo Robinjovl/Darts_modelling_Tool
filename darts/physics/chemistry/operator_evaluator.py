@@ -238,6 +238,12 @@ class ConversionOperators(ReservoirOperators):
         self.counter = 0
         self.props_name = ['z_' + prop for prop in property_container.minerals]
 
+        # This operator set exposes one mineral molar fraction per mineral -- not
+        # the reservoir operator layout inherited from ReservoirOperators.__init__.
+        # Its interpolator (comp_itor) is sized len(props_name); n_ops must agree
+        # so extrapolation and the supporting-point store use the right row width.
+        self.n_ops = len(self.props_name)
+
     def evaluate(self, state, values):
         """
         Class methods which performs volumetric to molar conversion for
@@ -259,8 +265,13 @@ class ConversionOperators(ReservoirOperators):
         s_minerals = state_np[self.property.s_mask_state]
         ss = s_minerals.sum()  # volume fraction in initialization
 
-        # initial flash, non-standard argument
-        _, _, _, _, _, fluid_volume, _, _ = self.property.flash_ev.evaluate(state_np)
+        # Initial flash on the conversion state (non-standard layout, see class
+        # docstring), through the region's shared FlashOperators so the result is
+        # tabulated/restored like any other flash. flash_ev.evaluate is a pure
+        # function of the numeric state vector, so sharing the store with the
+        # reservoir-state operator sets is consistent.
+        self.ensure_flash_results(state_np)
+        fluid_volume = self.property.flash_fluid_volume
 
         # evaluate molar fraction
         solid_volume = fluid_volume * ss / (1 - ss)  # m3

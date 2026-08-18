@@ -164,11 +164,14 @@ class PropertyContainer(BasePropertyContainer):
             y,
             rho_phases,
             kin_state,
-            _,
+            fluid_volume,
             molar_aq_fractions,
             molar_gas_fractions,
         ) = self.flash_ev.evaluate(state)
         self.flash_nu_v = nu_v
+        # Kept for ConversionOperators (volumetric-to-molar initialization), which
+        # reuses tabulated flash results through the same row contract.
+        self.flash_fluid_volume = float(fluid_volume)
         self.flash_x_aq = np.asarray(x, dtype=float).copy()
         self.flash_y_gas = np.asarray(y, dtype=float).copy()
         self.flash_rho_phases = dict(rho_phases)
@@ -189,12 +192,13 @@ class PropertyContainer(BasePropertyContainer):
 
         Layout: nu_v (1) + x_aq (nc) + y_gas (nc) + rho_phases (2: 'aq', 'gas') +
         kin_state (3 fixed activities + one 'SR_<mineral>' per mineral) +
-        molar_aq_fractions (n_aq species) + molar_gas_fractions (n_gas species). The last
-        two are unused by this container's own :meth:`evaluate_properties` but let
-        :class:`OutputPropertyContainer` share this row via ``flash_region`` instead of
-        re-solving.
+        molar_aq_fractions (n_aq species) + molar_gas_fractions (n_gas species) +
+        fluid_volume (1). The species fractions are unused by this container's own
+        :meth:`evaluate_properties` but let :class:`OutputPropertyContainer` share
+        this row via ``flash_region`` instead of re-solving; ``fluid_volume`` is
+        consumed by ``ConversionOperators`` during initialization.
 
-        :return: Row width = 2*nc + n_solid + 6 + n_aq + n_gas
+        :return: Row width = 2*nc + n_solid + 7 + n_aq + n_gas
         :rtype: int
         """
         if len(self.flash_ev.mineral_names) != self.n_solid:
@@ -204,7 +208,7 @@ class PropertyContainer(BasePropertyContainer):
             )
         n_aq = len(self.flash_ev.aqueous_species)
         n_gas = len(self.flash_ev.gas_species)
-        return 2 * self.nc + self.n_solid + 6 + n_aq + n_gas
+        return 2 * self.nc + self.n_solid + 7 + n_aq + n_gas
 
     def get_flash_snapshot(self, row) -> None:
         """
@@ -233,6 +237,7 @@ class PropertyContainer(BasePropertyContainer):
         row[base_species + n_aq : base_species + n_aq + n_gas] = (
             self.flash_molar_gas_fractions
         )
+        row[base_species + n_aq + n_gas] = self.flash_fluid_volume
 
     def set_flash_results(self, row) -> None:
         """
@@ -267,6 +272,7 @@ class PropertyContainer(BasePropertyContainer):
         self.flash_molar_gas_fractions = row[
             base_species + n_aq : base_species + n_aq + n_gas
         ].copy()
+        self.flash_fluid_volume = float(row[base_species + n_aq + n_gas])
 
     def evaluate_properties(self, state):
         """
