@@ -56,8 +56,21 @@ docker-image-builder:
         if [ -n "${CI_COMMIT_TAG:-}" ]; then
           DEST_ARGS="${DEST_ARGS} --destination=${FULL_IMAGE}:${CI_COMMIT_TAG}"
         fi
-        # On MR branches: validate only, do not push to registry
-        if [ "${CI_PIPELINE_SOURCE}" = "merge_request_event" ] && [ "${CI_COMMIT_REF_PROTECTED}" != "true" ]; then
+        # Push only from protected refs (branches/tags) AND only from pipeline
+        # sources run under a real member's account (push, manual web run, schedule)
+        # Trigger/API/cross-project pipelines run with the trigger owner's permissions
+        # even on protected branches and may not have registry write access;
+        # kaniko's push preflight would fail the job before building.
+        # All non-pushing pipelines still validate the build.
+        # Seeding a new image (including UPDATE_DOCKER_IMAGE=1 rebuilds) must
+        # run as a push / web / scheduled pipeline on development/main.
+        PUSH_OK=0
+        if [ "${CI_COMMIT_REF_PROTECTED}" = "true" ] || [ -n "${CI_COMMIT_TAG:-}" ]; then
+          case "${CI_PIPELINE_SOURCE}" in
+            push|web|schedule) PUSH_OK=1 ;;
+          esac
+        fi
+        if [ "$PUSH_OK" != "1" ]; then
           DEST_ARGS="--no-push"
         fi
         /kaniko/executor \
