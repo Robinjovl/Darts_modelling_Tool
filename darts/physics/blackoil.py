@@ -177,21 +177,3 @@ class BlackOilProperties(PropertyContainer):
         self.pc = np.array([-pcgo, 0, pcow])
 
         return
-
-    def evaluate_at_cond(self, pressure, zc):
-        self.sat[:] = 0
-
-        if zc[-1] < 0:
-            # print(zc)
-            zc = self.comp_out_of_bounds(zc)
-
-        self.ph = []
-        for j in range(self.nph):
-            if zc[j] > self.eps_z:
-                self.ph.append(j)
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].dens_sc
-
-        self.nu = zc
-        self.compute_saturation(self.ph)
-
-        return self.sat, self.dens_m

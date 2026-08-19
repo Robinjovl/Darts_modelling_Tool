@@ -3,6 +3,7 @@ from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 
 from darts.physics.base.physics import PhysicsBase
+from darts.physics.eos_physics import EoSPhysics
 from darts.physics.base.property_container import PropertyContainer
 from darts.physics.base.initialize import Initialize
 
@@ -12,9 +13,9 @@ from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.nonlinear_solvers import NewtonSolver
 
-from dartsflash.libflash import EoS, InitialGuess
+from dartsflash.libflash import EoSParams, EoS
 from dartsflash.components import CompData
-from dartsflash.mixtures import DARTSFlash, VLAq
+from dartsflash.mixtures import DARTSFlash, Mixture
 
 
 class Model(CICDModel):
@@ -58,40 +59,54 @@ class Model(CICDModel):
 
     def set_physics(self):
         """Physical properties"""
+        # Fluid components, ions and solid
         components = ["H2O", "CO2"]
         self.components = components
         phases = ["aq", "CO2_rich_phase"]
         comp_data = CompData(components, setprops=True)
+        epsilon = self.zero / 10
+
+        """ Define Physics """
+        state_spec = PhysicsBase.StateSpecification.PT
+        # 1 p + (nc-1) z + 1 T
+        ax_step = [0.0599] + [1e-4] * (len(components) - 1) + [0.028]
+        ax_origin = [1.0] + [epsilon] * (len(components) - 1) + [220.0]
+        self.physics = EoSPhysics(components, phases, self.timer,
+                                  axes_step=ax_step, axes_origin=ax_origin,
+                                  epsilon_z=epsilon, state_spec=state_spec, cache=False,
+                                  extrapolation_flag=True)
 
         """ Define flash """
-        flash_ev = VLAq(comp_data, hybrid=True)
-        flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE],
-                            trial_comps=[InitialGuess.Yi.Wilson],
-                            stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
-                            )
-        flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
-        pr = flash_ev.eos["VL"]
-        aq = flash_ev.eos["Aq"]
+        mixture = Mixture(comp_data)
+        mixture.set_vl_eos(vl_eos_name="PR", hybrid_aq_eos_name="Aq",
+                           root_order=[EoS.STABLE],
+                           trial_comps=[EoSParams.Yi.Wilson, 1],
+                           stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
+                           )
+        mixture.set_aq_eos(aq_eos_name="Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
 
-        flash_ev.init_flash(eos_order=["Aq", "VL"],
-                            flash_type=DARTSFlash.FlashType.PTFlash,
-                            )
+        mixture.init_flash(eos_order=["Aq", "PR"],
+                           flash_type=DARTSFlash.FlashType.PTFlash,
+                           )
+        self.physics.set_mixture(mixture)
 
         """ properties correlations """
-        epsilon = self.zero / 10
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
                                                eps_z=epsilon)
+        self.physics.add_property_region(property_container)
 
-        property_container.flash_ev = flash_ev
-        property_container.density_ev = dict([('CO2_rich_phase', EoSDensity(pr, comp_data.Mw)),
+        property_container.flash_ev = self.physics.get_flash_ev()
+        property_container.density_ev = dict([('CO2_rich_phase', EoSDensity(eos=mixture.eos["PR"])),
                                               ('aq', Garcia2001(components))])
         property_container.viscosity_ev = dict([('CO2_rich_phase', Fenghour1998()),
                                                 ('aq', Islam2012(components))])
         property_container.rel_perm_ev = dict([('CO2_rich_phase', PhaseRelPerm("gas")),
                                                ('aq', PhaseRelPerm("oil"))])
 
-        property_container.enthalpy_ev = dict([('CO2_rich_phase', EoSEnthalpy(pr)),
-                                               ('aq', EoSEnthalpy(aq))])
+        property_container.enthalpy_ev = dict([('CO2_rich_phase', EoSEnthalpy(eos=mixture.eos["PR"])),
+                                               ('aq', EoSEnthalpy(eos=mixture.eos["Aq"]))])
+        # property_container.enthalpy_ev = dict([('CO2_rich_phase', self.physics.get_enthalpy_ev_from_flash(phase_idx=1)),
+        #                                        ('aq', self.physics.get_enthalpy_ev_from_flash(phase_idx=0))])
         property_container.conductivity_ev = dict([('CO2_rich_phase', ConstFunc(10.)),
                                                    ('aq', ConstFunc(180.)), ])
 
@@ -100,16 +115,6 @@ class Model(CICDModel):
                                            "xCO2": lambda: property_container.x[0, 1],
                                            "yH2O": lambda: property_container.x[1, 0]
                                            }
-
-        state_spec = PhysicsBase.StateSpecification.PT
-        # 1 p + (nc-1) z + 1 T
-        ax_step = [0.0599] + [1e-4] * (len(components) - 1) + [0.028]
-        ax_origin = [1.0] + [epsilon] * (len(components) - 1) + [220.0]
-        self.physics = PhysicsBase(components, phases, self.timer,
-                                     axes_step=ax_step, axes_origin=ax_origin,
-                                     epsilon_z=epsilon, state_spec=state_spec, cache=False,
-                                     extrapolation_flag=True)
-        self.physics.add_property_region(property_container)
 
         return
 

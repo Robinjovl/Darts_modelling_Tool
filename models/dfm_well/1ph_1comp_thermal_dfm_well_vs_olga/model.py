@@ -7,6 +7,7 @@ from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 
 from darts.physics.base.physics import PhysicsBase
+from darts.physics.eos_physics import EoSPhysics
 from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
@@ -80,9 +81,9 @@ class Model(CICDModel):
         return
 
     def set_physics(self):
-        from dartsflash.libflash import CubicEoS, FlashParams, EoS
+        from dartsflash.libflash import EoS
         from dartsflash.components import CompData
-        from dartsflash.mixtures import DARTSFlash, VL
+        from dartsflash.mixtures import DARTSFlash, Mixture
         components_names = ['CO2']
         phases_names = ['G', 'L']
         comp_data = CompData(components_names, setprops=True)
@@ -91,26 +92,28 @@ class Model(CICDModel):
         """ Define state specification and initialize physics object """
         ph = True
         state_spec = PhysicsBase.StateSpecification.PH if ph else PhysicsBase.StateSpecification.PT
-        self.physics = PhysicsBase(components_names, phases_names, self.timer, state_spec=state_spec,
-                                     axes_step=[0.05, 0.035], axes_origin=[1., 150.], epsilon_z=epsilon)
+        self.physics = EoSPhysics(components_names, phases_names, self.timer, state_spec=state_spec,
+                                  axes_step=[0.05, 0.035], axes_origin=[1., 150.], epsilon_z=epsilon)
 
         """ PropertyContainer object and correlations """
         property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, eps_z=epsilon,
                                                temperature=None, rock_comp=0)
 
         """ Define flash """
-        flash_ev = VL(comp_data)
-        flash_ev.set_vl_eos("PR", root_order=[EoS.MAX, EoS.MIN])
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash)
-        property_container.flash_ev = flash_ev
+        mixture = Mixture(comp_data)
+        mixture.set_vl_eos(vl_eos_name="PR", root_order=[EoS.MAX, EoS.MIN])
+        pr = mixture.eos["PR"]
+        mixture.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash)
+
+        self.physics.set_mixture(mixture)
 
         """ Define phase properties """
-        pr = flash_ev.eos["VL"]
-        property_container.density_ev = dict([('G', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
-                                              ('L', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN)),
+        property_container.flash_ev = self.physics.get_flash_ev()
+        property_container.density_ev = dict([('G', EoSDensity(eos=pr, root_flag=EoS.RootFlag.MAX)),
+                                              ('L', EoSDensity(eos=pr, root_flag=EoS.RootFlag.MIN)),
                                               ])
-        property_container.enthalpy_ev = dict([('G', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MAX)),
-                                               ('L', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MIN)),
+        property_container.enthalpy_ev = dict([('G', self.physics.get_enthalpy_ev_from_flash(phase_idx=0)),
+                                               ('L', self.physics.get_enthalpy_ev_from_flash(phase_idx=1)),
                                                ])
         property_container.viscosity_ev = dict([('G', Fenghour1998()),
                                                 ('L', Fenghour1998()),

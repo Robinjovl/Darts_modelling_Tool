@@ -7,16 +7,17 @@ from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 
 from darts.physics.base.physics import PhysicsBase
+from darts.physics.eos_physics import EoSPhysics
 from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
+from darts.physics.properties.eos_properties import EoSDensity
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
-from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
-from dartsflash.libflash import CubicEoS, FlashParams, EoS, InitialGuess
+from dartsflash.libflash import EoS, NegativeFlash
 from dartsflash.components import CompData
-from dartsflash.mixtures import DARTSFlash, VLAq
+from dartsflash.mixtures import DARTSFlash, Mixture
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.linear_dfm_well_ipr import (
@@ -93,28 +94,31 @@ class Model(CICDModel):
 
         """ Define state specification and initialize physics object """
         state_spec = PhysicsBase.StateSpecification.P
-        self.physics = PhysicsBase(components_names, phases_names, self.timer, state_spec=state_spec,
-                                     axes_step=[0.05, 1e-4], axes_origin=[1., 0.], epsilon_z=epsilon)
+        self.physics = EoSPhysics(components_names, phases_names, self.timer, state_spec=state_spec,
+                                  axes_step=[0.05, 1e-4], axes_origin=[1., 0.], epsilon_z=epsilon)
+
+        """ Define flash """
+        mixture = Mixture(comp_data)
+
+        mixture.set_vl_eos(vl_eos_name="PR", hybrid_aq_eos_name="Aq",
+                           root_order=[EoS.STABLE])
+        mixture.set_aq_eos(aq_eos_name="Aq", )
+
+        mixture.init_flash(flash_type=DARTSFlash.FlashType.NegativeFlash,
+                           eos_order=["PR", "Aq"], nf_initial_guess=[NegativeFlash.Ki.Henry_VA])
+
+        self.physics.set_mixture(mixture)
 
         """ PropertyContainer object and correlations """
         system_temperature = 40 + 273.15
 
         property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, eps_z=epsilon,
                                                temperature=system_temperature, rock_comp=0)
+        self.physics.add_property_region(property_container)
 
-        """ Define flash """
-        flash_ev = VLAq(comp_data, hybrid=True)
+        property_container.flash_ev = self.physics.get_flash_ev()
 
-        flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE])
-        flash_ev.set_aq_eos("Aq", )
-        pr = flash_ev.eos["VL"]
-        aq = flash_ev.eos["Aq"]
-
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.NegativeFlash,
-                            eos_order=["VL", "Aq"], nf_initial_guess=[InitialGuess.Henry_VA])
-        property_container.flash_ev = flash_ev
-
-        property_container.density_ev = dict([('G', EoSDensity(eos=pr, Mw=comp_data.Mw)),
+        property_container.density_ev = dict([('G', EoSDensity(eos=mixture.eos["PR"])),
                                               ('L', Garcia2001(components_names)),
                                               ])
 
@@ -126,9 +130,6 @@ class Model(CICDModel):
                                                ('L', PhaseRelPerm("oil", swc=0, sgr=0, n=1))])
 
         property_container.IFT_ev = IFT_multicomponent_MCM(components_names)
-
-        """ Add property region """
-        self.physics.add_property_region(property_container)
 
         property_container.output_props = {}
         property_container.output_props['temperature'] = lambda: property_container.temperature
