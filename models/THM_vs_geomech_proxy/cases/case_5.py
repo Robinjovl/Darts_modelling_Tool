@@ -27,7 +27,7 @@ def input_data_case_5():
     idata.other.matrix_tags = (1, 2, 3, 4, 5, 99991)
 
     # case_2 and case_3 inherit this, so all three cases share one mesh
-    idata.other.mesh_dir = 'case_5'  # we don't
+    idata.other.mesh_dir = 'case_5'
 
     # recompute derived values that depend on the overridden parameters above
     _set_reservoir_bounds(idata)

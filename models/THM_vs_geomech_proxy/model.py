@@ -152,7 +152,7 @@ class Model(THMCModel):
             well_names = ['PRD1', 'INJ1']
             well_coords = np.array([self.idata.other.prod_well_coords, self.idata.other.inj_well_coords])
 
-        print('well_coords:', well_coords, 'well depth=', self.idata.other.well_init_depth)
+        print('well_coords:', well_coords)
         print('centroids_mean depth:', centroids_3d[:, 2].mean())
 
         self.well_cell_ids = []
@@ -179,8 +179,7 @@ class Model(THMCModel):
 
             self.well_cell_ids.append(ids_1)
             # adding a well
-            self.reservoir.add_well(well_names[i], depth=self.well_init_depth)
-            self.reservoir.add_well(well_names[i], depth=self.idata.other.well_init_depth)
+            self.reservoir.add_well(well_names[i])
             # adding perforations
             for cell_id in ids_1:
                 cell = elems[cell_id]

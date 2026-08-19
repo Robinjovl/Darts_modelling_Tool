@@ -1,4 +1,4 @@
-from cases.case_1 import input_data_case_1, input_data_case_2, input_data_case_3, input_data_case_4
+from cases.case_1 import input_data_case_1, input_data_case_2, input_data_case_3, input_data_case_4, input_data_zero_rate
 from cases.case_5 import input_data_case_5
 from cases.no_damage_zone import input_data_no_damage_zone
 from cases.no_damage_zone_heter_mech_prop import input_data_no_damage_zone_heter_mech_prop
@@ -24,13 +24,15 @@ def set_input_data(
             input_data = input_data_case_3()
         case "case_4": # case_3 but heterogeneous geomechanical props (E, nu, biot, th_expn) per tag
             input_data = input_data_case_4()
+        case "zero_rate":
+            input_data = input_data_zero_rate()
         case "case_5":
             input_data = input_data_case_5()
         case "no_damage_zone":
             input_data = input_data_no_damage_zone()
         case "no_damage_zone_heter_mech_prop":
             input_data = input_data_no_damage_zone_heter_mech_prop()
-        case _:  # default
+        case _:  # default (struct-like meshes)
             model_folder = os.path.basename(model_folder)
             os.makedirs(os.path.join(BASE_DIR, "meshes", model_folder), exist_ok=True)
             input_data = input_data_struct_like(

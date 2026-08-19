@@ -271,15 +271,15 @@ if __name__ == '__main__':
     cases = []
 
     # nx ny nz
-    #cases += ['17_17_15']  # for debugging
+    cases += ['17_17_15']  # for debugging
     #cases += ['41_41_66']
     #cases += ['71_71_66']
     #cases += ['83_83_90']  # for isothermal (single well)
     #cases += ['97_97_90'] # for thermal (doublet)
     #cases += ['71_1_66']  # 1 layer by Y; it is not correct to use this as it corresponds to plane-strain solution
 
-    #generate_mesh=True  # struct-like mesh generation
-    generate_mesh=False  # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
+    generate_mesh=True  # struct-like mesh generation
+    #generate_mesh=False  # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
 
     #cases += ['case_1']
     #cases += ['case_2']
@@ -287,10 +287,11 @@ if __name__ == '__main__':
     #cases += ['case_4']
     #cases += ['case_5']
     #cases += ['no_damage_zone']
-    cases += ['no_damage_zone_heter_mech_prop']
+    #cases += ['no_damage_zone_heter_mech_prop']
+    #cases += ['zero_rate']
 
-    #thermal = False
-    thermal = True
+    thermal = False
+    #thermal = True
 
     if not thermal:
         physics_type = 'single_phase'

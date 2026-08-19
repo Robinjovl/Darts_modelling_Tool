@@ -181,9 +181,6 @@ def _set_wells(idata):
         idata.other.wctrl_type = well_control_iface.BHP
         idata.other.well_rate = None
 
-    idata.other.well_init_depth = perf_depth
-
-
 def _set_mesh_tags(idata):
     idata.mesh.bnd_tags = {}
     tags = idata.mesh.bnd_tags
