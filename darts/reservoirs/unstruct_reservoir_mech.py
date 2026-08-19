@@ -1054,11 +1054,18 @@ class UnstructReservoirMech:
                 depth[i] = c.values[2]
             for w in self.wells:
                 if w.perforations:
-                    perf_res_ids = [int(i_r) for _, i_r, _, _ in w.perforations]
-                    # mesh.depth stores the z-centroid (elevation; up = +, values are
-                    # negative here). The well head is the TOP (shallowest) perforation,
-                    # i.e. the largest z, not the smallest.
-                    w.well_head_depth = float(depth[perf_res_ids].max())
+                    # The well head (well_head_idx) chains to the FIRST body segment
+                    # (well_body_idx + 0 == perforations[0]) in add_wells_mpfa, and the
+                    # rate-control equation pins p_head = p_body0 with NO gravity term.
+                    # The head<->body0 connection therefore MUST have zero depth
+                    # difference, otherwise its hydrostatic grav_rhs (= T*g*dz) injects a
+                    # spurious source into body0's mass balance that the control equation
+                    # cannot balance -- the well pressure blows up and zero-rate never
+                    # converges. So collocate the head with body0: use the depth of the
+                    # first perforation's reservoir cell (NOT min/max over perforations,
+                    # which is depth-sign-convention dependent and generally != body0's depth).
+                    first_perf_res_id = int(w.perforations[0][1])
+                    w.well_head_depth = float(depth[first_perf_res_id])
                     w.well_body_depth = w.well_head_depth
         self.mesh.add_wells_mpfa(ms_well_vector(self.wells), self.P_VAR, g_constant)
         if self.discretizer_name == 'mech_discretizer':
