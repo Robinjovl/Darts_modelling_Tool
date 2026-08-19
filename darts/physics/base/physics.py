@@ -16,6 +16,7 @@ from scipy.interpolate import interp1d
 from darts.engines import *
 from darts.interpolators import *
 from darts.physics.base.operator_evaluator import (
+    DictPointStore,
     FlashOperators,
     OperatorsBase,
     PropertyOperators,
@@ -310,8 +311,10 @@ class PhysicsBase:
         self.flash_region = {}
         self.property_containers = {}
 
-        # C++ flash-result point store backing each region's FlashOperators,
-        # populated by set_interpolators(); None where unavailable (see set_interpolators).
+        # Flash-result point store backing each region's FlashOperators, populated by
+        # set_interpolators(): a dedicated adaptive C++ interpolator when available,
+        # a DictPointStore fallback otherwise (static mode, missing compiled template,
+        # old extension); None only when the region has no shared FlashOperators.
         self.flash_operators = {}
         self.flash_itor = {}
         self.reservoir_operators = {}
@@ -925,10 +928,11 @@ class PhysicsBase:
             # n_ops requests exactly the row width for its flash snapshot (see PropertyContainer.flash_row_width)
             # This interpolator is only ever accessed as a key/row point store, never interpolated through.
             # The container's flash-snapshot methods were already validated in set_operators()
-            # The only remaining reasons to fall back to evaluating the flash uncached every call are:
-            # - a missing compiled (n_dims, n_ops) template for this region,
-            # - static mode,
-            # - an un-rebuilt extension predating the try_get_point/set_point bindings.
+            # When the C++ store is unavailable (static mode, a missing compiled
+            # (n_dims, n_ops) template for this region, an un-rebuilt extension
+            # predating the try_get_point/set_point bindings), an in-memory
+            # DictPointStore takes its place: same in-run flash reuse between the
+            # region's operator sets, just without the disk persistence.
             flash_operators = self.flash_operators[region]
             container = self.property_containers[region]
             if (
@@ -945,34 +949,33 @@ class PhysicsBase:
             flash_row_width = (
                 container.flash_row_width() if flash_operators is not None else 0
             )
-            if (
-                flash_operators is not None
-                and flash_row_width > 0
-                and itor_mode == 'adaptive'
-            ):
-                try:
-                    flash_itor, flash_n_slots = self.create_interpolator(
-                        flash_operators,
-                        n_ops=flash_row_width,
-                        platform=platform,
-                        algorithm=itor_type,
-                        mode=itor_mode,
-                        precision=itor_precision,
-                        timer_name=f'flash {region:d} interpolation',
-                        region=str(region),
-                        is_barycentric=is_barycentric,
-                        include_history=False,
-                    )
-                    if not (
-                        hasattr(flash_itor, 'try_get_point')
-                        and hasattr(flash_itor, 'set_point')
-                    ):
+            if flash_operators is not None and flash_row_width > 0:
+                if itor_mode == 'adaptive':
+                    try:
+                        flash_itor, flash_n_slots = self.create_interpolator(
+                            flash_operators,
+                            n_ops=flash_row_width,
+                            platform=platform,
+                            algorithm=itor_type,
+                            mode=itor_mode,
+                            precision=itor_precision,
+                            timer_name=f'flash {region:d} interpolation',
+                            region=str(region),
+                            is_barycentric=is_barycentric,
+                            include_history=False,
+                        )
+                        if not (
+                            hasattr(flash_itor, 'try_get_point')
+                            and hasattr(flash_itor, 'set_point')
+                        ):
+                            flash_itor = None
+                    except ValueError:
+                        # No compiled OBL interpolator template for this region's
+                        # (n_dims, n_ops) -- fall back to the dict store below.
                         flash_itor = None
-                except ValueError:
-                    # No compiled OBL interpolator template for this region's
-                    # (n_dims, n_ops) -- flash results will be recomputed uncached
-                    # (see FlashOperators.ensure_flash).
-                    flash_itor = None
+                if flash_itor is None:
+                    flash_itor = DictPointStore()
+                    flash_n_slots = flash_row_width
             self.flash_itor[region] = flash_itor
             if flash_operators is not None:
                 flash_operators.attach_point_store(
