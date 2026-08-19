@@ -613,8 +613,7 @@ class PhysicsBase:
         :type property_container: :class:`PropertyContainer`
         :param region: Tag of the region, to be used as a key in `property_containers` dict
         :param flash_region: If set, this region shares its FlashOperators with `flash_region`
-                    instead of building its own. Avoids duplicate flash evaluation/caching when
-                    two regions have identical flash inputs.
+                    to avoid duplicate flash evaluation/caching when regions have identical flash inputs.
                     Note: Must refer to a region registered without its own `flash_region` (no chained sharing).
                     Ignored (with a warning) if ``share_flash_operators=False`` at
                     :meth:`PhysicsBase.init_physics` time.
@@ -642,19 +641,17 @@ class PhysicsBase:
 
         When ``share_flash_operators`` (default) all operator sets of a region share
         the region's :class:`FlashOperators` instance.
-        This operator tabulates the flash results per OBL supporting point
-        The flash runs (or is restored from
-        the native point store) only once per point regardless of which operator set
-        evaluates it first. The well-side operator sets share the first region's
-        instance.
+        This operator tabulates the flash results per OBL supporting point.
+        The flash runs (or is restored from the native point store) only once per point
+        regardless of which operator set evaluates it first.
 
         Every ``PropertyContainer`` must implement ``evaluate_flash``/``evaluate_properties``
         (a monolithic ``evaluate`` override raises ``ValueError`` here)
         Its flash-snapshot methods (``get_flash_snapshot``/``set_flash_results``/``flash_row_width``) are
         validated once via :func:`~darts.physics.base.operator_evaluator.assert_flash_snapshot_consistent`
-        -- a container that overrides the flash-snapshot format must override all
-        three together, and this fails fast if it doesn't, rather than silently
-        losing flash-store caching later, regardless of ``share_flash_operators``.
+        A container that overrides the flash-snapshot format must override all three together,
+        and this fails fast if it doesn't, rather than silently losing flash-store caching later,
+        regardless of ``share_flash_operators``.
 
         A region registered with ``flash_region=`` (see :meth:`add_property_region`)
         shares that region's :class:`FlashOperators` instead of building its own.
@@ -925,7 +922,6 @@ class PhysicsBase:
 
             # FlashOperators gets its own interpolator so its supporting-point cache lives in the C++ point_data_store.
             # Sharing the incremental disk-persistence machinery (OblCacheCodec) that acc_flux_itor/property_itor already use.
-            # Restricted to adaptive mode
             # n_ops requests exactly the row width for its flash snapshot (see PropertyContainer.flash_row_width)
             # This interpolator is only ever accessed as a key/row point store, never interpolated through.
             # The container's flash-snapshot methods were already validated in set_operators()
