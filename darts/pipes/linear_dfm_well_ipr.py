@@ -4,6 +4,7 @@ from enum import Enum
 import numpy as np
 
 from darts.engines import ms_well, value_vector
+from darts.models.conditions import BlockCSRView
 
 
 class PI_Type(Enum):
@@ -29,13 +30,22 @@ class LinearDFMWellIPRHook:
     The used linear IPR is
         q_total = A + B * (p_well - p_reservoir - dp_offset)
 
-    where q_total is interpreted according to pi_type:
-      - PI_Type.MASS: kg/day/bar
-      - PI_Type.MOLAR: kmol/day/bar
-      - PI_Type.VOLUMETRIC: m3/day/bar
+    where B is the productivity index ``pi`` (per bar of drawdown), A is
+    ``ipr_intercept`` and q_total is a total RATE interpreted according to
+    pi_type:
+      - PI_Type.MASS: q_total in kg/day (pi in kg/day/bar)
+      - PI_Type.MOLAR: q_total in kmol/day (pi in kmol/day/bar)
+      - PI_Type.VOLUMETRIC: q_total in m3/day at the UPSTREAM in-situ
+        conditions (pi in m3/day/bar)
 
     The total rate is converted to component molar rates using the upstream
     state and added directly to the engine RHS/Jacobian.
+
+    :param allow_nonzero_well_indexD: by default a perforation with a non-zero
+        thermal well index (WID) is rejected because the hook cannot verify
+        the intent. Set True to allow it: WID drives the conductive/diffusive
+        heat term the engine assembles independently of the advective IPR flux
+        managed here, so a non-zero WID does not double-count the IPR flux.
     """
 
     def __init__(
@@ -45,12 +55,14 @@ class LinearDFMWellIPRHook:
         pressure_eps_bar: float = 1e-7,
         composition_eps: float = 1e-8,
         thermal_eps: float = 1e-6,
+        allow_nonzero_well_indexD: bool = False,
     ):
         self.model = model
         self.connections = tuple(connections)
         self.pressure_eps_bar = float(pressure_eps_bar)
         self.composition_eps = float(composition_eps)
         self.thermal_eps = float(thermal_eps)
+        self.allow_nonzero_well_indexD = bool(allow_nonzero_well_indexD)
         self._resolved_connections = None
 
     def apply(self, dt: float, t: float = None):
@@ -58,13 +70,13 @@ class LinearDFMWellIPRHook:
         if not self.connections:
             return
 
-        resolved_connections = self._get_resolved_connections()
-        rhs = np.asarray(self.model.physics.engine.RHS)
-        jac_vals = np.asarray(self.model.physics.engine.jac_vals)
-        X = np.asarray(self.model.physics.engine.X)
-
         n_vars = self.model.physics.n_vars
-        n_jac_block_size = n_vars * n_vars
+        # the view is rebuilt per call (cheap: numpy views only) so a re-init
+        # of the engine (which reallocates jac_vals) cannot leave it stale
+        jac = BlockCSRView(self.model.physics.engine, n_vars)
+        resolved_connections = self._get_resolved_connections(jac)
+        rhs = np.asarray(self.model.physics.engine.RHS)
+        X = np.asarray(self.model.physics.engine.X)
 
         for resolved in resolved_connections:
             wb_idx = resolved["well_block_idx"]
@@ -99,39 +111,35 @@ class LinearDFMWellIPRHook:
                 target="res",
             )
 
-            self._accumulate_dense_block(
-                jac_vals,
-                resolved["diag_well"],
-                jac_well[:n_vars, :] * dt,
-                n_jac_block_size,
-            )
-            self._accumulate_dense_block(
-                jac_vals,
-                resolved["off_well_res"],
-                jac_res[:n_vars, :] * dt,
-                n_jac_block_size,
-            )
-            self._accumulate_dense_block(
-                jac_vals,
-                resolved["off_res_well"],
-                jac_well[n_vars:, :] * dt,
-                n_jac_block_size,
-            )
-            self._accumulate_dense_block(
-                jac_vals,
-                resolved["diag_res"],
-                jac_res[n_vars:, :] * dt,
-                n_jac_block_size,
-            )
+            jac.add_block(resolved["diag_well"], jac_well[:n_vars, :] * dt)
+            jac.add_block(resolved["off_well_res"], jac_res[:n_vars, :] * dt)
+            jac.add_block(resolved["off_res_well"], jac_well[n_vars:, :] * dt)
+            jac.add_block(resolved["diag_res"], jac_res[n_vars:, :] * dt)
 
-    def _get_resolved_connections(self) -> tuple[dict, ...]:
+    def _get_resolved_connections(self, jac: BlockCSRView) -> tuple[dict, ...]:
         if self._resolved_connections is not None:
             return self._resolved_connections
 
-        jac_diags = np.asarray(self.model.physics.engine.jac_diags)
         resolved = []
+        seen = set()
         for connection in self.connections:
+            key = (connection.well_name, connection.perforation_index)
+            if key in seen:
+                raise ValueError(
+                    f"Duplicate LinearDFMWellIPRConnection for well "
+                    f"{connection.well_name!r}, perforation "
+                    f"{connection.perforation_index}: the IPR flux would be "
+                    "applied twice."
+                )
+            seen.add(key)
+
             well = self.model.reservoir.get_well(connection.well_name)
+            if well is None:
+                available = ", ".join(w.name for w in self.model.reservoir.wells)
+                raise KeyError(
+                    f"Well {connection.well_name!r} not found; available wells: "
+                    f"[{available}]."
+                )
             if well.ms_type != ms_well.MS_Type.DFM:
                 raise NotImplementedError(
                     "LinearDFMWellIPRHook currently supports only DFM wells."
@@ -139,6 +147,14 @@ class LinearDFMWellIPRHook:
             if not 0 <= connection.perforation_index < len(well.perforations):
                 raise IndexError(
                     f"Perforation index {connection.perforation_index} is out of bounds for well {connection.well_name!r}."
+                )
+            if connection.pi < 0.0:
+                raise ValueError(
+                    f"Connection to well {connection.well_name!r}, perforation "
+                    f"{connection.perforation_index} has a negative productivity "
+                    f"index (pi={connection.pi}). A negative PI is an "
+                    "unconditionally unstable anti-physical feedback (flux grows "
+                    "with the pressure difference it opposes)."
                 )
 
             perf_segment_local, res_block_idx, well_index, well_indexD = (
@@ -151,12 +167,14 @@ class LinearDFMWellIPRHook:
                     "the well-reservoir flux directly; a non-zero well_index would cause double-counting. "
                     "Set well_index=0.0 when calling add_perforation()."
                 )
-            if well_indexD != 0.0:
+            if well_indexD != 0.0 and not self.allow_nonzero_well_indexD:
                 raise ValueError(
                     f"Perforation {connection.perforation_index} of well {connection.well_name!r} "
-                    f"has a non-zero thermal well index (WID={well_indexD}). LinearDFMWellIPRHook manages "
-                    "the well-reservoir flux directly; a non-zero well_indexD would cause double-counting. "
-                    "Set well_indexD=0.0 when calling add_perforation()."
+                    f"has a non-zero thermal well index (WID={well_indexD}). WID drives the "
+                    "conductive/diffusive heat term the engine assembles independently, so it "
+                    "cannot double-count the advective IPR flux; pass "
+                    "allow_nonzero_well_indexD=True to LinearDFMWellIPRHook if this is intended, "
+                    "or set well_indexD=0.0 when calling add_perforation()."
                 )
             well_block_idx = well.well_body_idx + perf_segment_local
             resolved.append(
@@ -164,41 +182,15 @@ class LinearDFMWellIPRHook:
                     "spec": connection,
                     "well_block_idx": well_block_idx,
                     "res_block_idx": res_block_idx,
-                    "diag_well": int(jac_diags[well_block_idx]),
-                    "diag_res": int(jac_diags[res_block_idx]),
-                    "off_well_res": self._find_csr_block_position(
-                        well_block_idx, res_block_idx
-                    ),
-                    "off_res_well": self._find_csr_block_position(
-                        res_block_idx, well_block_idx
-                    ),
+                    "diag_well": jac.diag_pos(well_block_idx),
+                    "diag_res": jac.diag_pos(res_block_idx),
+                    "off_well_res": jac.block_pos(well_block_idx, res_block_idx),
+                    "off_res_well": jac.block_pos(res_block_idx, well_block_idx),
                 }
             )
 
         self._resolved_connections = tuple(resolved)
         return self._resolved_connections
-
-    def _find_csr_block_position(self, row_block: int, col_block: int) -> int:
-        jac_rows = np.asarray(self.model.physics.engine.jac_rows)
-        jac_cols = np.asarray(self.model.physics.engine.jac_cols)
-        row_start = jac_rows[row_block]
-        row_end = jac_rows[row_block + 1]
-        off_pos = np.where(jac_cols[row_start:row_end] == col_block)[0]
-        if len(off_pos) == 0:
-            raise RuntimeError(
-                f"CSR block ({row_block}, {col_block}) was not found in the Jacobian pattern."
-            )
-        return int(row_start + off_pos[0])
-
-    @staticmethod
-    def _accumulate_dense_block(
-        jac_vals: np.ndarray,
-        block_pos: int,
-        dense_block: np.ndarray,
-        n_jac_block_size: int,
-    ):
-        start = block_pos * n_jac_block_size
-        jac_vals[start : start + n_jac_block_size] += dense_block.reshape(-1)
 
     def _differentiate_flux(
         self,
@@ -258,13 +250,18 @@ class LinearDFMWellIPRHook:
 
             up_room = upper - state[var_idx]
             down_room = state[var_idx] - lower
-            if up_room >= min(trial, max(up_room, 0.0)):
+            # perturb into the direction with more room to the composition bound
+            if up_room >= down_room:
                 delta = min(trial, max(up_room, 0.0))
             else:
                 delta = -min(trial, max(down_room, 0.0))
 
-            if abs(delta) <= 0.0:
-                return perturbed, 0.0
+            # essentially no room on either side: keep a signed floor so the
+            # finite difference in _differentiate_flux does not divide flash
+            # noise by a near-zero delta
+            min_delta = trial * 1e-3
+            if abs(delta) < min_delta:
+                delta = min_delta if up_room >= down_room else -min_delta
 
             perturbed[var_idx] += delta
             return perturbed, delta

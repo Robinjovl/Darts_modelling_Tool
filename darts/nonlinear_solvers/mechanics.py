@@ -95,6 +95,12 @@ class MechanicsNewtonSolver(NewtonSolver):
 
         for i in range(max_newt + 1):
             engine.assemble_linear_system(dt)
+            # Python-side sources run right after assembly, matching the flow
+            # Newton loop. The pm/mech engines rescale equation rows inside
+            # assembly, so DartsModel.apply_rhs_flux raises (instead of
+            # mis-scaling silently) when any legacy hook / set_rhs_flux
+            # override / condition item is present on a mechanics model.
+            model.apply_rhs_flux(dt, t)
             dev_p, dev_u, dev_third = self.compute_mech_residual()
             status.newton_residual = np.sqrt(dev_u**2 + dev_p**2 + dev_third**2)
             status.well_residual = engine.calc_well_residual()

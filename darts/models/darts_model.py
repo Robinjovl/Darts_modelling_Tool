@@ -15,8 +15,15 @@ from darts.engines import (
 from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
 from darts.interpolators import op_vector
+from darts.models.conditions import AssemblyContext, BlockCSRView, ConditionSet
 from darts.models.output import Output
-from darts.nonlinear_solvers import ChopSpec, NewtonSolver, Norm, OBLBoundsSpec
+from darts.nonlinear_solvers import (
+    ChopSpec,
+    MechanicsNewtonSolver,
+    NewtonSolver,
+    Norm,
+    OBLBoundsSpec,
+)
 from darts.print_build_info import print_build_info as package_pbi
 
 
@@ -97,6 +104,10 @@ class DartsModel:
     # N times in the run log.
     _build_info_printed = False
 
+    # One-per-process DeprecationWarning latch for the legacy set_rhs_flux /
+    # rhs_flux_hooks paths (apply_rhs_flux runs every Newton iteration).
+    _legacy_rhs_flux_warned = False
+
     def __new__(cls, *args, **kwargs):
         """
         Capture the constructor arguments so the model can be reconstructed in a
@@ -127,6 +138,12 @@ class DartsModel:
         # Create member variable wells (it is needed only for DFM wells)
         self.wells = None
         self.rhs_flux_hooks = []
+        # Unified Python-side conditions (sources, interface fluxes), the
+        # successor of set_rhs_flux()/rhs_flux_hooks. Items are added via
+        # self.conditions.add(...) and validated/bound at the end of init().
+        self.conditions = ConditionSet()
+        self._conditions_csr_view = None  # lazy BlockCSRView (False = unavailable)
+        self._assembly_iteration = 0  # Newton iteration index within a timestep
 
         # Single source of truth for verbosity. Methods with a ``verbose`` parameter
         # default to ``None`` and fall back to this attribute, so the level is set once
@@ -356,6 +373,10 @@ class DartsModel:
                 + ' > 30000',
                 stacklevel=2,
             )
+
+        # Validate and bind the unified conditions now that the platform and
+        # the engine exist (no-op when no items were registered).
+        self.conditions.compile(self)
 
         init_timer.stop()
 
@@ -868,7 +889,8 @@ class DartsModel:
             if converged:
                 t += dt
                 ts += 1
-                self.accept_pipe_states()
+                # pipe states were already accepted inside run_timestep (the
+                # single convergence point)
                 self.after_converged_timestep()
                 if verbose:
                     print(
@@ -999,7 +1021,8 @@ class DartsModel:
                 t += dt
                 self.physics.engine.t = t
                 ts_counter += 1
-                self.accept_pipe_states()
+                # pipe states were already accepted inside run_timestep (the
+                # single convergence point)
                 self.after_converged_timestep()
 
                 x = np.asarray(self.physics.engine.X)[: nb * nc]
@@ -1116,7 +1139,12 @@ class DartsModel:
         Solve the nonlinear loop for the specified timestep.
 
         Delegates to the runtime nonlinear solver built from
-        :attr:`nonlinear_solver` (see :mod:`darts.nonlinear_solvers`).
+        :attr:`nonlinear_solver` (see :mod:`darts.nonlinear_solvers`). This is
+        the single convergence point: when the solve converged, the DFM pipe
+        states are accepted (:meth:`accept_pipe_states`) and
+        ``conditions.on_timestep_converged`` fires here, BEFORE returning;
+        on failure ``conditions.on_timestep_failed`` fires instead. The run
+        loops must therefore not call :meth:`accept_pipe_states` themselves.
 
         :param dt: Timestep size [days]
         :type dt: float
@@ -1126,7 +1154,15 @@ class DartsModel:
             ``None``, meaning inherit :attr:`self.verbose`.
         :type verbose: int
         """
-        return self.nonlinear_solver.bind(self).solve_timestep(dt, t, verbose)
+        self._assembly_iteration = 0
+        self.conditions.on_timestep_start(dt, t)
+        converged = self.nonlinear_solver.bind(self).solve_timestep(dt, t, verbose)
+        if converged:
+            self.accept_pipe_states()
+            self.conditions.on_timestep_converged(dt, t)
+        else:
+            self.conditions.on_timestep_failed(dt, t)
+        return converged
 
     def update_dfm_well_vels_and_ders(self, dt, t, iter_counter):
         """
@@ -1193,6 +1229,10 @@ class DartsModel:
 
         This function is empty in DartsModel, needs to be overloaded in child Model.
 
+        .. deprecated::
+            Register :class:`darts.models.conditions.ConditionItem` objects on
+            ``self.conditions`` instead.
+
         :param t: current time [days]
         :type t: float
         :return: Vector of modification to RHS vector
@@ -1202,28 +1242,81 @@ class DartsModel:
 
     def apply_rhs_flux(self, dt: float, t: float):
         """
-        Function to apply modifications to RHS vector.
+        Apply Python-side modifications to the assembled system, in three stages:
 
-        If self.set_rhs_flux() is defined in Model, this function will add its values to rhs.
-        Additional Python-side RHS/Jacobian hooks can be registered in self.rhs_flux_hooks.
+        1. the legacy ``set_rhs_flux`` override (its return value is scaled by
+           ``dt`` here, on the caller side),
+        2. the legacy ``rhs_flux_hooks`` (each ``hook.apply(dt=dt, t=t)``),
+        3. the unified ``self.conditions``
+           (:class:`darts.models.conditions.ConditionSet`), applied through an
+           :class:`darts.models.conditions.AssemblyContext` built from the
+           engine views.
+
+        Called by the nonlinear solver after every engine assembly.
+        ``set_rhs_flux`` and ``rhs_flux_hooks`` are deprecated in favor of
+        ``self.conditions``; a :class:`DeprecationWarning` is emitted once per
+        process when a legacy path is present.
 
         :param dt: timestep [days]
         :type dt: float
         :param t: current time [days]
         :type t: float
         """
-        if (
-            type(self).set_rhs_flux is DartsModel.set_rhs_flux
-            and not self.rhs_flux_hooks
-        ):
-            # If there is no user-defined RHS contribution and no Python hook, pass
+        has_override = type(self).set_rhs_flux is not DartsModel.set_rhs_flux
+        has_hooks = bool(self.rhs_flux_hooks)
+        if not (has_override or has_hooks or self.conditions):
+            # no user-defined RHS contribution, no Python hook, no conditions
             return
+        if isinstance(self.nonlinear_solver, MechanicsNewtonSolver):
+            raise RuntimeError(
+                "Python-side RHS/Jacobian contributions (set_rhs_flux, "
+                "rhs_flux_hooks, conditions) are not supported with the "
+                "mechanics engines: the pm/mech engines rescale equation rows "
+                "inside assembly, so post-assembly modifications would be "
+                "applied with the wrong scaling."
+            )
+        if (has_override or has_hooks) and not DartsModel._legacy_rhs_flux_warned:
+            DartsModel._legacy_rhs_flux_warned = True
+            warnings.warn(
+                "set_rhs_flux()/rhs_flux_hooks are deprecated; register "
+                "ConditionItem objects on DartsModel.conditions instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         rhs = np.asarray(self.physics.engine.RHS)
-        if type(self).set_rhs_flux is not DartsModel.set_rhs_flux:
+        if has_override:
             rhs += self.set_rhs_flux(t) * dt
         for hook in self.rhs_flux_hooks:
             hook.apply(dt=dt, t=t)
+        if self.conditions:
+            self.conditions.apply(self._build_assembly_context(rhs, dt, t))
         return
+
+    def _build_assembly_context(self, rhs: np.ndarray, dt: float, t: float):
+        """Build the :class:`AssemblyContext` handed to ``self.conditions``.
+
+        The block-CSR Jacobian view is built lazily once and reused; ``jac`` is
+        ``None`` when the engine does not expose the Jacobian (RHS-only items
+        still run)."""
+        engine = self.physics.engine
+        if self._conditions_csr_view is None:
+            try:
+                self._conditions_csr_view = BlockCSRView(engine, self.physics.n_vars)
+            except RuntimeError:
+                self._conditions_csr_view = False  # engine has no exposed Jacobian
+        ctx = AssemblyContext(
+            rhs=rhs,
+            jac=self._conditions_csr_view or None,
+            X=np.asarray(engine.X),
+            Xn=np.asarray(engine.Xn),
+            dt=dt,
+            t=t,
+            iteration=self._assembly_iteration,
+            n_vars=self.physics.n_vars,
+            n_res_blocks=self.reservoir.mesh.n_res_blocks,
+        )
+        self._assembly_iteration += 1
+        return ctx
 
     def print_timers(self, to_log: bool = False):
         """
