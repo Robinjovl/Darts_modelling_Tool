@@ -1,6 +1,7 @@
 import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
+from darts.models.conditions import CellSource
 
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.eos_physics import EoSPhysics
@@ -148,16 +149,29 @@ class Model(CICDModel):
 
         return
 
-    def set_rhs_flux(self, t: float = None) -> np.ndarray:
-        rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
+    def set_boundary_conditions(self):
+        # CO2 injection into the top cell as a unified cell source (component molar
+        # rates + the matching energy rate), instead of a set_rhs_flux override.
+        self.inj_cell_idx = 0
+        self.conditions.add(CellSource(cells=[self.inj_cell_idx], rates=self.injection_rates))
 
+        return
+
+    def injection_rates(self, t: float) -> np.ndarray:
+        """
+        Rates of the injected stream, positive INTO the cell: [kmol/day] per component
+        plus [kJ/day] for the energy equation. The energy rate carries the molar
+        enthalpy of the injected fluid PLUS its potential energy, taken from the
+        specific potential energy the mesh assigns to the receiving cell (so it
+        follows reservoir.grav_acceleration_for_spe, which the driver switches off
+        for the reference run without potential energy).
+        """
         # Inject CO2
         inj_rate = 1963.19 * 10   # 10 kg/s CO2
         inj_comp = np.array([10 * self.zero, 1 - 10 * self.zero])
         inj_flux = inj_rate * inj_comp
 
-        cell_idx = 0
-        co2_idx = self.physics.components.index("CO2")
+        cell_idx = self.inj_cell_idx
         inj_fluid_molar_enthalpy = - 2000
 
         inj_fluid_specific_potential_energy = self.reservoir.mesh.cell_spe[cell_idx]
@@ -168,7 +182,4 @@ class Model(CICDModel):
         injected_heat_rate = inj_rate * inj_fluid_molar_energy
         inj_flux = np.append(inj_flux, injected_heat_rate)
 
-        cell_start_idx = cell_idx * self.physics.n_vars
-        rhs_flux[cell_start_idx:cell_start_idx + self.physics.n_vars:] = - inj_flux  # inflow (e.g., injection) becomes minus for rhs
-
-        return rhs_flux
+        return inj_flux[None, :]
