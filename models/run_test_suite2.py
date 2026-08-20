@@ -207,6 +207,26 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         ('GeoRising', {'formulation': 'PT'}),
         ('GeoRising', {'formulation': 'PH'}),
     ]
+    if platform == 'cpu':
+        # DFM-well feature variants (the DFM well model is implemented only for CPU)
+        dfm_2ph_olga = os.path.join('dfm_well', '2ph_2comp_isothermal_dfm_vertical_well_vs_olga')
+        dfm_1ph_olga = os.path.join('dfm_well', '1ph_1comp_thermal_dfm_well_vs_olga')
+        accepted_dirs_variants += [
+            # Tang et al. (2019) unified drift-flux closure
+            (dfm_2ph_olga, {'formulation': 'tang_2019'}),
+            # Bhagwat and Ghajar (2014) drift-flux closure (vertical well)
+            (dfm_2ph_olga, {'formulation': 'bhagwat_ghajar_2014'}),
+            # Bai et al. (2023) CO2-specific drift-flux closure with Wang (2014) friction
+            (dfm_2ph_olga, {'formulation': 'bai_2023'}),
+            # Volumetric-PI IPR with nonzero intercept and pressure offset
+            (dfm_2ph_olga, {'formulation': 'ipr_volumetric'}),
+            # BHP-controlled DFM producer exercising the IPR hook's reservoir-upstream branch
+            (dfm_2ph_olga, {'formulation': 'ipr_producer'}),
+            # Semi-analytical wellbore-earth lateral heat exchange hook
+            (dfm_1ph_olga, {'formulation': 'lateral_heat'}),
+            # Exclude the top (well-control) block from the DFM velocity evaluation
+            (dfm_1ph_olga, {'formulation': 'exclude_top'}),
+        ]
 
     # RUN
     failed_models_m = []

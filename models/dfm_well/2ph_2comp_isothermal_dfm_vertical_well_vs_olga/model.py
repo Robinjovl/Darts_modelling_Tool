@@ -1,7 +1,7 @@
 import numpy as np
 
 from darts.models.cicd_model import CICDModel
-from darts.engines import ms_well, value_vector
+from darts.engines import ms_well, value_vector, well_control_iface
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
@@ -32,9 +32,29 @@ from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
 
 class Model(CICDModel):
-    def __init__(self):
+    def __init__(self, formulation=None):
+        """Two-phase two-component isothermal DFM well benchmarked against OLGA.
+
+        :param formulation: optional test-suite variant of the base model:
+
+            * ``None`` (default) — the base model, unchanged.
+            * ``'tang_2019'`` — Tang et al. (2019) unified drift-flux closure in the pipe.
+            * ``'bhagwat_ghajar_2014'`` — Bhagwat and Ghajar (2014) drift-flux closure.
+            * ``'bai_2023'`` — Bai et al. (2023) CO2-specific drift-flux closure.
+            * ``'ipr_volumetric'`` — same injector, but a volumetric-PI IPR with
+              nonzero intercept and pressure offset.
+            * ``'ipr_producer'`` — BHP-controlled DFM producer (wellhead pressure below
+              the reservoir pressure) with a molar-PI IPR, exercising the hook's
+              reservoir-upstream branch (total_rate < 0).
+        :type formulation: str or None
+        """
         # Call base class constructor
         super().__init__()
+
+        assert formulation in (None, 'tang_2019', 'bhagwat_ghajar_2014', 'bai_2023',
+                               'ipr_volumetric', 'ipr_producer'), \
+            f"unknown formulation {formulation!r}"
+        self.formulation = formulation
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -185,11 +205,16 @@ class Model(CICDModel):
                                           temperature=ambient_temperature, phase_name=inj_phase_name, verbose=verbose,
                                           )
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
-        source_sinks = {"RampUpRate1": ramp_up_rate}
+        # (the BHP-controlled producer variant has no wellhead injection source)
+        source_sinks = None if self.formulation == 'ipr_producer' else {"RampUpRate1": ramp_up_rate}
+
+        # Drift-flux closure variants change only the closure passed to the pipe
+        drift_flux_model = self.formulation if self.formulation in (
+            'tang_2019', 'bhagwat_ghajar_2014', 'bai_2023') else 'shi_t2well'
 
         # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
-                                 source_sinks=source_sinks, verbose=verbose)}
+                                 source_sinks=source_sinks, drift_flux_model=drift_flux_model, verbose=verbose)}
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
@@ -203,25 +228,50 @@ class Model(CICDModel):
                                        well_indexD=0.0,
                                        )
 
-        self.rhs_flux_hooks.append(
-            LinearDFMWellIPRHook(
-                self,
-                [
-                    LinearDFMWellIPRConnection(
-                        well_name=well_1_name,
-                        perforation_index=len(
-                            self.reservoir.get_well(well_1_name).perforations
-                        )
-                        - 1,
-                        pi=1e5,
-                        pi_type=PI_Type.MASS,
-                        ipr_pressure_offset=0.0,
-                    )
-                ],
+        perforation_index = len(self.reservoir.get_well(well_1_name).perforations) - 1
+        if self.formulation == 'ipr_volumetric':
+            # Volumetric PI (m3/day/bar at upstream in-situ conditions) of a magnitude
+            # equivalent to the base mass PI, with nonzero intercept and pressure offset
+            ipr_connection = LinearDFMWellIPRConnection(
+                well_name=well_1_name,
+                perforation_index=perforation_index,
+                pi=100.0,
+                pi_type=PI_Type.VOLUMETRIC,
+                ipr_pressure_offset=0.05,
+                ipr_intercept=10.0,
             )
-        )
+        elif self.formulation == 'ipr_producer':
+            # Molar PI for the BHP-controlled producer variant (reservoir-upstream branch)
+            ipr_connection = LinearDFMWellIPRConnection(
+                well_name=well_1_name,
+                perforation_index=perforation_index,
+                pi=5e3,
+                pi_type=PI_Type.MOLAR,
+                ipr_pressure_offset=0.0,
+            )
+        else:
+            ipr_connection = LinearDFMWellIPRConnection(
+                well_name=well_1_name,
+                perforation_index=perforation_index,
+                pi=1e5,
+                pi_type=PI_Type.MASS,
+                ipr_pressure_offset=0.0,
+            )
+        self.rhs_flux_hooks.append(LinearDFMWellIPRHook(self, [ipr_connection]))
+
+    def set_well_controls(self):
+        if self.formulation == 'ipr_producer':
+            # Produce by holding the wellhead pressure below its 10 bar initial value, which
+            # lowers the whole well column below the reservoir pressure at the perforation
+            w = self.reservoir.wells[0]
+            self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
+                                           is_inj=False, target=9.5)
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
+        if self.formulation == 'ipr_producer':
+            # The producer variant has no wellhead injection source
+            return np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
+
         inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]
 
         # Get updated ramp-up injection rate (rate is updated in pipe.py)

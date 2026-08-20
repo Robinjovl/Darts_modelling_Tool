@@ -14,6 +14,10 @@ from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
+from darts.pipes.add_lateral_heat_exchange import (
+    SemiAnalyticalWellLateralHeatTransfer,
+    SemiAnalyticalWellLateralHeatTransferHook,
+)
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
 from darts.pipes.pipe import Pipe
@@ -26,9 +30,25 @@ from darts.pipes.linear_dfm_well_ipr import (
 
 
 class Model(CICDModel):
-    def __init__(self):
+    def __init__(self, formulation=None):
+        """Single-phase thermal DFM well benchmarked against OLGA.
+
+        :param formulation: optional test-suite variant of the base model:
+
+            * ``None`` (default) — the base model, unchanged.
+            * ``'lateral_heat'`` — adds the semi-analytical wellbore-earth lateral heat
+              exchange (Chiu&Thakur time function) through
+              SemiAnalyticalWellLateralHeatTransferHook.
+            * ``'exclude_top'`` — excludes the top (well-control) block from the DFM
+              velocity evaluation in the pipe.
+        :type formulation: str or None
+        """
         # Call base class constructor
         super().__init__()
+
+        assert formulation in (None, 'lateral_heat', 'exclude_top'), \
+            f"unknown formulation {formulation!r}"
+        self.formulation = formulation
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -171,6 +191,7 @@ class Model(CICDModel):
 
         # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
+                                 exclude_top_control_block_from_velocity=(self.formulation == 'exclude_top'),
                                  verbose=verbose)}
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
@@ -201,6 +222,25 @@ class Model(CICDModel):
                 ],
             )
         )
+
+        if self.formulation == 'lateral_heat':
+            # Semi-analytical wellbore-earth lateral heat exchange. The earth temperature
+            # profile matches the initial linear ambient temperature of the pipe, so the
+            # lateral heat flux develops as injection perturbs the well temperature.
+            earth_thermal_props = {
+                'T': pipe_head_temperature + temp_grad * well_1_geometry.TVD_segments,  # K
+                'c': 1000.0,  # J/kg/K
+                'K': 2.5,  # W/m/K
+                'rho': 2650.0,  # kg/m3
+            }
+            lateral_heat_ev = SemiAnalyticalWellLateralHeatTransfer(
+                well_1_name, well_1_geometry, earth_thermal_props,
+                outermost_layer_OD=0.2, Ui=20.0,
+                perforated_segments=[well_1_perforated_segment - 1],  # 0-based segment index
+                time_function_name='Chiu&Thakur', verbose=verbose)
+            self.rhs_flux_hooks.append(
+                SemiAnalyticalWellLateralHeatTransferHook(
+                    self, self.reservoir.get_well(well_1_name), lateral_heat_ev))
 
     def set_well_controls(self):
         """
