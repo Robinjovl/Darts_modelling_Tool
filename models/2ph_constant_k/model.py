@@ -1,5 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
+from darts.models.conditions import CellSource, ConditionItem
 from darts.engines import sim_params, value_vector, index_vector
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 from darts.tools.keyword_file_tools import load_single_keyword
@@ -30,6 +31,11 @@ class Model(DartsModel):
         self.itor_mode = itor_mode
         self.is_barycentric = is_barycentric
         self.well_controls = {'INJ': 'rate', 'PRD': 'pressure'}
+        # Mass rates [kg/day] of the SPE10 Python pseudo-wells, in the order of
+        # self.pt_wells; negative injects, positive produces (see the sign note
+        # on PseudoWellRate).
+        self.inj_rate = [-10., 10.]
+        self._pseudo_wells_registered = False
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -173,6 +179,46 @@ class Model(DartsModel):
             id_conn = np.where(mask_m & mask_p)[0]
 
             # tran[id_conn] += k_poiselle * np.pi * rw ** 2 / dz
+
+        self.register_pseudo_wells()
+
+    def set_boundary_conditions(self):
+        # The SPE10 cases carry no ms_well objects: they are driven by Python-side
+        # pseudo-wells in the reservoir cells closest to the well points. Both the
+        # pseudo-well data and the condition items expressing them must exist
+        # before DartsModel.init() compiles self.conditions, and this hook is the
+        # last one init() runs with the mesh, the physics and the discretizer all
+        # in place -- so build them here. Calling set_wells_spe10() again after
+        # init() (as the driver script does) stays valid: it only recomputes the
+        # same arrays, which the items read at every assembly.
+        if self.reservoir_type != '1D' and self.reservoir_type != '2D':
+            self.set_wells_spe10()
+
+    def register_pseudo_wells(self):
+        """Register the SPE10 Python pseudo-wells as unified condition items.
+
+        Registration happens once (``set_wells_spe10()`` may be called again
+        later); the items themselves re-read the well data at every assembly.
+        """
+        if self._pseudo_wells_registered:
+            return
+        Mw = self.physics.property_containers[0].Mw
+        for counter, (well_name, cells) in enumerate(self.well_ids.items()):
+            mass_rate = self.inj_rate[counter]
+            if well_name != 'PRD':
+                # Fixed-composition stream: q_c = -mass_rate * z_inj_c / Mw_c
+                # [kmol/day], constant, so no Jacobian contribution.
+                rates = np.tile(-(mass_rate * np.asarray(self.inj_comp) / Mw),
+                                (len(cells), 1))
+                self.conditions.add(CellSource(cells=cells, rates=rates))
+            elif self.well_controls[well_name] == 'rate':
+                self.conditions.add(PseudoWellRate(cells=cells, mass_rate=mass_rate, Mw=Mw))
+            elif self.well_controls[well_name] == 'pressure':
+                self.conditions.add(PseudoWellBHP(well_name=well_name))
+            else:
+                raise ValueError(f"Unknown well control type "
+                                 f"'{self.well_controls[well_name]}' for well '{well_name}'")
+        self._pseudo_wells_registered = True
 
     def set_physics(self):
         """Physical properties"""
@@ -375,82 +421,132 @@ class Model(DartsModel):
             self.physics.set_well_controls(wctrl=producer.control, is_control=True, control_type=well_control_iface.BHP,
                                            is_inj=False, target=50.)
 
-    def set_rhs_flux(self, t: float = None, dt: float = None):
-        nv = self.physics.n_vars
-        n_jac_block_size = nv * nv
-        nb = self.reservoir.mesh.n_res_blocks
-        rhs_flux = np.zeros(nb * nv)
 
-        if self.reservoir_type != '1D' and self.reservoir_type != '2D':
-            self.inj_rate = [-10., 10.]
-            Mw = self.physics.property_containers[0].Mw
-            well_counter = 0
-            for well_name, ids in self.well_ids.items():
-                if well_name == "PRD":
-                    jac_vals = self.physics.engine.jac_vals
-                    jac_diags = self.physics.engine.jac_diags
-                    X = np.asarray(self.physics.engine.X)
-                    base = ids * nv
+class PseudoWellRate(CellSource):
+    """Rate-controlled Python pseudo-well over a set of reservoir cells.
 
-                    if self.well_controls[well_name] == 'rate': # rate control
-                        offs = np.arange(1, nv, dtype=np.int64)               # 1..nv-1
-                        z_non_last = X[base[:, None] + offs[None, :]]         # shape (n_ids, nv-1)
-                        z_last     = 1.0 - z_non_last.sum(axis=1)             # shape (n_ids,)
-                        z = np.empty((ids.size, nv), dtype=X.dtype)
-                        z[:, :nv-1] = z_non_last
-                        z[:,  nv-1] = z_last
+    Moves a fixed MASS rate ``mass_rate`` [kg/day] split over the components by
+    the CURRENT composition of the cell, so the molar rate of component ``c`` is
+    ``mass_rate * z_c / Mw_c`` [kmol/day] with ``z_c = x_{c+1}`` and
+    ``z_last = 1 - sum(x_1..x_{nv-1})``. That state dependence is what makes the
+    analytic diagonal-block Jacobian (``d_rates``) worth having.
 
-                        # filling for all well cells at once
-                        for c in range(nv - 1):
-                            rhs_flux[base + c] += self.inj_rate[well_counter] * z[:, c] / Mw[c] * dt
-                            jac_vals[jac_diags[ids] * n_jac_block_size + nv * c + c + 1] += self.inj_rate[well_counter] / Mw[c] * dt
-                        # last component 1 - sum(zi)
-                        rhs_flux[base + nv - 1] += self.inj_rate[well_counter] * z[:, nv - 1] / Mw[nv - 1] * dt
-                        for c in range(nv - 1):
-                            jac_vals[jac_diags[ids] * n_jac_block_size + nv * (nv - 1) + c + 1] -= self.inj_rate[well_counter] / Mw[nv - 1] * dt
-                    elif self.well_controls[well_name] == 'pressure': # pressure control
-                        op_vals = np.asarray(self.physics.engine.op_vals_arr)
-                        op_ders = np.asarray(self.physics.engine.op_ders_arr)
-                        n_ops = self.physics.n_ops
-                        p_cell = X[ids * nv]
-                        p_control = self.p_init_well[well_name] - 50.0
-                        wis = self.wis[well_name]
-                        for c in range(nv):
-                            acc = op_vals[n_ops * ids + c]
-                            rhs_flux[base + c] += acc * wis * (p_cell - p_control)
-                            # pressure derivative
-                            jac_vals[jac_diags[ids] * n_jac_block_size + nv * c] += acc * wis
-                            # operator derivative
-                            for v in range(nv):
-                                acc_ders = op_ders[n_ops * nv * ids + c * nv + v]
-                                jac_vals[jac_diags[ids] * n_jac_block_size + nv * c + v] += acc_ders * wis * (p_cell - p_control)
-                    else:
-                        print('Unknown well control type!')
-                        exit(1)
-                else:
-                    for c in range(nv):
-                        rhs_flux[ids * nv + c] += self.inj_rate[well_counter] * self.inj_comp[c] / Mw[c] * dt
-                well_counter += 1
-        return rhs_flux
+    Sign: ``mass_rate > 0`` PRODUCES (removes mass), ``< 0`` injects. This is the
+    convention of the legacy ``set_rhs_flux``, which ADDED ``mass_rate * z / Mw``
+    to the residual ``R = acc - dt * inflow``; the framework rate ``q`` is
+    positive INTO the block, hence ``q = -mass_rate * z / Mw``.
 
-    def apply_rhs_flux(self, dt: float, t: float):
-        """
-        Function to apply modifications to RHS vector.
+    Isothermal physics only: every one of the ``n_vars`` equations is treated as
+    a component equation (``n_vars == nc``).
+    """
 
-        If self.set_rhs_flux() is defined in Model, this function will add its values to rhs
+    def __init__(self, cells, mass_rate, Mw):
+        self.mass_rate = float(mass_rate)
+        self.Mw = np.asarray(Mw, dtype=float)
+        n_vars = self.Mw.size
+        # d q_c / d x_v, equation-major and state-independent:
+        #   q_c = -mass_rate * z_c / Mw_c,  z_c = x_{c+1} (c < n_vars - 1)
+        #   q_last = -mass_rate * (1 - sum_v x_v) / Mw_last
+        d_rates = np.zeros((len(cells), n_vars, n_vars))
+        for c in range(n_vars - 1):
+            d_rates[:, c, c + 1] = -self.mass_rate / self.Mw[c]
+            d_rates[:, n_vars - 1, c + 1] = self.mass_rate / self.Mw[n_vars - 1]
+        super().__init__(cells=cells, rates=self.composition_rates, d_rates=d_rates)
 
-        :param dt: timestep [days]
-        :type dt: float
-        :param t: current time [days]
-        :type t: float
-        """
-        if type(self).set_rhs_flux is DartsModel.set_rhs_flux:
-            # If the function has not been overloaded, pass
+    def composition_rates(self, t, states):
+        """Framework rate callback: ``states`` is the (n_cells, n_vars) cell state."""
+        z = np.empty_like(states)
+        z[:, :-1] = states[:, 1:]
+        z[:, -1] = 1.0 - states[:, 1:].sum(axis=1)
+        return -(self.mass_rate * z / self.Mw)
+
+
+class PseudoWellBHP(ConditionItem):
+    """Pressure-controlled Python pseudo-well over a set of reservoir cells.
+
+    The outflow of equation ``c`` is written in productivity-index form,
+    ``acc_c * WI * (p - p_control)``, where ``acc_c`` is the ACCUMULATION
+    operator of equation ``c`` that the engine just evaluated for the cell. Both
+    the contribution and its derivatives are therefore read from the engine
+    operator arrays (``op_vals_arr`` / ``op_ders_arr``) instead of being
+    re-evaluated in Python, and the derivatives land in the diagonal block:
+    ``d/dp`` of the drawdown in column 0, ``d acc_c / d x_v`` in column ``v``.
+
+    ``well_ids`` / ``wis`` / ``p_init_well`` are read from the model at every
+    assembly, exactly as the legacy ``set_rhs_flux`` did, so
+    ``Model.set_wells_spe10()`` may still refresh them after ``init()``.
+
+    .. warning::
+       **No ``dt`` is applied here -- neither to the residual nor to the
+       Jacobian -- and that is deliberate.** The :class:`ConditionItem` contract
+       asks for dt-scaled residual-unit contributions (``rhs -= q * dt``), and
+       the rate-controlled branch (:class:`PseudoWellRate`) does exactly that.
+       This branch does not, and it never did: the legacy ``set_rhs_flux``
+       multiplied the rate branch by ``dt`` and the pressure branch by nothing.
+       The inconsistency means the pressure-controlled pseudo-well effectively
+       carries a ``1/dt`` productivity index, i.e. its strength depends on the
+       timestep size. It is reproduced verbatim here because it is load-bearing
+       for the results this model produces; FIXING IT IS A PHYSICS CHANGE and
+       needs its own regression/reference decision -- it is deliberately NOT
+       part of the mechanism migration onto the conditions layer.
+    """
+
+    provides_jacobian = True
+
+    def __init__(self, well_name, bhp_drawdown: float = 50.0):
+        self.well_name = well_name
+        self.bhp_drawdown = float(bhp_drawdown)
+        self.model = None
+        self.engine = None
+        self.n_ops = None
+
+    def bind(self, model):
+        self.model = model
+        self.engine = model.physics.engine
+        self.n_ops = model.physics.n_ops
+        n_blocks = model.reservoir.mesh.n_blocks
+        cells = np.asarray(model.well_ids[self.well_name], dtype=np.int64)
+        if cells.size and (cells.min() < 0 or cells.max() >= n_blocks):
+            raise IndexError(f"PseudoWellBHP('{self.well_name}'): cell indices "
+                             f"must be within [0, {n_blocks}).")
+
+    def apply(self, ctx):
+        cells = np.asarray(self.model.well_ids[self.well_name], dtype=np.int64)
+        if not cells.size:
             return
-        rhs = np.array(self.physics.engine.RHS, copy=False)
-        n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
-        rhs[:n_res] += self.set_rhs_flux(t, dt)
-        return
+        n_vars = ctx.n_vars
+        eq = np.arange(n_vars)
+        wi = np.asarray(self.model.wis[self.well_name], dtype=float)
+        p_control = (np.asarray(self.model.p_init_well[self.well_name], dtype=float)
+                     - self.bhp_drawdown)
+        drawdown = ctx.X[cells * n_vars] - p_control
+
+        # accumulation operator values and their state derivatives of these cells
+        op_vals = np.asarray(self.engine.op_vals_arr)
+        op_ders = np.asarray(self.engine.op_ders_arr)
+        acc = op_vals[(self.n_ops * cells)[:, None] + eq[None, :]]
+        acc_ders = op_ders[(self.n_ops * n_vars * cells)[:, None, None]
+                           + (n_vars * eq)[None, :, None] + eq[None, None, :]]
+
+        # residual -- NO dt, see the class docstring
+        ctx.rhs[(cells * n_vars)[:, None] + eq[None, :]] += (
+            acc * wi[:, None] * drawdown[:, None]
+        )
+
+        # Jacobian, diagonal block only -- NO dt, see the class docstring.
+        # Written through the strided value layout the BlockCSRView documents
+        # (entry (c, v) of block `pos` lives at pos * n_vars**2 + c * n_vars + v)
+        # rather than through add_block(), so that the two contributions reach
+        # column 0 in the same order the legacy code applied them.
+        diag = ctx.jac.jac_diags[cells] * ctx.jac.block_size
+        vals = ctx.jac.jac_vals
+        # d/dp of the drawdown -> entry (c, 0)
+        vals[diag[:, None] + (n_vars * eq)[None, :]] += acc * wi[:, None]
+        # d/dx_v of the accumulation operator -> entry (c, v)
+        vals[diag[:, None, None] + (n_vars * eq)[None, :, None] + eq[None, None, :]] += (
+            acc_ders * wi[:, None, None] * drawdown[:, None, None]
+        )
+
 
 class ModelProperties(PropertyContainer):
     def __init__(self, phases_name, components_name, Mw, eps_z=1e-11, temperature = 1.):
