@@ -1,5 +1,9 @@
 # How to compile and run DARTS in the container locally
-# If you want to leave the container running but detach from it, press Ctrl+P then Ctrl+Q.
+
+# 1. Start the Docker Desktop app with admin priveleges (should appear in the sys tray).
+# 2. Run a command line (cmd) with admin priveleges.
+# 3. Run the commands below.
+# Note: If you want to leave the container running but detach from it, press Ctrl+P then Ctrl+Q.
 
 # run bare MS container for testing purposes
 #docker run -it mcr.microsoft.com/windows/servercore:ltsc2019 cmd

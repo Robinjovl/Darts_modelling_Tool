@@ -52,6 +52,42 @@ RUN setx /M PATH "C:\cmake\cmake-3.29.3-windows-x86_64\bin;%PATH%"
 RUN setx /M PATH "C:\Git\cmd;%PATH%"
 RUN setx /M PATH "C:\conda;C:\conda\Scripts;%PATH%"
 
+# Step 8: Compile and install gmsh without graphical dependencies (DENABLE_FLTK=0)
+ARG GMSH_REF=29461e8d64551661c57aca54bef830c1ed0e7218
+
+RUN git clone https://gitlab.onelab.info/gmsh/gmsh.git C:\src\gmsh `
+    && cd C:\src\gmsh `
+    && git checkout %GMSH_REF%
+
+RUN call "C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat" `
+    && mkdir C:\src\gmsh\build `
+    && cd C:\src\gmsh\build `
+    && cmake .. -G "NMake Makefiles" `
+       -DCMAKE_BUILD_TYPE=Release `
+       -DCMAKE_INSTALL_PREFIX=C:/gmsh `
+       -DENABLE_FLTK=0 `
+       -DENABLE_BUILD_DYNAMIC=1 `
+       -DENABLE_OPENMP=0 `
+       -DENABLE_TESTS=0 `
+    && nmake `
+    && nmake install
+
+# gmsh.py looks for gmsh-5.0.dll; MSVC emits plain gmsh.dll
+RUN cd C:\gmsh\lib `
+    && (mklink /H gmsh-5.0.dll gmsh.dll || copy /Y gmsh.dll gmsh-5.0.dll)
+
+RUN rmdir /S /Q C:\src\gmsh
+
+RUN setx /M PATH "C:\gmsh\bin;C:\gmsh\lib;%PATH%"
+RUN setx /M PYTHONPATH "C:\gmsh\lib"
+
+# Test gmsh
+RUN call "C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat" `
+    && gmsh.exe -version `
+    && gmsh.exe C:\gmsh\share\doc\gmsh\tutorials\t5.geo -3 -nopopup -o C:\Windows\Temp\smoke.msh `
+    && python -c "import gmsh; gmsh.initialize(); print(gmsh.option.getString('General.Version')); gmsh.finalize()" `
+    && del C:\Windows\Temp\smoke.msh
+
 # Set up the MSVC developer environment on entry
 ENTRYPOINT ["cmd", "/k", "C:\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat", "&&"]
 CMD ["cmd"]
