@@ -227,6 +227,14 @@ class AirViscositySutherland(Viscosity):
         :param rho: Phase density [kg/m3]. This evaluator ignores density.
         :returns: Dynamic viscosity [cP].
         """
+        # With the adaptive multi-index interpolator there is no fixed OBL
+        # window, so during Newton iterations the supporting-point evaluator
+        # may be called with T far outside the physical range — e.g. T below
+        # zero or many thousands of kelvin, where T**1.5 is complex/undefined
+        # or the result loses meaning. Clamp to a generous physical envelope
+        # so the kernel always returns a finite positive viscosity; the
+        # Newton step then backs off naturally instead of crashing.
+        temperature = np.clip(temperature, 50.0, 3000.0)
         mu_pa_s = (
             self.mu_ref_pa_s
             * (temperature / self.t_ref_k) ** 1.5

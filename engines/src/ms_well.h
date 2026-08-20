@@ -109,10 +109,11 @@ public:
     value_t segment_diameter;
     value_t segment_roughness;
 
-    // Only used for DFM wells
+    // Only used for DFM wells; num_segments stays 0 for EPM wells so Python
+    // code iterating over wells reads a deterministic value instead of garbage
     std::vector<value_t> segment_volumes;
     std::vector<value_t> segment_depths;
-    index_t num_segments;
+    index_t num_segments = 0;
 
     index_t well_head_idx;        // index of the wellhead segment, where well controls apply
     index_t well_body_idx;        // index of the well segment right below the wellhead segment

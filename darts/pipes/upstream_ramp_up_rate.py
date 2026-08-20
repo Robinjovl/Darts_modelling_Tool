@@ -1,3 +1,5 @@
+import inspect
+
 import numpy as np
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
@@ -78,6 +80,7 @@ class UpstreamRampUpRate(RampUpRate):
                 "Unknown upstream phase names: "
                 + ", ".join(sorted(unknown_phase_names))
             )
+        self._pt_flash_supported = self._run_flash_supports_evaluate_pt(pc)
 
         inj_fluid_props = {"composition": composition}
         if physics.thermal:
@@ -96,6 +99,7 @@ class UpstreamRampUpRate(RampUpRate):
                     float(temperature),
                     composition,
                     phase_names,
+                    self._pt_flash_supported,
                 )
                 inj_fluid_props["molar_enthalpy"] = float(molar_enthalpy)
             else:
@@ -154,6 +158,24 @@ class UpstreamRampUpRate(RampUpRate):
         return self.inj_fluid_props["composition"]
 
     @staticmethod
+    def _run_flash_supports_evaluate_pt(property_container) -> bool:
+        """
+        Probe once, at construction, whether run_flash accepts a PT flash via
+        the evaluate_PT argument. A run_flash whose signature cannot be
+        introspected is treated as not supporting it, so a required PT flash
+        fails with a clear error instead of passing temperature into an
+        enthalpy slot.
+        """
+        run_flash = getattr(property_container, "run_flash", None)
+        if run_flash is None:
+            return False
+        try:
+            parameters = inspect.signature(run_flash).parameters
+        except (TypeError, ValueError):
+            return False
+        return "evaluate_PT" in parameters
+
+    @staticmethod
     def _copy_property_container_attrs(property_container, attrs):
         saved = {}
         for attr in attrs:
@@ -176,6 +198,7 @@ class UpstreamRampUpRate(RampUpRate):
         temperature,
         composition,
         phase_names,
+        pt_flash_supported,
         evaluate_enthalpy=False,
     ):
         """
@@ -202,20 +225,19 @@ class UpstreamRampUpRate(RampUpRate):
         )
         try:
             composition = np.asarray(composition, dtype=float)
-            try:
-                ph = property_container.run_flash(
-                    pressure,
-                    temperature,
-                    composition[: property_container.nc_fl],
-                    evaluate_PT=True,
+            if not pt_flash_supported:
+                raise ValueError(
+                    "The property container's run_flash does not accept the "
+                    "evaluate_PT argument, so the PT flash required for the "
+                    "upstream boundary state cannot be evaluated. Use a "
+                    "property container whose run_flash supports evaluate_PT."
                 )
-            except TypeError:
-                ph = property_container.run_flash(
-                    pressure,
-                    temperature,
-                    composition[: property_container.nc_fl],
-                    evaluate_PT=False,
-                )
+            ph = property_container.run_flash(
+                pressure,
+                temperature,
+                composition[: property_container.nc_fl],
+                evaluate_PT=True,
+            )
             nu = np.asarray(property_container.nu, dtype=float)
             x = np.asarray(property_container.x, dtype=float)
             mw = np.asarray(property_container.Mw[: property_container.nc_fl])
@@ -228,6 +250,16 @@ class UpstreamRampUpRate(RampUpRate):
             for phase_idx in ph:
                 phase_name = property_container.phases_name[phase_idx]
                 if phase_name not in phase_names:
+                    if nu[phase_idx] > np.finfo(float).eps:
+                        raise ValueError(
+                            f"Upstream flash at pressure={pressure}, "
+                            f"temperature={temperature}, composition="
+                            f"{composition[: property_container.nc_fl].tolist()} "
+                            f"produced phase '{phase_name}' with molar fraction "
+                            f"{nu[phase_idx]}, which is not listed in phase_names="
+                            f"{list(phase_names)}; its saturation and enthalpy "
+                            "contributions cannot be silently dropped."
+                        )
                     continue
 
                 phase_comp = x[phase_idx, : property_container.nc_fl]
@@ -281,6 +313,7 @@ class UpstreamRampUpRate(RampUpRate):
         temperature,
         composition,
         phase_names,
+        pt_flash_supported,
     ):
         _, molar_enthalpy = cls._evaluate_upstream_phase_props(
             property_container,
@@ -288,6 +321,7 @@ class UpstreamRampUpRate(RampUpRate):
             temperature,
             composition,
             phase_names,
+            pt_flash_supported,
             evaluate_enthalpy=True,
         )
         return molar_enthalpy
@@ -373,6 +407,7 @@ class UpstreamRampUpRate(RampUpRate):
             self.temperature,
             self.composition,
             self.phase_names,
+            self._pt_flash_supported,
         )
 
         phase_mass_rates = self._explicit_phase_mass_rates(mass_rate, rate)

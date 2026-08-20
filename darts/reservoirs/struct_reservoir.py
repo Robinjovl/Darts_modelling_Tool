@@ -260,6 +260,13 @@ class StructReservoir(ReservoirBase):
             assert well_seg_idx is not None, (
                 "If the well is of the DFM type, well_seg_idx must be specified!"
             )
+            if well_seg_idx < 2:
+                raise ValueError(
+                    f"well_seg_idx={well_seg_idx} is invalid for DFM well "
+                    f"'{well_name}': well_seg_idx is 1-based and index 1 is the "
+                    "wellhead ghost segment, which cannot be perforated. "
+                    "Perforable segments are 2..num_segments."
+                )
             assert ms_epm is None, (
                 "If the well is of the DFM type, ms_epm must not be specified!"
             )

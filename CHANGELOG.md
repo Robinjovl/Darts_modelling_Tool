@@ -130,9 +130,16 @@
   - remove `vtk` dependency ([!314](https://gitlab.com/open-darts/open-darts/-/merge_requests/314))
   - add "viz" option to install `vtk` and `pyvista`; added "all" option to install "viz" and "solvers" groups. Usage pip install open-darts[viz].
 - Switched to Python 3.11 by default (CI/CD pipelines, ReadTheDocs build, `ruff` lint target, and the recommended developer environment); Python 3.10–3.13 remain supported and tested.
-- Add OLGA-style linear IPR support for controlling injectivity/productivity of DFM wells ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
-- Add `IdealGasDensity` to `darts/physics/properties/density.py` ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
-- Add `AirViscositySutherland` to `darts/physics/properties/viscosity.py` ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
+- DFM wells and IPR ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305)):
+  - Add OLGA-style linear IPR support for controlling injectivity/productivity of DFM wells: new `LinearDFMWellIPRHook` (`darts/pipes/linear_dfm_well_ipr.py`) registered through the new generic `model.rhs_flux_hooks` mechanism for Python-side RHS/Jacobian flux hooks.
+  - **Breaking (model API):** renamed the `add_perforation` keyword `with_peaceman_for_coupled_well_reservoir` -> `with_peaceman_for_dfm_well` and `StructDiscretizer.calc_well_index_for_coupled_well_reservoir` -> `calc_well_index_for_dfm_well`.
+  - Fixed the well-control Jacobian block placement: rate-operator derivatives are now placed in the column block of the state actually used — the wellhead block for injectors and the well-body block for producers. Reference data for the rate-controlled producer models (`GeoRising`, `2ph_geothermal_mass_flux`) was regenerated with relative drift <= 1.1e-4.
+  - New drift-flux closures `tang_2019`, `bhagwat_ghajar_2014` and `bai_2023` in `darts/pipes/pipe.py`; the Bhagwat & Ghajar family (`bhagwat_ghajar_2014`, `bai_2023`) is restricted to vertical wells.
+  - `save_dfm_well_props` can additionally store DFM phase-rate output columns (phase molar, mass and volumetric rates per segment) via `include_phase_rates=True`.
+  - Fixed the accepted-pipe-state rollback: the new `DartsModel.accept_pipe_states()` commits DFM pipe states only after a converged timestep, so the phase-velocity evaluator restarts failed/cut timesteps from the last accepted pipe state instead of a rejected trial state.
+  - Removed `DartsModel.apply_dfm_well_lateral_heat_flux` in favor of the `SemiAnalyticalWellLateralHeatTransferHook` registered via `model.rhs_flux_hooks`.
+  - Add `AirViscositySutherland` to `darts/physics/properties/viscosity.py`.
+  - The choke boundary models were split out of this merge request to mature outside the main repository.
 - OBL, interpolation and supporting-point cache ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)):
   - The adaptive OBL interpolators are now **unbounded**: hypercubes are keyed on a signed multi-index instead of a packed integer bounded by `(axes_min, axes_max)`, so the grid is defined only by a per-axis origin and step and grows on demand wherever the solver lands. Out-of-window queries return bit-exact linear extrapolation with no clamping. The engines correspondingly drop OBL-window state clipping; Newton now clips only to the physical simplex `[0, 1] ± sim_eps`. (Requires recompiling the C++/pybind interpolators and engines.)
   - Rewrote the boundary-extrapolation support-point selection for robustness (rank-revealing modified-Gram–Schmidt selection with an `np.linalg.lstsq` fallback and a warning on singular supports, instead of silently least-squaring a singular system). `OperatorsBase.dz` may now be a scalar or a per-axis vector (stored as a NumPy array); uniform grids reproduce prior results exactly.

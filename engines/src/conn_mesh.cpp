@@ -2013,20 +2013,24 @@ int conn_mesh::add_wells(std::vector<ms_well *> &wells)
 	  else if (wells[iw]->ms_type == ms_well::MS_Type::DFM)
 	  {
 		  std::copy(wells[iw]->segment_depths.begin(), wells[iw]->segment_depths.end(), depth.begin() + well_head_idx);
-		  // DFM perforations must connect a well segment and reservoir block at the same depth.
-		  for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
+		  // DFM perforations must connect a well segment and reservoir block at the same depth:
+		  // the engine perforation flux and the Python IPR computation assume zero gravity head across a perforation.
+		  static constexpr value_t DFM_PERF_DEPTH_ALIGN_TOL = 1.0e-3; // [m]
+		  for (size_t p = 0; p < wells[iw]->perforations.size(); p++)
 		  {
 			  index_t i_w, r_i;
 			  value_t wi, wid;
 			  std::tie(i_w, r_i, wi, wid) = wells[iw]->perforations[p];
 			  const index_t w_i = well_head_idx + i_w + 1;
-			  if (std::fabs(depth[w_i] - depth[r_i]) > static_cast<value_t>(1.0e-3))
+			  if (std::fabs(depth[w_i] - depth[r_i]) > DFM_PERF_DEPTH_ALIGN_TOL)
 			  {
 				  std::ostringstream msg;
 				  msg << "DFM well '" << wells[iw]->name << "' perforation " << p
-				      << " is not aligned with its reservoir cell: depth[" << w_i
+				      << " (well-local segment " << i_w << ") is not aligned with its reservoir cell within "
+				      << DFM_PERF_DEPTH_ALIGN_TOL << " m: depth[" << w_i
 				      << "] = " << depth[w_i] << " m, depth[" << r_i
-				      << "] = " << depth[r_i] << " m.";
+				      << "] = " << depth[r_i] << " m."
+				      << " Set the well PipeGeometry segment TVDs equal to the perforated cell-center depths.";
 				  throw std::runtime_error(msg.str());
 			  }
 		  }
@@ -2057,6 +2061,14 @@ void conn_mesh::add_connection_for_lateral_heat_exchange_for_dfm(ms_well* &well)
 		index_t i_w, i_r;
 		value_t wid;
 		std::tie(i_w, i_r, wid) = well->connections_for_lateral_heat_transfer[i];
+
+		// Skip the wellhead ghost segment (i_w == 0): its equations are replaced by
+		// well-control equations and its Jacobian row must keep exactly two column
+		// blocks (diagonal + well body), so no extra connection may be attached to it.
+		if (i_w == 0)
+		{
+			continue;
+		}
 
 		bool i_w_in_perforations = false;
 		for (index_t p = 0; p < well->perforations.size(); p++)
@@ -2106,8 +2118,9 @@ void conn_mesh::store_wellhead_conn_idx(index_t n_res_conns, std::vector<ms_well
 
 			if (w->with_lateral_heat_transfer)
 			{
-				// Connections of lateral heat transfer
-				num_conns += w->num_segments - w->perforations.size();
+				// Connections of lateral heat transfer: one per segment, excluding
+				// perforated segments and the wellhead ghost segment
+				num_conns += w->num_segments - 1 - w->perforations.size();
 			}
 		}
 	}

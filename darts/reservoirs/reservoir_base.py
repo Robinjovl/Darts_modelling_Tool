@@ -163,7 +163,12 @@ class ReservoirBase:
         :type well_name: str
         :param res_cell_idx: Index of reservoir cell to be perforated
         :type res_cell_idx: int or tuple
-        :param well_seg_idx: Index of well segment to be perforated (indexing starts from 1 at wellhead segment)
+        :param well_seg_idx: Index of well segment to be perforated. Required for DFM wells,
+                             where indexing is 1-based and index 1 is the wellhead ghost segment,
+                             which cannot be perforated; perforable segments are 2..num_segments.
+                             StructReservoir additionally accepts the DFM-only keyword
+                             with_peaceman_for_dfm_well to compute the well index with the
+                             Peaceman model.
         :type well_seg_idx: int
         :param well_diameter: Internal diameter of the wellbore
         :type well_diameter: float

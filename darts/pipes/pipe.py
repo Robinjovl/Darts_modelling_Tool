@@ -24,6 +24,7 @@ Notes:
 """
 
 import math
+import warnings
 from dataclasses import dataclass
 
 from scipy.optimize import fsolve
@@ -302,12 +303,23 @@ class Pipe:
                 n1 = 0.21
                 n2 = 0.95
             elif 1 < Cmax <= 1.5:
-                # Linear interpolation/extrapolation from the two anchor points Cmax=1 and Cmax=1.2
+                # Linear interpolation/extrapolation from the two anchor points Cmax=1 and Cmax=1.2.
+                # Shi et al. provide anchor sets only at Cmax = 1.0 and 1.2; beyond that the
+                # parameters are this code's linear extrapolation.
                 a1 = 0.06
                 a2 = _linear_interp_extrap(Cmax, 1.0, 1.2, 0.21, 0.12)
                 m0 = _linear_interp_extrap(Cmax, 1.0, 1.2, 1.85, 1.27)
                 n1 = _linear_interp_extrap(Cmax, 1.0, 1.2, 0.21, 0.24)
                 n2 = _linear_interp_extrap(Cmax, 1.0, 1.2, 0.95, 1.08)
+                if a2 < a1 + 0.02:
+                    warnings.warn(
+                        f"Cmax={Cmax} extrapolates the Shi et al. drift-velocity "
+                        f"transition bound a2 to {a2:.4f}, below a1={a1}; the "
+                        "bubble-rise/film-flooding transition window would be "
+                        "empty or inverted. Clamping a2 to a1 + 0.02.",
+                        stacklevel=2,
+                    )
+                    a2 = a1 + 0.02
             else:
                 raise ValueError("Cmax value is out of the allowed range [1 to 1.5]")
 
@@ -372,6 +384,19 @@ class Pipe:
                 self.tang_theta = pipe_geometry.inclination_angle_radian - math.pi / 2.0
 
         elif self.drift_flux_model in self.bhagwat_ghajar_drift_flux_models:
+            # inclination_angle_radian is measured from the vertical direction.
+            inclination_from_vertical = np.atleast_1d(
+                np.asarray(pipe_geometry.inclination_angle_radian, dtype=float)
+            )
+            if np.any(np.abs(inclination_from_vertical) > 1e-8):
+                raise ValueError(
+                    f"drift_flux_model='{self.drift_flux_model}' supports only "
+                    "vertical pipes: the Bhagwat and Ghajar correlation signs its "
+                    "inclination angle theta by the FLOW direction, while this "
+                    "implementation evaluates it in the geometry frame; the two "
+                    "are equivalent only for vertical wells. Inclined support "
+                    "requires a flow-aware theta (planned)."
+                )
             self.profile_A = None
             self.B = None
             self.a1 = None
@@ -441,8 +466,6 @@ class Pipe:
         # is_first_first_iter is true only for the first iteration of the first time step.
         self.is_first_first_iter = True
         self._accepted_pipe_state = None
-
-        self.lateral_heat_rate_eval = None
 
         self.enable_profile_parameter = enable_profile_parameter
         self.enable_drift_velocity = enable_drift_velocity
@@ -520,6 +543,17 @@ class Pipe:
         for attr, value in self._accepted_pipe_state.items():
             setattr(self, attr, self._copy_pipe_state_value(value))
         return True
+
+    @property
+    def lateral_heat_rate_eval(self):
+        return None
+
+    @lateral_heat_rate_eval.setter
+    def lateral_heat_rate_eval(self, value):
+        raise RuntimeError(
+            "lateral_heat_rate_eval is no longer consumed; register "
+            "SemiAnalyticalWellLateralHeatTransferHook in model.rhs_flux_hooks instead"
+        )
 
     def eval_phase_vels(
         self, Xn_dfm_well, X_dfm_well, dt, simulation_time, iter_counter, flag
@@ -1312,20 +1346,30 @@ class Pipe:
                     ) / ((sL_face[i] * self.rhoM_adjusted_face[i]) ** 2)
 
         for i in range(num_interfaces):
-            if self.vG[i] > 0 and sG[i] == 0:
+            if i == 0 and self.exclude_top_control_block_from_velocity:
+                # The ghost wellhead/control block is excluded from the DFM velocity
+                # closure, so gate interface 0 with the first physical segment's
+                # saturations for both flow directions.
+                sG_upwind_pos = sG_upwind_neg = sG[1]
+                sL_upwind_pos = sL_upwind_neg = sL[1]
+            else:
+                sG_upwind_pos, sG_upwind_neg = sG[i], sG[i + 1]
+                sL_upwind_pos, sL_upwind_neg = sL[i], sL[i + 1]
+
+            if self.vG[i] > 0 and sG_upwind_pos == 0:
                 self.vG[i] = 0
                 if self.diff_method == "OBL":
                     self.vG_der[i, :] = 0
-            elif self.vG[i] < 0 and sG[i + 1] == 0:
+            elif self.vG[i] < 0 and sG_upwind_neg == 0:
                 self.vG[i] = 0
                 if self.diff_method == "OBL":
                     self.vG_der[i, :] = 0
 
-            if self.vL[i] > 0 and sL[i] == 0:
+            if self.vL[i] > 0 and sL_upwind_pos == 0:
                 self.vL[i] = 0
                 if self.diff_method == "OBL":
                     self.vL_der[i, :] = 0
-            elif self.vL[i] < 0 and sL[i + 1] == 0:
+            elif self.vL[i] < 0 and sL_upwind_neg == 0:
                 self.vL[i] = 0
                 if self.diff_method == "OBL":
                     self.vL_der[i, :] = 0
@@ -1640,6 +1684,10 @@ class Pipe:
         :param theta: Pipe inclination angle [rad], measured from horizontal.
         :return: Distribution coefficient C0.
         """
+        if rhoL - rhoG <= np.finfo(float).eps:
+            # Phase densities merging => no slip, physically consistent:
+            # skip the correlation and use the homogeneous limit C0 = 1.
+            return 1.0
         if self.drift_flux_model == "bai_2023":
             rho_m = (sG * rhoG + sL * rhoL) / (sG + sL)
             mu_m = (sG * muG + sL * muL) / (sG + sL)
@@ -1717,13 +1765,19 @@ class Pipe:
         :param theta: Bai pipe inclination angle [rad], measured from horizontal.
         :return: Drift velocity [m/s] in the pipe coordinate system.
         """
+        density_difference = rhoL - rhoG
+        if density_difference <= np.finfo(float).eps:
+            # Phase densities merging => no slip, physically consistent:
+            # the correlation takes the square root of (rhoL - rhoG).
+            return 0.0
+
         viscosity_ratio = muL / 0.001
         if viscosity_ratio > 10.0:
             C2 = (0.434 / math.log10(viscosity_ratio)) ** 0.15
         else:
             C2 = 1.0
 
-        La = math.sqrt(sigma / (self.g * (rhoL - rhoG))) / self.geometry.pipe_ID
+        La = math.sqrt(sigma / (self.g * density_difference)) / self.geometry.pipe_ID
         if self.drift_flux_model == "bai_2023":
             C3 = (La / 0.025) ** 0.9 if La > 0.025 else 1.0
             liquid_holdup_factor = sL
@@ -1741,7 +1795,7 @@ class Pipe:
         )
         return (
             (0.35 * math.sin(theta) + 0.45 * math.cos(theta))
-            * math.sqrt(self.g * self.geometry.pipe_ID * (rhoL - rhoG) / rhoL)
+            * math.sqrt(self.g * self.geometry.pipe_ID * density_difference / rhoL)
             * liquid_holdup_factor
             * C2
             * C3
@@ -1792,13 +1846,21 @@ class Pipe:
             # self.vC0_filtered = np.zeros(len(indices))
 
             # Calculate C00 from the solution of the previous time step
+            eps = np.finfo(float).eps
+            # Phase densities merging => no slip, physically consistent: the
+            # correlations below take the square root of (rhoL - rhoG), so skip
+            # them on such faces and use the homogeneous limit C0 = 1 there.
+            drho0 = rhoL0_face_filtered - rhoG0_face_filtered
+            no_slip0 = drho0 <= eps
+            safe_drho0 = np.where(no_slip0, eps, drho0)
+
             vM0 = rhoM0_vM0_filtered / rhoM0_face_filtered
-            NB0 = (geom.pipe_ID**2) * (
-                self.g * (rhoL0_face_filtered - rhoG0_face_filtered) / IFT0_face
-            )
+            NB0 = (geom.pipe_ID**2) * (self.g * safe_drho0 / IFT0_face)
             if self.drift_flux_model == "tang_2019":
                 Dhat0 = np.sqrt(NB0)
-                self.Ku0_filtered = np.clip(3.587 - 19.105 / (Dhat0 + 3.333), 0.0, 3.2)
+                self.Ku0_filtered = np.clip(
+                    3.587 - 19.105 / (Dhat0 + 3.333), 1.0e-6, 3.2
+                )
             else:
                 self.Ku0_filtered = np.sqrt(
                     self.Cku
@@ -1806,10 +1868,7 @@ class Pipe:
                     * (np.sqrt(1 + NB0 / (self.Cku**2 * self.Cw)) - 1)
                 )
             self.vC0_filtered = (
-                self.g
-                * IFT0_face
-                * (rhoL0_face_filtered - rhoG0_face_filtered)
-                / rhoL0_face_filtered**2
+                self.g * IFT0_face * safe_drho0 / rhoL0_face_filtered**2
             ) ** 0.25
             v_sgf0 = (
                 self.Ku0_filtered
@@ -1818,21 +1877,25 @@ class Pipe:
             )
 
             if self.drift_flux_model == "shi_t2well":
-                flooding_fraction = self.Fv * sG0_face_filtered * abs(vM0) / v_sgf0
+                flooding_fraction = (
+                    self.Fv * sG0_face_filtered * abs(vM0) / np.maximum(v_sgf0, eps)
+                )
                 beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
                 beta0 = np.clip(beta0, 0, 1)  # T2Well imposes 0 <= beta0 <= 1
                 eta0 = (beta0 - self.B) / (1 - self.B)
                 eta0 = np.clip(eta0, 0, 1)  # Shi et al. impose 0 <= eta <= 1
                 C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
             elif self.drift_flux_model == "tang_2019":
-                flooding_fraction = sG0_face_filtered * abs(vM0) / v_sgf0
+                flooding_fraction = (
+                    sG0_face_filtered * abs(vM0) / np.maximum(v_sgf0, eps)
+                )
                 beta0 = np.maximum(sG0_face_filtered, flooding_fraction)
                 beta0 = np.clip(beta0, 0, 1)  # T2Well imposes 0 <= beta0 <= 1
                 eta0 = (beta0 - self.B) / (1 - self.B)
-                eta0_squared = np.minimum(eta0**2, 1.0)
-                C00_filtered = self.profile_A / (
-                    1 + (self.profile_A - 1) * eta0_squared
-                )
+                # Shi et al. impose 0 <= eta <= 1; clamping eta**2 alone lets a
+                # negative eta grow the denominator, making C0 non-monotonic in beta.
+                eta0 = np.clip(eta0, 0.0, 1.0)
+                C00_filtered = self.profile_A / (1 + (self.profile_A - 1) * eta0**2)
             elif self.drift_flux_model in self.bhagwat_ghajar_drift_flux_models:
                 muG0_face = self.iter_phases_props0_face[6]
                 muL0_face = self.iter_phases_props0_face[7]
@@ -1855,6 +1918,17 @@ class Pipe:
                         muL0_face[idx],
                         self.bhagwat_ghajar_theta[idx],
                     )
+                # The drift-flux velocity reconstruction divides by
+                # rhoM_adjusted = C0*sG*rhoG + (1 - C0*sG)*rhoL and requires
+                # C0*sG < 1 (Shi enforces this structurally via the eta ramp;
+                # B&G does not).
+                C00_filtered = np.minimum(
+                    C00_filtered,
+                    (1.0 - 1e-8) / np.maximum(sG0_face_filtered, eps),
+                )
+
+            # Homogeneous no-slip limit on faces with merging phase densities.
+            C00_filtered[no_slip0] = 1.0
 
             C00 = np.ones(num_interfaces)  # C00 all ones first
             self.C00 = np.ones(num_interfaces)
@@ -1899,6 +1973,13 @@ class Pipe:
             rhoL0_face_filtered = rhoL0_face[indices]
             vM0_filtered = vM0[indices]
             rhoM0_face_filtered = self.rhoM0_face[indices]
+
+            # Phase densities merging => no slip, physically consistent: the
+            # drift-velocity contribution is zero on such faces and the
+            # correlations (square roots of rhoL - rhoG) are skipped.
+            no_slip0 = (rhoL0_face_filtered - rhoG0_face_filtered) <= np.finfo(
+                float
+            ).eps
 
             if not self.enable_profile_parameter:
                 # Use this function to evaluate Ku0_filtered and vC0_filtered for drift velocity;
@@ -1974,15 +2055,14 @@ class Pipe:
                     / np.maximum(denominator_vd, eps)
                 )
 
+                safe_drho0 = np.where(no_slip0, eps, safe_rhoL_face - safe_rhoG_face)
                 N_l = safe_muL_face / np.maximum(
-                    (safe_rhoL_face - safe_rhoG_face)
-                    * np.power(geom.pipe_ID, 1.5)
-                    * math.sqrt(self.g),
+                    safe_drho0 * np.power(geom.pipe_ID, 1.5) * math.sqrt(self.g),
                     eps,
                 )
                 N_Eo = (
                     self.g
-                    * (safe_rhoL_face - safe_rhoG_face)
+                    * safe_drho0
                     * (geom.pipe_ID**2)
                     / np.maximum(self.IFT_face_filtered, eps)
                 )
@@ -2017,6 +2097,7 @@ class Pipe:
                     tang_params.m1 * vDv * np.sin(theta_filtered)
                     + transition * vDh * np.cos(theta_filtered)
                 ) * low_re_multiplier
+                vD_filtered[no_slip0] = 0.0
 
                 vD0 = np.zeros(num_interfaces)
                 vD0[indices] = vD_filtered
@@ -2076,6 +2157,7 @@ class Pipe:
                     )
                 )
                 # vD0[value] = (1 - self.C00_filtered[index] * sG0_face_filtered[index]) * self.vC0_filtered[index] * K0_filtered[index] * self.m[value] / (self.C00_filtered[index] * sG0_face_filtered[index] * np.sqrt(rhoG0_face_filtered[index] / rhoL0_face_filtered[index]) + 1 - self.C00_filtered[index] * sG0_face_filtered[index])
+            vD0[indices[no_slip0]] = 0.0
         else:
             vD0 = np.zeros(num_interfaces)
         self.vD0 = -vD0  # I multiplied the drift velocity by -1 because I changed the positive direction of the well from top to bottom.

@@ -10,9 +10,12 @@
 
  A well control assumed to fill one (blocked) row of jacobian for the well head block.
  The well head block has exactly one connection - to the well body block
- The well head block always has smaller index that well body block, therefore
+ The well head block always has a smaller index than the well body block, therefore
  in the jacobian row the first block is the diagonal block for wellhead variables,
  and the second block stands for well body variables.
+ The row layout depends on this invariant: the wellhead row must contain exactly two
+ column blocks (diagonal first, well body second), because add_to_jacobian memsets
+ and fills exactly two blocks.
 
  If the base well control class is to be exposed in python, then there is the following strategy choice:
  1. WELL_CONTROL_COPY: A control will receive and fill a small vector, which is then to be copied to big jacobian
