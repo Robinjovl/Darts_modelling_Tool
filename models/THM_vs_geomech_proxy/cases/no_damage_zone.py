@@ -7,8 +7,8 @@ from cases.base import (
 )
 
 
-def input_data_no_damage_zone():
-    idata = input_data_base()
+def input_data_no_damage_zone(physics_type='single_phase_thermal'):
+    idata = input_data_base(thermal='thermal' in physics_type)
 
     # override permeability (default is 10 mD)
     #idata.rock.permx = idata.rock.permy = idata.rock.permz = 1000.0  # [mD]

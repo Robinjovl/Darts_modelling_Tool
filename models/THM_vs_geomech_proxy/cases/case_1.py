@@ -11,8 +11,8 @@ from darts.reservoirs.unstruct_reservoir_mech import (
 )
 
 
-def input_data_case_1():
-    idata = input_data_base()
+def input_data_case_1(physics_type='single_phase_thermal'):
+    idata = input_data_base(thermal='thermal' in physics_type)
 
     # override permeability (default is 10 mD)
     idata.rock.permx = idata.rock.permy = idata.rock.permz = 1000.0  # [mD]
@@ -42,10 +42,10 @@ def input_data_case_1():
     return idata
 
 
-def input_data_case_2():
+def input_data_case_2(physics_type='single_phase_thermal'):
     # same geometry as case_1, but rock properties are assigned per Gmsh tag rather than
     # by coordinate interpolation; tags: 1=overburden, 2=reservoir, 3=underburden
-    idata = input_data_case_1()
+    idata = input_data_case_1(physics_type)
     idata.other.set_props_by_tags = True
 
     rsv_poro = 0.2
@@ -62,9 +62,9 @@ def input_data_case_2():
     return idata
 
 
-def input_data_case_3():
+def input_data_case_3(physics_type='single_phase_thermal'):
     # same as case_2 but with heterogeneous rock thermal (flow) properties per tag (sand vs shale)
-    idata = input_data_case_2()
+    idata = input_data_case_2(physics_type)
 
     hcap_sand  = 2450.0  # [kJ/m3/K]
     hcap_shale = 2300.0  # [kJ/m3/K]
@@ -77,10 +77,10 @@ def input_data_case_3():
     return idata
 
 
-def input_data_case_4():
+def input_data_case_4(physics_type='single_phase_thermal'):
     # same as case_3 but with heterogeneous geomechanical properties per tag (sand vs shale):
     # a softer, more compressible reservoir sand sandwiched between stiffer shale burdens.
-    idata = input_data_case_3()
+    idata = input_data_case_3(physics_type)
 
     E_sand  = 8.0 * 1e4   # [bars]  (1e4: [GPa] -> [bar])
     E_shale = 20.0 * 1e4  # [bars]
@@ -110,9 +110,9 @@ def input_data_case_4():
 
     return idata
 
-def input_data_zero_rate():
+def input_data_zero_rate(physics_type='single_phase_thermal'):
     # same geometry as case_1, but with zero well rate
-    idata = input_data_case_1()
+    idata = input_data_case_1(physics_type)
     idata.other.well_rate_m3_day = 0.  # [m3/day] volumetric rate (thermal / rate-control mod
 
     # recompute derived values (well_rate) that depend on the overridden parameters above 

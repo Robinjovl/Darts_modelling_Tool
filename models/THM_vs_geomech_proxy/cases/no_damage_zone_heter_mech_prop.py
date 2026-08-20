@@ -6,14 +6,14 @@ from darts.reservoirs.unstruct_reservoir_mech import (
 )
 
 
-def input_data_no_damage_zone_heter_mech_prop():
+def input_data_no_damage_zone_heter_mech_prop(physics_type='single_phase_thermal'):
     # Inherits `no_damage_zone` (same mesh, flow/thermal props) but with
     # HETEROGENEOUS geomechanical properties per tag: a softer, more
     # compressible sand reservoir sandwiched between stiffer shale burdens.
     #
     # Per-tag array order follows no_damage_zone / matrix_tags
     # (99991, 99992, 99993) = [reservoir(sand), overburden(shale), underburden(shale)].
-    idata = input_data_no_damage_zone()
+    idata = input_data_no_damage_zone(physics_type)
 
     E_sand  = 20.0 * 1e4   # [bars]  (1e4: [GPa] -> [bar])
     E_shale = 10.0 * 1e4  # [bars]
