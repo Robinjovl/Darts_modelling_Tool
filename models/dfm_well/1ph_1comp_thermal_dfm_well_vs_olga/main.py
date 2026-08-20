@@ -12,6 +12,7 @@ from darts.engines import redirect_darts_output
 from darts.pipes.save_results import save_dfm_well_props
 from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
 from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
+from darts.pipes.viz.plot_well_segment_property_vs_time import plot_well_segment_property_vs_time
 
 from model import Model
 
@@ -45,3 +46,10 @@ save_dfm_well_props(
 
 # plot_heat_map_pcolormesh('I1', coupled_model, show_plot=False)
 plot_heat_map_contourf('I1', coupled_model, show_plot=False)
+
+plot_well_segment_property_vs_time(
+    [(coupled_model.output_folder, 'DARTS-well')],
+    'I1', 'pressure', segment_index=-1,
+    output_path=os.path.join(coupled_model.output_folder, 'bottom_segment_pressure_vs_time.png'),
+    show_plot=False,
+)
