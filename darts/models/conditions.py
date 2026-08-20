@@ -19,10 +19,10 @@ Structure:
   the open / constant-state far field expressed by the huge-boundary-volume
   trick and validates at bind time that the volumes really reached the mesh
   before the engine cached the pore volumes.
-
-A ``DirichletPin`` item (pinning a state variable via a penalized diagonal) is
-deliberately NOT part of this MVP — pinning interacts with the engine's
-accumulation terms and chopping and needs its own design pass.
+- :class:`DirichletPin` — a prescribed state value for selected (cell, equation)
+  pairs, in two modes: ``"state"`` (the projection the models used to hand-roll:
+  overwrite the entry in the state vector) and ``"row"`` (the assembly-consistent
+  block-CSR row replacement). See its docstring for the trade-off.
 """
 
 import inspect
@@ -150,6 +150,28 @@ class ConditionItem:
         """Add this item's contributions to ``ctx.rhs`` (and ``ctx.jac``)."""
         raise NotImplementedError(f"{type(self).__name__}.apply() is not implemented")
 
+    def project_state(self, t: float):
+        """Project the engine state vector BEFORE the engine assembly.
+
+        The counterpart of :meth:`apply` for the (rare) items that constrain the
+        STATE rather than contribute to the residual: :meth:`apply` runs after
+        assembly, so a state written there is not the state the residual and the
+        Jacobian were built from. Items that must be seen BY the assembly
+        implement this instead (or in addition), and a model whose Newton loop
+        wants that guarantee calls ``self.conditions.project_state(t)`` at the
+        top of every iteration, immediately before
+        ``engine.assemble_linear_system(dt)``.
+
+        The default is a no-op, and the framework never calls it on its own: the
+        stock nonlinear solver offers no pre-assembly stage, so only models with
+        their own Newton loop (``DartsModel.run_timestep`` overrides) can drive
+        it today. Implementations must be idempotent — a model may legitimately
+        call it and then let :meth:`apply` re-assert the same values.
+
+        :param t: time at the START of the timestep [days].
+        """
+        pass
+
     def on_timestep_start(self, dt: float, t: float):
         """Called once before each timestep solve attempt."""
         pass
@@ -223,8 +245,10 @@ class ConditionSet:
             raise RuntimeError(
                 f"{type(model).__name__} overrides apply_rhs_flux(), so the "
                 f"{len(self.items)} registered condition item(s) would silently "
-                "never run. Either call super().apply_rhs_flux(dt, t) from the "
-                "override or migrate the override into condition items."
+                "never run. Move a post-assembly policy check into the "
+                "DartsModel.after_assembly(dt, t) hook, migrate a source/flux "
+                "override into condition items, or (legacy) call "
+                "super().apply_rhs_flux(dt, t) from the override."
             )
 
         # (iii) mechanics engines rescale equation rows inside assembly
@@ -304,6 +328,19 @@ class ConditionSet:
     def apply(self, ctx: AssemblyContext):
         for item in self.items:
             item.apply(ctx)
+
+    def project_state(self, t: float):
+        """Run every item's pre-assembly state projection (see
+        :meth:`ConditionItem.project_state`).
+
+        A model with its own Newton loop calls this immediately before
+        ``engine.assemble_linear_system(dt)``; it is a no-op for every item type
+        that does not constrain the state, and for an empty set.
+
+        :param t: time at the START of the timestep [days].
+        """
+        for item in self.items:
+            item.project_state(t)
 
     def on_timestep_start(self, dt: float, t: float):
         for item in self.items:
@@ -684,11 +721,12 @@ class ConstantStateBC(ConditionItem):
     def __init__(self, faces=None, mode: str = "volume", rtol: float = 1e-9):
         if mode == "dirichlet":
             raise NotImplementedError(
-                "ConstantStateBC(mode='dirichlet') is not implemented: pinning a "
-                "boundary state through a penalized diagonal interacts with the "
-                "engine accumulation terms and with Newton chopping and needs its "
-                "own design pass (the DirichletPin follow-up). Use the default "
-                "mode='volume' (the huge-boundary-volume far field)."
+                "ConstantStateBC(mode='dirichlet') is not implemented: this item "
+                "declares the huge-boundary-volume far field, which is a mesh "
+                "property, and pinning the boundary state instead is a different "
+                "condition with different results. Use the default mode='volume' "
+                "(the huge-boundary-volume far field), or register a DirichletPin "
+                "on the boundary cells explicitly if that is what you mean."
             )
         if mode != "volume":
             raise ValueError(
@@ -781,3 +819,202 @@ class ConstantStateBC(ConditionItem):
     def apply(self, ctx: AssemblyContext):
         """No-op: the far field is carried by the mesh volumes, not the residual."""
         return
+
+
+class DirichletPin(ConditionItem):
+    """A prescribed state value for selected ``(cell, equation)`` pairs.
+
+    Two modes, and the difference between them is not cosmetic.
+
+    ``mode="state"`` (the DEFAULT) is a PROJECTION: it overwrites the entry of
+    the state vector, ``X[cell * n_vars + equation] = value``, and touches
+    neither the residual nor the Jacobian. The pinned equation is still
+    assembled from the (overwritten) state and its accumulation term is still
+    computed — and then silently discarded, because the next projection
+    overwrites whatever the Newton update did to that entry. The constraint is
+    therefore invisible to the linear solver and to any preconditioner: they see
+    an unconstrained system, and the pin is re-imposed behind their back. It has
+    two virtues: it needs no Jacobian, so it works on the GPU engines and with
+    direct solvers, and it reproduces bit-for-bit what the models that
+    hand-rolled this pinning did before the conditions layer existed.
+
+    ``mode="row"`` is the assembly-consistent formulation: the block-CSR row of
+    the pinned equation is replaced by the constraint itself — every block in
+    that block row has the equation's row zeroed, the diagonal block gets a unit
+    entry, and the residual becomes ``X - value``. That is the physically
+    honest statement (the linear solver and the preconditioner now see the
+    constraint, the pinned equation no longer competes with its own
+    accumulation term), and it converges to the same pinned value. It is
+    CPU-only (it needs ``ctx.jac``, so ``provides_jacobian = True`` and
+    ``requires_platform = "cpu"``), and because it changes the assembled system
+    it changes results — it is strictly OPT-IN and no shipped model selects it.
+
+    WHEN THE PROJECTION IS APPLIED (state mode). The pin is written at two
+    points, and both are idempotent:
+
+    - :meth:`project_state`, BEFORE ``engine.assemble_linear_system(dt)``. This
+      is the load-bearing one: it is what makes the assembly — the residual, the
+      Jacobian and the convergence test — see the pinned state. The framework's
+      stock nonlinear solver has no pre-assembly stage, so a model must call
+      ``self.conditions.project_state(t)`` at the top of its own Newton loop,
+      exactly where it used to call its hand-rolled pinning function.
+    - :meth:`apply`, AFTER assembly, from the ``conditions`` stage of
+      :meth:`~darts.models.darts_model.DartsModel.apply_rhs_flux`. This is the
+      only stage the framework drives by itself; it guarantees that the state
+      the Newton update starts from — and the state accepted at the end of the
+      timestep — satisfies the pin.
+
+    A model that calls only the second one gets a WEAKER condition than the
+    legacy pinning code: the assembly then evaluates at the un-pinned state that
+    the previous Newton update left behind, which perturbs the residual, the
+    Jacobian and the iteration counts. Measured on SPE11b (42x12, 2 simulated
+    years, single-threaded): same timestep and Newton counts, one linear
+    iteration fewer, and a 3e-7 relative shift in the final state — small, but
+    not the bit-for-bit reproduction the reference pickles need. Migrate a
+    hand-rolled pin by calling BOTH.
+
+    GPU. On the GPU platform the engine state lives on the device and
+    ``engine.X`` is only its host mirror; the framework's assembly context does
+    not round-trip it (it round-trips the RHS, which is a different buffer).
+    This item therefore performs exactly the round-trip the models performed
+    around their hand-rolled pin, and for the same reason::
+
+        copy_data_to_host(engine.X, engine.get_X_d())   # refresh the host mirror
+        X[pinned] = value                               # write on the host
+        copy_data_to_device(engine.X, engine.get_X_d()) # push the whole vector back
+
+    The refresh is not optional: the write is a host write and the push copies
+    the WHOLE vector back, so a stale host mirror would overwrite the device
+    state everywhere else. The consequence is an ordering rule — on GPU this
+    item's write wins over any host-side write to ``engine.X`` made earlier in
+    the same ``apply_rhs_flux`` pass, because the refresh discards it. (Items
+    that only read ``ctx.X`` are unaffected, and a pin registered FIRST leaves
+    the host mirror fresh for them, which is how SPE11b's CO2 source reads a
+    valid well-block pressure on GPU.)
+
+    :param cells: int array of block indices to pin.
+    :param equation: index of the pinned equation/variable within the block —
+        an int applied to every cell, or one index per cell.
+    :param values: the pinned value(s): a scalar, an array of one value per
+        cell, or a callable ``f(t) -> array`` of one value per cell.
+    :param mode: ``"state"`` (default) or ``"row"``, as described above.
+    """
+
+    def __init__(self, cells, equation, values, mode: str = "state"):
+        if mode not in ("state", "row"):
+            raise ValueError(
+                f"DirichletPin: unknown mode '{mode}'; supported: 'state', 'row'."
+            )
+        self.mode = mode
+        self.cells = np.asarray(cells, dtype=np.int64).ravel()
+        self.equation = equation
+        self.values = values
+        # row mode replaces Jacobian rows; state mode writes nothing but X
+        self.provides_jacobian = mode == "row"
+        self.requires_platform = "cpu" if mode == "row" else None
+        self.equations = None
+        self._x_idx = None  # flat X/rhs indices of the pinned entries
+        self._zero_idx = None  # row mode: flat jac_vals indices to zero
+        self._diag_idx = None  # row mode: flat jac_vals indices of the unit entries
+        self._engine = None
+        self._on_gpu = False
+        self._copy_to_host = None
+        self._copy_to_device = None
+
+    def bind(self, model):
+        n_vars = model.physics.n_vars
+        n_blocks = model.reservoir.mesh.n_blocks
+        if len(self.cells) and (self.cells.min() < 0 or self.cells.max() >= n_blocks):
+            raise IndexError(
+                f"DirichletPin: cell indices must be within [0, {n_blocks})."
+            )
+        equations = np.asarray(self.equation, dtype=np.int64).ravel()
+        if equations.size == 1:
+            equations = np.full(len(self.cells), int(equations[0]), dtype=np.int64)
+        elif equations.size != len(self.cells):
+            raise ValueError(
+                f"DirichletPin: equation has {equations.size} entries, expected 1 "
+                f"or {len(self.cells)} (one per cell)."
+            )
+        if equations.size and (equations.min() < 0 or equations.max() >= n_vars):
+            raise IndexError(
+                f"DirichletPin: equation indices must be within [0, {n_vars})."
+            )
+        self.equations = equations
+        self._x_idx = self.cells * n_vars + equations
+        if not callable(self.values):
+            self.values = np.broadcast_to(
+                np.asarray(self.values, dtype=float), (len(self.cells),)
+            ).astype(float)
+
+        self._engine = model.physics.engine
+        self._on_gpu = model.platform == "gpu"
+        if self._on_gpu:
+            # Same import the models used for their hand-rolled round-trip; it
+            # only exists in a GPU-enabled build.
+            from darts.engines import copy_data_to_device, copy_data_to_host
+
+            self._copy_to_host = copy_data_to_host
+            self._copy_to_device = copy_data_to_device
+
+        if self.mode == "row":
+            view = BlockCSRView(model.physics.engine, n_vars)
+            block_size = view.block_size
+            zero_idx, diag_idx = [], []
+            for cell, equation in zip(self.cells, equations, strict=True):
+                row_start = int(view.jac_rows[cell])
+                row_end = int(view.jac_rows[cell + 1])
+                for pos in range(row_start, row_end):
+                    start = pos * block_size + int(equation) * n_vars
+                    zero_idx.extend(range(start, start + n_vars))
+                diag_idx.append(
+                    view.diag_pos(int(cell)) * block_size
+                    + int(equation) * n_vars
+                    + int(equation)
+                )
+            self._zero_idx = np.asarray(zero_idx, dtype=np.int64)
+            self._diag_idx = np.asarray(diag_idx, dtype=np.int64)
+
+    def evaluate_values(self, t: float) -> np.ndarray:
+        """The pinned value of every cell at time ``t``."""
+        if callable(self.values):
+            values = np.asarray(self.values(t), dtype=float).ravel()
+            if values.size != len(self.cells):
+                raise ValueError(
+                    f"DirichletPin: values(t) returned {values.size} value(s), "
+                    f"expected {len(self.cells)} (one per cell)."
+                )
+            return values
+        return self.values
+
+    def _write_state(self, t: float):
+        """Overwrite the pinned entries of the engine state vector.
+
+        On GPU this is the documented host round-trip; on CPU ``engine.X`` is
+        the state vector itself (and the very buffer ``ctx.X`` views), so the
+        write lands directly.
+        """
+        if not len(self.cells):
+            return
+        engine = self._engine
+        if self._on_gpu:
+            self._copy_to_host(engine.X, engine.get_X_d())
+        np.asarray(engine.X)[self._x_idx] = self.evaluate_values(t)
+        if self._on_gpu:
+            self._copy_to_device(engine.X, engine.get_X_d())
+
+    def project_state(self, t: float):
+        """Pre-assembly projection (state mode only); a no-op in row mode."""
+        if self.mode == "state":
+            self._write_state(t)
+
+    def apply(self, ctx: AssemblyContext):
+        if not len(self.cells):
+            return
+        if self.mode == "state":
+            self._write_state(ctx.t)
+            return
+        # row mode: replace the block-CSR row of the pinned equation
+        ctx.jac.jac_vals[self._zero_idx] = 0.0
+        ctx.jac.jac_vals[self._diag_idx] = 1.0
+        ctx.rhs[self._x_idx] = ctx.X[self._x_idx] - self.evaluate_values(ctx.t)

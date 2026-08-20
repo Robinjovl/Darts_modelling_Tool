@@ -4,6 +4,7 @@ import h5py
 import warnings
 from darts.models.output import Output
 from darts.models.cicd_model import CICDModel
+from darts.models.conditions import DirichletPin
 from darts.engines import value_vector, sim_params, well_control_iface, timer_node
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
@@ -262,6 +263,25 @@ class Model(CICDModel):
                                self.sol_filename, self.well_filename, save_initial, all_phase_props, precision, compression,
                                compression_level, verbose)
 
+    def set_boundary_conditions(self):
+        """Prescribe the ambient pressure in every block.
+
+        This batch-reactor model is run at constant pressure: the pressure of
+        every block is held at self.pressure_init instead of being solved for.
+        It used to be done by overwriting the state vector by hand at the top of
+        the Newton loop (``X[::n_vars] = self.pressure_init``); the same
+        projection is now a DirichletPin(mode='state') item, which run_timestep()
+        drives through self.conditions.project_state(t) from the same place.
+
+        mode='state' -- not the assembly-consistent mode='row' -- because the
+        overwrite is exactly what this model did and the two are not numerically
+        equivalent (see DirichletPin).
+        """
+        self.conditions.add(DirichletPin(cells=np.arange(self.reservoir.mesh.n_blocks),
+                                         equation=0,
+                                         values=self.pressure_init,
+                                         mode='state'))
+
     def set_initial_conditions(self):
         input_distribution = {'pressure': self.pressure_init,
                             self.physics.vars[1]: self.zCalcite,
@@ -298,7 +318,11 @@ class Model(CICDModel):
         self.timer.node["simulation"].start()
         residual_history = []
         for i in range(max_newt + 1):
-            np.asarray(self.physics.engine.X)[::self.physics.n_vars] = self.pressure_init
+            # Pre-assembly state projection: the constant-pressure DirichletPin
+            # registered in set_boundary_conditions(). It must run BEFORE the
+            # assembly so that the residual, the Jacobian and the convergence
+            # test all see the prescribed pressure.
+            self.conditions.project_state(t)
 
             # assemble Jacobian and residual of reservoir and well blocks
             self.physics.engine.assemble_linear_system(dt)

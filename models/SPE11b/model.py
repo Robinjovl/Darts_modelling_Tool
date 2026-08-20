@@ -4,6 +4,7 @@ import os
 
 from dataclasses import dataclass
 from darts.models.darts_model import DartsModel
+from darts.models.conditions import CellSource, DirichletPin
 from darts.nonlinear_solvers import Norm, NewtonSolver, ChopSpec
 from darts.engines import value_vector
 from darts.input.input_data import linear_solver_types
@@ -289,57 +290,108 @@ class Model(DartsModel):
         else:
             pass
 
-    def apply_rhs_flux(self, dt: float, t: float):
-        if self.specs['RHS'] is False:
-            # If the function has not been overloaded, pass
+    def register_conditions(self):
+        """Register the Python-side conditions of the RHS (well-less) formulation.
+
+        Called at the end of set_boundary_conditions(), i.e. after set_op_list()
+        and after the reservoir resolved well_cells / top_cells / bot_cells, and
+        before DartsModel.init() compiles and binds the set.
+
+        Two items replace what this model used to hand-roll:
+
+        * a CellSource carrying the CO2/H2O mass injection (and, for the thermal
+          formulation, the injected enthalpy) of every well cell -- the former
+          set_rhs_flux()/apply_rhs_flux() pair;
+        * a DirichletPin(mode='state') prescribing the geothermal temperature of
+          the top and bottom cell rows -- the former set_top_bot_temp(), which
+          run_timestep() called (with an explicit GPU host round-trip) before
+          every assembly. The pin is projected from the same place, now through
+          self.conditions.project_state(t); the item owns the round-trip.
+        """
+        if self.specs['RHS'] is not True:
+            # wells carry the injection: no Python-side source, and no pin
             return
-        rhs = np.array(self.physics.engine.RHS, copy=False)
-        n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
-        rhs[:n_res] += self.set_rhs_flux(t) * dt
+
+        # CO2/H2O (+ enthalpy) injection in the well cells. well_cells is one
+        # entry per well, each a cell index or an array of them; the flattened
+        # order is the order the old nested loop wrote them in.
+        wells = [np.atleast_1d(np.asarray(well)).ravel() for well in self.reservoir.well_cells]
+        self.source_cells = np.concatenate(wells) if wells else np.empty(0, dtype=np.int64)
+        # per source cell: which well it belongs to, and how many cells that well has
+        self.source_well_idx = np.concatenate(
+            [np.full(len(well), i, dtype=np.int64) for i, well in enumerate(wells)]
+        ) if wells else np.empty(0, dtype=np.int64)
+        self.source_well_size = np.concatenate(
+            [np.full(len(well), len(well), dtype=np.int64) for well in wells]
+        ) if wells else np.empty(0, dtype=np.int64)
+        self._enthalpy_op_idx = None  # resolved on first evaluation
+        self.conditions.add(CellSource(cells=self.source_cells, rates=self.injection_rates))
+
+        # Geothermal temperature of the top and bottom rows. The values are a
+        # callable because reservoir.centroids is only assigned in
+        # set_initial_conditions() for the ny != 1 (SPE11c) reservoir, i.e. after
+        # this runs.
+        if self.physics.thermal:
+            self.pinned_cells = np.concatenate(
+                (np.asarray(self.reservoir.bot_cells, dtype=np.int64),
+                 np.asarray(self.reservoir.top_cells, dtype=np.int64))
+            )
+            self.conditions.add(DirichletPin(cells=self.pinned_cells,
+                                             equation=self.physics.n_vars - 1,
+                                             values=self.geothermal_temperature,
+                                             mode='state'))
         return
 
-    def set_rhs_flux(self, t: float = None):
-        if self.specs['RHS'] is True:
-            nc = self.physics.nc
-            nv = self.physics.n_vars
-            nb = self.reservoir.mesh.n_res_blocks
-            rhs = np.zeros(nb * nv)
+    def geothermal_temperature(self, t: float = None):
+        """Pinned temperature of self.pinned_cells: T = 70 - 0.025 * z, origin at bottom."""
+        return 273.15 + 70 - self.reservoir.centroids[self.pinned_cells, 2] * 0.025
 
-            region = 0
-            molar_masses = self.physics.property_containers[region].Mw
-            mole_fractions = self.inj_stream[:nc]
-            n_comp = np.zeros(nc)
-            nu_idxV = list(self.physics.property_containers[region].output_props.keys()).index("nu_V")
-            nu_idxA = list(self.physics.property_containers[region].output_props.keys()).index("nu_Aq")
-            enth_idx = list(self.physics.property_containers[region].output_props.keys()).index("enthalpy_V")
-            enth_idxAq = list(self.physics.property_containers[region].output_props.keys()).index("enthalpy_Aq")
+    def injection_rates(self, t: float, states: np.ndarray) -> np.ndarray:
+        """Injected component (and energy) rates of every source cell.
 
-            for i, well in enumerate(self.reservoir.well_cells):
-                for well_cell in well:
-                    p_wellcell = self.physics.engine.X[well_cell * nv]
-                    if self.physics.thermal:
-                        state = value_vector([p_wellcell, *self.inj_stream[:-2], self.inj_stream[-1]])
-                    else:
-                        state = value_vector([p_wellcell] + self.inj_stream[:-2])
+        Rates are positive INTO the cell, in the engine residual units per day
+        (kmol/day per component equation, kJ/day for the energy equation); the
+        framework applies rhs[cell, c] -= rate * dt, which is what the old
+        set_rhs_flux()/apply_rhs_flux() pair spelled out by hand.
 
-                    values = value_vector(np.zeros(self.physics.n_ops))
-                    # values_np = np.array(values)
-                    self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
-                    enth = values[nu_idxV] * values[enth_idx] + values[nu_idxA] * values[enth_idxAq]  # mole fraction moles in vapour [V/V+A] * molar enthalpy of vapour [kJ/kmol] + aq
-                    # enth = self.physics.property_containers[0].compute_total_enthalpy(state)
-                    avg_molar_mass = sum(mf * M for mf, M in zip(mole_fractions, molar_masses))
-                    tot_moles = self.inj_rate[i] / avg_molar_mass / len(well)  # kg/day / kg/mol -> mol/day
+        :param t: current time [days] (the rates depend on it only through the
+            injection schedule, which set_well_rhs() writes into self.inj_rate)
+        :param states: (n_source_cells, n_vars) state of the source cells
+        """
+        nc = self.physics.nc
+        nv = self.physics.n_vars
+        region = 0
+        molar_masses = self.physics.property_containers[region].Mw
+        mole_fractions = self.inj_stream[:nc]
 
-                    for comp_idx in range(nc):
-                        comp_flux_idx = well_cell * nv + comp_idx  # Index
-                        n_comp[comp_idx] = tot_moles * mole_fractions[comp_idx]  # Compute component moles
-                        rhs[comp_flux_idx] -= n_comp[comp_idx]  # Update rhs
+        if self._enthalpy_op_idx is None:
+            output_props = list(self.physics.property_containers[region].output_props.keys())
+            self._enthalpy_op_idx = (output_props.index("nu_V"), output_props.index("nu_Aq"),
+                                     output_props.index("enthalpy_V"), output_props.index("enthalpy_Aq"))
+        nu_idxV, nu_idxA, enth_idx, enth_idxAq = self._enthalpy_op_idx
 
-                    if self.physics.thermal:
-                        temp_idx = well_cell * nv + nv - 1  # Last equation index (temperature)
-                        rhs[temp_idx] -= enth * tot_moles
+        rates = np.zeros((len(self.source_cells), nv))
+        for k, well_cell in enumerate(self.source_cells):
+            p_wellcell = float(states[k, 0])
+            if self.physics.thermal:
+                state = value_vector([p_wellcell, *self.inj_stream[:-2], self.inj_stream[-1]])
+            else:
+                state = value_vector([p_wellcell] + self.inj_stream[:-2])
 
-            return rhs
+            values = value_vector(np.zeros(self.physics.n_ops))
+            self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
+            enth = values[nu_idxV] * values[enth_idx] + values[nu_idxA] * values[enth_idxAq]  # mole fraction moles in vapour [V/V+A] * molar enthalpy of vapour [kJ/kmol] + aq
+            avg_molar_mass = sum(mf * M for mf, M in zip(mole_fractions, molar_masses))
+            # kg/day / kg/mol -> mol/day
+            tot_moles = self.inj_rate[self.source_well_idx[k]] / avg_molar_mass / self.source_well_size[k]
+
+            for comp_idx in range(nc):
+                rates[k, comp_idx] = tot_moles * mole_fractions[comp_idx]
+
+            if self.physics.thermal:
+                rates[k, nv - 1] = enth * tot_moles  # last equation (energy)
+
+        return rates
 
     def set_physics(self, temperature: float = None):
         """Physical properties"""
@@ -681,6 +733,8 @@ class Model(DartsModel):
                     self.reservoir.bot_cells.append(ids[self.reservoir.discretizer.centroid_all_cells[ids, 2].argmin()])
         else:
             pass
+
+        self.register_conditions()
         return
 
     def set_str_boundary_volume_multiplier(self):
@@ -737,22 +791,6 @@ class Model(DartsModel):
 
         return mass_components, mass_vapor, mass_aqueous
 
-    def set_top_bot_temp(self):
-        nv = self.physics.n_vars
-        for bot_cell in self.reservoir.bot_cells:
-            # T = 70 - 0.025 * z  - origin at bottom
-            T_spec_bot = 273.15 + 70 - self.reservoir.centroids[bot_cell, 2] * 0.025
-            target_cell = bot_cell*nv+nv-1
-            self.physics.engine.X[target_cell] = T_spec_bot
-
-        for top_cell in self.reservoir.top_cells:
-            # T = 70 - 0.025 * z  - origin at bottom
-            T_spec_top = 273.15 + 70 - self.reservoir.centroids[top_cell, 2] * 0.025
-            target_cell = top_cell*nv+nv-1
-            self.physics.engine.X[target_cell] = T_spec_top
-        return
-
-
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         """
         Method to solve Newton loop for specified timestep
@@ -777,16 +815,13 @@ class Model(DartsModel):
         residual_history = []
         for i in range(max_newt + 1):
 
-            if self.physics.thermal and self.specs['RHS'] is True:
-                # apply bottom and top boundary conditions
-
-                if self.platform == 'gpu':
-                    copy_data_to_host(self.physics.engine.X, self.physics.engine.get_X_d())
-
-                self.set_top_bot_temp()
-
-                if self.platform == 'gpu':
-                    copy_data_to_device(self.physics.engine.X, self.physics.engine.get_X_d())
+            # Pre-assembly state projection: the top/bottom geothermal
+            # DirichletPin registered in register_conditions() (a no-op when this
+            # formulation registered none). It must run BEFORE the assembly, so
+            # that the residual, the Jacobian and the convergence test all see
+            # the pinned temperature; the item owns the GPU host round-trip of X
+            # that used to sit here.
+            self.conditions.project_state(t)
 
             # Update well phase velocities and derivatives if DFM wells are used
             if self.has_dfm_well:
