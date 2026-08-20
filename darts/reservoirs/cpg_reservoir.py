@@ -25,7 +25,7 @@ from darts.discretizer import index_vector as index_vector_discr
 from darts.discretizer import value_vector as value_vector_discr
 from darts.engines import conn_mesh, timer_node
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
-from darts.reservoirs.reservoir_base import ReservoirBase
+from darts.reservoirs.reservoir_base import BoundaryVolumeDict, ReservoirBase
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
@@ -56,6 +56,22 @@ class CPG_Reservoir(ReservoirBase):
         self.minpv = minpv  # minimal pore volume threshold to make cells inactive, m3
 
         self.snap_counter = 0
+
+        # Record of the far-field boundary volumes applied by
+        # set_boundary_volume(); kept in the same six-face form the structured
+        # reservoirs use so darts.models.conditions.ConstantStateBC can read one
+        # place. Writing it here has no effect by itself -- set_boundary_volume()
+        # is the entry point that touches the mesh.
+        self.boundary_volumes = BoundaryVolumeDict(
+            {
+                "xy_minus": None,
+                "xy_plus": None,
+                "yz_minus": None,
+                "yz_plus": None,
+                "xz_minus": None,
+                "xz_plus": None,
+            }
+        )
 
         self.vtk_filenames_and_times = {}
         self.vtkobj = 0
@@ -436,6 +452,29 @@ class CPG_Reservoir(ReservoirBase):
     def set_boundary_volume(
         self, xy_minus=-1, xy_plus=-1, yz_minus=-1, yz_plus=-1, xz_minus=-1, xz_plus=-1
     ):
+        """Assign a far-field volume to the outermost ACTIVE cell of each face.
+
+        Actnum-aware variant of the "huge boundary volume" open / constant-state
+        far field; a value of ``-1`` leaves the face untouched. Must be called
+        after :meth:`discretize` and followed by :meth:`apply_volume_depth`, and
+        both must happen BEFORE ``DartsModel.init()`` initializes the engine:
+        the engine caches ``PV = volume * poro`` once and a later volume write is
+        silently ignored (guarded below, see
+        :class:`~darts.models.conditions.ConstantStateBC`).
+        """
+        self.assert_pore_volumes_mutable("set_boundary_volume")
+        # record what was requested, for ConstantStateBC to validate
+        for face, value in (
+            ("xy_minus", xy_minus),
+            ("xy_plus", xy_plus),
+            ("yz_minus", yz_minus),
+            ("yz_plus", yz_plus),
+            ("xz_minus", xz_minus),
+            ("xz_plus", xz_plus),
+        ):
+            if value > -1:
+                self.boundary_volumes[face] = value
+
         mesh_volume = np.array(self.volume_all_cells, copy=False)
         local_to_global = np.array(self.discr_mesh.local_to_global, copy=False)
         global_to_local = np.array(self.discr_mesh.global_to_local, copy=False)

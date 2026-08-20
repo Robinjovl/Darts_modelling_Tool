@@ -131,41 +131,29 @@ class UnstructReservoir(ReservoirBase):
         return mesh
 
     def set_boundary_volume(self, boundary_volumes: dict):
-        # Set-up dictionary with data for boundary cells:
-        boundary_data = dict()  # Dictionary containing boundary condition data (coordinate and value of boundary):
-        boundary_data['first_boundary_dir'] = (
-            'X'  # Indicates the boundary is located at constant X (in this case!)
-        )
-        # Constant X-coordinate value at which the boundary is located (used to be 3.40885):
-        boundary_data["first_boundary_val"] = np.min(
-            self.discretizer.mesh_data.points[:, 0]
-        )
+        """Not available for unstructured meshes.
 
-        # Same as above but for the second boundary condition!
-        boundary_data["second_boundary_dir"] = "X"
-        # Constant X-coordinate value at which the boundary is located (used to be 13.0014):
-        boundary_data["second_boundary_val"] = np.max(
-            self.discretizer.mesh_data.points[:, 0]
-        )
+        The historical implementation called ``self.discretizer.calc_boundary_cells()``,
+        a method that does not exist on any discretizer in this repository, so this
+        entry point could never have run: it is kept only to fail loudly instead of
+        silently inheriting the no-op base implementation.
 
-        # Calculate boundary cells using the calc_boundary_cells method:
-        self.left_boundary_cells, self.right_boundary_cells = (
-            self.discretizer.calc_boundary_cells(boundary_data)
+        An unstructured mesh has no "six face slabs" to address, so an open /
+        constant-state far field has to be expressed explicitly: select the boundary
+        cells yourself (e.g. by coordinate) and multiply ``mesh.volume`` for them
+        BEFORE ``DartsModel.init()`` initializes the engine -- the engine caches
+        ``PV = volume * poro`` once, so a later write is silently ignored (see
+        :class:`~darts.models.conditions.ConstantStateBC`). Alternatively, drive the
+        far field with a well or a condition item.
+        """
+        raise NotImplementedError(
+            "UnstructReservoir.set_boundary_volume() is not implemented: the "
+            "six-face boundary-volume trick has no unstructured equivalent (the "
+            "previous body called discretizer.calc_boundary_cells(), which does "
+            "not exist). Select the boundary cells explicitly and scale "
+            "mesh.volume for them before model.init(), or express the open "
+            "boundary with a well / condition item."
         )
-
-        # Calc maximum size of well cells (used to have more homogeneous injection conditions by scaling the WI):
-        dummy_vol = np.array(self.volume, copy=True)
-        self.max_well_vol = np.max(
-            [
-                np.max(dummy_vol[self.left_boundary_cells]),
-                np.max(dummy_vol[self.right_boundary_cells]),
-            ]
-        )
-
-        self.volume[self.right_boundary_cells] = (
-            self.volume[self.right_boundary_cells] * 1e8
-        )
-        return
 
     def add_perforation(
         self,

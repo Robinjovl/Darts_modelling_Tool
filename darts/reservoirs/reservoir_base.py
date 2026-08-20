@@ -8,10 +8,55 @@ from darts.engines import conn_mesh, ms_well, ms_well_vector, timer_node, value_
 from darts.pipes.define_pipe_geometry import PipeGeometry
 
 
+class BoundaryVolumeDict(dict):
+    """``face name -> boundary volume`` map that latches once the engine ran.
+
+    The "huge boundary volume" trick (an open / constant-state far field, see
+    :class:`~darts.models.conditions.ConstantStateBC`) is expressed by writing
+    a very large volume into the boundary cells. The engine caches the pore
+    volume ``PV = volume * poro`` ONCE, inside ``engine.init()``, so a volume
+    written afterwards is silently ignored. This dict therefore refuses writes
+    after :meth:`ReservoirBase.freeze_pore_volumes` has been called (the
+    conditions layer calls it at the end of ``DartsModel.init()``, i.e. right
+    after the engine cached ``PV``) instead of letting the change disappear.
+    """
+
+    #: class-level default, set per-instance by ``freeze_pore_volumes()``
+    frozen = False
+
+    def _check_mutable(self, key):
+        if self.frozen:
+            raise RuntimeError(
+                f"boundary_volumes['{key}'] was assigned after the engine was "
+                "initialized. The engine caches the pore volume "
+                "PV = volume * poro once, in engine.init() (DartsModel.reset(), "
+                "called from DartsModel.init()), so this change would be "
+                "SILENTLY IGNORED. Set the boundary volumes before "
+                "model.init() -- typically in set_reservoir(), since the "
+                "reservoir applies them inside discretize(). If the engine is "
+                "deliberately re-initialized afterwards, call "
+                "reservoir.allow_pore_volume_updates() first."
+            )
+
+    def __setitem__(self, key, value):
+        self._check_mutable(key)
+        super().__setitem__(key, value)
+
+    def update(self, *args, **kwargs):
+        for key in dict(*args, **kwargs):
+            self._check_mutable(key)
+        super().update(*args, **kwargs)
+
+
 class ReservoirBase:
     """
     Base class for generating a mesh
     """
+
+    #: Latched by :meth:`freeze_pore_volumes` once the engine has cached
+    #: ``PV = volume * poro``; class-level default so reservoirs that do not
+    #: call ``ReservoirBase.__init__`` still behave.
+    pore_volumes_frozen = False
 
     mesh: conn_mesh
     wells: list[ms_well]
@@ -77,10 +122,59 @@ class ReservoirBase:
         """
         pass
 
+    def freeze_pore_volumes(self) -> None:
+        """Latch the cell volumes: the engine has cached ``PV = volume * poro``.
+
+        Called once per model by
+        :meth:`darts.models.conditions.ConditionSet.compile` at the end of
+        ``DartsModel.init()``, which is the single point that is guaranteed to
+        run after ``engine.init()``. From here on, any write to the boundary
+        volumes would be silently ignored by the engine, so the user-callable
+        entry points refuse it (see :meth:`assert_pore_volumes_mutable`).
+        """
+        self.pore_volumes_frozen = True
+        boundary_volumes = getattr(self, "boundary_volumes", None)
+        if isinstance(boundary_volumes, BoundaryVolumeDict):
+            boundary_volumes.frozen = True
+
+    def allow_pore_volume_updates(self) -> None:
+        """Release the latch set by :meth:`freeze_pore_volumes`.
+
+        Only meaningful when the engine is going to be re-initialized (a fresh
+        ``engine.init()`` re-caches ``PV`` from ``mesh.volume``).
+        """
+        self.pore_volumes_frozen = False
+        boundary_volumes = getattr(self, "boundary_volumes", None)
+        if isinstance(boundary_volumes, BoundaryVolumeDict):
+            boundary_volumes.frozen = False
+
+    def assert_pore_volumes_mutable(self, api_name: str) -> None:
+        """Raise when cell volumes are written after the engine cached ``PV``.
+
+        :param api_name: name of the entry point being guarded, quoted in the error
+        """
+        if self.pore_volumes_frozen:
+            raise RuntimeError(
+                f"{type(self).__name__}.{api_name}() was called after the engine "
+                "was initialized. The engine caches the pore volume "
+                "PV = volume * poro once, in engine.init() (DartsModel.reset(), "
+                "called from DartsModel.init()), so this volume change would be "
+                "SILENTLY IGNORED. Set boundary volumes before model.init() -- "
+                "typically in set_reservoir(). If the engine is deliberately "
+                "re-initialized afterwards, call "
+                "reservoir.allow_pore_volume_updates() first."
+            )
+
     @abc.abstractmethod
     def set_boundary_volume(self, boundary_volumes: dict):
         """
         Function to set size of volume for boundary cells
+
+        This is the "huge boundary volume" open / constant-state far field (see
+        :class:`~darts.models.conditions.ConstantStateBC`). ORDERING: the engine
+        caches ``PV = volume * poro`` once in ``engine.init()``, so the volumes
+        must be in ``mesh.volume`` before ``DartsModel.init()`` initializes the
+        engine; a later write is silently ignored.
 
         :param boundary_volumes: Dictionary that contains boundary cells with assigned volume
         :type boundary_volumes: dict

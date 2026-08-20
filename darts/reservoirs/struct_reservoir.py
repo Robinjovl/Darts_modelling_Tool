@@ -12,7 +12,7 @@ from darts.engines import (
     value_vector,
 )
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
-from darts.reservoirs.reservoir_base import ReservoirBase
+from darts.reservoirs.reservoir_base import BoundaryVolumeDict, ReservoirBase
 
 
 class StructReservoir(ReservoirBase):
@@ -103,14 +103,21 @@ class StructReservoir(ReservoirBase):
         self.is_cpg = is_cpg
         self.global_to_local = global_to_local
 
-        self.boundary_volumes = {
-            "xy_minus": None,
-            "xy_plus": None,
-            "yz_minus": None,
-            "yz_plus": None,
-            "xz_minus": None,
-            "xz_plus": None,
-        }
+        # Open / constant-state far field ("huge boundary volume" trick): the
+        # values set here are applied to mesh.volume inside discretize(), which
+        # must happen before the engine caches PV = volume * poro. The dict type
+        # refuses writes once the engine ran (see ReservoirBase and
+        # darts.models.conditions.ConstantStateBC).
+        self.boundary_volumes = BoundaryVolumeDict(
+            {
+                "xy_minus": None,
+                "xy_plus": None,
+                "yz_minus": None,
+                "yz_plus": None,
+                "xz_minus": None,
+                "xz_plus": None,
+            }
+        )
         self.connected_well_segments = {}
 
     def discretize(self, cache: bool = False, verbose: bool = False) -> conn_mesh:
@@ -197,6 +204,13 @@ class StructReservoir(ReservoirBase):
         return mesh
 
     def set_boundary_volume(self, boundary_volumes: dict):
+        """Apply the far-field boundary volumes to the six face slabs.
+
+        Called from :meth:`discretize`; see
+        :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.set_boundary_volume`
+        for the ordering requirement (the engine caches ``PV`` once).
+        """
+        self.assert_pore_volumes_mutable("set_boundary_volume")
         # apply changes
         volume = self.discretizer.volume
         if boundary_volumes["xy_minus"] is not None:

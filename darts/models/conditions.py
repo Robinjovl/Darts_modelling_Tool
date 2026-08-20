@@ -15,6 +15,10 @@ Structure:
   (``model.conditions``), compiled once at the end of ``init()``.
 - Item types: :class:`CellSource`, :class:`SegmentSource`, :class:`PipeSourceTerm`,
   :class:`InterfaceFlux`.
+- :class:`ConstantStateBC` — a DECLARATIVE item: it writes nothing, it declares
+  the open / constant-state far field expressed by the huge-boundary-volume
+  trick and validates at bind time that the volumes really reached the mesh
+  before the engine cached the pore volumes.
 
 A ``DirichletPin`` item (pinning a state variable via a penalized diagonal) is
 deliberately NOT part of this MVP — pinning interacts with the engine's
@@ -199,6 +203,15 @@ class ConditionSet:
         mis-scaled), or (iv) the adjoint/history-matching driver is active and
         an item is not ``adjoint_transparent``.
         """
+        # The engine caches PV = volume * poro ONCE, in engine.init() (run by
+        # DartsModel.reset() from DartsModel.init()). compile() is the single
+        # point that runs after it for EVERY model, so latch the reservoir cell
+        # volumes here: later writes would be silently ignored by the engine and
+        # the reservoir entry points now say so instead. Skipped when the engine
+        # has not been initialized yet (e.g. the restart flow, which initializes
+        # it in load_restart_data() after init() returned).
+        self._freeze_reservoir_pore_volumes(model)
+
         if not self.items:
             return self
 
@@ -272,6 +285,21 @@ class ConditionSet:
         for item in self.items:
             item.bind(model)
         return self
+
+    @staticmethod
+    def _freeze_reservoir_pore_volumes(model):
+        """Tell the reservoir that the engine has cached ``PV = volume * poro``."""
+        reservoir = getattr(model, "reservoir", None)
+        freeze = getattr(reservoir, "freeze_pore_volumes", None)
+        if not callable(freeze):
+            return
+        engine = getattr(getattr(model, "physics", None), "engine", None)
+        try:
+            engine_initialized = len(engine.X) > 0
+        except (AttributeError, TypeError):
+            return
+        if engine_initialized:
+            freeze()
 
     def apply(self, ctx: AssemblyContext):
         for item in self.items:
@@ -595,3 +623,161 @@ class InterfaceFlux(ConditionItem):
             ctx.jac.add_block(pos_rc, -d_col_dt)
             ctx.jac.add_block(pos_cr, d_row_dt)
             ctx.jac.add_block(pos_cc, d_col_dt)
+
+
+class ConstantStateBC(ConditionItem):
+    """Declared open / constant-state far field (the huge-boundary-volume trick).
+
+    ~13 models express an open boundary by giving the outermost cells an
+    enormous volume: their pore volume then dwarfs anything that flows in or
+    out over the simulated time, so their state stays (numerically) constant
+    and the boundary behaves as an infinite-acting aquifer / constant-pressure
+    far field. The mechanism is a MESH property, not a residual contribution,
+    so this item deliberately writes NOTHING in :meth:`apply`.
+
+    What it adds is the missing half of that trick: a place that SEES it and
+    CHECKS it. The volumes are written by the reservoir exactly where they are
+    written today (``reservoir.boundary_volumes`` applied inside
+    ``StructReservoir.discretize()``, ``CPG_Reservoir.set_boundary_volume()``
+    plus ``apply_volume_depth()``); this item reads that dict at bind time and
+    validates that the values actually reached ``mesh.volume`` before the
+    engine cached the pore volumes.
+
+    The ordering matters and is invisible otherwise: the engine caches
+    ``PV = volume * poro`` ONCE, in ``engine.init()``, which ``DartsModel.init()``
+    runs (via :meth:`~darts.models.darts_model.DartsModel.reset`) AFTER
+    ``set_boundary_conditions()``. A boundary volume written any later — in
+    ``set_boundary_conditions()``, or after ``init()`` returned — is silently
+    ignored and the model quietly runs with a CLOSED boundary. Registering this
+    item turns that silent wrong answer into an error at ``init()`` time::
+
+        self.reservoir.boundary_volumes['yz_minus'] = 1e8   # in set_reservoir()
+        ...
+        self.conditions.add(ConstantStateBC(faces='yz_minus'))
+
+    (The complementary guard lives in the reservoir: once the engine ran,
+    :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.freeze_pore_volumes`
+    makes further boundary-volume writes raise instead of vanish.)
+
+    :param faces: face name or iterable of face names that must carry a
+        far-field volume; ``None`` (default) means "whichever faces the
+        reservoir has a boundary volume for", and then at least one is required.
+    :param mode: ``"volume"`` (default) — the huge-volume mechanism.
+        ``"dirichlet"`` (pinning the boundary state through a penalized
+        diagonal) is reserved for the ``DirichletPin`` follow-up and raises
+        :class:`NotImplementedError`.
+    :param rtol: relative tolerance used to recognize the requested volume in
+        ``mesh.volume``.
+
+    :ivar volumes: ``face -> requested volume``, resolved at bind time.
+    :ivar n_cells: ``face -> number of mesh cells carrying that volume``.
+    """
+
+    #: the six face slabs of the structured reservoir family
+    FACES = ("xy_minus", "xy_plus", "yz_minus", "yz_plus", "xz_minus", "xz_plus")
+
+    provides_jacobian = False
+    # The item contributes nothing to the residual/Jacobian, so the system the
+    # adjoint differentiates is exactly the one it always was.
+    adjoint_transparent = True
+
+    def __init__(self, faces=None, mode: str = "volume", rtol: float = 1e-9):
+        if mode == "dirichlet":
+            raise NotImplementedError(
+                "ConstantStateBC(mode='dirichlet') is not implemented: pinning a "
+                "boundary state through a penalized diagonal interacts with the "
+                "engine accumulation terms and with Newton chopping and needs its "
+                "own design pass (the DirichletPin follow-up). Use the default "
+                "mode='volume' (the huge-boundary-volume far field)."
+            )
+        if mode != "volume":
+            raise ValueError(
+                f"ConstantStateBC: unknown mode '{mode}'; supported: 'volume'."
+            )
+        if faces is None:
+            self.faces = None
+        else:
+            faces = (faces,) if isinstance(faces, str) else tuple(faces)
+            unknown = [face for face in faces if face not in self.FACES]
+            if unknown:
+                raise ValueError(
+                    f"ConstantStateBC: unknown face(s) {unknown}; expected any of "
+                    f"{list(self.FACES)}."
+                )
+            self.faces = faces
+        self.mode = mode
+        self.rtol = float(rtol)
+        self.volumes = {}
+        self.n_cells = {}
+
+    def bind(self, model):
+        reservoir = model.reservoir
+        boundary_volumes = getattr(reservoir, "boundary_volumes", None)
+        if not isinstance(boundary_volumes, dict):
+            raise RuntimeError(
+                f"ConstantStateBC(mode='volume') reads the boundary-volume map of "
+                f"the reservoir, but {type(reservoir).__name__} does not expose "
+                "'boundary_volumes'. The huge-boundary-volume far field is "
+                "implemented by the structured reservoir family (StructReservoir, "
+                "StructRadialReservoir, CPG_Reservoir); other reservoirs must "
+                "express an open boundary differently."
+            )
+
+        requested = {
+            face: float(value)
+            for face, value in boundary_volumes.items()
+            if value is not None
+        }
+        faces = (
+            self.faces
+            if self.faces is not None
+            else tuple(face for face in self.FACES if face in requested)
+        )
+        if not faces:
+            raise RuntimeError(
+                "ConstantStateBC declares an open (constant-state) far field but "
+                f"no face of {type(reservoir).__name__} carries a boundary volume. "
+                "Set reservoir.boundary_volumes['<face>'] (CPG_Reservoir: call "
+                "set_boundary_volume(...) + apply_volume_depth()) before "
+                "model.init()."
+            )
+        missing = [face for face in faces if face not in requested]
+        if missing:
+            raise RuntimeError(
+                f"ConstantStateBC declares face(s) {missing}, but no boundary "
+                f"volume was set for them on {type(reservoir).__name__} "
+                f"(faces with a volume: {sorted(requested)})."
+            )
+
+        volume = np.asarray(model.reservoir.mesh.volume, dtype=float)
+        n_res_blocks = int(
+            getattr(model.reservoir.mesh, "n_res_blocks", len(volume)) or len(volume)
+        )
+        volume = volume[:n_res_blocks]
+        for face in faces:
+            value = requested[face]
+            n_cells = int(
+                np.count_nonzero(np.isclose(volume, value, rtol=self.rtol, atol=0.0))
+            )
+            if n_cells == 0:
+                raise RuntimeError(
+                    f"ConstantStateBC: the far-field volume {value:g} declared for "
+                    f"face '{face}' never reached the mesh — no cell of "
+                    f"{type(reservoir).__name__} carries it (mesh volume range "
+                    f"[{volume.min():g}, {volume.max():g}]). The engine caches the "
+                    "pore volume PV = volume * poro ONCE, in engine.init() "
+                    "(DartsModel.reset(), called from DartsModel.init()), so the "
+                    "boundary volumes must be in mesh.volume by then: populate "
+                    "reservoir.boundary_volumes BEFORE model.init() (the structured "
+                    "reservoir applies them inside discretize(), which init() runs "
+                    "first), and for CPG_Reservoir call set_boundary_volume(...) "
+                    "followed by apply_volume_depth() before model.init(). A volume "
+                    "written after that point is silently ignored and the boundary "
+                    "stays closed."
+                )
+            self.volumes[face] = value
+            self.n_cells[face] = n_cells
+
+    def apply(self, ctx: AssemblyContext):
+        """No-op: the far field is carried by the mesh volumes, not the residual."""
+        return
