@@ -23,10 +23,6 @@ def input_data_base(thermal=True):
 
     idata.other.thermal = thermal
 
-    # structured mesh (NX_NY_NZ cases): set True and assign idata.other.nx/ny/nz before calling
-    # _set_structured_mesh_coordinates; False skips mesh coordinate setup
-    idata.other.add_structured_mesh = False
-
     # fracture permeability mode: overrides porosity/perm to fracture values and narrows rsv Y bounds
     idata.other.perm_frac = False
 
@@ -61,9 +57,6 @@ def input_data_base(thermal=True):
     # reference points [x, y, label] drawn as a black line in plot_vtk (empty = no line)
     idata.other.points_xy = [[250., 250., '(250,250)']]
     idata.other.use_mesh_bounds_in_plot = False
-
-    if idata.other.add_structured_mesh:
-        _set_structured_mesh_coordinates(idata)
 
     _set_obl(idata)
     return idata
@@ -326,7 +319,7 @@ def _xc_from_nx(nx):
     return np.hstack([xc_left, -xc_left[::-1]])
 
 
-def _set_structured_mesh_coordinates(idata):
+def get_structured_mesh_coordinates(idata):
     nx, ny, nz = idata.other.nx, idata.other.ny, idata.other.nz
     xc = _xc_from_nx(nx)
     yc = _xc_from_nx(ny)
@@ -382,26 +375,22 @@ def _set_structured_mesh_coordinates(idata):
     else:
         raise ValueError(f"not found an option to mesh with nz = {nz}")
 
-    idata.other.Xc = xc
-    idata.other.Yc = yc
-    idata.other.Zc = zc
+    return xc, yc, zc
 
 
 def input_data_struct_like(model_folder, physics_type, wells_type):
     # unstructured mesh is generated on the fly with rectangular hexahedral cells
     thermal = "thermal" in physics_type
+
     idata = input_data_base(thermal=thermal)
 
     # well type comes from the caller (e.g. "doublet", "inj", "prod")
     idata.other.wells_type = wells_type
+    # recompute derived values that depend on the overridden parameter(s) above
+    _set_wells(idata)
 
     # structured mesh dimensions parsed from the folder name (NX_NY_NZ)
     idata.other.nx, idata.other.ny, idata.other.nz = parse_structured_dims(model_folder)
-    idata.other.add_structured_mesh = True
-
-    # recompute derived values that depend on the overridden parameters above
-    _set_wells(idata)
-    _set_initial_conditions(idata)
-    _set_structured_mesh_coordinates(idata)
+    idata.other.Xc, idata.other.Yc, idata.other.Zc = get_structured_mesh_coordinates(idata)
 
     return idata
