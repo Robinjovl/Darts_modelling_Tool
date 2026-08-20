@@ -2161,6 +2161,7 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 			n_segments = max(n_segments, i_w + 1);
 		}
 		wells[iw]->n_segments = n_segments;
+		wells[iw]->well_bottom_idx = wells[iw]->well_head_idx + wells[iw]->n_segments;
 
 		// Set depths of well nodes BEFORE creating chain connections so that
 		// the hydrostatic gravity correction can be computed from depth differences.
