@@ -31,7 +31,7 @@ from scipy.optimize import fsolve
 
 from darts.engines import index_vector, value_vector
 from darts.pipes.define_pipe_geometry import PipeGeometry
-from darts.pipes.ramp_up_rate import RampUpRate
+from darts.pipes.ramp_up_rate import RampUpRate, SegmentState
 from darts.pipes.set_initial_conditions import (
     LinearAmbientTemperature,
     SingleAmbientTemperature,
@@ -1144,81 +1144,20 @@ class Pipe:
                 sink_source.update_current_molar_rate(simulation_time)
                 rate_source = sink_source.current_rate  # Output rate is in kmol/day
 
-                if sink_source.inflow_or_outflow == "inflow":
-                    # comp_source in kmol/kmol
-                    comp_source = sink_source.inj_fluid_props["composition"]
-                    Mw = pc.Mw
-                    # mass_rate in kg/s
-                    mass_rate = sum(
-                        rate_source * np.array(comp_source) * np.array(Mw)
-                    ) / (24 * 60 * 60)
-                elif sink_source.inflow_or_outflow == "outflow":
-                    # TODO: For outflow, we have rate_source, which is in kmol/day, but we don't have comp_source, which
-                    # is in kmol/kmol, from the user. Instead, we have xG_mass0 and xL_mass0, which are mass fractions.
-                    # Need to see how we can get the overall composition of the source block in kmol/kmol.
-                    mass_rate = 0
-
                 pipe_internal_A = geom.pipe_internal_A
 
-                # If UpstreamRampUpRate is used, which calculates boundary momentum using the properties of the boundary itself:
-                if hasattr(sink_source, "get_boundary_momentum_flux"):
-                    delta_at_bc_interface0 = sink_source.get_boundary_momentum_flux(
-                        pc, pipe_internal_A, rate_source
-                    )
-                # If RampUpRate is used:
-                else:
-                    # The props of the fluid of the segment on which the constant mass rate source is defined are used.
-                    sG0_source = sG0[segment_idx_source]
-                    sL0_source = sL0[segment_idx_source]
-                    rhoG0_source = rhoG0[segment_idx_source]
-                    rhoL0_source = rhoL0[segment_idx_source]
-
-                    has_mobile_liquid0 = rhoL0_source > 0 and sL0_source > 1e-12
-
-                    # This section is written under the assumption that there is no solid phase in the source.
-                    if sG0_source == 0 and has_mobile_liquid0:
-                        vG0_source = 0
-                        liquid_mass_fraction0 = 1
-                        liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
-                        vL0_source = (
-                            liquid_mass_rate0 / rhoL0_source / (pipe_internal_A * 1)
-                        )
-                    elif sG0_source == 1 or not has_mobile_liquid0:
-                        vL0_source = 0
-                        gas_mass_fraction0 = 1
-                        gas_mass_rate0 = mass_rate * gas_mass_fraction0
-                        vG0_source = (
-                            gas_mass_rate0 / rhoG0_source / (pipe_internal_A * 1)
-                        )
-                    elif sG0_source > 0 and has_mobile_liquid0:
-                        gas_mass_fraction0 = (
-                            sG0_source
-                            * rhoG0_source
-                            / (sG0_source * rhoG0_source + sL0_source * rhoL0_source)
-                        )
-                        gas_mass_rate0 = mass_rate * gas_mass_fraction0
-                        vG0_source = (
-                            gas_mass_rate0
-                            / rhoG0_source
-                            / (pipe_internal_A * sG0_source)
-                        )
-
-                        liquid_mass_fraction0 = 1 - gas_mass_fraction0
-                        liquid_mass_rate0 = mass_rate * liquid_mass_fraction0
-                        vL0_source = (
-                            liquid_mass_rate0
-                            / rhoL0_source
-                            / (pipe_internal_A * sL0_source)
-                        )
-                    else:
-                        raise Exception(
-                            "sG0_source is out of correct range (from 0 to 1)!"
-                        )
-
-                    delta_at_bc_interface0 = pipe_internal_A * (
-                        rhoG0_source * sG0_source * vG0_source**2
-                        + rhoL0_source * sL0_source * vL0_source**2
-                    )
+                # Publish the state of the receiving segment. The SegmentProps
+                # boundary property model (the plain RampUpRate default) builds
+                # the boundary momentum from it; the upstream models ignore it.
+                sink_source.receiving_segment_state = SegmentState(
+                    sG=sG0[segment_idx_source],
+                    sL=sL0[segment_idx_source],
+                    rhoG=rhoG0[segment_idx_source],
+                    rhoL=rhoL0[segment_idx_source],
+                )
+                delta_at_bc_interface0 = sink_source.get_boundary_momentum_flux(
+                    pc, pipe_internal_A, rate_source
+                )
 
                 if segment_idx_source == 0:
                     momentum_at_first_last_exterfaces[0] = delta_at_bc_interface0

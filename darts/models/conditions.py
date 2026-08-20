@@ -13,7 +13,8 @@ Structure:
 - :class:`ConditionItem` — the item base class; its docstring is THE CONTRACT.
 - :class:`ConditionSet` — the validated collection owned by ``DartsModel``
   (``model.conditions``), compiled once at the end of ``init()``.
-- Item types: :class:`CellSource`, :class:`SegmentSource`, :class:`InterfaceFlux`.
+- Item types: :class:`CellSource`, :class:`SegmentSource`, :class:`PipeSourceTerm`,
+  :class:`InterfaceFlux`.
 
 A ``DirichletPin`` item (pinning a state variable via a penalized diagonal) is
 deliberately NOT part of this MVP — pinning interacts with the engine's
@@ -437,6 +438,96 @@ class SegmentSource(CellSource):
             1, well.num_segments, dtype=np.int64
         )
         super().bind(model)
+
+
+class PipeSourceTerm(ConditionItem):
+    """Component/energy source of a DFM pipe source/sink, in its segment block.
+
+    This is the unified replacement for the hand-rolled ``set_rhs_flux``
+    overrides of the DFM well models. The rate schedule stays where it belongs
+    — in the pipe's source/sink object (a
+    :class:`~darts.pipes.ramp_up_rate.RampUpRate` or subclass), which
+    :class:`~darts.pipes.pipe.Pipe` updates once per timestep — and this item
+    only turns the current rate into the residual contribution of the receiving
+    segment block:
+
+    - the block is ``mesh.n_res_blocks + source_sink.segment_idx``, the
+      addressing the models used;
+    - the rates come from
+      :meth:`~darts.pipes.ramp_up_rate.RampUpRate.get_component_energy_rates`
+      (component rates in kmol/day plus, for thermal physics, the energy rate
+      in kJ/day including the potential energy of the receiving block);
+    - the framework sign convention applies: ``rhs[block] -= rates * dt``,
+      which is what the models wrote as ``rhs_flux[block] = -rates`` followed
+      by ``rhs += rhs_flux * dt``.
+
+    RHS-only (``provides_jacobian = False``), exactly as the legacy path: for
+    the plain ramp-up schedule the rate does not depend on the state, so the
+    analytic Jacobian contribution is zero. Rate models that DO depend on the
+    segment state (e.g. the choke boundary node) are therefore lagged by one
+    Newton iteration; giving them derivative blocks is the intended follow-up.
+
+    :param well_name: key of the pipe in ``model.wells``.
+    :param source_sink_name: key of the source/sink in ``pipe.source_sinks``.
+    """
+
+    def __init__(self, well_name: str, source_sink_name: str):
+        self.well_name = well_name
+        self.source_sink_name = source_sink_name
+        self.source_sink = None
+        self.block = None
+        self._mesh = None
+        self._physics = None
+        self._thermal = False
+        self._rhs_slice = None
+
+    def bind(self, model):
+        wells = getattr(model, "wells", None) or {}
+        if self.well_name not in wells:
+            available = ", ".join(sorted(wells))
+            raise KeyError(
+                f"PipeSourceTerm: pipe '{self.well_name}' not found in "
+                f"model.wells; available pipes: [{available}]."
+            )
+        source_sinks = getattr(wells[self.well_name], "source_sinks", None) or {}
+        if self.source_sink_name not in source_sinks:
+            available = ", ".join(sorted(source_sinks))
+            raise KeyError(
+                f"PipeSourceTerm: source/sink '{self.source_sink_name}' not "
+                f"found on pipe '{self.well_name}'; available source/sinks: "
+                f"[{available}]."
+            )
+        self.source_sink = source_sinks[self.source_sink_name]
+
+        self._mesh = model.reservoir.mesh
+        self._physics = model.physics
+        self._thermal = bool(model.physics.thermal)
+        n_vars = model.physics.n_vars
+        self.block = self._mesh.n_res_blocks + self.source_sink.segment_idx
+        start = self.block * n_vars
+        self._rhs_slice = slice(start, start + n_vars)
+
+        n_rates = len(
+            np.atleast_1d(
+                self.source_sink.get_component_energy_rates(model.physics, 0.0)
+            )
+        )
+        if n_rates != n_vars:
+            raise ValueError(
+                f"PipeSourceTerm: source/sink '{self.source_sink_name}' returns "
+                f"{n_rates} rate(s) but the physics has {n_vars} equations per block."
+            )
+
+    def apply(self, ctx: AssemblyContext):
+        # Specific potential energy of the receiving block; read only for
+        # thermal physics, as the isothermal models did.
+        specific_potential_energy = (
+            self._mesh.cell_spe[self.block] if self._thermal else 0.0
+        )
+        rates = self.source_sink.get_component_energy_rates(
+            self._physics, specific_potential_energy
+        )
+        ctx.rhs[self._rhs_slice] -= rates * ctx.dt
 
 
 class InterfaceFlux(ConditionItem):

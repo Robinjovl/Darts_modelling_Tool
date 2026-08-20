@@ -1,6 +1,7 @@
 import numpy as np
 
 from darts.models.cicd_model import CICDModel
+from darts.models.conditions import PipeSourceTerm
 from darts.engines import ms_well, value_vector
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
@@ -182,12 +183,15 @@ class Model(CICDModel):
                                           composition=inj_phase_comp, pressure=pipe_head_pressure,
                                           temperature=ambient_temperature, phase_name=inj_phase_name, verbose=verbose,
                                           )
-        # The following dict will be used in set_rhs_flux and pipe velocity evaluation
+        # The following dict is used by the PipeSourceTerm condition and the pipe velocity evaluation
         source_sinks = {"RampUpRate1": ramp_up_rate}
 
         # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
                                  source_sinks=source_sinks, verbose=verbose)}
+
+        # The wellhead injection source is applied to the residual by the unified conditions layer
+        self.conditions.add(PipeSourceTerm(well_name='I1', source_sink_name='RampUpRate1'))
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
@@ -217,21 +221,3 @@ class Model(CICDModel):
                 ],
             )
         )
-
-    def set_rhs_flux(self, t: float = None) -> np.ndarray:
-        inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]
-
-        # Get updated ramp-up injection rate (rate is updated in pipe.py)
-        inj_rate = self.wells["I1"].source_sinks["RampUpRate1"].current_rate
-
-        component_rate = inj_rate * inj_comp
-
-        inj_segment_idx = self.wells["I1"].source_sinks["RampUpRate1"].segment_idx
-
-        inj_rates = component_rate
-
-        rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
-        well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
-        rhs_flux[well_head_start_idx:well_head_start_idx + self.physics.n_vars:] = - inj_rates
-
-        return rhs_flux

@@ -1,6 +1,7 @@
 import numpy as np
 
 from darts.models.cicd_model import CICDModel
+from darts.models.conditions import PipeSourceTerm
 from darts.pipes.viz.plot_live import DartsModelWithLivePlots
 from darts.engines import ms_well, value_vector, well_control_iface
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
@@ -222,7 +223,7 @@ class Model(CICDModel):
         ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx,
                                   inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
                                   verbose=verbose)
-        # The following dict will be used in set_rhs_flux and pipe velocity evaluation
+        # The following dict is used by the PipeSourceTerm condition and the pipe velocity evaluation
         source_sinks = {"RampUpRate1": ramp_up_rate}
 
         # %% Store well props
@@ -230,42 +231,18 @@ class Model(CICDModel):
                                  source_sinks=source_sinks,
                                  verbose=verbose)}
 
+        # The wellhead injection source is applied to the residual by the unified conditions layer
+        self.conditions.add(PipeSourceTerm(well_name='I1', source_sink_name='RampUpRate1'))
+
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
         # Well with a single perforation
         well_1_perforated_segment = well_1_geometry.num_segments
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment, well_diameter=well_1_geometry.pipe_ID)
 
-    def set_rhs_flux(self, t: float = None) -> np.ndarray:
-        inj_comp = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["composition"]
-
-        # Get updated ramp-up injection rate (rate is updated in pipe.py)
-        inj_rate = self.wells["I1"].source_sinks["RampUpRate1"].current_rate
-
-        component_rate = inj_rate * inj_comp
-
-        # Get inj_fluid_molar_enthalpy
-        inj_fluid_molar_enthalpy = self.wells["I1"].source_sinks["RampUpRate1"].inj_fluid_props["molar_enthalpy"]
-        # Get inj_fluid_molar_potential_energy
-        inj_segment_idx = self.wells["I1"].source_sinks["RampUpRate1"].segment_idx
-        inj_fluid_specific_potential_energy = self.reservoir.mesh.cell_spe[self.reservoir.mesh.n_res_blocks + inj_segment_idx]
-        Mw_avg = np.sum(self.physics.property_containers[0].Mw * inj_comp)
-        inj_fluid_molar_potential_energy = inj_fluid_specific_potential_energy * Mw_avg
-        inj_fluid_energy = inj_fluid_molar_enthalpy + inj_fluid_molar_potential_energy
-
-        inj_energy_rate = inj_rate * inj_fluid_energy
-
-        inj_rates = np.append(component_rate, inj_energy_rate)
-
-        rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
-        well_head_start_idx = (self.reservoir.mesh.n_res_blocks + inj_segment_idx) * self.physics.n_vars
-        rhs_flux[well_head_start_idx:well_head_start_idx+self.physics.n_vars:] = - inj_rates
-
-        return rhs_flux
-
     def set_well_controls(self):
         # When using well controls, make sure all the unnecessary sources/sinks from the pipe are removed and the
-        # function set_rhs_flux is commented out.
+        # PipeSourceTerm condition is not registered.
         inj_composition = []
         w = self.reservoir.wells[0]
 
