@@ -4,6 +4,7 @@ from cases.no_damage_zone import input_data_no_damage_zone
 from cases.no_damage_zone_heter_mech_prop import input_data_no_damage_zone_heter_mech_prop
 
 from cases.base import input_data_struct_like
+from darts.engines import well_control_iface
 import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -40,6 +41,12 @@ def set_input_data(
             )
             
             if "zero_rate" in case:
+                # zero-rate check: force rate control at 0. Isothermal cases default to BHP
+                # control in _set_wells (target = p_cell +/- delta_p), which ignores well_rate;
+                # switch to rate control so the well is genuinely shut in. Thermal already uses
+                # rate control, so this is consistent for both.
+                input_data.other.wctrl_type = well_control_iface.MASS_RATE
+                input_data.other.delta_p = None
                 input_data.other.well_rate = 0.
 
     return input_data

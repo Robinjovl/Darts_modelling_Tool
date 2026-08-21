@@ -299,8 +299,8 @@ if __name__ == '__main__':
     #cases += ['no_damage_zone_heter_mech_prop']
     cases += ['zero_rate_17_17_15']
 
-    #thermal = False
-    thermal = True
+    thermal = False
+    #thermal = True
 
     if not thermal:
         physics_type = 'single_phase'
