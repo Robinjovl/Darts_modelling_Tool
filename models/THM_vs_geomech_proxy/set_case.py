@@ -3,7 +3,7 @@ from cases.case_5 import input_data_case_5
 from cases.no_damage_zone import input_data_no_damage_zone
 from cases.no_damage_zone_heter_mech_prop import input_data_no_damage_zone_heter_mech_prop
 
-from cases.base import input_data_struct_like
+from cases.base import input_data_struct_like, _set_wells
 import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -15,6 +15,8 @@ def set_input_data(
     prod_well_coords=None,
     inj_well_coords=None,
 ):
+
+    thermal = "thermal" in physics_type
 
     case_ = os.path.basename(case) # without meshes/ part
     match case_:
@@ -45,5 +47,21 @@ def set_input_data(
                 physics_type=physics_type,
                 wells_type=wells_type,
             )
+
+    # Named cases are built from input_data_base(), whose default is thermal=True.
+    # Apply the caller's requested physics/well mode here as the single source of
+    # truth; otherwise an isothermal Model creates thermal physics (p, T) while its
+    # initialization supplies pressure only.
+    input_data.type_hydr = "thermal" if thermal else "isothermal"
+    input_data.type_mech = "thermoporoelasticity" if thermal else "poroelasticity"
+    input_data.other.thermal = thermal
+    input_data.other.wells_type = wells_type
+    _set_wells(input_data)
+
+    # Explicit coordinates take precedence over the case defaults recomputed above.
+    if prod_well_coords is not None:
+        input_data.other.prod_well_coords = list(prod_well_coords)
+    if inj_well_coords is not None:
+        input_data.other.inj_well_coords = list(inj_well_coords)
 
     return input_data
