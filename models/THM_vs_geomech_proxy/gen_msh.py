@@ -62,10 +62,13 @@ def generate_box_3d(X : float, Y : float, Z : float, NX : int, NY : int, NZ : in
         nx = len(x) - 1
         ny = len(y) - 1
         nz = len(z) - 1
-        suffix = str(nx) + '_' + str(ny) + '_' + str(nz)
-        folder = os.path.join(BASE_DIR, 'meshes', suffix)
-        os.makedirs(folder, exist_ok=True)
-        filename = os.path.join(folder, 'mesh.msh')
+        if filename is None:
+            suffix = str(nx) + '_' + str(ny) + '_' + str(nz)
+            folder = os.path.join(BASE_DIR, 'meshes', suffix)
+            os.makedirs(folder, exist_ok=True)
+            filename = os.path.join(folder, 'mesh.msh')
+        else:
+            folder = os.path.dirname(filename)
 
     # add 2 physical surfaces for Z- boundary to set hybrid mechanical boundary conditions there:
     # one cell in the middle with FIXED BC, and the rest is ROLLER

@@ -1,4 +1,4 @@
-from cases.case_1 import input_data_case_1, input_data_case_2, input_data_case_3, input_data_case_4, input_data_zero_rate
+from cases.case_1 import input_data_case_1, input_data_case_2, input_data_case_3, input_data_case_4
 from cases.case_5 import input_data_case_5
 from cases.no_damage_zone import input_data_no_damage_zone
 from cases.no_damage_zone_heter_mech_prop import input_data_no_damage_zone_heter_mech_prop
@@ -24,8 +24,6 @@ def set_input_data(
             input_data = input_data_case_3(physics_type)
         case "case_4": # case_3 but heterogeneous geomechanical props (E, nu, biot, th_expn) per tag
             input_data = input_data_case_4(physics_type)
-        case "zero_rate":
-            input_data = input_data_zero_rate(physics_type)
         case "case_5":
             input_data = input_data_case_5(physics_type)
         case "no_damage_zone":
@@ -40,5 +38,8 @@ def set_input_data(
                 physics_type=physics_type,
                 wells_type=wells_type,
             )
+            
+            if "zero_rate" in case:
+                input_data.other.well_rate = 0.
 
     return input_data

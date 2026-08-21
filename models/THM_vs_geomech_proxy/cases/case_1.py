@@ -109,13 +109,3 @@ def input_data_case_4(physics_type='single_phase_thermal'):
     idata.rock.th_expn = idata.rock.th_expn_orig * bulk_modulus * 3.0  # Cauchy 4.19a/4.21a, linear -> volumetric (4.22)
 
     return idata
-
-def input_data_zero_rate(physics_type='single_phase_thermal'):
-    # same geometry as case_1, but with zero well rate
-    idata = input_data_case_1(physics_type)
-    idata.other.well_rate_m3_day = 0.  # [m3/day] volumetric rate (thermal / rate-control mod
-
-    # recompute derived values (well_rate) that depend on the overridden parameters above 
-    _set_wells(idata)
-
-    return idata
