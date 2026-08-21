@@ -326,7 +326,15 @@ if __name__ == '__main__':
 
     if 'case_5' in cases:  # with a damage zone near the fault
         from gen_fault_msh import generate_3d_fault_mesh
-        generate_3d_fault_mesh()
+        from set_case import set_input_data
+        # case_5 computes its well coordinates internally (from rsv_xy/doublet_shift);
+        # build its idata and feed the same coords to the mesh generator so the fault
+        # mesh wells and the model wells are placed identically (single source of truth).
+        _idata_c5 = set_input_data('case_5', physics_type=physics_type, wells_type=wells_type)
+        generate_3d_fault_mesh(
+            prod_well_coords=_idata_c5.other.prod_well_coords,
+            inj_well_coords=_idata_c5.other.inj_well_coords,
+        )
 
     if 'no_damage_zone' in cases:
         from gen_fault_msh_no_damage_zone import gen_fault_msh_no_damage_zone
