@@ -711,6 +711,16 @@ class Model(CICDModel):
                 self.time_step_size.append(dt)
             except Exception:
                 pass
+            # DartsModel.run_timestep fires conditions.on_timestep_failed() from its
+            # else-branch, which the exception skips: fire it here so the condition
+            # items still see exactly one lifecycle event per timestep attempt. (Every
+            # shipped item leaves the hook at the ConditionItem no-op, so this changes
+            # nothing numerically today; it keeps the contract honest for items that
+            # do carry per-attempt state.)
+            try:
+                self.conditions.on_timestep_failed(dt, t)
+            except Exception:
+                pass
             return 0  # converged = False -> run() else-branch cuts dt
 
     def after_assembly(self, dt: float, t: float):

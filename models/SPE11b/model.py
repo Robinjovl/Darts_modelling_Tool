@@ -7,7 +7,6 @@ from darts.models.darts_model import DartsModel
 from darts.models.conditions import CellSource, DirichletPin
 from darts.nonlinear_solvers import Norm, NewtonSolver, ChopSpec
 from darts.engines import value_vector
-from darts.input.input_data import linear_solver_types
 from math import fabs
 try:
     from darts.engines import copy_data_to_device, copy_data_to_host, allocate_device_data
@@ -90,6 +89,44 @@ property_regions  = [0, 1, 2, 3, 4, 5, 6]
 layers_to_regions = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6}
 ######
 
+
+class ProjectedStateNewtonSolver(NewtonSolver):
+    """Newton solver that projects the model's state-pinning conditions before
+    every assembly.
+
+    This model pins the geothermal temperature of the top/bottom cell rows with a
+    DirichletPin(mode='state') (see Model.register_conditions). The pin has to be
+    written BEFORE engine.assemble_linear_system(), so that the residual, the
+    Jacobian and the convergence test are all evaluated at the pinned state --
+    the ordering that used to be guaranteed by this model's private copy of the
+    Newton loop (and, before the conditions layer, by its set_top_bot_temp()).
+
+    The stock NewtonSolver has no pre-assembly per-iteration stage (see
+    ConditionItem.project_state), so the same ordering is reproduced with the two
+    hooks that bracket it:
+
+    * run_timestep()   -- the projection preceding the FIRST assembly of the step,
+    * post_iteration() -- called immediately after every Newton update, i.e.
+                          immediately before the next assembly.
+
+    Nothing touches engine.X between those points and the assembly, so the state
+    entering every assembly is identical to the private loop's. The projection is
+    idempotent, and DirichletPin re-asserts the same values post-assembly through
+    the regular conditions stage.
+    """
+
+    def run_timestep(self, dt: float, t: float, verbose: int | None = None) -> bool:
+        # projection before the first assembly of this timestep
+        self.model.conditions.project_state(t)
+        return super().run_timestep(dt, t, verbose)
+
+    def post_iteration(self, dt: float, t: float, iteration: int):
+        super().post_iteration(dt, t, iteration)
+        # the Newton update just moved the pinned entries: re-project them before
+        # the next assembly sees them
+        self.model.conditions.project_state(t)
+
+
 class Model(DartsModel):
     def __init__(self, specs):
         super().__init__()
@@ -111,8 +148,16 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=12,
-                                           chop=ChopSpec(mode='local', factor=0.01),
+        # NOTE on the chop factor: this model ran its own copy of the Newton loop
+        # until the loop was migrated onto the framework solver. That copy called
+        # engine.apply_newton_update() directly and never synced the spec to the
+        # engine, so the requested factor 0.01 was inert and the engine default
+        # (local chop, factor 0.1) is what actually ran. The value below is that
+        # effective value, so the migration is bit-identical. Tightening it to
+        # 0.01 (as the comment above proposes) is a numerical change and needs
+        # its own re-baseline of the SPE11b run.
+        self.nonlinear_solver = ProjectedStateNewtonSolver(tolerance=1e-3, max_iterations=12,
+                                           chop=ChopSpec(mode='local', factor=0.1),
                                            norm=Norm.L2)  # Norm.LINF if you use m.set_rhs() for injection
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4,
                             it_linear=50)
@@ -306,7 +351,8 @@ class Model(DartsModel):
           the top and bottom cell rows -- the former set_top_bot_temp(), which
           run_timestep() called (with an explicit GPU host round-trip) before
           every assembly. The pin is projected from the same place, now through
-          self.conditions.project_state(t); the item owns the round-trip.
+          self.conditions.project_state(t) driven by ProjectedStateNewtonSolver;
+          the item owns the round-trip.
         """
         if self.specs['RHS'] is not True:
             # wells carry the injection: no Python-side source, and no pin
@@ -790,144 +836,6 @@ class Model(DartsModel):
             mass_components[component_name] = mass_vapor[component_name] + mass_aqueous[component_name]
 
         return mass_components, mass_vapor, mass_aqueous
-
-    def run_timestep(self, dt: float, t: float, verbose: bool = True):
-        """
-        Method to solve Newton loop for specified timestep
-
-        :param dt: Timestep size [days]
-        :type dt: float
-        :param t: Current time [days]
-        :type t: float
-        :param verbose: Switch for verbose, default is True
-        :type verbose: bool
-        """
-        assert dt > 0, "Time step size must be a positive value!"
-
-        max_newt = self.nonlinear_solver.spec.max_iterations
-        max_residual = np.zeros(max_newt + 1)
-        solver = self.nonlinear_solver
-        status = solver.status
-        status.reset()
-        self.nonlinear_solver.spec.well_tolerance_multiplier = 1e2
-        self.timer.node["simulation"].start()
-
-        residual_history = []
-        for i in range(max_newt + 1):
-
-            # Pre-assembly state projection: the top/bottom geothermal
-            # DirichletPin registered in register_conditions() (a no-op when this
-            # formulation registered none). It must run BEFORE the assembly, so
-            # that the residual, the Jacobian and the convergence test all see
-            # the pinned temperature; the item owns the GPU host round-trip of X
-            # that used to sit here.
-            self.conditions.project_state(t)
-
-            # Update well phase velocities and derivatives if DFM wells are used
-            if self.has_dfm_well:
-                self.update_dfm_well_vels_and_ders(dt, t, i)
-
-            # assemble Jacobian and residual of reservoir and well blocks
-            self.physics.engine.assemble_linear_system(dt)
-
-            # apply RHS flux
-            self.apply_rhs_flux(dt, t)
-
-
-            if self.platform == "gpu":
-                copy_data_to_device(
-                    self.physics.engine.RHS, self.physics.engine.get_RHS_d()
-                )
-
-            if not self.has_dfm_well:
-                status.newton_residual = (
-                    self.physics.engine.calc_newton_residual()
-                )  # calc norm of residual
-            else:
-                # Method is either 1 or 2
-                status.newton_residual = (
-                    self.physics.engine.calc_coupled_well_reservoir_residual(
-                        self.nonlinear_solver.spec.coupled_well_res_norm_method
-                    )
-                )
-
-            max_residual[i] = status.newton_residual
-            counter = 0
-            for j in range(i):
-                denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
-                if (
-                    abs(max_residual[i] - max_residual[j]) / denom
-                    < self.nonlinear_solver.spec.stationary_point_tolerance
-                ):
-                    counter += 1
-            if counter > 2:
-                if verbose:
-                    print("Stationary point detected!")
-                break
-
-            status.well_residual = self.physics.engine.calc_well_residual()
-            residual_history.append(
-                (
-                    status.newton_residual,  # matrix residual
-                    status.well_residual,  # well residual
-                    1.0,
-                )
-            )  # Newton update coefficient
-
-            status.n_newton = i
-            #  check tolerance if it converges
-            if (
-                status.newton_residual < self.nonlinear_solver.spec.tolerance
-                and status.well_residual
-                < self.nonlinear_solver.spec.tolerance * self.nonlinear_solver.spec.well_tolerance_multiplier
-            ) or status.n_newton == max_newt:
-                if i > 0:  # min_i_newton
-                    break
-
-            if isinstance(self.data_ts.linear_type, linear_solver_types):
-                # solvers via Python interface
-                if self.data_ts.linear_type in [
-                    linear_solver_types.CPU_PETSC_CPR,
-                    linear_solver_types.CPU_PETSC_FS,
-                ]:
-                    self.petsc_solve_linear_equation()
-                elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                    self.pardiso_solve_linear_equation()
-                else:
-                    raise Exception(
-                        "Unknown linear solver type", self.data_ts.linear_type
-                    )
-            else:
-                # compile-time C++ linear solvers
-                r_code = self.physics.engine.solve_linear_equation()
-                status.linear_solver_rc = r_code
-                if r_code != 0:
-                    # failed linear solve: do NOT apply a stale update; the
-                    # post-loop verdict reads status.linear_solver_rc -> fail
-                    self._linear_solver_rc_last = r_code
-                    break
-                status.n_linear += self.physics.engine.get_last_linear_iters()
-            self.timer.node["newton update"].start()
-            self.physics.engine.apply_newton_update(dt)
-            self.timer.node["newton update"].stop()
-
-        # End of newton loop: convergence verdict previously made by the C++
-        # post_newtonloop (linear solver rc + residual re-check), now in Python.
-        converged = not (
-            status.linear_solver_rc != 0
-            or status.newton_residual >= self.nonlinear_solver.spec.tolerance
-            or status.well_residual > 1e2 * self.nonlinear_solver.spec.tolerance
-        )
-        converged = self.physics.engine.post_newtonloop(dt, t, converged)
-        solver.stats.update(converged, status)
-
-        self.time.append(t)
-        self.n_newton_iters.append(status.n_newton)
-        self.time_step_size.append(dt)
-
-        self.timer.node["simulation"].stop()
-
-        return converged
 
     def set_well_rhs(self, Dt, inj_rate, event1, event2):
         if self.physics.engine.t >= 25 * Dt and self.physics.engine.t < 50 * Dt and event1:
