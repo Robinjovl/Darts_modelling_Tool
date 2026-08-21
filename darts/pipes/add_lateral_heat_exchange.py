@@ -4,6 +4,7 @@ import numpy as np
 
 from darts.models.conditions import BlockCSRView
 from darts.pipes.define_pipe_geometry import PipeGeometry
+from darts.pipes.linear_dfm_well_ipr import well_cell_property_container
 
 
 class SemiAnalyticalWellLateralHeatTransfer:
@@ -341,6 +342,12 @@ class SemiAnalyticalWellLateralHeatTransferHook:
     require platform='cpu' (asserted in DartsModel.init), so the block-CSR Jacobian
     is exposed.
 
+    The PH flash uses the property container of the WELL region -- the one
+    ``PhysicsBase.set_operators`` gives to ``WellOperators``, i.e.
+    ``property_containers[physics.regions[0]]`` -- resolved once at bind time
+    (:meth:`_resolve`) rather than hard-coded to region 0, so a multi-region
+    model cannot silently flash the wrong fluid. A missing container raises.
+
     Create an instance in set_wells() and register it by appending to model.rhs_flux_hooks::
 
         lateral_heat_ev = SemiAnalyticalWellLateralHeatTransfer(...)
@@ -359,6 +366,27 @@ class SemiAnalyticalWellLateralHeatTransferHook:
         self._jac_idx = (
             None  # flat jac_vals indices of the (energy, T) diagonal entries
         )
+        # Property container used to flash the well segments on the PH path.
+        # Every block this hook touches is a WELL block, and the engine
+        # evaluates well cells with WellOperators, which PhysicsBase builds
+        # from property_containers[physics.regions[0]] -- so that is the region
+        # to flash with, not a hard-coded 0. Resolved once (see _resolve), not
+        # per Newton iteration.
+        self._property_container = None
+
+    def _resolve(self):
+        """Bind-time resolution of the region-dependent property container.
+
+        Only the PH path flashes a property container (for PT the segment
+        temperature is a primary variable), so the lookup -- and its loud
+        failure when the well region has no registered container -- happens
+        here rather than inside the Newton loop.
+        """
+        if self._property_container is None:
+            self._property_container = well_cell_property_container(
+                self.model.physics, self.well.well_head_idx
+            )
+        return self._property_container
 
     def apply(self, dt: float, t: float):
         physics = self.model.physics
@@ -373,10 +401,11 @@ class SemiAnalyticalWellLateralHeatTransferHook:
         if physics.state_spec == physics.StateSpecification.PT:
             T_segments = X_well[:, -1]
         elif physics.state_spec == physics.StateSpecification.PH:
+            property_container = self._resolve()
             T_segments = np.zeros(well.num_segments)
             for i in range(well.num_segments):
-                physics.property_containers[0].evaluate(X_well[i])
-                T_segments[i] = physics.property_containers[0].temperature
+                property_container.evaluate(X_well[i])
+                T_segments[i] = property_container.temperature
         else:
             raise NotImplementedError(
                 f"SemiAnalyticalWellLateralHeatTransferHook does not support state_spec={physics.state_spec!r}."
