@@ -5,6 +5,8 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 def generate_3d_fault_mesh(
     msh_filename=os.path.join(BASE_DIR, 'meshes', 'case_5', "mesh.msh"),
+    prod_well_coords=None,
+    inj_well_coords=None,
     fault_dip_degrees=45.0,
     reservoir_block_offset=180.0,
     damage_width_left=100,
@@ -52,6 +54,15 @@ def generate_3d_fault_mesh(
         raise ValueError(
             "well_transition_radius must be larger than well_cylinder_radius"
         )
+    if prod_well_coords is None or inj_well_coords is None:
+        raise ValueError("Production and injection well coordinates are required")
+    well_coords = (prod_well_coords, inj_well_coords)
+    if any(len(coords) != 4 for coords in well_coords):
+        raise ValueError(
+            "prod_well_coords and inj_well_coords must be [X, Y, Z1, Z2]"
+        )
+    if any(coords[2] == coords[3] for coords in well_coords):
+        raise ValueError("Each well must have different Z1 and Z2 coordinates")
 
     # ======================================================
     # NEW: asymmetric damage-zone thickness (meters)
@@ -535,29 +546,25 @@ def generate_3d_fault_mesh(
     # ======================================================
     # Solid, visible wells (reservoir inclusions -- no holes)
     # ======================================================
-    # These coordinates match case_5.py. Fragmenting the cylinders into the
-    # host creates conformal cylindrical interfaces without subtracting any
-    # material. The cylinder descendants retain the RES material tag and are
-    # therefore part of the reservoir/matrix physical volume.
-    well_locations = [(5500.0, 5000.0), (4500.0, 5000.0)]
-    well_z_min = min(z_new(-b), z_new(-a))
-    well_z_max = max(z_new(-b), z_new(-a))
-    well_height = well_z_max - well_z_min
+    # Coordinates are [X, Y, Z1, Z2] and are supplied by main.py. Fragmenting
+    # the cylinders into the host creates conformal cylindrical interfaces
+    # without subtracting any material. The cylinder descendants retain the
+    # RES material tag and are therefore part of the reservoir physical volume.
     volumes_before_wells = geo.getEntities(3)
     well_solids = [
         (
             3,
             geo.addCylinder(
-                well_x,
-                well_y,
-                well_z_min,
+                coords[0],
+                coords[1],
+                min(coords[2], coords[3]),
                 0.0,
                 0.0,
-                well_height,
+                abs(coords[3] - coords[2]),
                 well_cylinder_radius,
             ),
         )
-        for well_x, well_y in well_locations
+        for coords in well_coords
     ]
     for _, volume in well_solids:
         material_by_volume[volume] = RES

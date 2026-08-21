@@ -79,7 +79,8 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
                                                      stats.n_linear_total, stats.n_linear_wasted))
 def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90., plot_vtk_timesteps=[],
-        clear_output_dir=False, solver_type='fs_cpr'):
+        clear_output_dir=False, solver_type='fs_cpr', prod_well_coords=None,
+        inj_well_coords=None):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
     :param physics_type: 'single_phase', 'single_phase_thermal'
@@ -101,7 +102,8 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         pass
 
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type,
-              decouple_geomech=decouple_geomech, generate_mesh=generate_mesh, solver_type=solver_type)
+              decouple_geomech=decouple_geomech, generate_mesh=generate_mesh, solver_type=solver_type,
+              prod_well_coords=prod_well_coords, inj_well_coords=inj_well_coords)
 
     m.timer.node["model.init()"] = timer_node()
     m.timer.node["model.init()"].start()
@@ -271,7 +273,7 @@ if __name__ == '__main__':
     cases = []
 
     # nx ny nz
-    cases += ['17_17_15']  # for debugging
+    # cases += ['17_17_15']  # for debugging
     #cases += ['41_41_66']
     #cases += ['71_71_66']
     #cases += ['83_83_90']  # for isothermal (single well)
@@ -279,19 +281,19 @@ if __name__ == '__main__':
     #cases += ['71_1_66']  # 1 layer by Y; it is not correct to use this as it corresponds to plane-strain solution
 
     generate_mesh=True  # struct-like mesh generation
-    #generate_mesh=False  # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
+    # generate_mesh=False  # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
 
     #cases += ['case_1']
     #cases += ['case_2']
     #cases += ['case_3']
     #cases += ['case_4']
-    #cases += ['case_5']
+    cases += ['case_5']
     #cases += ['no_damage_zone']
     #cases += ['no_damage_zone_heter_mech_prop']
     #cases += ['zero_rate']
 
-    thermal = False
-    #thermal = True
+    # thermal = False
+    thermal = True
 
     if not thermal:
         physics_type = 'single_phase'
@@ -315,9 +317,15 @@ if __name__ == '__main__':
     #sim_time = 30 # days
     #report_step = sim_time  # days
 
-    if 'case_5' in cases:
+    if generate_mesh and 'case_5' in cases:
         from gen_fault_msh import generate_3d_fault_mesh
-        generate_3d_fault_mesh()
+        # Explicit [X, Y, Z1, Z2] well locations shared with cases/case_5.py.
+        prod_well_coords = [5500.0, 5000.0, 2830.0, 3030.0]
+        inj_well_coords = [4500.0, 5000.0, 2830.0, 3030.0]
+        generate_3d_fault_mesh(
+            prod_well_coords=prod_well_coords,
+            inj_well_coords=inj_well_coords,
+        )
 
     if 'no_damage_zone' in cases:
         from gen_fault_msh_no_damage_zone import gen_fault_msh_no_damage_zone
@@ -328,5 +336,6 @@ if __name__ == '__main__':
     
         run(model_folder=case, physics_type=physics_type, generate_mesh=generate_mesh,
             wells_type=wells_type, decouple_geomech=decouple_geomech,
+            prod_well_coords=prod_well_coords, inj_well_coords=inj_well_coords,
             report_step=report_step, sim_time=sim_time,
             plot_vtk_timesteps=[0, -1]) # plot initial and last timesteps

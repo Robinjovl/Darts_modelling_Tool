@@ -12,6 +12,8 @@ def set_input_data(
     model_folder=None,
     physics_type="single_phase_thermal",
     wells_type="doublet",
+    prod_well_coords=None,
+    inj_well_coords=None,
 ):
 
     case_ = os.path.basename(case) # without meshes/ part
@@ -27,7 +29,10 @@ def set_input_data(
         case "zero_rate":
             input_data = input_data_zero_rate()
         case "case_5":
-            input_data = input_data_case_5()
+            input_data = input_data_case_5(
+                prod_well_coords=prod_well_coords,
+                inj_well_coords=inj_well_coords,
+            )
         case "no_damage_zone":
             input_data = input_data_no_damage_zone()
         case "no_damage_zone_heter_mech_prop":

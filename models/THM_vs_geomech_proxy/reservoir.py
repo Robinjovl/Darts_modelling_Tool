@@ -45,7 +45,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
     def field_reservoir(self, idata: InputData, model_folder, uniform_props=False, generate_mesh=False):
 
         self.mesh_filename = os.path.join(BASE_DIR, 'meshes', model_folder, 'mesh.msh')
-        if generate_mesh:
+        # Structured cases generate their box mesh here. Unstructured cases
+        # such as case_5 generate their mesh externally in main.py and do not
+        # define nx/ny/nz or Xc/Yc/Zc.
+        generate_structured_mesh = generate_mesh and hasattr(idata.other, 'nx')
+        if generate_structured_mesh:
             nx, ny, nz = idata.other.nx, idata.other.ny, idata.other.nz
             self.Xc = idata.other.Xc
             self.Yc = idata.other.Yc
@@ -60,7 +64,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.rsv_y1 = idata.other.rsv_y1
         self.rsv_y2 = idata.other.rsv_y2
 
-        if generate_mesh:
+        if generate_structured_mesh:
             print('Mesh generation started')
             self.timer.node["initialization"].node["mesh_generation"] = timer_node()
             self.timer.node["initialization"].node["mesh_generation"].start()
@@ -133,7 +137,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             super().set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
             super().init_heterogeneous_properties()
         else:  # don't use mesh tags, set by interpolation
-            self.set_heterogeneous_props_by_interpolation(idata=idata, generate_mesh=generate_mesh)
+            self.set_heterogeneous_props_by_interpolation(
+                idata=idata, generate_mesh=generate_structured_mesh
+            )
             self.init_heterogeneous_properties(idata=idata)
 
         # per-cell biot array used by write_to_vtk (eff_stress = tot_stress - biot * pressure).
