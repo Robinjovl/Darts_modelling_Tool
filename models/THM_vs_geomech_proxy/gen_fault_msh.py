@@ -8,7 +8,10 @@ def generate_3d_fault_mesh(
     fault_dip_degrees=45.0,
     reservoir_block_offset=180.0,
     damage_width_left=100,
-    damage_width_right=200
+    damage_width_right=200,
+    well_mesh_size=10.0,
+    well_cylinder_radius=20.0,
+    well_transition_radius=250.0,
 ):
     gmsh.initialize()
     gmsh.model.add("fault_1")
@@ -40,6 +43,14 @@ def generate_3d_fault_mesh(
         raise ValueError(
             "reservoir_block_offset places the movable reservoir outside "
             "the central model interval (-400, 400 m)"
+        )
+    if not (0.0 < well_mesh_size <= lc):
+        raise ValueError("well_mesh_size must be in the interval (0, lc]")
+    if well_cylinder_radius <= 0.0:
+        raise ValueError("well_cylinder_radius must be positive")
+    if well_transition_radius <= well_cylinder_radius:
+        raise ValueError(
+            "well_transition_radius must be larger than well_cylinder_radius"
         )
 
     # ======================================================
@@ -521,6 +532,55 @@ def generate_3d_fault_mesh(
             elif c_fault_right < scalar < c_right:
                 material_by_volume[volume] = DAMAGEZONE_RIGHT
 
+    # ======================================================
+    # Solid, visible wells (reservoir inclusions -- no holes)
+    # ======================================================
+    # These coordinates match case_5.py. Fragmenting the cylinders into the
+    # host creates conformal cylindrical interfaces without subtracting any
+    # material. The cylinder descendants retain the RES material tag and are
+    # therefore part of the reservoir/matrix physical volume.
+    well_locations = [(5500.0, 5000.0), (4500.0, 5000.0)]
+    well_z_min = min(z_new(-b), z_new(-a))
+    well_z_max = max(z_new(-b), z_new(-a))
+    well_height = well_z_max - well_z_min
+    volumes_before_wells = geo.getEntities(3)
+    well_solids = [
+        (
+            3,
+            geo.addCylinder(
+                well_x,
+                well_y,
+                well_z_min,
+                0.0,
+                0.0,
+                well_height,
+                well_cylinder_radius,
+            ),
+        )
+        for well_x, well_y in well_locations
+    ]
+    for _, volume in well_solids:
+        material_by_volume[volume] = RES
+
+    gmsh.model.occ.synchronize()
+    well_fragment_inputs = volumes_before_wells + well_solids
+    _, well_fragment_map = geo.fragment(
+        volumes_before_wells,
+        well_solids,
+        removeObject=True,
+        removeTool=True,
+    )
+    gmsh.model.occ.synchronize()
+    material_by_volume = propagate_boolean_materials(
+        well_fragment_inputs, well_fragment_map, material_by_volume
+    )
+    well_volumes = sorted({
+        tag
+        for descendants in well_fragment_map[-len(well_solids):]
+        for dim, tag in descendants
+        if dim == 3
+    })
+
     # OCC can retain an inverse (negative-mass) solid when the two reservoir
     # contacts are exactly aligned. It represents the exterior complement,
     # not model material, and must not be sent to the mesh generator.
@@ -617,6 +677,39 @@ def generate_3d_fault_mesh(
             gmsh.model.addPhysicalGroup(
                 2, surfaces, tag=physical_tag, name=boundary_names[physical_tag]
             )
+
+    # Smoothly refine the reservoir mesh around the conformal well surfaces.
+    # This field changes only element sizes; it does not define well material.
+    well_surfaces = sorted({
+        surface
+        for dim, surface in gmsh.model.getBoundary(
+            [(3, volume) for volume in well_volumes],
+            combined=False,
+            oriented=False,
+        )
+        if dim == 2
+    })
+    well_distance = gmsh.model.mesh.field.add("Distance")
+    gmsh.model.mesh.field.setNumbers(
+        well_distance, "SurfacesList", well_surfaces
+    )
+    gmsh.model.mesh.field.setNumber(well_distance, "Sampling", 100)
+
+    well_threshold = gmsh.model.mesh.field.add("Threshold")
+    gmsh.model.mesh.field.setNumber(
+        well_threshold, "InField", well_distance
+    )
+    gmsh.model.mesh.field.setNumber(
+        well_threshold, "SizeMin", well_mesh_size
+    )
+    gmsh.model.mesh.field.setNumber(well_threshold, "SizeMax", lc)
+    gmsh.model.mesh.field.setNumber(
+        well_threshold, "DistMin", well_cylinder_radius
+    )
+    gmsh.model.mesh.field.setNumber(
+        well_threshold, "DistMax", well_transition_radius
+    )
+    gmsh.model.mesh.field.setAsBackgroundMesh(well_threshold)
 
     # ======================================================
     # Final meshing setup
