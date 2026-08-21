@@ -562,7 +562,10 @@ class RampUpRate:
         :param pipe_geom: Pipe geometry object of the pipe for which the RampUpRate is going to be defined. It is used for assertion purposes.
         :type pipe_geom: PipeGeometry
         :param physics: physics object is used for assertion purposes and for evaluation of molar enthalpy for thermal scenarios
-        :param first_ts_size: Size of the first time step from the class DataTS in darts_model.py [day]
+        :param first_ts_size: Size of the first time step from the class DataTS in darts_model.py [day].
+            Kept for backwards compatibility and recorded as
+            :attr:`first_ts_size`; the rate schedule no longer constrains it
+            (see :meth:`ramp_factor`).
         :type first_ts_size: float
         :param segment_idx: The index of the segment which fluid will be injected into or produced from
         :type segment_idx: int
@@ -596,9 +599,12 @@ class RampUpRate:
 
         assert isinstance(first_ts_size, float), "first_ts_size must be a float!"
         assert 0 < first_ts_size, "first_ts_size must be positive!"
-        assert first_ts_size < 0.01 / 24 / 60 / 60, (
-            "first_ts_size had better be smaller than 0.01 seconds because during this time step I set the rate to zero!"
-        )
+        # No upper bound on the first timestep any more: the schedule is
+        # integrated over [t_n, t_n + dt] (see update_current_molar_rate), so
+        # the first step no longer starts from a rate that is identically zero
+        # and does not have to be made vanishingly small to hide it
+        # (review item E3).
+        self.first_ts_size = first_ts_size
 
         assert isinstance(segment_idx, int), "segment_idx must be an int!"
         assert 0 <= segment_idx < pipe_geom.num_segments, "Invalid segment index!"
@@ -630,6 +636,12 @@ class RampUpRate:
         # State of the segment receiving this source, published by Pipe before
         # every boundary momentum evaluation (consumed by SegmentProps).
         self.receiving_segment_state = None
+
+        # Size of the timestep the rate schedule is integrated over [day],
+        # published by Pipe before every schedule update (consumed by
+        # update_current_molar_rate). Zero means "no interval known", which
+        # evaluates the schedule at the start of the step.
+        self.timestep_size = 0.0
 
         if inflow_or_outflow == "inflow":
             assert isinstance(inj_fluid_props, dict), "inj_fluid_props must be a dict!"
@@ -772,17 +784,65 @@ class RampUpRate:
             return None
         return self.inj_fluid_props["composition"]
 
-    def update_current_molar_rate(self, simulation_time):
+    def ramp_factor(self, start_time: float, dt: float = 0.0) -> float:
+        r"""
+        Fraction of the target rate this source carries over one timestep.
+
+        The schedule is the linear ramp ``min(t / ramp_up_period, 1)``, and this
+        returns its EXACT AVERAGE over ``[start_time, start_time + dt]``:
+
+        .. math:: \frac{1}{\Delta t}\int_{t_n}^{t_n+\Delta t} \min(t/T, 1)\,dt
+
+        Averaging (rather than sampling the ramp at one end of the step) is what
+        the residual asks for: the source enters it as ``rate * dt``, so the
+        average makes the amount injected during the step exactly the integral
+        of the schedule over the step, for any timestep size.
+
+        The historical implementation sampled the ramp at ``t_n``, which made
+        the first step of every ramped model inject nothing at all, and it
+        compensated with an assertion demanding a first timestep below 0.01 s
+        (review item E3). A left-endpoint sample also under-injects by
+        ``target * dt / (2 T)`` on every step inside the ramp, growing with the
+        timestep; the average has no such bias.
+
+        :param start_time: Start of the timestep, t_n [day].
+        :param dt: Size of the timestep [day]. Zero (the default) evaluates the
+                   ramp at ``start_time`` instead of averaging.
+        :return: Fraction of :attr:`target_rate`, in [0, 1].
         """
-        :param simulation_time: Simulation time [day]
+        period = self.ramp_up_period
+        if period <= 0.0:
+            return 1.0
+
+        t_start = max(float(start_time), 0.0)
+        if t_start >= period:
+            return 1.0
+        if dt <= 0.0:
+            return t_start / period
+
+        t_end = t_start + float(dt)
+        if t_end <= period:
+            # Entirely inside the ramp: the average of a linear function is its
+            # midpoint value.
+            return (t_start + 0.5 * float(dt)) / period
+        # The step straddles the end of the ramp: ramp part + plateau part.
+        ramping = 0.5 * (period + t_start) * (period - t_start) / period
+        return (ramping + (t_end - period)) / float(dt)
+
+    def update_current_molar_rate(self, simulation_time, dt=None):
+        """
+        Set :attr:`current_rate` from the rate schedule.
+
+        :param simulation_time: Start of the timestep, t_n [day]
         :type simulation_time: float
+        :param dt: Size of the timestep [day]; ``None`` (the default) uses
+            :attr:`timestep_size`, which :class:`~darts.pipes.pipe.Pipe`
+            publishes before every call, so that the signature subclasses
+            override stays a single-argument one.
+        :type dt: float
         """
-        if simulation_time < self.ramp_up_period:
-            self.current_rate = (
-                simulation_time / self.ramp_up_period
-            ) * self.target_rate
-        else:
-            self.current_rate = self.target_rate
+        dt = self.timestep_size if dt is None else dt
+        self.current_rate = self.ramp_factor(simulation_time, dt) * self.target_rate
 
     def get_component_energy_rates(
         self,

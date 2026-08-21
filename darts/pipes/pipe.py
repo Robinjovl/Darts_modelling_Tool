@@ -426,6 +426,7 @@ class Pipe:
             If 1  -> Used when we want to update the solution of the previous time step
         :type flag: int
         """
+        dt_day = dt  # the rate schedule works in days, everything else in SI
         dt = dt * 24 * 60 * 60  # convert day to second
 
         geom = self.geometry
@@ -990,7 +991,12 @@ class Pipe:
             momentum_at_first_last_exterfaces = [0, 0]
             for sink_source in self.source_sinks.values():
                 segment_idx_source = sink_source.segment_idx
-                # Update current rate
+                # Update current rate. Publish the size of the timestep first:
+                # the schedule is integrated over [simulation_time,
+                # simulation_time + dt] rather than sampled at its start, and
+                # publishing it (as with receiving_segment_state) keeps the
+                # single-argument signature subclasses override.
+                sink_source.timestep_size = dt_day
                 sink_source.update_current_molar_rate(simulation_time)
                 rate_source = sink_source.current_rate  # Output rate is in kmol/day
 

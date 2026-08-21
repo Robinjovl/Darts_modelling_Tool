@@ -55,7 +55,9 @@ from darts.pipes.drift_flux import (  # noqa: E402
     ShiT2WellClosure,
     Tang2019Closure,
     Wang2014Friction,
+    colebrook_fanning_factor,
     make_drift_flux_closure,
+    wang_darcy_friction_factor,
 )
 from darts.pipes.pipe import Pipe  # noqa: E402
 
@@ -482,6 +484,201 @@ def test_fanning_friction_factor_regimes():
         assert ff[1] == pytest.approx(16.0 / 1.0e3)
         assert 16.0 / 5.0e4 < ff[2] < 0.02
     assert colebrook_ff[2] != wang_ff[2]
+
+
+# ------------------------------------- vectorized Colebrook-White solve (E4)
+def _colebrook_residual(f, Re, relative_roughness):
+    """The correlation the friction factor is the root of, per entry."""
+    return 1.0 / np.sqrt(f) + 4.0 * np.log10(
+        relative_roughness / 3.7065 + 1.2613 / (Re * np.sqrt(f))
+    )
+
+
+COLEBROOK_TEST_REYNOLDS = np.array(
+    [2400.1, 2500.0, 3.0e3, 1.0e4, 5.0e4, 1.0e5, 1.0e6, 1.0e7, 1.0e8]
+)
+
+
+@pytest.mark.parametrize("relative_roughness", [0.0, 1e-6, 5e-4, 1e-3, 1e-2, 5e-2])
+def test_colebrook_solve_is_converged_to_machine_precision(relative_roughness):
+    """The vectorized solve returns the root of the correlation, not an
+    approximation of it: the residual is at machine precision on every entry,
+    which the scipy.optimize.fsolve call it replaces did not deliver (that one
+    stops at xtol = 1.49e-8 and lands up to ~1e-13 relative away)."""
+    Re = COLEBROOK_TEST_REYNOLDS
+    ff = colebrook_fanning_factor(Re, relative_roughness)
+    assert ff.shape == Re.shape
+    assert np.all(np.isfinite(ff))
+    assert np.all(ff > 0.0)
+    residual = _colebrook_residual(ff, Re, relative_roughness)
+    # 1/sqrt(f) is O(10), so an absolute residual of 1e-12 is ~1e-13 relative.
+    assert np.max(np.abs(residual)) < 1e-12
+
+
+def test_colebrook_solve_is_independent_of_the_batch_it_is_solved_in():
+    """Every entry is frozen on its own convergence, so an interface's friction
+    factor does not depend on which other interfaces share the call."""
+    Re = COLEBROOK_TEST_REYNOLDS
+    together = colebrook_fanning_factor(Re, 5e-4)
+    one_by_one = np.array(
+        [colebrook_fanning_factor(np.array([r]), 5e-4)[0] for r in Re]
+    )
+    assert np.array_equal(together, one_by_one)
+
+
+@pytest.mark.parametrize("tolerance", [1e-12, 1e-14, 1e-15])
+def test_colebrook_solve_is_at_machine_precision_for_any_tolerance(tolerance):
+    """The default tolerance already sits at the resolution of the arithmetic:
+    tightening it by three orders of magnitude still converges (no warning) and
+    moves the answer by a couple of ULP at most -- against the ~5e2 ULP the
+    fsolve call this replaces was away from the root."""
+    Re = COLEBROOK_TEST_REYNOLDS
+    default = colebrook_fanning_factor(Re, 5e-4)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # a tighter tolerance must still converge
+        tighter = colebrook_fanning_factor(Re, 5e-4, tolerance=tolerance)
+    ulp = np.abs(default.view(np.int64) - tighter.view(np.int64))
+    assert ulp.max() <= 4
+    assert np.max(np.abs(_colebrook_residual(tighter, Re, 5e-4))) < 1e-12
+
+
+def test_colebrook_solve_warns_when_it_runs_out_of_iterations():
+    """An unreachable tolerance must be reported, not silently returned."""
+    with pytest.warns(RuntimeWarning, match="did not converge"):
+        ff = colebrook_fanning_factor(
+            COLEBROOK_TEST_REYNOLDS, 5e-4, tolerance=0.0, max_iterations=3
+        )
+    assert np.all(np.isfinite(ff))
+
+
+@pytest.mark.parametrize(
+    "friction", [ColebrookWhiteFriction(), Wang2014Friction()], ids=lambda f: f.name
+)
+def test_pointwise_friction_matches_its_scalar_entry_point(friction):
+    """fanning_scalar is a wrapper over the vectorized pointwise evaluation, so
+    the loop-free path reproduces the historical per-interface numbers exactly
+    (laminar, turbulent and zero-flow alike)."""
+    Re = np.concatenate([[0.0, 1.0, 1.0e3, 2399.0], COLEBROOK_TEST_REYNOLDS])
+    batched = friction.fanning_pointwise(Re, 5e-4)
+    scalar = np.array([friction.fanning_scalar(r, 5e-4) for r in Re])
+    assert np.array_equal(batched, scalar)
+
+
+def test_wall_and_pointwise_friction_differ_only_at_the_laminar_transition():
+    """The array (wall) path leaves Re == 2400 at zero while the pointwise path
+    treats it as turbulent. A pre-existing disagreement, kept deliberately
+    rather than silently changed; everywhere else the two agree bit for bit."""
+    friction = ColebrookWhiteFriction()
+    Re = np.array([0.0, 1.0e3, 2399.0, 2400.0, 2400.1, 1.0e5])
+    wall = friction.fanning(Re, 5e-4)
+    pointwise = friction.fanning_pointwise(Re, 5e-4)
+    assert wall[3] == 0.0
+    assert pointwise[3] > 0.0
+    keep = np.arange(len(Re)) != 3
+    assert np.array_equal(wall[keep], pointwise[keep])
+
+
+def test_wang_array_path_reproduces_the_scalar_darcy_helper():
+    """Vectorizing the Wang correlation is exact, not approximate: the array
+    path and the historical scalar helper agree to the last bit."""
+    Re = np.concatenate([[0.0, 1.0e3, 2400.0], COLEBROOK_TEST_REYNOLDS])
+    array_fanning = Wang2014Friction().fanning(Re, 5e-4)
+    scalar_fanning = np.array([wang_darcy_friction_factor(r, 5e-4) / 4.0 for r in Re])
+    assert np.array_equal(array_fanning, scalar_fanning)
+
+
+def test_no_scipy_solve_in_the_friction_path():
+    """E4 guard: no scalar SciPy solve may occur in a face-level production
+    loop. Every closure -- profile parameter, drift velocity and wall friction
+    -- must go through the vectorized solve instead."""
+    import scipy.optimize
+
+    def _forbidden(*args, **kwargs):
+        raise AssertionError(
+            "a scipy.optimize solve was called from the per-interface path"
+        )
+
+    for model in SUPPORTED_DRIFT_FLUX_MODELS:
+        pipe = _make_pipe(model)
+        _set_previous_face_state(pipe, sG=0.4, vM=2.0, vG=2.5, vL=1.5)
+        monkeypatched = {
+            name: getattr(scipy.optimize, name)
+            for name in ("fsolve", "brentq", "newton", "root", "root_scalar")
+        }
+        for name in monkeypatched:
+            setattr(scipy.optimize, name, _forbidden)
+        try:
+            pipe.update_profile_parameter()
+            pipe.update_drift_velocity()
+            ff = _closure(pipe).fanning_friction_factor(
+                np.full(pipe.geometry.num_interfaces, 5.0e4)
+            )
+        finally:
+            for name, original in monkeypatched.items():
+                setattr(scipy.optimize, name, original)
+        assert np.all(ff > 0.0), model
+
+
+@pytest.mark.parametrize("model", BHAGWAT_GHAJAR_DRIFT_FLUX_MODELS)
+@pytest.mark.parametrize("n_segments", [3, 12, 40])
+def test_friction_is_evaluated_once_per_pipe_not_once_per_interface(model, n_segments):
+    """The number of friction-model calls must not grow with the number of
+    interfaces: the Bhagwat-Ghajar C0,1 term used to solve Colebrook-White per
+    interface inside its face loop."""
+    geometry = _make_geometry(n_segments=n_segments)
+    n_interfaces = geometry.num_interfaces
+    closure = make_drift_flux_closure(model).bind(geometry)
+    calls = []
+    original = type(closure.friction).fanning_pointwise
+
+    def counting(self, Re, relative_roughness):
+        calls.append(np.size(Re))
+        return original(self, Re, relative_roughness)
+
+    type(closure.friction).fanning_pointwise = counting
+    try:
+        C0 = closure.profile_parameter(_face_state(n_interfaces=n_interfaces))
+    finally:
+        type(closure.friction).fanning_pointwise = original
+
+    assert len(calls) == 1, (
+        f"{model}: {len(calls)} friction calls for {n_interfaces} interfaces"
+    )
+    assert calls[0] == n_interfaces
+    assert np.all(np.isfinite(C0))
+
+
+@pytest.mark.parametrize("model", BHAGWAT_GHAJAR_DRIFT_FLUX_MODELS)
+def test_batched_friction_reproduces_the_per_interface_profile_parameter(model):
+    """Hoisting the friction factor out of the C0 loop changes nothing: passing
+    it in gives the same C0 as letting the interface evaluate it itself."""
+    geometry = _make_geometry(n_segments=5)
+    closure = make_drift_flux_closure(model).bind(geometry)
+    face = _face_state(n_interfaces=geometry.num_interfaces, sG=0.35, vM=1.7)
+    batched = closure.profile_parameter(face)
+
+    per_interface = np.ones(geometry.num_interfaces)
+    for i in face.indices:
+        jG0, jL0 = closure._superficial_velocities(face, i)
+        per_interface[i] = closure.interface_profile_parameter(
+            face.sG[i],
+            face.sL[i],
+            jG0,
+            jL0,
+            abs(face.vM[i]),
+            face.rhoG[i],
+            face.rhoL[i],
+            face.muG[i],
+            face.muL[i],
+            closure.theta[i],
+        )
+    # the C0*sG <= 1 clamp profile_parameter applies afterwards
+    per_interface[face.indices] = np.minimum(
+        per_interface[face.indices],
+        (1.0 - 1e-8) / np.maximum(face.sG[face.indices], np.finfo(float).eps),
+    )
+    assert len(face.indices) == geometry.num_interfaces  # the state is two-phase
+    assert np.array_equal(batched, per_interface)
 
 
 # ------------------------------------------------------- sign convention
