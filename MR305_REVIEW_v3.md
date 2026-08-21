@@ -25,50 +25,68 @@ the delivery mapping.
 
 ---
 
-## 2. Correction to v2 — `2ph_comp_solid` is an MR-caused regression
+## 2. `2ph_comp_solid` — a marginal tolerance, not a regression in either direction
 
-v2 recorded `2ph_comp_solid` as a **pre-existing stale reference**. **That was
-wrong**, and the external review was right to insist the comparison be made
-against `development` rather than waived.
+This model has now been misdiagnosed twice, in opposite directions, and the
+resolution is worth recording carefully.
 
-Measured:
+- **v2** called it a *pre-existing stale reference*. The conclusion (not
+  MR-caused) was right; the stated reason was a guess.
+- **The external review** asked for a comparison against `development` rather
+  than a waiver. That was the right instinct.
+- **v3 (first draft)** made that comparison, found `development` PASS and MR head
+  FAIL, and concluded the MR caused it. **That was wrong** — the two trees were
+  built with different `OPENDARTS_CONFIG` values, so it was never a valid A/B.
 
-| Tree | Result |
-|---|---|
-| `development` @ `89679e42` (MR base) | **PASS** |
-| MR head @ `6f482ef6` | **FAIL** — normalized L2 1.32e-08 (tol 1e-09); normalized max 3.74e-08 (tol 1e-07, passes); max abs 2.07e-06 bar |
-| `sajjad/ipr_refactored` @ M3 | FAIL, identical numbers |
+**Established, each verified directly:**
 
-The v2 error was methodological: I established that the failure is not caused by
-the M0–M3 refactoring (reverting the entire `darts/` tree to the MR head still
-fails) and then wrongly generalized that to "pre-existing on the development
-lineage". Reverting to the *MR head* says nothing about *development*.
+1. **A tree containing none of MR !305 fails with byte-identical numbers.**
+   `open-darts-pt-constraints` (development lineage, `0c0f11c9`) produces exactly
+   `L2 1.32E-08 / max 3.74E-08 / max abs 2.07E-06` — the same digits as the MR
+   branch. `open-darts-minerals` likewise. All four trees share the *same*
+   reference file (`5e71a004`, identical md5), so the reference is not the
+   variable.
+2. **The well-control fix is a provable no-op for this model.** The entire
+   behavioural change is `ctrl_state_col_offset = (is_bhp_ctrl ? 0 :
+   well_state_offset) * n_block_size_sq`, and `well_state_offset = is_inj ? 0 : 1`
+   (`engines/src/well_controls.cpp:9`). The offset is non-zero **only for a
+   rate-controlled producer**. `2ph_comp_solid` has a `MOLAR_RATE` **injector**
+   and a **BHP** producer (`models/2ph_comp_solid/model.py:119,123`) — offset zero
+   in both wells, so the fix writes to identical columns.
+3. **The divergence appears at Newton iteration 0, in the reservoir**: the
+   `KineticBasic` operator values differ by ~1 ULP (7.9e-19 on a 1.7e-5 scale).
+   A well-control row cannot write reservoir operator values.
+4. **The check is marginal and flips in both directions.** `development` passes
+   it at 55 % of the 1e-9 bound; other trees fail at 1320 % of it. Conversely
+   `Chem_benchmark_new` — same control topology, also kinetic — **fails on
+   `development` and passes on the MR branch** (`L2 1.13E-09` against the same
+   1e-09 tolerance).
 
-**Mechanism** — the model is well-rate-controlled (`well_control_iface.MOLAR_RATE`,
-`models/2ph_comp_solid/model.py:119`), which is precisely the case the MR's
-well-control Jacobian block-placement fix changes. That fix is *correct*: the
-finite-difference test added in M1b (`tests/test_well_control_jacobian_fd.py`)
-reproduces the assembled wellhead row to ~1e-8 relative for BHP, molar/mass total
-and phase rate, injector and producer. It legitimately shifts the Newton path.
+**Conclusion**: the `2ph_comp_solid` well-pressure L2 tolerance is too tight for a
+stiff kinetic model. It sits within a factor of about two of its pass/fail
+boundary and is decided by build environment, not by source changes. **No
+reference was regenerated**, because there is nothing from this MR to baseline
+away.
 
-**The actual defect is scope**: the MR regenerated 32 reference files for
-`GeoRising` and `2ph_geothermal_mass_flux` for exactly this reason, but never
-enumerated the full blast radius of the fix. `2ph_comp_solid` was missed.
+**Required action** — not a re-baseline: make the check robust. Either widen the
+well-pressure L2 tolerance for kinetic models to reflect the achievable
+reproducibility, or make the comparison build-invariant. Until then this model
+and `Chem_benchmark_new` will keep flipping between environments and will keep
+costing reviewers time — as they did here, twice.
 
-**Required action** — regenerate `models/2ph_comp_solid/ref/perf_*.pkl` (all four
-suffixes; Windows variants via the CI `UPLOAD_PKL` pipeline) *and* record the
-measured drift in the CHANGELOG next to the existing entry, as was done for the
-other two models. Before doing so, enumerate every model with a rate-controlled
-well and check each — the same gap may hide elsewhere. This is a deliberate
-re-baseline of a verified fix, not a tolerance waiver.
-
----
+**Methodological lesson, recorded because it cost two wrong calls:** comparing
+two trees only establishes something if everything except the variable under test
+is identical. Reverting `darts/` to the MR head (v2) held the C++ build constant
+but changed nothing relevant; comparing against a differently-configured
+`development` build (v3 draft) changed two things at once. The decisive
+experiment was the third one: a tree on the development lineage, built the same
+way, containing none of the MR.
 
 ## 3. Findings the external review caught that v2 missed
 
 | # | Finding | Evidence | Status |
 |---|---|---|---|
-| E1 | `2ph_comp_solid` must be compared against `development` | §2 — confirmed MR-caused | **Correction accepted** |
+| E1 | `2ph_comp_solid` must be compared against `development`, not waived | §2 — the instinct was right; the resulting diagnosis (MR-caused) was **refuted** by a zero-MR-code tree failing identically | Partially accepted: investigate, yes; MR-caused, no |
 | E2 | IPR uses `property_containers[0]`, wrong for multi-region models | `darts/pipes/linear_dfm_well_ipr.py:373,388,394` | Confirmed. v2 flagged this only for the heat hook |
 | E3 | The ramp schedule is evaluated at the old time, forcing a tiny first step | `darts/pipes/ramp_up_rate.py:599` asserts `first_ts_size < 0.01 s`; its own message says *"because during this time step I set the rate to zero!"* | Confirmed — a workaround, not a constraint |
 | E4 | Scalar SciPy solve per interface in a face loop | `fsolve` per turbulent face, per Newton iteration | Confirmed — and M2 **relocated** it into `darts/pipes/drift_flux.py:276-281` without fixing it |
@@ -193,8 +211,12 @@ migrated model and both refactors of the numerical core.
 
 ### M3.5 — corrections arising from this review (new, do first)
 
-1. **Regenerate `2ph_comp_solid` references** and document the drift (§2); first
-   enumerate every rate-controlled-well model and check for further gaps.
+1. **Do NOT regenerate `2ph_comp_solid`** (§2) — instead make its well-pressure
+   L2 check robust to build environment. The blast-radius audit of the
+   well-control fix is complete and its "passes at development, fails here" class
+   is **empty**: the fix moves rate-controlled *producers* only, and every such
+   model (`2ph_geothermal_mass_flux`, `GeoRising` PT/PH, `SPE10_mech`,
+   `cpg_sloping_fault` geothermal wrate) passes on both sides.
 2. **Region-aware properties in the IPR hook** (E2) — resolve the property
    container from the connected block's region instead of `[0]`. Same audit for
    every other `property_containers[0]` in `darts/pipes/`.
@@ -278,8 +300,9 @@ composition boundaries; multiple wells with different creation orders.
 
 ## 10. Standing issues for maintainer decision
 
-1. `2ph_comp_solid` reference regeneration and a full audit of the well-control
-   fix's blast radius (§2).
+1. The `2ph_comp_solid` / `Chem_benchmark_new` well-pressure L2 tolerance, which
+   is decided by build environment rather than by source (§2). The blast-radius
+   audit is done and found no affected model.
 2. The `bai` 50 K Dirichlet incoherence between `mesh.bc` and `pz_bounds` (V11).
 3. `2ph_constant_k`'s no-dt BHP pseudo-well — an effective 1/dt productivity index
    whose strength depends on timestep size (V14). Reproduced verbatim during
