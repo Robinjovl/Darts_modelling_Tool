@@ -30,6 +30,7 @@ Welcome to open-DARTS documentation!
 
    for_developers/darts_gitlab_setup.md
    for_developers/parallel_operators.md
+   for_developers/conditions_lowering.md
 
 .. toctree::
    :maxdepth: 2

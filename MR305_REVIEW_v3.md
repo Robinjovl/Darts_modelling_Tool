@@ -100,9 +100,13 @@ way, containing none of the MR.
 | E12 | Split the MR into ~9 focused MRs | — | Adopted as the delivery strategy, §8 |
 
 **Status since**: E2, E3 and E4 landed in M3.5, and E5–E9 landed in M4 — see §7
-for what each one delivered and for E7's remaining half. E1 stands as the
-standing tolerance decision (§2, §10.1), E10 remains open in the validation
-matrix (§9), and E11/E12 are unchanged (model-side after M0; §8).
+for what each one delivered, for the two defects found in M4's adjoint guard, and
+for E7's remaining half (now a concrete deliverable: a batched
+`connection_fluxes()`, which is also the prerequisite for M5). E1 stands as the
+standing tolerance decision (§2, §10.1); E10 is measured and open — the
+per-contribution scaling numbers are in `docs/for_developers/conditions_lowering.md`
+§1 and its callback-count assertion is gate **G5** in §7's M6 — and E11/E12 are
+unchanged (model-side after M0; §8).
 
 ---
 
@@ -285,41 +289,132 @@ while the framework changed underneath them — `LinearDFMWellIPRHook` and
 `model.conditions` in `set_wells()`, and **`set_rhs_flux` and `rhs_flux_hooks`
 are removed from `DartsModel`**: `apply_rhs_flux()` is the conditions stage plus
 the observer stage and nothing else, and is the framework's entry point rather
-than an extension point. The two spellings survive only as adapters onto this
-layer (`LegacyRhsFluxOverride`, `LegacyHookRegistration`) so that a model outside
-this repository neither breaks with an `AttributeError` nor — the worse
-alternative — keeps running while silently dropping a source term. Nothing in
+than an extension point. The two spellings are gone rather than adapted, and each
+of the three ways they can still appear fails **loudly**: `rhs_flux_hooks.append()`
+raises `AttributeError` at the call, and both a surviving `set_rhs_flux()` override
+and a self-assigned `rhs_flux_hooks` list are refused at `init()` — the two cases
+that would otherwise run on while silently dropping a source term. Nothing in
 this repository registers a Python-side contribution any other way.
 
-### M5 — backend lowering and well laws (remaining)
+**Two defects in M4's adjoint guard, found while assessing M5** (details in
+`docs/for_developers/conditions_lowering.md` §3):
 
-IPR becomes `well.add_perforation(..., flow_law=LinearIPR(...))` assembled
-engine-side — **with no dummy zero-WI perforation**, because M4's stencil
-declaration makes it unnecessary — gaining exact derivatives, GPU and adjoint
-support. Semi-analytic lateral heat becomes a well segment heat law returning rate
-*and* derivatives. Native CPU/GPU kernels for the cell-source and connection-flux
-item types. Adjoint support for declared items; until then the bind-time guard
-stands.
+1. **The guard is evaluated before the flag it reads can be set.**
+   `ConditionSet.compile()` checks `engine.opt_history_matching` once, at the end
+   of `DartsModel.init()`. `OptModuleSettings.make_opt_step_adjoint_method()` sets
+   that flag *after* `init()` has returned and then calls `reset()`, which does not
+   re-run `compile()`. In the driver's own call order the check therefore never
+   fires, and a model with an opaque item history-matches to completion with a
+   silently incomplete gradient. Fix: re-evaluate the check where the flag can be
+   observed — in `reset()`, or at the first `apply_rhs_flux()` of a run. This is a
+   correctness hole, not an optimization, and should be closed before M5 starts.
+2. **`declare_stencil()` shifts the gradient vector's layout.** A declared-but-absent
+   coupling is added as a zero-transmissibility connection, so `mesh->n_conns` grows
+   by two and `n_interfaces = mesh->n_conns / 2` by one. The transmissibility
+   gradient and the positional `col_dT_du` mapping built in `opt_module_settings.py`
+   are both indexed by interface order, so a stencil-declaring item mis-indexes the
+   gradient even when it contributes nothing. M5's adjoint work must exclude
+   declared connections from that numbering or renumber `col_dT_du`.
 
-What M4 deliberately did **not** do, and M5 must: the Python `BlockCSRView` path
-is still the implementation, not the fallback §6 describes; Jacobian
-contributions are still CPU-only and still opaque to the adjoint (both refused at
-`compile()` rather than silently wrong); the per-iteration cost is still Python
-per item; and E7's law half (a composable `PrescribedRate`-style law the backend
-kernel consumes, rather than an item subclass) arrives with the lowering that
-gives it a consumer.
+Related, and free: `CellSource` with a constant or `f(t)` rate and no `d_rates` is
+**provably adjoint-transparent** — it contributes nothing to `dg_dx_T`, `dg_dx_n`
+or `dg_dT_general`, and the adjoint linearizes about the stored trajectory, which
+already contains its effect. So does `ConstantStateBC`, which contributes nothing
+at all. Both could set `adjoint_transparent = True` today (guarded by "the rate is
+not a control variable and no stencil was declared") instead of blocking history
+matching. Every other item type needs the native lowering first: the backward loop
+rebuilds the Jacobian from C++ alone, with no per-step Python hook, so **native
+lowering is a prerequisite for adjoint support rather than a parallel workstream**.
 
-### M6 — inclusion gate (remaining)
+### M5 — backend lowering and well laws (assessed; partly landing)
 
-A feature enters core only with: equation/reference tests, an independent public
-integration case, derivative verification, CPU ST/MT and GPU results, scaling
-measurements, applicability and failure-mode documentation, and a stable
-non-model-specific API. Applies to the choke on re-admission (restoring the
-deleted 310-line equation tests), to the new drift-flux correlations, and to the
-lateral-heat model. E10's validation matrix belongs here too: the scaling
-measurements at ~10², 10⁴ and 10⁶ contributions, the assertion that the Python
-callback count does not grow per cell or face once native assembly exists, and
-CPU ST / CPU MT / GPU parity per item type (§9).
+**Assessed, with measurements, in `docs/for_developers/conditions_lowering.md`.**
+The assessment changes the plan: most of the lowering §6 promises is not worth
+building.
+
+- **The Python cost is not where it was assumed to be.** On the heaviest CI case
+  that uses the layer (`2ph_2comp_isothermal_dfm_vertical_well_vs_olga`,
+  `ipr_volumetric`), `ConditionSet.apply` is 0.74 s of a 7.60 s run — **9.7 %**,
+  against 47 % in OBL well point generation and 42 % in the Python drift-flux
+  velocity evaluation.
+- **The largest available win needs no C++.** `CellSource.apply`'s Jacobian path
+  is a per-cell Python loop: 2626 ms per Newton iteration at 10⁶ contributions,
+  against 18 ms for the vectorized RHS path. Replacing it with a flat-index numpy
+  scatter measures **62 ms — 42×** — and is the fix for E10's "callback count must
+  not grow per cell", which today is violated inside a shipped item type.
+- **`InterfaceFlux` is the structural case**: a flat ~13.8 µs per connection
+  (2.8 s per iteration at 2·10⁵), because `apply()` calls the subclass once per
+  connection. Its compiled data is also the one that does **not** survive a trip to
+  C++ — `connections` and `_positions` are Python lists of tuples, not arrays.
+  Flattening them and adding a batched `connection_fluxes()` is the prerequisite
+  for any lowering **and** is E7's remaining law half, deliverable before a kernel
+  exists.
+- **State dependence goes through the operators, not through a callback.** The
+  engine already has a native, GPU-capable, adjoint-visible state-dependent source:
+  `KIN_OP` scaled by `mesh.kin_factor`, i.e. channel P. A callback from C++ into
+  Python is rejected — it keeps the GIL in the assembly, cannot exist in a CUDA
+  kernel, and still leaves the adjoint replay unable to reproduce the term.
+- **GPU needs staged arrays and a device scatter**, not a sync: `Jacobian->values_d`
+  is what the linear solver reads, and the host copy is written only under
+  `print_linear_system`. The existing `jac_wells` → `jac_wells_d` →
+  `copy_data_within_device` path in `engine_super_gpu::assemble_jacobian_array` is
+  the template.
+- **Verdicts.** Do now: the `CellSource` scatter; the `InterfaceFlux` flattening +
+  batched law; the E10 scaling tests; the adjoint-guard fix below. Design now,
+  build on demand: native CPU and then GPU cell-source passes. **Do not build:** a
+  generic native `InterfaceFlux` kernel (the flux law is user code; the one that
+  matters here is a well flow law and belongs in the well assembler) and any
+  C++→Python per-contribution callback.
+
+**Landing natively, concurrently**: the linear IPR as a real perforation flow law
+(`perforation_flow_law`, `ms_well::set_perforation_flow_law`,
+`engine_base::build_perforation_flow_laws`, `engine_super_cpu::add_perforation_flow_law`)
+— a POD law struct snapshotted at `init()`, resolved against the frozen connection
+arrays with a loud failure on any mismatch, assembled with analytic derivatives
+instead of the Python hook's `2 · n_vars` finite differences, and refusing both an
+engine that cannot assemble it and an active `opt_history_matching`. That refusal
+pattern is the one the rest of M5 should copy.
+
+Still true of M4 and still M5's job: the Python `BlockCSRView` path is the
+implementation rather than the fallback §6 describes; Jacobian contributions are
+CPU-only; and the per-iteration cost is Python per item.
+
+### M6 — inclusion gate (written down, and applied)
+
+The gate is now eight checkable criteria a reviewer can tick — equation tests
+against external numbers (G1), an independent public integration case with the
+reference data in the tree (G2), finite-difference derivative verification (G3),
+CPU ST/MT and GPU results **or an enforced restriction plus its reason** (G4),
+scaling at ~10²/10⁴/10⁶ with the E10 callback-count assertion (G5), documented
+applicability and failure modes (G6), a stable non-model-specific API (G7), and an
+in-repo consumer (G8). "Not applicable" is an allowed answer; "not yet" means the
+feature stays model-side. Stated in full, with the evidence each one demands, in
+`docs/for_developers/conditions_lowering.md` §4, where it is also applied honestly
+to the three features it governs:
+
+- **Choke** (outside the repository): fails every gate today, but its best
+  evidence is recoverable — the deleted `tests/pipes/test_choke_models.py`
+  (`aa899c8c^`) held eight genuine equation tests (Perkins critical-pressure ratio
+  against the isentropic limit, pure-liquid against the incompressible orifice
+  relation, the A30 stationary-point identity, SINTEF-HEM's incompressible limit,
+  Rathjen–Straub surface tension against a CO₂ reference). Re-admission = restore
+  those, fix `RECOVERY='ON'` (V3), resolve `CHISHOLM` (E11), re-express the API as
+  a condition item or well law, add a CI model and an FD Jacobian test. G2 is the
+  expensive one and is what decides whether it belongs in `darts/` at all.
+- **The three drift-flux correlations**: G7 and G8 met (registry, per-closure
+  keyword validation, standalone use, three CI variants); G6 much improved by M1a.
+  **G1 and G2 are the real gap**: the 55 tests in
+  `tests/pipes/test_drift_flux_closures.py` are algebra, guard and
+  self-consistency tests, and **not one compares a closure against a number from
+  the paper it implements**; the `vs_olga` CI variants compare against their own
+  regenerated pickles, with no OLGA data in the tree. G3 is missing but cheap —
+  `Pipe` has both an `"OBL"` and a `"numerical"` derivative path and nothing
+  compares them.
+- **Lateral heat**: closest to the gate. G1, G3 (PT), G6 (its docstring is the
+  model of what G6 should look like) and G8 met. Fails on G7 —
+  `well_layers_props` is an advertised argument that raises `NotImplementedError`,
+  so either implement Willhite's U or delete the parameter — and on G2; G5 and the
+  PH-lag convergence cost are unmeasured.
 
 ---
 
