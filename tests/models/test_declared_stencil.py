@@ -114,11 +114,10 @@ class _StubPhysics:
 
 
 class _StubModel:
-    def __init__(self, reservoir, engine=None, rhs_flux_hooks=()):
+    def __init__(self, reservoir, engine=None):
         self.reservoir = reservoir
         self.physics = _StubPhysics(engine)
         self.platform = "cpu"
-        self.rhs_flux_hooks = list(rhs_flux_hooks)
         self._pattern_version = 0
 
 
@@ -137,8 +136,15 @@ class _DeclaringItem(ConditionItem):
         return
 
 
-class _LegacyDeclaringHook:
-    """A legacy ``rhs_flux_hooks`` entry that declares a stencil."""
+class _WellCouplingItem(ConditionItem):
+    """A declaring item that also reports the well its coupling connects.
+
+    ``DartsModel._require_declared_well_coupling`` reads
+    ``declared_well_names`` so a well with NO perforation is accepted when an
+    item supplies its reservoir coupling instead.
+    """
+
+    contribution = NO_CONTRIBUTION
 
     def __init__(self, couplings, wells=()):
         self.couplings = tuple(couplings)
@@ -150,7 +156,7 @@ class _LegacyDeclaringHook:
     def declared_well_names(self, model):
         return self.wells
 
-    def apply(self, dt, t=None):
+    def apply(self, ctx):
         return
 
 
@@ -181,13 +187,14 @@ def test_stencil_declarers_empty_when_nothing_declares():
     assert conditions.stencil_declarers(model) == []
 
 
-def test_stencil_declarers_finds_items_and_legacy_hooks():
+def test_stencil_declarers_finds_every_declaring_item_in_order():
     model, _, _ = _model_with_one_well()
-    hook = _LegacyDeclaringHook([(5, 0)])
-    model.rhs_flux_hooks.append(hook)
     conditions = ConditionSet()
-    item = conditions.add(_DeclaringItem([(6, 2)]))
-    assert conditions.stencil_declarers(model) == [item, hook]
+    first = conditions.add(_DeclaringItem([(6, 2)]))
+    second = conditions.add(_WellCouplingItem([(5, 0)]))
+    # a non-declaring item is not reported, and registration order is kept
+    conditions.add(CellSource(cells=[0], rates=[[1.0, 1.0]]))
+    assert conditions.stencil_declarers(model) == [first, second]
 
 
 def test_declare_stencil_is_a_noop_without_declarers():
@@ -492,7 +499,6 @@ def _row_conflict_model():
     model.platform = "cpu"
     model.physics = _StubPhysics(_FakeCSREngine())
     model.reservoir = _StubReservoir(_StubMesh(3, 3))
-    model.rhs_flux_hooks = []
     model._pattern_version = 0
     return model
 
@@ -610,12 +616,12 @@ def _build_olga_models():
             well = self.reservoir.get_well("I1")
             segment_local, res_block = well.perforations[0][:2]
             well.perforations = []
-            self.rhs_flux_hooks = [
-                hook
-                for hook in self.rhs_flux_hooks
-                if not isinstance(hook, LinearDFMWellIPRHook)
+            self.conditions.items = [
+                item
+                for item in self.conditions.items
+                if not isinstance(item, LinearDFMWellIPRHook)
             ]
-            self.rhs_flux_hooks.append(
+            self.conditions.add(
                 LinearDFMWellIPRHook(
                     self,
                     [
@@ -679,7 +685,9 @@ def test_the_declared_pattern_equals_the_fake_perforation_pattern(olga_models):
 def _ipr_hook(model):
     from darts.pipes.linear_dfm_well_ipr import LinearDFMWellIPRHook
 
-    (hook,) = [h for h in model.rhs_flux_hooks if isinstance(h, LinearDFMWellIPRHook)]
+    (hook,) = [
+        item for item in model.conditions if isinstance(item, LinearDFMWellIPRHook)
+    ]
     return hook
 
 
@@ -697,12 +705,23 @@ def _hook_contribution(model, p_well, p_res, dt=1e-3):
     saved = X.copy()
     rhs = np.asarray(engine.RHS)
     jac = np.asarray(engine.jac_vals)
+    ctx = AssemblyContext(
+        rhs=rhs,
+        jac=BlockCSRView(engine, n_vars, pattern=pattern_identity(model)),
+        X=X,
+        Xn=np.asarray(engine.Xn),
+        dt=dt,
+        t=0.0,
+        iteration=0,
+        n_vars=n_vars,
+        n_res_blocks=model.reservoir.mesh.n_res_blocks,
+    )
     try:
         X[well_block * n_vars] = p_well
         X[res_block * n_vars] = p_res
         rhs[:] = 0.0
         jac[:] = 0.0
-        hook.apply(dt)
+        hook.apply(ctx)
         return rhs.copy(), jac.copy(), (well_block, res_block)
     finally:
         X[:] = saved

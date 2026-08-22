@@ -19,6 +19,7 @@ import warnings
 import numpy as np
 import pytest
 
+from darts.models.conditions import AssemblyContext, BlockCSRView
 from darts.pipes.add_lateral_heat_exchange import (
     SemiAnalyticalWellLateralHeatTransfer,
     SemiAnalyticalWellLateralHeatTransferHook,
@@ -257,6 +258,27 @@ def _fill_temperatures(engine, well, n_vars, temperatures):
     x2d[well.well_head_idx : well.well_head_idx + well.num_segments, -1] = temperatures
 
 
+def _bind_and_apply(hook, model, dt, t, with_jacobian=False):
+    """Drive the item the way ``ConditionSet`` does: bind once, then apply with
+    an :class:`AssemblyContext` over the stub engine's arrays."""
+    engine = model.physics.engine
+    n_vars = model.physics.n_vars
+    hook.bind(model)
+    ctx = AssemblyContext(
+        rhs=engine.RHS,
+        jac=BlockCSRView(engine, n_vars) if with_jacobian else None,
+        X=engine.X,
+        Xn=np.zeros_like(engine.X),
+        dt=dt,
+        t=t,
+        iteration=0,
+        n_vars=n_vars,
+        n_res_blocks=0,  # the stub has no reservoir; the item never reads it
+    )
+    hook.apply(ctx)
+    return ctx
+
+
 def test_hook_ph_writes_body_energy_rhs_and_skips_wellhead():
     """PH spec: RHS-only hook (provides_jacobian is False); segment 0 carries
     the well-control equations and must never receive the heat source."""
@@ -279,7 +301,7 @@ def test_hook_ph_writes_body_energy_rhs_and_skips_wellhead():
         temperatures, t + dt
     )
 
-    hook.apply(dt, t)
+    _bind_and_apply(hook, model, dt, t)
 
     rhs_well = engine.RHS.reshape(-1, n_vars)[
         well.well_head_idx : well.well_head_idx + well.num_segments
@@ -318,7 +340,7 @@ def test_hook_pt_adds_conductance_dt_on_diagonal_energy_temperature_entry():
     expected_q = twin.evaluate(temperatures, t + dt)
     expected_c = twin.conductance(t + dt)
 
-    hook.apply(dt, t)
+    _bind_and_apply(hook, model, dt, t, with_jacobian=True)
 
     rhs_well = engine.RHS.reshape(-1, n_vars)[
         well.well_head_idx : well.well_head_idx + well.num_segments

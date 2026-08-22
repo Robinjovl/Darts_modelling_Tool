@@ -2,7 +2,12 @@ import warnings
 
 import numpy as np
 
-from darts.models.conditions import BlockCSRView
+from darts.models.conditions import (
+    AssemblyContext,
+    BlockCSRView,
+    ConditionItem,
+    pattern_identity,
+)
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.linear_dfm_well_ipr import well_cell_property_container
 
@@ -319,9 +324,9 @@ class SemiAnalyticalWellLateralHeatTransfer:
         return conductance
 
 
-class SemiAnalyticalWellLateralHeatTransferHook:
+class SemiAnalyticalWellLateralHeatTransferHook(ConditionItem):
     """
-    Hook that connects a SemiAnalyticalWellLateralHeatTransfer evaluator to the Newton solver.
+    Condition item connecting a SemiAnalyticalWellLateralHeatTransfer evaluator to the Newton solver.
 
     At each Newton iteration, it reads the current segment temperatures from the engine
     state vector, evaluates the lateral heat rates, and subtracts them from the energy
@@ -348,12 +353,24 @@ class SemiAnalyticalWellLateralHeatTransferHook:
     (:meth:`_resolve`) rather than hard-coded to region 0, so a multi-region
     model cannot silently flash the wrong fluid. A missing container raises.
 
-    Create an instance in set_wells() and register it by appending to model.rhs_flux_hooks::
+    Create an instance in set_wells() and register it on the unified conditions
+    layer::
 
         lateral_heat_ev = SemiAnalyticalWellLateralHeatTransfer(...)
-        self.rhs_flux_hooks.append(
+        self.conditions.add(
             SemiAnalyticalWellLateralHeatTransferHook(self, self.reservoir.get_well(well_name), lateral_heat_ev)
         )
+
+    The framework then owns the lifecycle: :meth:`bind` resolves the property
+    container and the (energy, T) diagonal positions once ``init()`` has built
+    the engine, and :meth:`apply` receives the per-iteration
+    :class:`~darts.models.conditions.AssemblyContext` rather than reaching into
+    ``model.physics.engine`` itself. The item is ADDITIVE and reports the energy
+    rows of the well-body segments through :meth:`written_rows`, so a constraint
+    item claiming one of them is refused at ``init()``.
+
+    It declares no Jacobian stencil: every block it writes is a well-segment
+    DIAGONAL block, which the pattern always contains.
     """
 
     def __init__(self, model, well, lateral_heat_ev):
@@ -388,11 +405,65 @@ class SemiAnalyticalWellLateralHeatTransferHook:
             )
         return self._property_container
 
-    def apply(self, dt: float, t: float):
+    # ------------------------------------------------------------- lifecycle
+    def bind(self, model):
+        """Resolve the property container and the (energy, T) diagonal entries.
+
+        Called once by :meth:`darts.models.conditions.ConditionSet.compile` at
+        the end of ``init()``, so an unsupported state specification and a well
+        region without a registered property container both fail there instead
+        of on the first Newton iteration.
+
+        :param model: the model being initialized
+        """
+        self.model = model
+        physics = model.physics
+        if physics.state_spec == physics.StateSpecification.PH:
+            self._resolve()
+        elif physics.state_spec != physics.StateSpecification.PT:
+            raise NotImplementedError(
+                f"SemiAnalyticalWellLateralHeatTransferHook does not support state_spec={physics.state_spec!r}."
+            )
+
+        self._jac_idx = None
+        if not self.provides_jacobian:
+            return
+        # PT only: the flat jac_vals indices of the (energy, T) diagonal entries
+        # of the well BODY segments. They are stamped with the pattern they were
+        # resolved against, so a re-initialized engine re-binds instead of
+        # writing at stale offsets (ConditionItem.rebind_if_stale).
+        n_vars = physics.n_vars
+        well = self.well
+        jac = BlockCSRView(physics.engine, n_vars, pattern=pattern_identity(model))
+        diag_pos = np.array(
+            [
+                jac.diag_pos(well.well_head_idx + segment)
+                for segment in range(1, well.num_segments)
+            ],
+            dtype=np.int64,
+        )
+        self._jac_idx = diag_pos * jac.block_size + (n_vars - 1) * n_vars + (n_vars - 1)
+        self.stamp_pattern(model)
+
+    def written_rows(self, model):
+        """The energy rows of the well BODY segments (review item E6).
+
+        Segment 0 -- the wellhead block, whose rows are the well-control
+        equations -- is structurally excluded, exactly as in :meth:`apply`.
+        """
+        n_vars = int(model.physics.n_vars)
+        head = int(self.well.well_head_idx)
+        return [
+            (head + segment) * n_vars + (n_vars - 1)
+            for segment in range(1, int(self.well.num_segments))
+        ]
+
+    def apply(self, ctx: AssemblyContext):
         physics = self.model.physics
         well = self.well
-        n_vars = physics.n_vars
-        X = np.asarray(physics.engine.X)
+        n_vars = ctx.n_vars
+        dt, t = ctx.dt, ctx.t
+        X = ctx.X
         X_well = X[
             well.well_head_idx * n_vars : (well.well_head_idx + well.num_segments)
             * n_vars
@@ -412,8 +483,7 @@ class SemiAnalyticalWellLateralHeatTransferHook:
             )
 
         lateral_heat_rate = self.lateral_heat_ev.evaluate(T_segments, t + dt)
-        rhs = np.asarray(physics.engine.RHS)
-        rhs_well = rhs[
+        rhs_well = ctx.rhs[
             well.well_head_idx * n_vars : (well.well_head_idx + well.num_segments)
             * n_vars
         ].reshape(well.num_segments, n_vars)
@@ -424,20 +494,8 @@ class SemiAnalyticalWellLateralHeatTransferHook:
             # PT: analytic diagonal dR_energy/dT. The residual received
             # -C*(T_earth - T)*dt, so dR_energy/dT = +C*dt. Energy equation row
             # and temperature column are both the last variable for PT.
-            jac = BlockCSRView(physics.engine, n_vars)
-            if self._jac_idx is None:
-                diag_pos = np.array(
-                    [
-                        jac.diag_pos(well.well_head_idx + segment)
-                        for segment in range(1, well.num_segments)
-                    ],
-                    dtype=np.int64,
-                )
-                self._jac_idx = (
-                    diag_pos * jac.block_size + (n_vars - 1) * n_vars + (n_vars - 1)
-                )
             conductance = self.lateral_heat_ev.conductance(t + dt)  # kJ/day/K
-            jac.jac_vals[self._jac_idx] += conductance[1:] * dt
+            ctx.jac.jac_vals[self._jac_idx] += conductance[1:] * dt
 
 
 def add_numerical_well_lateral_heat_transfer(

@@ -2,8 +2,12 @@
 
 This module is the minimum-viable unified conditions layer: a small framework
 through which models add Python-side source terms and interface fluxes to the
-assembled residual/Jacobian, replacing the ad-hoc ``set_rhs_flux`` override and
-the ``rhs_flux_hooks`` list (both deprecated, still supported).
+assembled residual/Jacobian. It is now the ONLY such channel: the ad-hoc
+``set_rhs_flux`` override and the untyped ``rhs_flux_hooks`` list it replaced
+have been removed from ``DartsModel``, and ``apply_rhs_flux`` is the conditions
+stage plus the observer stage and nothing else. The two legacy SPELLINGS survive
+only as thin adapters onto this layer, for models outside this repository:
+:class:`LegacyRhsFluxOverride` and :class:`LegacyHookRegistration`.
 
 Structure:
 
@@ -55,6 +59,7 @@ The contract hardening added in M4 (review items E5-E9):
 import inspect
 import json
 import os
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -721,30 +726,22 @@ class ConditionSet:
 
     # ------------------------------------------------- stencil declaration (E5)
     def stencil_declarers(self, model) -> list:
-        """Everything registered on ``model`` that declares a Jacobian stencil.
+        """The registered items that declare a Jacobian stencil.
 
-        Scans the registered items and -- because the legacy ``rhs_flux_hooks``
-        list is still a supported registration path -- ``model.rhs_flux_hooks``
-        as well. Only objects that actually OVERRIDE
-        :meth:`ConditionItem.declare_stencil` (or, for a legacy hook, define a
-        ``declare_stencil`` attribute at all) are returned, so the whole stage
-        is skipped -- with no side effect of any kind -- for every model that
-        declares nothing.
+        Only items that actually OVERRIDE :meth:`ConditionItem.declare_stencil`
+        are returned, so the whole stage is skipped -- with no side effect of
+        any kind -- for every model that declares nothing.
 
-        :param model: the model being initialized
-        :returns: list of declaring objects, in registration order
+        :param model: the model being initialized (unused; the items are the
+            single registry since the legacy hook list was removed)
+        :returns: list of declaring items, in registration order
         """
-        declarers = [
+        del model
+        return [
             item
             for item in self.items
             if type(item).declare_stencil is not ConditionItem.declare_stencil
         ]
-        declarers += [
-            hook
-            for hook in (getattr(model, "rhs_flux_hooks", None) or [])
-            if callable(getattr(hook, "declare_stencil", None))
-        ]
-        return declarers
 
     def declare_stencil(self, model, declarers=None) -> tuple:
         """Add the declared-but-absent couplings to the mesh connection list.
@@ -1051,9 +1048,10 @@ class ConditionSet:
                 f"{type(model).__name__} overrides apply_rhs_flux(), so the "
                 f"{registered} would silently never run. Move a post-assembly "
                 "policy check into a NonlinearIterationObserver (or the legacy "
-                "DartsModel.after_assembly(dt, t) hook), migrate a source/flux "
-                "override into condition items, or (legacy) call "
-                "super().apply_rhs_flux(dt, t) from the override."
+                "DartsModel.after_assembly(dt, t) hook), and migrate a "
+                "source/flux override into condition items -- apply_rhs_flux() "
+                "is the framework's own entry point and is not an extension "
+                "point."
             )
 
         if not self.items:
@@ -1535,7 +1533,7 @@ class SegmentSource(CellSource):
 class PipeSourceTerm(ConditionItem):
     """Component/energy source of a DFM pipe source/sink, in its segment block.
 
-    This is the unified replacement for the hand-rolled ``set_rhs_flux``
+    This is the unified item that replaced the hand-rolled ``set_rhs_flux``
     overrides of the DFM well models. The rate schedule stays where it belongs
     — in the pipe's source/sink object (a
     :class:`~darts.pipes.ramp_up_rate.RampUpRate` or subclass), which
@@ -1550,8 +1548,8 @@ class PipeSourceTerm(ConditionItem):
       (component rates in kmol/day plus, for thermal physics, the energy rate
       in kJ/day including the potential energy of the receiving block);
     - the framework sign convention applies: ``rhs[block] -= rates * dt``,
-      which is what the models wrote as ``rhs_flux[block] = -rates`` followed
-      by ``rhs += rhs_flux * dt``.
+      which is what those overrides wrote as ``rhs_flux[block] = -rates``
+      followed by ``rhs += rhs_flux * dt`` on the caller side.
 
     RHS-only (``provides_jacobian = False``), exactly as the legacy path: for
     the plain ramp-up schedule the rate does not depend on the state, so the
@@ -2129,3 +2127,124 @@ class DirichletPin(ConditionItem):
         ctx.jac.jac_vals[self._zero_idx] = 0.0
         ctx.jac.jac_vals[self._diag_idx] = 1.0
         ctx.rhs[self._x_idx] = ctx.X[self._x_idx] - self.evaluate_values(ctx.t)
+
+
+# ------------------------------------------------- out-of-tree compatibility
+#
+# ``DartsModel.set_rhs_flux()`` and ``DartsModel.rhs_flux_hooks`` were the two
+# ad-hoc Python-side channels this module replaced. Both are gone from
+# ``DartsModel``: ``apply_rhs_flux`` no longer has a legacy stage, nothing
+# consults a hook list, and the base class no longer defines ``set_rhs_flux``.
+#
+# What survives, and ONLY for models outside this repository, are the two
+# SPELLINGS -- routed through this layer by the two adapters below. They exist
+# because removing them outright has exactly two possible outcomes for an
+# out-of-tree model, and both are unacceptable: an ``AttributeError`` on a
+# working model, or -- for ``set_rhs_flux``, whose override would simply stop
+# being called -- a run that still succeeds while silently dropping a source
+# term. Every model in this repository uses ``self.conditions.add(...)``.
+
+
+class LegacyRhsFluxOverride(ConditionItem):
+    """Adapter turning a legacy ``set_rhs_flux()`` override into an item.
+
+    ``DartsModel.__init__`` registers ONE of these, as the FIRST item of the
+    set, when (and only when) the model's class overrides ``set_rhs_flux`` --
+    ``DartsModel`` itself no longer defines it. Being first reproduces the
+    legacy ordering exactly: the override used to run before the hook list and
+    before the conditions.
+
+    It applies what the legacy stage applied, in the same units and with the
+    same sign::
+
+        ctx.rhs += model.set_rhs_flux(t) * dt
+
+    i.e. the override returns a full ``n_blocks * n_vars`` vector of residual
+    contributions per day, NOT dt-scaled -- the scaling is done here, as it was
+    done on the caller side before.
+
+    It reports no :meth:`~ConditionItem.written_rows` (the returned vector is
+    dense and its support is not knowable without calling it), so it takes no
+    part in the additive/replacement conflict check -- exactly the amount of
+    checking the legacy path did.
+
+    .. deprecated::
+        Override nothing; register :class:`CellSource`, :class:`SegmentSource`,
+        :class:`PipeSourceTerm` or a purpose-built :class:`ConditionItem` on
+        ``self.conditions`` instead. A typed item declares its stencil, its
+        rows, its platform and its restart state; this adapter can declare none
+        of them on the override's behalf.
+    """
+
+    def __init__(self, model):
+        self.model = model
+
+    def apply(self, ctx: AssemblyContext):
+        ctx.rhs += self.model.set_rhs_flux(ctx.t) * ctx.dt
+
+
+class LegacyHookRegistration:
+    """``model.rhs_flux_hooks`` -- a REGISTRATION ALIAS onto a :class:`ConditionSet`.
+
+    Not a list, and nothing reads it: ``append`` forwards straight to
+    :meth:`ConditionSet.add`, so an out-of-tree ``self.rhs_flux_hooks.append(h)``
+    registers ``h`` on the unified layer and gets the full contract with it --
+    the stencil-declaration stage, the platform and adjoint validation, the row
+    conflict check and the pattern versioning. ``h`` must therefore be a
+    :class:`ConditionItem`; the two shipped hooks
+    (:class:`~darts.pipes.linear_dfm_well_ipr.LinearDFMWellIPRHook` and
+    :class:`~darts.pipes.add_lateral_heat_exchange.SemiAnalyticalWellLateralHeatTransferHook`)
+    are, and :meth:`ConditionSet.add` says so plainly when something else is
+    passed.
+
+    The sequence protocol reads the ITEM list, so ``len(...)``, iteration and
+    indexing report every registered item, not only the ones registered through
+    this alias.
+
+    .. deprecated::
+        Call ``self.conditions.add(item)``.
+    """
+
+    def __init__(self, conditions: ConditionSet):
+        self._conditions = conditions
+
+    def _warn(self):
+        warnings.warn(
+            "DartsModel.rhs_flux_hooks is deprecated and is no longer a list "
+            "the model consults: it is an alias that registers on "
+            "DartsModel.conditions. Call self.conditions.add(item) instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+    def append(self, item):
+        """Register ``item`` on the condition set; returns it."""
+        self._warn()
+        return self._conditions.add(item)
+
+    def extend(self, items):
+        """Register every item of ``items``."""
+        self._warn()
+        for item in items:
+            self._conditions.add(item)
+
+    def __iter__(self):
+        return iter(self._conditions.items)
+
+    def __len__(self):
+        return len(self._conditions.items)
+
+    def __getitem__(self, index):
+        return self._conditions.items[index]
+
+    def __contains__(self, item):
+        return item in self._conditions.items
+
+    def __bool__(self):
+        return bool(self._conditions.items)
+
+    def __repr__(self):
+        return (
+            f"<LegacyHookRegistration -> ConditionSet with "
+            f"{len(self._conditions.items)} item(s)>"
+        )

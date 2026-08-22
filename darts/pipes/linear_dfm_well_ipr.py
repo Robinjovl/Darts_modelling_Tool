@@ -4,7 +4,13 @@ from enum import Enum
 import numpy as np
 
 from darts.engines import ms_well, value_vector
-from darts.models.conditions import BlockCSRView, Selector, pattern_identity
+from darts.models.conditions import (
+    AssemblyContext,
+    BlockCSRView,
+    ConditionItem,
+    Selector,
+    pattern_identity,
+)
 
 
 class PI_Type(Enum):
@@ -258,7 +264,7 @@ class LinearDFMWellIPRConnection:
             )
 
 
-class LinearDFMWellIPRHook:
+class LinearDFMWellIPRHook(ConditionItem):
     """
     Apply a linear total-rate IPR between a DFM well segment and a reservoir cell.
 
@@ -301,12 +307,30 @@ class LinearDFMWellIPRHook:
     engine would otherwise assemble a Peaceman flux across the same interface
     the IPR flux already carries.
 
+    REGISTRATION. This is a :class:`~darts.models.conditions.ConditionItem`; it
+    is registered on the unified conditions layer, in ``set_wells()``::
+
+        self.conditions.add(LinearDFMWellIPRHook(self, [connection, ...]))
+
+    The framework then owns its lifecycle: :meth:`declare_stencil` runs before
+    the mesh connection list is frozen, :meth:`bind` resolves the property
+    containers and the CSR positions once ``init()`` has built the engine, and
+    :meth:`apply` is handed the per-iteration
+    :class:`~darts.models.conditions.AssemblyContext` instead of reaching into
+    ``model.physics.engine`` itself. The item is ADDITIVE (it adds a flux to
+    four blocks, it claims no row) and reports the rows it writes through
+    :meth:`written_rows`, so a constraint item that claimed one of them is
+    refused at ``init()`` instead of silently overwriting the flux.
+
     :param allow_nonzero_well_indexD: by default a perforation with a non-zero
         thermal well index (WID) is rejected because the hook cannot verify
         the intent. Set True to allow it: WID drives the conductive/diffusive
         heat term the engine assembles independently of the advective IPR flux
         managed here, so a non-zero WID does not double-count the IPR flux.
     """
+
+    #: writes the four dense blocks of every connection (CPU block-CSR only)
+    provides_jacobian = True
 
     def __init__(
         self,
@@ -357,24 +381,70 @@ class LinearDFMWellIPRHook:
         del model
         return {connection.well_name for connection in self.connections}
 
-    def apply(self, dt: float, t: float = None):
-        del t
+    # ------------------------------------------------------------- lifecycle
+    def bind(self, model):
+        """Resolve the pairs, the per-side property containers and the CSR
+        positions, once, when :meth:`darts.models.conditions.ConditionSet.compile`
+        runs at the end of ``init()``.
+
+        Everything the item needs is engine-dependent only through the block-CSR
+        positions, so binding here means every validation this hook performs
+        (unknown well, non-DFM well, duplicate pair, negative PI, the
+        double-counting guard against a covering perforation, a block whose
+        region has no property container) fails at ``init()`` rather than on the
+        first Newton iteration.
+
+        :param model: the model being initialized
+        """
+        self.model = model
+        self._resolved_connections = None
+        self._get_resolved_connections(
+            BlockCSRView(
+                model.physics.engine,
+                model.physics.n_vars,
+                pattern=pattern_identity(model),
+            )
+        )
+        # the CSR positions just cached belong to THIS pattern; the framework
+        # re-runs bind() through rebind_if_stale() if the engine reallocates
+        self.stamp_pattern(model)
+
+    def written_rows(self, model):
+        """Every row of both blocks of every connection (review item E6).
+
+        The item is ADDITIVE: it adds a flux to the well block and the opposite
+        flux to the reservoir block, touching all ``n_vars`` equations of each
+        (the component rows always, the energy row for thermal physics).
+        Reporting them lets :meth:`darts.models.conditions.ConditionSet.compile`
+        refuse a constraint item that claims one of those rows.
+        """
+        n_vars = int(model.physics.n_vars)
+        pairs = self._resolved_connections
+        if pairs is None:
+            pairs = self._resolve_pairs()
+        rows = []
+        for pair in pairs:
+            for block in (pair["well_block_idx"], pair["res_block_idx"]):
+                rows.extend(range(block * n_vars, (block + 1) * n_vars))
+        return rows
+
+    def apply(self, ctx: AssemblyContext):
         if not self.connections:
             return
 
-        n_vars = self.model.physics.n_vars
-        # the view is rebuilt per call (cheap: numpy views only) so a re-init
-        # of the engine (which reallocates jac_vals) cannot leave it stale
-        pattern = pattern_identity(self.model)
-        jac = BlockCSRView(self.model.physics.engine, n_vars, pattern=pattern)
-        # ... and the CACHED CSR POSITIONS are dropped with it: after a second
-        # engine.init() (restart, or any re-init) the pattern may be laid out
-        # differently and writing the old offsets would corrupt other blocks.
-        if self._pattern is not None and self._pattern != pattern:
-            self._resolved_connections = None
+        n_vars = ctx.n_vars
+        jac = ctx.jac
+        if jac is None:
+            raise RuntimeError(
+                "LinearDFMWellIPRHook writes four Jacobian blocks per "
+                "connection, but the engine does not expose its block-CSR "
+                "matrix to Python. DFM wells require platform='cpu' and an "
+                "iterative-solver engine configuration."
+            )
         resolved_connections = self._get_resolved_connections(jac)
-        rhs = np.asarray(self.model.physics.engine.RHS)
-        X = np.asarray(self.model.physics.engine.X)
+        rhs = ctx.rhs
+        X = ctx.X
+        dt = ctx.dt
 
         for resolved in resolved_connections:
             wb_idx = resolved["well_block_idx"]
@@ -586,6 +656,18 @@ class LinearDFMWellIPRHook:
         )
 
     def _get_resolved_connections(self, jac: BlockCSRView) -> tuple[dict, ...]:
+        # A pattern change (a second engine.init(): restart, or any re-init)
+        # invalidates the cached CSR positions -- the pattern may be laid out
+        # differently and writing the old offsets would corrupt other blocks.
+        # The framework normally re-binds first (ConditionItem.rebind_if_stale);
+        # this is the same check, kept here so a direct call cannot write stale
+        # offsets either.
+        if (
+            self._pattern is not None
+            and jac.pattern is not None
+            and self._pattern != jac.pattern
+        ):
+            self._resolved_connections = None
         if self._resolved_connections is not None:
             return self._resolved_connections
 

@@ -84,7 +84,6 @@ class _StubModel:
             engine if engine is not None else _FakeCSREngine(), regions
         )
         self.platform = "cpu"
-        self.rhs_flux_hooks = []
         self._pattern_version = 0
 
 

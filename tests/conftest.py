@@ -147,9 +147,9 @@ class FakeModel:
     backend-neutral ``_solve_linear_equation`` funnel (C++-solver path only).
 
     Mirrors the post-assembly surface of the real model: the (empty) unified
-    ``conditions`` set and the legacy ``rhs_flux_hooks`` list that
-    ``DartsModel.apply_rhs_flux`` consults, and the ``after_assembly`` policy hook
-    it ends with.
+    ``conditions`` set that ``DartsModel.apply_rhs_flux`` applies, and the
+    ``after_assembly`` policy hook it ends with. There is no ``rhs_flux_hooks``
+    list on the real model any more, so there is none here.
     """
 
     def __init__(self, engine, n_vars=2):
@@ -164,7 +164,6 @@ class FakeModel:
         self.reservoir = _Reservoir()
         # Python-side condition/source surface of DartsModel (nothing registered).
         self.conditions = ConditionSet()
-        self.rhs_flux_hooks = []
 
         class _Physics:
             pass

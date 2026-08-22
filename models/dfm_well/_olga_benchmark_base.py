@@ -366,7 +366,7 @@ class OLGABenchmarkModel(CICDModel):
             well_indexD=0.0,
         )
 
-        self.rhs_flux_hooks.append(
+        self.conditions.add(
             LinearDFMWellIPRHook(self, [self.get_ipr_connection(well_1_name)])
         )
 

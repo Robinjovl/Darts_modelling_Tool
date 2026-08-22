@@ -402,7 +402,8 @@ class Pipe:
     def lateral_heat_rate_eval(self, value):
         raise RuntimeError(
             "lateral_heat_rate_eval is no longer consumed; register "
-            "SemiAnalyticalWellLateralHeatTransferHook in model.rhs_flux_hooks instead"
+            "SemiAnalyticalWellLateralHeatTransferHook on model.conditions "
+            "instead (self.conditions.add(...))"
         )
 
     def eval_phase_vels(

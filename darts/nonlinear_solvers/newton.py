@@ -194,7 +194,7 @@ class NewtonSolver(NonlinearSolver):
             # assemble Jacobian and residual of reservoir and well blocks
             engine.assemble_linear_system(dt)
 
-            # apply RHS flux
+            # apply the Python-side conditions (items, then observers)
             model.apply_rhs_flux(dt, t)
 
             if model.platform == "gpu":

@@ -40,7 +40,11 @@ import pytest
 pytest.importorskip("darts.engines")
 pytest.importorskip("dartsflash")
 
-from darts.models.conditions import BlockCSRView  # noqa: E402
+from darts.models.conditions import (  # noqa: E402
+    AssemblyContext,
+    BlockCSRView,
+    pattern_identity,
+)
 from darts.pipes.linear_dfm_well_ipr import (  # noqa: E402
     LinearDFMWellIPRConnection,
     LinearDFMWellIPRHook,
@@ -110,6 +114,28 @@ def _fresh_hook(model, pi, pi_type, **kwargs):
     )
 
 
+def _bind_and_apply(hook, model, dt, t=0.0):
+    """Drive the item the way ``ConditionSet`` does: bind once (resolving the
+    pairs, the per-side property containers and the CSR positions), then apply
+    it with an :class:`AssemblyContext` over the engine's arrays."""
+    engine = model.physics.engine
+    n_vars = model.physics.n_vars
+    if hook._resolved_connections is None:
+        hook.bind(model)
+    ctx = AssemblyContext(
+        rhs=np.asarray(engine.RHS),
+        jac=BlockCSRView(engine, n_vars, pattern=pattern_identity(model)),
+        X=np.asarray(engine.X),
+        Xn=np.asarray(engine.Xn),
+        dt=dt,
+        t=t,
+        iteration=0,
+        n_vars=n_vars,
+        n_res_blocks=model.reservoir.mesh.n_res_blocks,
+    )
+    hook.apply(ctx)
+
+
 def _get_block(view, pos, n_vars):
     start = pos * view.block_size
     return view.jac_vals[start : start + view.block_size].reshape(n_vars, n_vars).copy()
@@ -152,7 +178,7 @@ def test_ipr_jacobian_consistent_with_rhs_fd(harness, pi_type, pi, p_well, p_res
 
         rhs[:] = 0.0
         view.jac_vals[:] = 0.0
-        hook.apply(DT)
+        _bind_and_apply(hook, model, DT)
         rhs_base = rhs.copy()
 
         resolved = hook._resolved_connections[0]
@@ -195,7 +221,7 @@ def test_ipr_jacobian_consistent_with_rhs_fd(harness, pi_type, pi, p_well, p_res
                 x_saved = X[idx]
                 X[idx] += h
                 rhs[:] = 0.0
-                hook.apply(DT)
+                _bind_and_apply(hook, model, DT)
                 fd_col = (rhs[rows] - rhs_base[rows]) / h
                 X[idx] = x_saved
 

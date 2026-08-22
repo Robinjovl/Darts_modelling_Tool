@@ -19,6 +19,8 @@ from darts.models.conditions import (
     AssemblyContext,
     BlockCSRView,
     ConditionSet,
+    LegacyHookRegistration,
+    LegacyRhsFluxOverride,
     pattern_identity,
 )
 from darts.models.output import Output
@@ -109,10 +111,6 @@ class DartsModel:
     # N times in the run log.
     _build_info_printed = False
 
-    # One-per-process DeprecationWarning latch for the legacy set_rhs_flux /
-    # rhs_flux_hooks paths (apply_rhs_flux runs every Newton iteration).
-    _legacy_rhs_flux_warned = False
-
     def __new__(cls, *args, **kwargs):
         """
         Capture the constructor arguments so the model can be reconstructed in a
@@ -142,11 +140,16 @@ class DartsModel:
 
         # Create member variable wells (it is needed only for DFM wells)
         self.wells = None
-        self.rhs_flux_hooks = []
-        # Unified Python-side conditions (sources, interface fluxes), the
-        # successor of set_rhs_flux()/rhs_flux_hooks. Items are added via
-        # self.conditions.add(...) and validated/bound at the end of init().
+        # Unified Python-side conditions (sources, interface fluxes) -- the ONLY
+        # channel: it replaced set_rhs_flux()/rhs_flux_hooks, which are gone.
+        # Items are added via self.conditions.add(...) and validated/bound at
+        # the end of init().
         self.conditions = ConditionSet()
+        # Out-of-tree compatibility: a class that still overrides the removed
+        # set_rhs_flux() gets it applied through an adapter item, registered
+        # FIRST so the legacy ordering (override, then the hooks, then the rest)
+        # is reproduced exactly. See conditions.LegacyRhsFluxOverride.
+        self._register_legacy_rhs_flux_override()
         self._conditions_csr_view = None  # lazy BlockCSRView (False = unavailable)
         self._assembly_iteration = 0  # Newton iteration index within a timestep
         # Bumped by every reset() (i.e. every engine.init()), which reallocates
@@ -1400,29 +1403,11 @@ class DartsModel:
             time += dt
         return 0
 
-    def set_rhs_flux(self, t: float = None) -> np.ndarray:
-        """
-        Function to specify modifications to RHS vector. User can implement his own boundary conditions here.
-
-        This function is empty in DartsModel, needs to be overloaded in child Model.
-
-        .. deprecated::
-            Register :class:`darts.models.conditions.ConditionItem` objects on
-            ``self.conditions`` instead.
-
-        :param t: current time [days]
-        :type t: float
-        :return: Vector of modification to RHS vector
-        :rtype: np.ndarray
-        """
-        pass
-
     def after_assembly(self, dt: float, t: float):
         """
         Post-assembly policy hook, called once per Newton iteration at the END of
         :meth:`apply_rhs_flux` -- after the engine assembled the system AND after
-        every Python-side contribution (the legacy ``set_rhs_flux`` /
-        ``rhs_flux_hooks`` paths and the unified ``self.conditions``) was added to it.
+        every Python-side contribution (``self.conditions``) was added to it.
 
         .. deprecated::
             This is the UNTYPED legacy seam. Register a
@@ -1456,61 +1441,83 @@ class DartsModel:
         """
         pass
 
+    @property
+    def rhs_flux_hooks(self):
+        """Deprecated alias that REGISTERS on :attr:`conditions`.
+
+        ``self.rhs_flux_hooks.append(item)`` is ``self.conditions.add(item)``.
+        Nothing reads this attribute -- the legacy hook list and the
+        :meth:`apply_rhs_flux` stage that walked it are gone -- it exists so a
+        model outside this repository keeps working, and keeps working through
+        the typed contract. See
+        :class:`darts.models.conditions.LegacyHookRegistration`.
+
+        .. deprecated::
+            Call ``self.conditions.add(item)``.
+        """
+        return LegacyHookRegistration(self.conditions)
+
+    def _register_legacy_rhs_flux_override(self):
+        """Adapt a legacy ``set_rhs_flux()`` override onto :attr:`conditions`.
+
+        ``DartsModel`` no longer defines ``set_rhs_flux``, so the attribute
+        exists only on a class that overrides it. Such a class gets a
+        :class:`darts.models.conditions.LegacyRhsFluxOverride` registered as the
+        FIRST item, which is where the legacy stage ran. A model that does not
+        override it registers nothing at all.
+        """
+        if not callable(getattr(type(self), "set_rhs_flux", None)):
+            return
+        warnings.warn(
+            f"{type(self).__name__} overrides set_rhs_flux(), which has been "
+            "removed from DartsModel: its return value is applied through a "
+            "LegacyRhsFluxOverride condition item. Register a ConditionItem "
+            "(CellSource, SegmentSource, PipeSourceTerm, ...) on "
+            "self.conditions instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        self.conditions.add(LegacyRhsFluxOverride(self))
+
     def apply_rhs_flux(self, dt: float, t: float):
         """
-        Apply Python-side modifications to the assembled system, in three stages:
+        Apply the Python-side conditions to the assembled system, in two stages:
 
-        1. the legacy ``set_rhs_flux`` override (its return value is scaled by
-           ``dt`` here, on the caller side),
-        2. the legacy ``rhs_flux_hooks`` (each ``hook.apply(dt=dt, t=t)``),
-        3. the unified ``self.conditions``
-           (:class:`darts.models.conditions.ConditionSet`), applied through an
+        1. every registered
+           :class:`darts.models.conditions.ConditionItem` of
+           ``self.conditions``, applied through an
            :class:`darts.models.conditions.AssemblyContext` built from the
-           engine views, followed by every registered
-           :class:`darts.models.conditions.NonlinearIterationObserver` on a
+           engine views;
+        2. every registered
+           :class:`darts.models.conditions.NonlinearIterationObserver`, on a
            READ-ONLY twin of that context.
 
         :meth:`after_assembly` is then called (a no-op unless the model overrides
         it) so post-assembly policy checks do not have to override this method and
-        bypass the conditions stage. It is the untyped legacy form of stage 3's
-        observers.
+        bypass the conditions stage. It is the untyped legacy form of stage 2.
 
-        Called by the nonlinear solver after every engine assembly.
-        ``set_rhs_flux`` and ``rhs_flux_hooks`` are deprecated in favor of
-        ``self.conditions``; a :class:`DeprecationWarning` is emitted once per
-        process when a legacy path is present.
+        Called by the nonlinear solver after every engine assembly. This method is
+        the framework's entry point, NOT an extension point: overriding it skips
+        the conditions stage, which is why
+        :meth:`darts.models.conditions.ConditionSet.compile` refuses to compile a
+        model that overrides it while registering items or observers.
 
         :param dt: timestep [days]
         :type dt: float
         :param t: current time [days]
         :type t: float
         """
-        has_override = type(self).set_rhs_flux is not DartsModel.set_rhs_flux
-        has_hooks = bool(self.rhs_flux_hooks)
-        if has_override or has_hooks or self.conditions:
+        if self.conditions:
             if isinstance(self.nonlinear_solver, MechanicsNewtonSolver):
                 raise RuntimeError(
-                    "Python-side RHS/Jacobian contributions (set_rhs_flux, "
-                    "rhs_flux_hooks, conditions) are not supported with the "
-                    "mechanics engines: the pm/mech engines rescale equation rows "
-                    "inside assembly, so post-assembly modifications would be "
-                    "applied with the wrong scaling."
-                )
-            if (has_override or has_hooks) and not DartsModel._legacy_rhs_flux_warned:
-                DartsModel._legacy_rhs_flux_warned = True
-                warnings.warn(
-                    "set_rhs_flux()/rhs_flux_hooks are deprecated; register "
-                    "ConditionItem objects on DartsModel.conditions instead",
-                    DeprecationWarning,
-                    stacklevel=2,
+                    "Python-side RHS/Jacobian contributions (self.conditions) "
+                    "are not supported with the mechanics engines: the pm/mech "
+                    "engines rescale equation rows inside assembly, so "
+                    "post-assembly modifications would be applied with the "
+                    "wrong scaling."
                 )
             rhs = np.asarray(self.physics.engine.RHS)
-            if has_override:
-                rhs += self.set_rhs_flux(t) * dt
-            for hook in self.rhs_flux_hooks:
-                hook.apply(dt=dt, t=t)
-            if self.conditions:
-                self.conditions.apply(self._build_assembly_context(rhs, dt, t))
+            self.conditions.apply(self._build_assembly_context(rhs, dt, t))
         # Post-assembly policy hook: runs last, and also for models that add
         # nothing to the system (a no-op unless the model overrides it).
         self.after_assembly(dt, t)

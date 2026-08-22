@@ -205,7 +205,7 @@ class Model(CICDModel):
                                        well_indexD=0.0,
                                        )
 
-        self.rhs_flux_hooks.append(
+        self.conditions.add(
             LinearDFMWellIPRHook(
                 self,
                 [
@@ -238,7 +238,7 @@ class Model(CICDModel):
                 outermost_layer_OD=0.2, Ui=20.0,
                 perforated_segments=[well_1_perforated_segment - 1],  # 0-based segment index
                 time_function_name='Chiu&Thakur', verbose=verbose)
-            self.rhs_flux_hooks.append(
+            self.conditions.add(
                 SemiAnalyticalWellLateralHeatTransferHook(
                     self, self.reservoir.get_well(well_1_name), lateral_heat_ev))
 

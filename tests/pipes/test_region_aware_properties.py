@@ -29,6 +29,10 @@ import pytest
 pytest.importorskip("darts.engines")
 
 from darts.engines import ms_well  # noqa: E402
+from darts.models.conditions import (  # noqa: E402
+    AssemblyContext,
+    BlockCSRView,
+)
 from darts.pipes.add_lateral_heat_exchange import (  # noqa: E402
     SemiAnalyticalWellLateralHeatTransfer,
     SemiAnalyticalWellLateralHeatTransferHook,
@@ -156,6 +160,26 @@ class _Model:
     def __init__(self, physics, reservoir):
         self.physics = physics
         self.reservoir = reservoir
+
+
+def _bind_and_apply(hook, model, dt, t=0.0, with_jacobian=True):
+    """Drive the item the way ``ConditionSet`` does: bind once, then apply it
+    with an :class:`AssemblyContext` over the stub engine's arrays."""
+    engine = model.physics.engine
+    n_vars = model.physics.n_vars
+    hook.bind(model)
+    ctx = AssemblyContext(
+        rhs=engine.RHS,
+        jac=BlockCSRView(engine, n_vars) if with_jacobian else None,
+        X=engine.X,
+        Xn=np.zeros_like(engine.X),
+        dt=dt,
+        t=t,
+        iteration=0,
+        n_vars=n_vars,
+        n_res_blocks=model.reservoir.mesh.n_res_blocks,
+    )
+    hook.apply(ctx)
 
 
 def _two_region_model(
@@ -300,7 +324,7 @@ def _apply_ipr(model, p_well, z_well, p_res, z_res, pi=1.0):
             )
         ],
     )
-    hook.apply(DT)
+    _bind_and_apply(hook, model, DT)
     return hook
 
 
@@ -398,7 +422,7 @@ def _apply_heat_hook(model, enthalpies):
     hook = SemiAnalyticalWellLateralHeatTransferHook(
         model, model.reservoir.wells[0], _heat_evaluator()
     )
-    hook.apply(DT, 1.0)
+    _bind_and_apply(hook, model, DT, 1.0, with_jacobian=False)
     return hook
 
 
@@ -437,7 +461,7 @@ def test_lateral_heat_ph_resolves_once_not_per_newton_iteration():
     resolved = hook._property_container
     assert resolved is model.physics.property_containers[0]
     # a second Newton iteration reuses the bound container
-    hook.apply(DT, 1.0)
+    _bind_and_apply(hook, model, DT, 1.0, with_jacobian=False)
     assert hook._property_container is resolved
 
 
