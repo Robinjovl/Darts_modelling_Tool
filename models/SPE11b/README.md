@@ -130,7 +130,7 @@ entry the injection temperature.
     self.inj_rate = [inj_rate, inj_rate] # [mass rate well 'I1', mass rate well 'I2'] in kg/day
 ```
 Two options, are included for controling CO2 injection, RHS-correction and ``DartsModel.physics.set_well_controls()``.
-If ``self.specs['RHS'] = True``, boundary conditions are applied directly using ``DartsModel.set_rhs_flux()``.
+If ``self.specs['RHS'] = True``, the injection is applied as a source term registered on ``DartsModel.conditions`` (a ``CellSource`` over the well cells).
 Otherwise the `DartsModel.set_well_controls()` function,
 ```python
     for i, w in enumerate(self.reservoir.wells):

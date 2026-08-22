@@ -99,6 +99,11 @@ way, containing none of the MR.
 | E11 | `CHISHOLM` is offered as an option but raises | choke `:1252-1256` | Minor; now model-side after the M0 eviction |
 | E12 | Split the MR into ~9 focused MRs | — | Adopted as the delivery strategy, §8 |
 
+**Status since**: E2, E3 and E4 landed in M3.5, and E5–E9 landed in M4 — see §7
+for what each one delivered and for E7's remaining half. E1 stands as the
+standing tolerance decision (§2, §10.1), E10 remains open in the validation
+matrix (§9), and E11/E12 are unchanged (model-side after M0; §8).
+
 ---
 
 ## 4. Findings in v2 that the external review did not report
@@ -205,38 +210,88 @@ initialization, never silently omit Jacobian terms.
 | **M1c** | Conditions layer + `apply_rhs_flux` three-stage + mechanics solver + lifecycle |
 | **M2** | RampUpRate strategy; Layer-D BC spec + S11 fix; viz renderer (−74%); `DriftFluxClosure` (Pipe 2276→1538); `ConstantStateBC`; shared OLGA base |
 | **M3** | `DirichletPin` + `project_state()`; all remaining `set_rhs_flux`/`apply_rhs_flux` overriders migrated (**zero remain**) |
+| **M3.5** | Region-aware pipe properties (E2); batched Colebrook solve (E4); ramp integrated over the step (E3) |
+| **M4** | Stencil declaration + pattern versioning (E5); additive/replacement typing (E6); selectors (E7); typed observer (E8); restart contract (E9); typed mechanics BC declaration; placement-policy check wired into CI; the last two legacy hooks migrated and `set_rhs_flux`/`rhs_flux_hooks` removed; the layer documented in the technical reference |
 
 Verification: 98/101 model suite, 259 unit tests, bit-identical A/B on every
-migrated model and both refactors of the numerical core.
+migrated model and both refactors of the numerical core. The later phases carry
+their own evidence, recorded with each commit: M3.5 moves the thirteen DFM cases
+by at most 1.4e-11 against their existing references (and regenerates exactly one
+model, for the ramp correction, §M3.5); M4's mechanics migration reproduces 780
+compiled discretizer arrays bit-identically across the twenty-five CI
+poromechanics cases, and its stencil declaration is proved on a twin of the
+vertical OLGA benchmark with the dummy perforation deleted — identical row,
+column and diagonal arrays, bit-identical simulation.
 
-### M3.5 — corrections arising from this review (new, do first)
+### M3.5 — corrections arising from this review (landed, except item 1)
 
 1. **Do NOT regenerate `2ph_comp_solid`** (§2) — instead make its well-pressure
-   L2 check robust to build environment. The blast-radius audit of the
-   well-control fix is complete and its "passes at development, fails here" class
-   is **empty**: the fix moves rate-controlled *producers* only, and every such
-   model (`2ph_geothermal_mass_flux`, `GeoRising` PT/PH, `SPE10_mech`,
+   L2 check robust to build environment. **Open**, and carried as standing issue
+   §10.1: it is a test-tolerance decision for the maintainers, not a source
+   change. The blast-radius audit of the well-control fix is complete and its
+   "passes at development, fails here" class is **empty**: the fix moves
+   rate-controlled *producers* only, and every such model
+   (`2ph_geothermal_mass_flux`, `GeoRising` PT/PH, `SPE10_mech`,
    `cpg_sloping_fault` geothermal wrate) passes on both sides.
-2. **Region-aware properties in the IPR hook** (E2) — resolve the property
-   container from the connected block's region instead of `[0]`. Same audit for
-   every other `property_containers[0]` in `darts/pipes/`.
-3. **Vectorize the Colebrook friction solve** (E4) — replace the per-face
-   `fsolve` loop with a batched Newton/Halley iteration on the Colebrook
-   residual, or an explicit correlation, proving bit-comparability on the CI
-   models. This is a prerequisite for any scaling claim about `Pipe`.
-4. **Fix the ramp schedule's time evaluation** (E3) — evaluate at `t_{n+1}` or
-   integrate over `[t_n, t_{n+1}]`, then delete the `first_ts_size < 0.01 s`
-   assertion.
+2. **Region-aware properties in the pipe hooks** (E2) — **landed**. Both the IPR
+   hook and the lateral-heat hook resolve the property container from the
+   connected block's operator region instead of `property_containers[0]`, with a
+   multi-region test that would fail vacuously on a single-region model.
+3. **Vectorize the Colebrook friction solve** (E4) — **landed**. One vectorized
+   Newton iteration in `1/sqrt(f)` for all interfaces replaces the per-face
+   `fsolve`, in the Colebrook closure, the Wang friction model and the
+   Bhagwat-Ghajar profile parameter. Bit-identity with `fsolve` is not reachable
+   *because `fsolve` is the inaccurate side* (up to 541 ULP from its own reported
+   root, against ≤ 4 ULP for the batched solve); the thirteen DFM cases shift by
+   ≤ 1.4e-11 and keep their references. ~6.5× faster at the 21 interfaces of the
+   CI models, ~140× at 1e4.
+4. **Fix the ramp schedule's time evaluation** (E3) — **landed**. The schedule is
+   integrated exactly over `[t_n, t_{n+1}]` and the `first_ts_size < 0.01 s`
+   assertion is gone. This is a physics correction and it moves one model:
+   `2ph_1comp_coupled_dfm_well_reservoir`, the only CI case with a non-zero ramp
+   period, was under-injecting by 3.2 % over the tested window; its Linux
+   references were regenerated for that reason and its **Windows references still
+   need a CI regeneration run**.
 
-### M4 — contract hardening (revised)
+### M4 — contract hardening (landed)
 
-Adds E5–E9 to the previously planned removal work: the stencil-declaration phase
-with pattern versioning; selector/law separation; additive vs replacement typing;
-the observer type; the restart contract. Then remove `set_rhs_flux` and
-`rhs_flux_hooks` (now that `models/` is clean), retire the legacy BC dict schema,
-and switch on the placement-policy CI check.
+The conditions layer is typed end to end. What each item of §3 asked for, and
+what shipped:
 
-### M5 — backend lowering and well laws
+| Item | Delivered |
+|---|---|
+| **E5** — declare the stencil before allocation | `ConditionItem.declare_stencil()` reports the `(row, col)` couplings an item will write, and the framework adds the missing ones as zero-transmissibility connections in the only valid window: between `mesh.add_wells()` (which assigns the well block indices) and `conn_mesh::reverse_and_sort()` (which freezes the list, in place, and cannot run twice). Existence is decided per pair — well connections enumerated, reservoir pairs matched by one vectorized scan — and the result is re-checked against the frozen arrays by `verify_stencil()`, so a missing *or* duplicated coupling fails loudly. A wellhead coupling is refused (that row carries the well-control equations). A perforation-free well is accepted when an item declares its coupling and reports it through `declared_well_names()`: **the zero-WI "fake" perforation is no longer needed**, proved on a twin of the vertical OLGA benchmark with the perforation deleted. Compiled CSR positions carry a `pattern_identity()` and are re-resolved after a matrix reallocation (reachable today through restart) instead of writing at stale offsets. |
+| **E6** — additive vs replacement, typed | `ConditionItem.contribution` (`additive` / `replacement` / `none`) plus `written_rows()`; `compile()` refuses two claims on one row and an additive contribution to a claimed row, naming both items and the `(block, equation)`. `DirichletPin(mode="row")` is the shipped replacement case; `mode="state"` declares `none`, which is the right answer rather than a loophole — it projects the state and does not contribute to the system, and SPE11b pins cells that also carry a source. |
+| **E7** — selector separated from law | `Selector` (`BlockIndices`, `Where`, `NamedRegion`) resolves a block set at bind time and is accepted anywhere an index array is (cell sets and either member of a connection). Strictly additive: every existing call that passes indices is unchanged. **Partial**: the *law* half is still the item subclass, not a composable law object — `CellSource(selector=…, law=PrescribedRate(…))` remains a target of the M5 lowering, where the law is what the backend kernel consumes. |
+| **E8** — typed observer | `NonlinearIterationObserver`, registered on `model.conditions`, called once per Newton iteration after every item has contributed. Read-only is *enforced*, not documented: the context handed to `observe()` has non-writable `rhs` / `X` / `Xn` / `jac.jac_vals` views. The untyped `DartsModel.after_assembly(dt, t)` runs last and is deprecated. |
+| **E9** — restart in the contract | `carries_restart_state` + `save_restart_state()` / `load_restart_state()`, serialized into a `<restart file>.conditions.json` sidecar written by `DartsModel.save_restart_state()`. A stateful item with a missing or mismatched sidecar **refuses** the restart rather than silently continuing from constructor defaults. |
+
+Also landed in M4: the mechanics boundary conditions are declared through the
+typed spec (`FaceBoundary(flow=…, mech=…, temp=…)`) in all five in-repo
+poromechanics models, with the legacy `{an, bn, at, bt, rn, rt}` dict schema kept
+for one cycle as a warning adapter; and the placement-policy check runs as a
+whole-tree pre-commit hook, enforcing the two mechanically decidable clauses of
+§6 (no module in the package without an in-repo consumer, no upward import from
+`models/`) with a justified allowlist that cannot rot.
+
+The layer is also no longer documented only in docstrings: `docs/technical_reference/conditions.md`
+states the four channels, the contribution contract, the item types, the
+declaration stage, the observer, the migration from the legacy paths, and the
+limits (mechanics engines, the adjoint, the state-mode projection).
+
+Finally, the two contributions that were deliberately held on the legacy path
+while the framework changed underneath them — `LinearDFMWellIPRHook` and
+`SemiAnalyticalWellLateralHeatTransferHook` — are condition items registered on
+`model.conditions` in `set_wells()`, and **`set_rhs_flux` and `rhs_flux_hooks`
+are removed from `DartsModel`**: `apply_rhs_flux()` is the conditions stage plus
+the observer stage and nothing else, and is the framework's entry point rather
+than an extension point. The two spellings survive only as adapters onto this
+layer (`LegacyRhsFluxOverride`, `LegacyHookRegistration`) so that a model outside
+this repository neither breaks with an `AttributeError` nor — the worse
+alternative — keeps running while silently dropping a source term. Nothing in
+this repository registers a Python-side contribution any other way.
+
+### M5 — backend lowering and well laws (remaining)
 
 IPR becomes `well.add_perforation(..., flow_law=LinearIPR(...))` assembled
 engine-side — **with no dummy zero-WI perforation**, because M4's stencil
@@ -246,14 +301,25 @@ support. Semi-analytic lateral heat becomes a well segment heat law returning ra
 item types. Adjoint support for declared items; until then the bind-time guard
 stands.
 
-### M6 — inclusion gate
+What M4 deliberately did **not** do, and M5 must: the Python `BlockCSRView` path
+is still the implementation, not the fallback §6 describes; Jacobian
+contributions are still CPU-only and still opaque to the adjoint (both refused at
+`compile()` rather than silently wrong); the per-iteration cost is still Python
+per item; and E7's law half (a composable `PrescribedRate`-style law the backend
+kernel consumes, rather than an item subclass) arrives with the lowering that
+gives it a consumer.
+
+### M6 — inclusion gate (remaining)
 
 A feature enters core only with: equation/reference tests, an independent public
 integration case, derivative verification, CPU ST/MT and GPU results, scaling
 measurements, applicability and failure-mode documentation, and a stable
 non-model-specific API. Applies to the choke on re-admission (restoring the
 deleted 310-line equation tests), to the new drift-flux correlations, and to the
-lateral-heat model.
+lateral-heat model. E10's validation matrix belongs here too: the scaling
+measurements at ~10², 10⁴ and 10⁶ contributions, the assertion that the Python
+callback count does not grow per cell or face once native assembly exists, and
+CPU ST / CPU MT / GPU parity per item type (§9).
 
 ---
 
