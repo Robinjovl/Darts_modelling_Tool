@@ -21,7 +21,14 @@ pre-commit:
         - pip install pre-commit
         - pre-commit clean || true
     script:
-        - echo 'Running pre-commit checks (Python, YAML, TOML)...'
+        # Runs the ruff/YAML/TOML hooks over the files listed below, plus the
+        # whole-tree repository-policy hooks declared with `always_run: true` in
+        # .pre-commit-config.yaml: `sync-agent-skills-check` (skill mirror) and
+        # `placement-policy` (helper_scripts/check_placement_policy.py -- no
+        # module in darts/ without an in-repo consumer, no upward import from
+        # models/). Those two scan the checkout themselves and are independent
+        # of the file list.
+        - echo 'Running pre-commit checks (Python, YAML, TOML, repository policy)...'
         - pre-commit --version
         - pre-commit validate-config || true
         - |

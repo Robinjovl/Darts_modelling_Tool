@@ -20,6 +20,15 @@ repos:
         language: python
         pass_filenames: false
         always_run: true
+      # darts/ placement policy: no module in the installable package without an
+      # in-repo consumer, and no upward import from models/ (MR !305 review, S6).
+      # Scans the whole tree, so it must not be limited to the changed files.
+      - id: placement-policy
+        name: placement-policy
+        entry: python helper_scripts/check_placement_policy.py
+        language: python
+        pass_filenames: false
+        always_run: true
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.11
