@@ -6,6 +6,7 @@ from darts.discretizer import matrix33 as disc_matrix33
 from darts.discretizer import Stiffness as disc_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_biot_modulus
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
+from darts.reservoirs.boundary_spec import FaceBoundary, aquifer, free, no_flow, roller, stuck
 from darts.input.input_data import InputData
 from darts.engines import timer_node, ms_well, ms_well_vector
 import copy
@@ -132,20 +133,20 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     def set_boundary_conditions(self, idata: InputData):
         self.boundary_conditions = {}
-        self.boundary_conditions[idata.mesh.bnd_tags['BND_X-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[idata.mesh.bnd_tags['BND_X+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[idata.mesh.bnd_tags['BND_Y-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-        self.boundary_conditions[idata.mesh.bnd_tags['BND_Y+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_X-']] = FaceBoundary(flow=no_flow(), mech=roller())
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_X+']] = FaceBoundary(flow=no_flow(), mech=roller())
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_Y-']] = FaceBoundary(flow=no_flow(), mech=roller())
+        self.boundary_conditions[idata.mesh.bnd_tags['BND_Y+']] = FaceBoundary(flow=no_flow(), mech=roller())
         if True:  # free Z-
-            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.FREE }
-            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.STUCK(0.,0.)}
+            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = FaceBoundary(flow=no_flow(), mech=free())
+            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = FaceBoundary(flow=no_flow(), mech=stuck(0., 0.))
         else:     # free Z+
-            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.ROLLER }
-            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = {'flow': self.bc_type.NO_FLOW,  'mech': self.bc_type.FREE}
+            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z-']] = FaceBoundary(flow=no_flow(), mech=roller())
+            self.boundary_conditions[idata.mesh.bnd_tags['BND_Z+']] = FaceBoundary(flow=no_flow(), mech=free())
 
         if self.thermoporoelasticity:
             for key, bc in self.boundary_conditions.items():
-                bc['temp'] = self.bc_type.AQUIFER(0.0)
+                bc.temp = aquifer(0.0)
 
     def update_boundary_conditions(self):
         return
@@ -153,7 +154,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             ids = np.where(self.tags == tag)[0] - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
             bc = self.boundary_conditions[tag]
             # flow
-            self.bc_rhs[self.n_bc_vars * ids + self.p_bc_var] = bc['flow']['r']
+            self.bc_rhs[self.n_bc_vars * ids + self.p_bc_var] = bc.flow.r
             # energy
             if self.thermoporoelasticity:
                 # keep initial temperature at the boundary
@@ -169,7 +170,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 c1 = np.array(self.centroids[conn.elem_id1].values)
                 if n.dot(conn_c - c1) < 0: n *= -1.0
                 self.bc_rhs[self.n_bc_vars * id + self.u_bc_var:self.n_bc_vars * id + self.u_bc_var + self.n_dim] = \
-                    bc['mech']['rn'] * n + bc['mech']['rt']
+                    bc.mech.rn * n + bc.mech.rt
 
     def init_heterogeneous_properties(self, idata: InputData):
         '''

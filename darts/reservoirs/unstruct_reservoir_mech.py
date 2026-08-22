@@ -33,83 +33,54 @@ from darts.engines import matrix33 as engine_matrix33
 from darts.input.input_data import InputData
 from darts.reservoirs.boundary_spec import (
     BoundaryValueBC,
+    aquifer,
     compile_mech_discretizer,
     compile_pm_discretizer,
+    flow_rate,
+    free,
+    load,
+    no_flow,
     pm_discretizer_row,
+    roller,
+    stuck,
+    stuck_roller,
+    stuck_t_load_n,
 )
 
 
 class bound_cond:
     '''
-    General representation of boundary condition: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
+    DEPRECATED vocabulary: the dict spelling of a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann).
+
+    Every entry is the ``to_legacy()`` form of the typed constructor of the same
+    name in :mod:`darts.reservoirs.boundary_spec` -- one source of truth, so the
+    dicts stay bit-identical while they last. Declare boundaries with
+    ``FaceBoundary(flow=no_flow(), mech=roller())`` instead; feeding these dicts
+    to a reservoir emits a DeprecationWarning (once per process).
     '''
 
     def __init__(self):
         # flow
-        self.NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        self.AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        self.FLOW = lambda flow: {
-            'a': 0.0,
-            'b': 1.0,
-            'r': flow,
-        }  # TODO normed to area ? units?
+        self.NO_FLOW = no_flow().to_legacy()
+        self.AQUIFER = lambda p: aquifer(p).to_legacy()
+        self.FLOW = lambda flow: flow_rate(
+            flow
+        ).to_legacy()  # TODO normed to area ? units?
 
         # mechanics
         # for mechanical boundary conditions, Dirichlet means setting displacements [m.] and Neumann means setting load [bars]
         # roller allows sliding along the boundary, but not moving away from it, so normal displacement is zero and shear stress is zero
         #  1*displ_n + 0*stress_n = 0, 'n' means normal to the boundary face
         #  0*displ_t + 1*stress_t = 0, 't' means parallel to the boundary face
-        self.ROLLER = {
-            'an': 1.0,
-            'bn': 0.0,
-            'rn': 0.0,
-            'at': 0.0,
-            'bt': 1.0,
-            'rt': np.array([0, 0, 0]),
-        }
-        self.FREE = {
-            'an': 0.0,
-            'bn': 1.0,
-            'rn': 0.0,
-            'at': 0.0,
-            'bt': 1.0,
-            'rt': np.array([0, 0, 0]),
-        }
-        self.STUCK = lambda un, ut: {
-            'an': 1.0,
-            'bn': 0.0,
-            'rn': un,
-            'at': 1.0,
-            'bt': 0.0,
-            'rt': np.array(ut),
-        }
+        self.ROLLER = roller().to_legacy()
+        self.FREE = free().to_legacy()
+        self.STUCK = lambda un, ut: stuck(un, ut).to_legacy()
         # Fn, Ft are normal and tangential load
-        self.LOAD = lambda Fn, Ft: {
-            'an': 0.0,
-            'bn': 1.0,
-            'rn': Fn,
-            'at': 0.0,
-            'bt': 1.0,
-            'rt': np.array(Ft),
-        }
+        self.LOAD = lambda Fn, Ft: load(Fn, Ft).to_legacy()
         # the same as ROLLER except rn is non-zero
-        self.STUCK_ROLLER = lambda un: {
-            'an': 1.0,
-            'bn': 0.0,
-            'rn': un,
-            'at': 0.0,
-            'bt': 1.0,
-            'rt': np.array([0.0, 0.0, 0.0]),
-        }
+        self.STUCK_ROLLER = lambda un: stuck_roller(un).to_legacy()
         # doesn't allow shearing, but allows normal displacement and apply load in the normal direction
-        self.STUCK_T_LOAD_N = lambda Fn, ut: {
-            'an': 0.0,
-            'bn': 1.0,
-            'rn': Fn,
-            'at': 1.0,
-            'bt': 0.0,
-            'rt': np.array(ut),
-        }
+        self.STUCK_T_LOAD_N = lambda Fn, ut: stuck_t_load_n(Fn, ut).to_legacy()
         # | TYPE             |  a_n  |  b_n  |   r_n   |  a_t  |  b_t  |    r_t     |  comments          |
         # -------------------------------------------------------------------------------------------------
         # | ROLLER           |  1.0   |  0.0  |   0.0   |  0.0  |  1.0  |   [0,0,0] | un = 0, st = 0
@@ -253,6 +224,8 @@ class UnstructReservoirMech:
         self.mesh = conn_mesh()
         self.n_dim = 3
         self.n_dim_sq = self.n_dim * self.n_dim
+        # deprecated dict vocabulary, kept for out-of-tree models; declare
+        # conditions with boundary_spec.FaceBoundary + no_flow()/roller()/...
         self.bc_type = bound_cond()
         self.cell_property = fluid_vars + ['ux', 'uy', 'uz']
         ne = len(fluid_vars)
@@ -700,6 +673,12 @@ class UnstructReservoirMech:
         self.pm.bc_prev = self.pm.bc
 
     def set_boundary_conditions_pm_discretizer(self):
+        """Hand the declared conditions to the python discretizer.
+
+        It indexes boundaries by face and fills the per-tag ``cells`` list
+        while reading the mesh, so the lists start empty (the subscript works
+        on a FaceBoundary and on a legacy dict alike).
+        """
         if self.discretizer_name == 'pm_discretizer':
             self.unstr_discr.boundary_conditions = self.boundary_conditions
             for key in self.boundary_conditions.keys():

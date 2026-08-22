@@ -21,14 +21,22 @@ Layout
   :func:`roller`, :func:`stuck`, :func:`load`, :func:`free`, :func:`robin`,
   :func:`dirichlet`, :func:`neumann`, ...) return these and mirror
   ``bound_cond`` exactly.
+* :class:`FaceBoundary` -- the complete condition of ONE boundary tag: its
+  ``flow``, ``mech`` and (optionally) ``temp`` channels.  **This is what a model
+  declares**::
+
+      self.boundary_conditions[tag] = FaceBoundary(flow=no_flow(), mech=roller())
+
 * :class:`BoundaryFacetSpec` -- the four TYPE channels of one boundary tag
   (flow / thermal / mech_normal / mech_tangential); :class:`BoundaryTypeSpec`
   maps ``tag -> BoundaryFacetSpec``.
 * :class:`BoundaryValues` / :class:`BoundaryValueSpec` -- the matching ``r``
   side, constant or ``callable(t)``.
-* :class:`BoundarySpec` -- the pair, with
-  :meth:`BoundarySpec.from_legacy_dict` ingesting the EXISTING
-  ``boundary_conditions`` dicts verbatim and splitting them into the two.
+* :class:`BoundarySpec` -- the pair, built from ``{tag: FaceBoundary}`` by
+  :meth:`BoundarySpec.from_boundaries`.
+  :meth:`BoundarySpec.from_legacy_dict` is the DEPRECATED adapter for the old
+  ``{'flow': {'a', 'b', 'r'}, 'mech': {'an', ...}}`` dicts; it warns once and
+  delegates.  Nothing in this repository writes that schema any more.
 
 Compilers (pure functions of the spec, no model needed):
 
@@ -47,7 +55,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -57,6 +65,7 @@ __all__ = [
     'FaceBC',
     'ScalarBC',
     'MechBC',
+    'FaceBoundary',
     'BoundaryFacetSpec',
     'BoundaryValues',
     'BoundaryTypeSpec',
@@ -87,9 +96,38 @@ DEFAULT_FLOW_FACE_AB = (1.0, 0.0)
 DEFAULT_OTHER_FACE_AB = (0.0, 0.0)
 
 
+#: set once the deprecated dict schema has been reported (warn once per process)
+_LEGACY_SCHEMA_WARNED = False
+
+LEGACY_SCHEMA_MESSAGE = (
+    "the legacy mechanics boundary-condition dict schema ({'flow': {'a', 'b', "
+    "'r'}, 'mech': {'an', 'bn', 'rn', 'at', 'bt', 'rt'}, 'temp': ...}) is "
+    'deprecated and will be removed. Declare boundaries with '
+    'darts.reservoirs.boundary_spec.FaceBoundary and the typed vocabulary '
+    'instead, e.g. FaceBoundary(flow=no_flow(), mech=roller()) -- see that '
+    "module's docstring. The bound_cond class hands out the deprecated dicts."
+)
+
+
+def _warn_legacy_schema(stacklevel: int = 4):
+    """Report the deprecated dict schema once per process."""
+    global _LEGACY_SCHEMA_WARNED
+    if _LEGACY_SCHEMA_WARNED:
+        return
+    _LEGACY_SCHEMA_WARNED = True
+    warnings.warn(LEGACY_SCHEMA_MESSAGE, DeprecationWarning, stacklevel=stacklevel)
+
+
 def _value(v, t: float = 0.0):
     """Resolve a constant-or-``callable(t)`` boundary value."""
     return v(t) if callable(v) else v
+
+
+def _same_value(a, b) -> bool:
+    """Equality that also works when a boundary value is an array."""
+    if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
+        return np.array_equal(np.asarray(a), np.asarray(b))
+    return bool(a == b)
 
 
 @dataclass(frozen=True)
@@ -136,18 +174,35 @@ class ScalarBC:
         return cls(FaceBC(d['a'], d['b']), d.get('r', 0.0))
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class MechBC:
     """The mechanical channel with its values: legacy ``{an, bn, rn, at, bt, rt}``.
 
     ``normal``/``rn`` act along the facet normal, ``tangential``/``rt`` in the
     facet plane (``rt`` is a 3-vector).
+
+    Equality is spelled out rather than generated because ``rt`` is a numpy
+    array: the generated one compares it with ``==`` and raises "the truth
+    value of an array ... is ambiguous".  Unhashable, as it was before (a
+    generated ``__hash__`` would hash the array and raise).
     """
 
     normal: FaceBC
     tangential: FaceBC
     rn: object = 0.0
     rt: object = (0.0, 0.0, 0.0)
+
+    __hash__ = None
+
+    def __eq__(self, other):
+        if not isinstance(other, MechBC):
+            return NotImplemented
+        return (
+            self.normal == other.normal
+            and self.tangential == other.tangential
+            and _same_value(self.rn, other.rn)
+            and _same_value(self.rt, other.rt)
+        )
 
     def to_legacy(self) -> dict:
         return {
@@ -166,6 +221,128 @@ class MechBC:
             tangential=FaceBC(d['at'], d['bt']),
             rn=d.get('rn', 0.0),
             rt=d.get('rt', (0.0, 0.0, 0.0)),
+        )
+
+
+@dataclass
+class FaceBoundary:
+    """The complete boundary condition of one tag -- what a model declares.
+
+    One :class:`ScalarBC` for the flow channel, one :class:`MechBC` for the two
+    mechanical channels and, for a thermoporoelastic run, one more
+    :class:`ScalarBC` for the thermal channel::
+
+        FaceBoundary(flow=no_flow(), mech=roller())
+        FaceBoundary(flow=aquifer(p0), mech=load(F, [0, 0, 0]), temp=aquifer(T0))
+
+    This replaces the ``{'flow': {'a', 'b', 'r'}, 'mech': {'an', ...}}`` dicts;
+    :meth:`from_legacy` still ingests one of those (deprecated, warns once).
+
+    :attr:`cells` is not part of the condition: it is the per-tag list of
+    boundary faces that ``UnstructDiscretizer`` fills in while reading the mesh
+    (it used to live under the ``'cells'`` key of the same dict, which
+    ``bc[...]`` still supports for that one key).
+    """
+
+    flow: ScalarBC
+    mech: MechBC
+    temp: ScalarBC | None = None
+    cells: list = field(default_factory=list)
+
+    # -- spec halves -----------------------------------------------------
+    def facets(self, thermal: bool | None = None) -> BoundaryFacetSpec:
+        """The TYPE half: ``(a, b)`` of every channel.
+
+        :param thermal: ``None`` keeps the thermal facet when ``temp`` is set;
+            ``False`` drops it (a poroelastic run of a model that also has a
+            thermoporoelastic one); ``True`` requires it.
+        """
+        return BoundaryFacetSpec(
+            flow=self.flow.face,
+            mech_normal=self.mech.normal,
+            mech_tangential=self.mech.tangential,
+            thermal=self.temp.face if self._use_temp(thermal) else None,
+        )
+
+    def channel_values(self, thermal: bool | None = None) -> BoundaryValues:
+        """The VALUE half: the ``r`` of every channel, constant or ``f(t)``."""
+        return BoundaryValues(
+            flow=self.flow.r,
+            mech_normal=self.mech.rn,
+            mech_tangential=self.mech.rt,
+            thermal=self.temp.r if self._use_temp(thermal) else None,
+        )
+
+    def _use_temp(self, thermal: bool | None) -> bool:
+        use = self.temp is not None if thermal is None else bool(thermal)
+        if use and self.temp is None:
+            raise KeyError(
+                "this boundary condition has no 'temp' channel, which a "
+                'thermoporoelastic run requires.'
+            )
+        return use
+
+    # -- legacy interop --------------------------------------------------
+    def to_legacy(self) -> dict:
+        """Rebuild the deprecated dict form of this condition."""
+        entry = {'flow': self.flow.to_legacy(), 'mech': self.mech.to_legacy()}
+        if self.temp is not None:
+            entry['temp'] = self.temp.to_legacy()
+        return entry
+
+    @classmethod
+    def from_legacy(cls, entry: Mapping, tag=None) -> FaceBoundary:
+        """Adapt one deprecated ``{'flow', 'mech', 'temp'}`` dict (warns once).
+
+        Extra keys (e.g. the ``'cells'`` list the pm path adds in place) are
+        carried over where they have a home and ignored otherwise.
+        """
+        _warn_legacy_schema()
+        for channel in ('flow', 'mech'):
+            if channel not in entry:
+                raise KeyError(
+                    f"boundary tag {tag!r} has no '{channel}' condition; "
+                    "the mech/MPFA boundary spec needs both 'flow' and "
+                    "'mech' (and optionally 'temp')."
+                )
+        return cls(
+            flow=ScalarBC.from_legacy(entry['flow']),
+            mech=MechBC.from_legacy(entry['mech']),
+            temp=ScalarBC.from_legacy(entry['temp']) if 'temp' in entry else None,
+            cells=list(entry.get('cells', ())),
+        )
+
+    @classmethod
+    def coerce(cls, entry, tag=None) -> FaceBoundary:
+        """Accept a :class:`FaceBoundary` as-is, adapt a deprecated dict."""
+        if isinstance(entry, cls):
+            return entry
+        if isinstance(entry, Mapping):
+            return cls.from_legacy(entry, tag=tag)
+        raise TypeError(
+            f'boundary tag {tag!r} carries {type(entry).__name__}; a boundary '
+            'condition must be a FaceBoundary (see darts.reservoirs.'
+            'boundary_spec).'
+        )
+
+    # -- the discretizer's per-tag face list -----------------------------
+    def __getitem__(self, key):
+        if key == 'cells':
+            return self.cells
+        raise KeyError(self._subscript_message(key))
+
+    def __setitem__(self, key, value):
+        if key == 'cells':
+            self.cells = value
+            return
+        raise KeyError(self._subscript_message(key))
+
+    @staticmethod
+    def _subscript_message(key) -> str:
+        return (
+            f'FaceBoundary is not the legacy dict: {key!r} is not subscriptable '
+            "on it (only 'cells', the discretizer's per-tag face list). Use the "
+            'flow / mech / temp attributes and their typed channels.'
         )
 
 
@@ -318,51 +495,45 @@ class BoundarySpec:
         return list(self.types)
 
     @classmethod
-    def from_legacy_dict(
-        cls, boundary_conditions: Mapping, thermal: bool | None = None
+    def from_boundaries(
+        cls, boundaries: Mapping, thermal: bool | None = None
     ) -> BoundarySpec:
-        """Ingest the existing ``{tag: {'flow': ..., 'mech': ..., 'temp': ...}}``
-        dicts verbatim and split them into a type spec and a value spec.
+        """Split ``{tag: FaceBoundary}`` into a type spec and a value spec.
 
-        Extra keys (e.g. the ``'cells'`` list added by
-        ``set_boundary_conditions_pm_discretizer``) are ignored.
+        A tag still carrying a deprecated dict goes through
+        :meth:`FaceBoundary.from_legacy`, so out-of-tree models keep working
+        (with one :class:`DeprecationWarning`).
 
         :param thermal: ``None`` (default) takes the thermal facet from the
-            presence of a ``'temp'`` entry; ``False`` drops it even when
-            present (models hand the same dicts to a poroelastic and to a
+            presence of a ``temp`` channel; ``False`` drops it even when
+            present (models hand the same conditions to a poroelastic and to a
             thermoporoelastic run); ``True`` requires it.
         """
         types, values = {}, {}
-        for tag, entry in boundary_conditions.items():
-            for channel in ('flow', 'mech'):
-                if channel not in entry:
-                    raise KeyError(
-                        f"boundary tag {tag!r} has no '{channel}' condition; "
-                        "the mech/MPFA boundary spec needs both 'flow' and "
-                        "'mech' (and optionally 'temp')."
-                    )
-            if thermal and 'temp' not in entry:
+        for tag, entry in boundaries.items():
+            bc = FaceBoundary.coerce(entry, tag=tag)
+            if thermal and bc.temp is None:
                 raise KeyError(
                     f"boundary tag {tag!r} has no 'temp' condition, which a "
                     'thermoporoelastic run requires.'
                 )
-            flow = ScalarBC.from_legacy(entry['flow'])
-            mech = MechBC.from_legacy(entry['mech'])
-            use_temp = 'temp' in entry if thermal is None else bool(thermal)
-            temp = ScalarBC.from_legacy(entry['temp']) if use_temp else None
-            types[tag] = BoundaryFacetSpec(
-                flow=flow.face,
-                mech_normal=mech.normal,
-                mech_tangential=mech.tangential,
-                thermal=None if temp is None else temp.face,
-            )
-            values[tag] = BoundaryValues(
-                flow=flow.r,
-                mech_normal=mech.rn,
-                mech_tangential=mech.rt,
-                thermal=None if temp is None else temp.r,
-            )
+            types[tag] = bc.facets(thermal)
+            values[tag] = bc.channel_values(thermal)
         return cls(BoundaryTypeSpec(types), BoundaryValueSpec(values))
+
+    @classmethod
+    def from_legacy_dict(
+        cls, boundary_conditions: Mapping, thermal: bool | None = None
+    ) -> BoundarySpec:
+        """DEPRECATED adapter for the old ``boundary_conditions`` dicts.
+
+        Ingests ``{tag: {'flow': ..., 'mech': ..., 'temp': ...}}`` verbatim
+        (extra keys such as the ``'cells'`` list are ignored) and delegates to
+        :meth:`from_boundaries`.  Kept for one cycle for out-of-tree models;
+        every model in this repository declares :class:`FaceBoundary` instead.
+        """
+        _warn_legacy_schema(stacklevel=3)
+        return cls.from_boundaries(boundary_conditions, thermal=thermal)
 
     def to_legacy_dict(self) -> dict:
         """Rebuild the legacy ``boundary_conditions`` dicts (canonical keys only)."""
@@ -553,14 +724,15 @@ class BoundaryValueBC(ConditionItem):
         return self.spec.values
 
     def sync(self, boundary_conditions=None) -> BoundaryValueBC:
-        """(Re)read the legacy ``boundary_conditions`` dicts into the spec.
+        """(Re)read the reservoir's ``{tag: FaceBoundary}`` into the spec.
 
-        Called on every ``init_bc_rhs`` because models mutate the dicts in
-        place at runtime (e.g. the Mandel north-boundary displacement).
+        Called on every ``init_bc_rhs`` because models re-declare a condition
+        at runtime (e.g. the Mandel north-boundary displacement).  A tag still
+        carrying a deprecated dict is adapted by :meth:`FaceBoundary.coerce`.
         """
         if boundary_conditions is None:
             boundary_conditions = self.reservoir.boundary_conditions
-        self.spec = BoundarySpec.from_legacy_dict(
+        self.spec = BoundarySpec.from_boundaries(
             boundary_conditions, thermal=bool(self.reservoir.thermoporoelasticity)
         )
         return self

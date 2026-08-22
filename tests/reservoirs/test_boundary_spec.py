@@ -4,9 +4,12 @@ Everything here is pure Python: the spec, the vocabulary and the array-building
 half of the compilers need neither a model nor the compiled extensions.
 
 * the vocabulary constructors reproduce the exact ``a``/``b``/``r`` triplets the
-  legacy ``bound_cond`` class hands out today (compared against that class);
-* :meth:`BoundarySpec.from_legacy_dict` splits a representative THM
-  ``boundary_conditions`` dict into a type spec + value spec and round-trips it;
+  deprecated ``bound_cond`` class hands out (compared against that class);
+* :class:`FaceBoundary` is the declaration a model writes; it splits into the
+  type/value halves and round-trips through the deprecated dict form;
+* :meth:`BoundarySpec.from_boundaries` splits a representative THM declaration
+  into a type spec + value spec, and :meth:`BoundarySpec.from_legacy_dict`
+  produces the identical spec from the dicts it deprecates (warning once);
 * :func:`mech_discretizer_arrays` scatters the per-tag types onto
   per-boundary-element arrays exactly like the packing it replaced, including
   the legacy defaults for elements no tag covers;
@@ -24,6 +27,7 @@ import warnings
 import numpy as np
 import pytest
 
+import darts.reservoirs.boundary_spec as boundary_spec
 from darts.reservoirs.boundary_spec import (
     BoundaryFacetSpec,
     BoundarySpec,
@@ -31,6 +35,7 @@ from darts.reservoirs.boundary_spec import (
     BoundaryValues,
     BoundaryValueSpec,
     FaceBC,
+    FaceBoundary,
     aquifer,
     compile_pm_discretizer,
     dirichlet,
@@ -102,12 +107,32 @@ def test_generic_scalar_constructors():
 
 
 # --------------------------------------------------------------------------
-# from_legacy_dict
+# FaceBoundary -- the declaration a model writes
 # --------------------------------------------------------------------------
 
 
+@pytest.fixture
+def unreported_deprecation(monkeypatch):
+    """Start the test with the once-per-process deprecation not yet reported."""
+    monkeypatch.setattr(boundary_spec, '_LEGACY_SCHEMA_WARNED', False)
+
+
+def thm_boundaries():
+    """The typed declaration a thermoporoelastic model writes today."""
+    nf_r = FaceBoundary(flow=no_flow(), mech=roller(), temp=no_flow())
+    return {
+        X_MINUS: nf_r,
+        X_PLUS: FaceBoundary(
+            flow=aquifer(200.0),
+            mech=load(-1.0e-5, [0.0, 0.0, 0.0]),
+            temp=aquifer(350.0),
+        ),
+        Y_MINUS: nf_r,
+    }
+
+
 def thm_boundary_conditions():
-    """A representative thermoporoelastic ``boundary_conditions`` dict."""
+    """The same conditions in the DEPRECATED dict schema."""
     legacy = bound_cond()
     nf_r = {'flow': legacy.NO_FLOW, 'mech': legacy.ROLLER, 'temp': legacy.NO_FLOW}
     return {
@@ -120,6 +145,113 @@ def thm_boundary_conditions():
         # the pm path adds this key in place; from_legacy_dict must ignore it
         Y_MINUS: {**nf_r, 'cells': []},
     }
+
+
+def test_face_boundary_splits_into_type_and_value_halves():
+    bc = FaceBoundary(flow=aquifer(200.0), mech=load(-1.0e-5, [0.0, 0.0, 0.0]))
+    assert bc.facets() == BoundaryFacetSpec(
+        flow=FaceBC(1.0, 0.0),
+        mech_normal=FaceBC(0.0, 1.0),
+        mech_tangential=FaceBC(0.0, 1.0),
+        thermal=None,
+    )
+    values = bc.channel_values()
+    assert values.flow == 200.0 and values.mech_normal == -1.0e-5
+    assert values.thermal is None
+
+    bc.temp = aquifer(350.0)
+    assert bc.facets().thermal == FaceBC(1.0, 0.0)
+    assert bc.channel_values().thermal == 350.0
+    # a poroelastic run of the same model drops the thermal channel
+    assert bc.facets(thermal=False).thermal is None
+    assert bc.channel_values(thermal=False).thermal is None
+
+
+def test_face_boundary_round_trips_through_the_legacy_form(unreported_deprecation):
+    with pytest.warns(DeprecationWarning):
+        for bc in thm_boundaries().values():
+            assert FaceBoundary.from_legacy(bc.to_legacy()) == bc
+
+
+def test_face_boundary_carries_the_discretizers_per_tag_face_list():
+    """UnstructDiscretizer fills bc['cells'] in place while reading the mesh."""
+    bc = FaceBoundary(flow=no_flow(), mech=roller())
+    assert bc['cells'] == []
+    bc['cells'].append(7)
+    assert bc.cells == [7]
+    bc['cells'] = []
+    assert bc.cells == []
+    with pytest.raises(KeyError, match='not the legacy dict'):
+        bc['mech']
+    with pytest.raises(KeyError, match='not the legacy dict'):
+        bc['flow'] = no_flow()
+
+
+def test_coerce_rejects_a_non_condition():
+    with pytest.raises(TypeError, match='FaceBoundary'):
+        FaceBoundary.coerce(('roller',), tag=X_MINUS)
+
+
+def test_from_boundaries_splits_types_and_values():
+    spec = BoundarySpec.from_boundaries(thm_boundaries())
+    assert spec.thermal
+    assert sorted(spec.tags) == [X_MINUS, X_PLUS, Y_MINUS]
+    assert spec.types[X_PLUS].flow == FaceBC(1.0, 0.0)
+    assert spec.values[X_PLUS].flow == 200.0
+    assert spec.values[X_PLUS].thermal == 350.0
+
+
+def test_from_boundaries_thermal_flag():
+    typed = thm_boundaries()
+    assert not BoundarySpec.from_boundaries(typed, thermal=False).thermal
+    assert BoundarySpec.from_boundaries(typed, thermal=True).thermal
+    poro = {tag: FaceBoundary(bc.flow, bc.mech) for tag, bc in typed.items()}
+    assert not BoundarySpec.from_boundaries(poro).thermal
+    with pytest.raises(KeyError, match='temp'):
+        BoundarySpec.from_boundaries(poro, thermal=True)
+
+
+# --------------------------------------------------------------------------
+# from_legacy_dict -- the DEPRECATED adapter, kept for one cycle
+# --------------------------------------------------------------------------
+
+
+def spec_as_comparable(spec):
+    """(types, values) in a form that compares without numpy ambiguity."""
+    return (
+        {tag: spec.types[tag] for tag in spec.types},
+        {
+            tag: (
+                spec.values[tag].flow,
+                spec.values[tag].mech_normal,
+                tuple(np.asarray(spec.values[tag].mech_tangential).ravel()),
+                spec.values[tag].thermal,
+            )
+            for tag in spec.values
+        },
+    )
+
+
+def test_legacy_dicts_produce_the_same_spec_as_the_typed_declaration():
+    from_dicts = BoundarySpec.from_legacy_dict(thm_boundary_conditions())
+    from_typed = BoundarySpec.from_boundaries(thm_boundaries())
+    assert spec_as_comparable(from_dicts) == spec_as_comparable(from_typed)
+
+
+def test_legacy_dicts_warn_once(unreported_deprecation):
+    with pytest.warns(DeprecationWarning, match='deprecated'):
+        BoundarySpec.from_legacy_dict(thm_boundary_conditions())
+    # once per process, not once per tag or per call
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        BoundarySpec.from_legacy_dict(thm_boundary_conditions())
+        BoundarySpec.from_boundaries(thm_boundary_conditions())
+
+
+def test_typed_declarations_do_not_warn(unreported_deprecation):
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        BoundarySpec.from_boundaries(thm_boundaries())
 
 
 def test_from_legacy_dict_splits_types_and_values():
@@ -349,16 +481,25 @@ class StubReservoir:
 
 
 def make_item(
-    discretizer_name='mech_discretizer', thermoporoelasticity=True, n_bounds=3
+    discretizer_name='mech_discretizer',
+    thermoporoelasticity=True,
+    n_bounds=3,
+    legacy=False,
 ):
     from darts.reservoirs.boundary_spec import BoundaryValueBC
 
-    legacy = thm_boundary_conditions()
+    boundaries = thm_boundary_conditions() if legacy else thm_boundaries()
     if not thermoporoelasticity:
-        legacy = {
-            t: {k: v for k, v in e.items() if k != 'temp'} for t, e in legacy.items()
-        }
-    res = StubReservoir(discretizer_name, thermoporoelasticity, n_bounds, legacy)
+        if legacy:
+            boundaries = {
+                t: {k: v for k, v in e.items() if k != 'temp'}
+                for t, e in boundaries.items()
+            }
+        else:
+            boundaries = {
+                t: FaceBoundary(e.flow, e.mech) for t, e in boundaries.items()
+            }
+    res = StubReservoir(discretizer_name, thermoporoelasticity, n_bounds, boundaries)
     return BoundaryValueBC(res).sync(), res
 
 
@@ -393,13 +534,25 @@ def test_boundary_value_bc_matches_the_legacy_loop():
     nbv = res.n_bc_vars
     for tag, ids in tag_ids.items():
         bc = res.boundary_conditions[tag]
-        expected[nbv * ids + res.p_bc_var] = bc['flow']['r']
-        expected[nbv * ids + res.t_bc_var] = bc['temp']['r']
+        expected[nbv * ids + res.p_bc_var] = bc.flow.r
+        expected[nbv * ids + res.t_bc_var] = bc.temp.r
         for i in ids:
             expected[nbv * i + res.u_bc_var : nbv * i + res.u_bc_var + 3] = (
-                bc['mech']['rn'] * normals[i] + bc['mech']['rt']
+                bc.mech.rn * normals[i] + bc.mech.rt
             )
     assert np.array_equal(res.bc_rhs, expected)
+
+
+def test_boundary_value_bc_accepts_deprecated_dicts_identically(unreported_deprecation):
+    """An out-of-tree model still on the dict schema writes the same bc_rhs."""
+    normals = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+    tag_ids = {X_MINUS: np.array([0]), X_PLUS: np.array([1]), Y_MINUS: np.array([2])}
+    typed_item, typed_res = make_item()
+    typed_item.write_mech_discretizer(tag_ids, normals)
+    with pytest.warns(DeprecationWarning):
+        legacy_item, legacy_res = make_item(legacy=True)
+    legacy_item.write_mech_discretizer(tag_ids, normals)
+    assert np.array_equal(typed_res.bc_rhs, legacy_res.bc_rhs)
 
 
 def test_boundary_value_bc_pm_layout_and_face_ordering():
@@ -408,9 +561,9 @@ def test_boundary_value_bc_pm_layout_and_face_ordering():
     prop_ids = [X_PLUS, X_MINUS, X_PLUS, Y_MINUS]
     item.write_pm_discretizer(prop_ids, normals)
     for face_id, tag in enumerate(prop_ids):
-        flow_r = res.boundary_conditions[tag]['flow']['r']
+        flow_r = res.boundary_conditions[tag].flow.r
         assert res.bc_rhs[4 * face_id + 3] == flow_r
-        rn = res.boundary_conditions[tag]['mech']['rn']
+        rn = res.boundary_conditions[tag].mech.rn
         assert np.allclose(
             res.bc_rhs[4 * face_id : 4 * face_id + 3], rn * normals[face_id]
         )
