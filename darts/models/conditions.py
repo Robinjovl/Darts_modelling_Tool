@@ -2,12 +2,13 @@
 
 This module is the minimum-viable unified conditions layer: a small framework
 through which models add Python-side source terms and interface fluxes to the
-assembled residual/Jacobian. It is now the ONLY such channel: the ad-hoc
+assembled residual/Jacobian. It is the ONLY such channel: the ad-hoc
 ``set_rhs_flux`` override and the untyped ``rhs_flux_hooks`` list it replaced
-have been removed from ``DartsModel``, and ``apply_rhs_flux`` is the conditions
-stage plus the observer stage and nothing else. The two legacy SPELLINGS survive
-only as thin adapters onto this layer, for models outside this repository:
-:class:`LegacyRhsFluxOverride` and :class:`LegacyHookRegistration`.
+are gone from ``DartsModel`` -- the base class defines neither, and
+``apply_rhs_flux`` is the conditions stage plus the observer stage and nothing
+else. A model that still spells a contribution either of the old ways registers
+a :class:`ConditionItem` instead; see the *Conditions* page of the technical
+reference for the mechanical translation.
 
 Structure:
 
@@ -59,7 +60,6 @@ The contract hardening added in M4 (review items E5-E9):
 import inspect
 import json
 import os
-import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -677,6 +677,7 @@ class ConditionSet:
 
     def __init__(self):
         self.items = []
+        self._model = None  # set by compile(); used by the apply-time adjoint re-check
         self.observers = []
         #: filled by :meth:`declare_stencil`
         self.declared_couplings = ()
@@ -1000,17 +1001,67 @@ class ConditionSet:
             )
         return self
 
+    @staticmethod
+    def _refuse_legacy_channels(model):
+        """Refuse a model still carrying ``set_rhs_flux`` / ``rhs_flux_hooks``.
+
+        Both were removed from
+        :class:`~darts.models.darts_model.DartsModel`: ``apply_rhs_flux()`` is
+        the conditions stage plus the observer stage and nothing else, and no
+        hook list is consulted. ``self.rhs_flux_hooks.append(...)`` therefore
+        fails loudly by itself (there is no such attribute), but the two
+        remaining spellings would not:
+
+        * a subclass that still overrides ``set_rhs_flux()`` -- nothing calls
+          it, so the model runs on and quietly omits its source term;
+        * a subclass that assigns its own ``self.rhs_flux_hooks = []`` and
+          appends to it -- the appends succeed and nothing reads the list.
+
+        Both are refused here, at ``init()`` time, with the migration named.
+        """
+        offenders = []
+        if callable(getattr(type(model), "set_rhs_flux", None)):
+            offenders.append(
+                "overrides set_rhs_flux(), which nothing calls any more: its "
+                "return value would be dropped and the model would run on "
+                "without the source term"
+            )
+        if hasattr(model, "rhs_flux_hooks"):
+            offenders.append(
+                "carries a rhs_flux_hooks attribute, which nothing reads any "
+                "more: whatever is appended to it would never be applied"
+            )
+        if not offenders:
+            return
+        raise RuntimeError(
+            f"{type(model).__name__} "
+            + "; and ".join(offenders)
+            + ". The set_rhs_flux() override and the rhs_flux_hooks list "
+            "were REMOVED in favour of model.conditions: "
+            "register a ConditionItem (CellSource, SegmentSource, "
+            "PipeSourceTerm, InterfaceFlux, DirichletPin, or a purpose-built "
+            "subclass) with self.conditions.add(...) -- from set_wells() if it "
+            "declares a Jacobian stencil, otherwise from "
+            "set_boundary_conditions(). NOTE the sign convention: the legacy "
+            "vector was applied as rhs += value * dt, so a positive entry "
+            "REMOVED mass from the cell, whereas CellSource rates are positive "
+            "INTO the cell. See the Conditions page of the technical reference."
+        )
+
     def compile(self, model) -> "ConditionSet":
         """Validate the set against the model/engine and bind every item.
 
-        Raises with a specific message when (i) the model overrides
-        ``apply_rhs_flux`` (items would silently never run), (ii) a
-        Jacobian-providing item runs off-CPU or on an engine without an
-        exposed block-CSR matrix, (iii) the model runs a mechanics engine
-        (rows are rescaled inside assembly, post-assembly writes would be
-        mis-scaled), or (iv) the adjoint/history-matching driver is active and
-        an item is not ``adjoint_transparent``. It then rejects any
-        additive/replacement row conflict (review item E6).
+        Raises with a specific message when (0) the model still carries one of
+        the REMOVED legacy channels (a ``set_rhs_flux`` override or a
+        ``rhs_flux_hooks`` attribute -- its contribution would now be dropped
+        without a trace), (i) the model overrides ``apply_rhs_flux`` (items
+        would silently never run), (ii) a Jacobian-providing item runs off-CPU
+        or on an engine without an exposed block-CSR matrix, (iii) the model
+        runs a mechanics engine (rows are rescaled inside assembly,
+        post-assembly writes would be mis-scaled), or (iv) the
+        adjoint/history-matching driver is active and an item is not
+        ``adjoint_transparent``. It then rejects any additive/replacement row
+        conflict (review item E6).
 
         BINDING IS DEFERRED WHEN THE ENGINE DOES NOT EXIST YET. ``init()`` runs
         this at its end, but on the RESTART path it has not called
@@ -1021,6 +1072,7 @@ class ConditionSet:
         so the set records :attr:`deferred` and ``load_restart_data`` re-runs
         ``compile()`` once the engine is up.
         """
+        self._model = model
         # The engine caches PV = volume * poro ONCE, in engine.init() (run by
         # DartsModel.reset() from DartsModel.init()). compile() is the single
         # point that runs after it for EVERY model, so latch the reservoir cell
@@ -1029,6 +1081,14 @@ class ConditionSet:
         # has not been initialized yet (e.g. the restart flow, which initializes
         # it in load_restart_data() after init() returned).
         self._freeze_reservoir_pore_volumes(model)
+
+        # (0) The removed legacy channels. This check runs BEFORE the
+        # no-items early return on purpose: the model it is for registers
+        # nothing here, and that is exactly what makes it dangerous.
+        # ``DartsModel`` defines neither name any more, so a model that still
+        # has one is unmigrated, and its source term would now be dropped
+        # silently -- the one failure mode the removal must not produce.
+        self._refuse_legacy_channels(model)
 
         if not self.items and not self.observers:
             self.deferred = False
@@ -1076,22 +1136,10 @@ class ConditionSet:
 
         engine = model.physics.engine
 
-        # (iv) adjoint guard: the opt driver replays assembly for gradients and
-        # knows nothing about Python-side contributions
-        if getattr(engine, "opt_history_matching", False):
-            opaque = [
-                type(item).__name__
-                for item in self.items
-                if not item.adjoint_transparent
-            ]
-            if opaque:
-                raise RuntimeError(
-                    "The adjoint/history-matching driver is active "
-                    "(engine.opt_history_matching) but these condition items "
-                    "are not adjoint_transparent: " + ", ".join(opaque) + ". "
-                    "Their contributions would be missing from the adjoint "
-                    "gradient."
-                )
+        # (iv) adjoint guard -- see assert_adjoint_supported(). Checked here AND
+        # on every apply(), because the optimization driver sets the flag after
+        # init() has already run.
+        self.assert_adjoint_supported(engine)
 
         # (ii) Jacobian-providing items need the CPU block-CSR matrix
         jac_items = [item for item in self.items if item.provides_jacobian]
@@ -1224,7 +1272,34 @@ class ConditionSet:
         if ConditionSet._engine_initialized(model):
             freeze()
 
+    def assert_adjoint_supported(self, engine):
+        """Refuse to contribute to a system whose gradient will not see it.
+
+        The C++ adjoint replays assembly from the stored trajectory and knows
+        nothing about Python-side contributions, so an opaque item yields a
+        silently incomplete gradient rather than an error.
+
+        This is deliberately re-checked on every ``apply()`` and not only at
+        compile time: ``OptModuleSettings`` sets ``engine.opt_history_matching``
+        AFTER ``init()`` has returned and then calls ``reset()``, so a
+        compile-time-only check never fires in the driver's own call order.
+        """
+        if not self.items or not getattr(engine, "opt_history_matching", False):
+            return
+        opaque = [
+            type(item).__name__ for item in self.items if not item.adjoint_transparent
+        ]
+        if opaque:
+            raise RuntimeError(
+                "The adjoint/history-matching driver is active "
+                "(engine.opt_history_matching) but these condition items are "
+                "not adjoint_transparent: " + ", ".join(opaque) + ". Their "
+                "contributions would be missing from the adjoint gradient."
+            )
+
     def apply(self, ctx: AssemblyContext):
+        if self.items and self._model is not None:
+            self.assert_adjoint_supported(self._model.physics.engine)
         for item in self.items:
             item.rebind_if_stale(ctx)
             item.apply(ctx)
@@ -1420,6 +1495,7 @@ class CellSource(ConditionItem):
         self._rates_take_states = callable(rates) and _callable_takes_states(rates)
         self._rhs_idx = None
         self._diag_pos = None
+        self._diag_flat_idx = None
         self._n_vars = None
 
     def written_rows(self, model):
@@ -1447,6 +1523,14 @@ class CellSource(ConditionItem):
             self._diag_pos = np.array(
                 [view.diag_pos(int(b)) for b in self.cells], dtype=np.int64
             )
+            # Flat jac_vals indices of every entry of every diagonal block, so
+            # apply() scatters once instead of calling add_block() per cell:
+            # the loop cost grows with the number of cells, which is exactly
+            # what a contribution is not allowed to do (review item E10).
+            self._diag_flat_idx = (
+                self._diag_pos[:, None] * view.block_size
+                + np.arange(view.block_size)[None, :]
+            ).ravel()
             if not callable(self.d_rates):
                 self.d_rates = np.asarray(self.d_rates, dtype=float)
                 self._check_shape(
@@ -1492,8 +1576,13 @@ class CellSource(ConditionItem):
         ctx.rhs[self._rhs_idx] -= (rates * ctx.dt).ravel()
         if self.provides_jacobian:
             d_rates = self.evaluate_d_rates(ctx)
-            for k, pos in enumerate(self._diag_pos):
-                ctx.jac.add_block(int(pos), -ctx.dt * d_rates[k])
+            # np.add.at rather than += : a cell may legitimately appear twice
+            # in `cells`, and the duplicate contributions must accumulate.
+            np.add.at(
+                ctx.jac.jac_vals,
+                self._diag_flat_idx,
+                (-ctx.dt * d_rates).ravel(),
+            )
 
 
 class SegmentSource(CellSource):
@@ -2127,124 +2216,3 @@ class DirichletPin(ConditionItem):
         ctx.jac.jac_vals[self._zero_idx] = 0.0
         ctx.jac.jac_vals[self._diag_idx] = 1.0
         ctx.rhs[self._x_idx] = ctx.X[self._x_idx] - self.evaluate_values(ctx.t)
-
-
-# ------------------------------------------------- out-of-tree compatibility
-#
-# ``DartsModel.set_rhs_flux()`` and ``DartsModel.rhs_flux_hooks`` were the two
-# ad-hoc Python-side channels this module replaced. Both are gone from
-# ``DartsModel``: ``apply_rhs_flux`` no longer has a legacy stage, nothing
-# consults a hook list, and the base class no longer defines ``set_rhs_flux``.
-#
-# What survives, and ONLY for models outside this repository, are the two
-# SPELLINGS -- routed through this layer by the two adapters below. They exist
-# because removing them outright has exactly two possible outcomes for an
-# out-of-tree model, and both are unacceptable: an ``AttributeError`` on a
-# working model, or -- for ``set_rhs_flux``, whose override would simply stop
-# being called -- a run that still succeeds while silently dropping a source
-# term. Every model in this repository uses ``self.conditions.add(...)``.
-
-
-class LegacyRhsFluxOverride(ConditionItem):
-    """Adapter turning a legacy ``set_rhs_flux()`` override into an item.
-
-    ``DartsModel.__init__`` registers ONE of these, as the FIRST item of the
-    set, when (and only when) the model's class overrides ``set_rhs_flux`` --
-    ``DartsModel`` itself no longer defines it. Being first reproduces the
-    legacy ordering exactly: the override used to run before the hook list and
-    before the conditions.
-
-    It applies what the legacy stage applied, in the same units and with the
-    same sign::
-
-        ctx.rhs += model.set_rhs_flux(t) * dt
-
-    i.e. the override returns a full ``n_blocks * n_vars`` vector of residual
-    contributions per day, NOT dt-scaled -- the scaling is done here, as it was
-    done on the caller side before.
-
-    It reports no :meth:`~ConditionItem.written_rows` (the returned vector is
-    dense and its support is not knowable without calling it), so it takes no
-    part in the additive/replacement conflict check -- exactly the amount of
-    checking the legacy path did.
-
-    .. deprecated::
-        Override nothing; register :class:`CellSource`, :class:`SegmentSource`,
-        :class:`PipeSourceTerm` or a purpose-built :class:`ConditionItem` on
-        ``self.conditions`` instead. A typed item declares its stencil, its
-        rows, its platform and its restart state; this adapter can declare none
-        of them on the override's behalf.
-    """
-
-    def __init__(self, model):
-        self.model = model
-
-    def apply(self, ctx: AssemblyContext):
-        ctx.rhs += self.model.set_rhs_flux(ctx.t) * ctx.dt
-
-
-class LegacyHookRegistration:
-    """``model.rhs_flux_hooks`` -- a REGISTRATION ALIAS onto a :class:`ConditionSet`.
-
-    Not a list, and nothing reads it: ``append`` forwards straight to
-    :meth:`ConditionSet.add`, so an out-of-tree ``self.rhs_flux_hooks.append(h)``
-    registers ``h`` on the unified layer and gets the full contract with it --
-    the stencil-declaration stage, the platform and adjoint validation, the row
-    conflict check and the pattern versioning. ``h`` must therefore be a
-    :class:`ConditionItem`; the two shipped hooks
-    (:class:`~darts.pipes.linear_dfm_well_ipr.LinearDFMWellIPRHook` and
-    :class:`~darts.pipes.add_lateral_heat_exchange.SemiAnalyticalWellLateralHeatTransferHook`)
-    are, and :meth:`ConditionSet.add` says so plainly when something else is
-    passed.
-
-    The sequence protocol reads the ITEM list, so ``len(...)``, iteration and
-    indexing report every registered item, not only the ones registered through
-    this alias.
-
-    .. deprecated::
-        Call ``self.conditions.add(item)``.
-    """
-
-    def __init__(self, conditions: ConditionSet):
-        self._conditions = conditions
-
-    def _warn(self):
-        warnings.warn(
-            "DartsModel.rhs_flux_hooks is deprecated and is no longer a list "
-            "the model consults: it is an alias that registers on "
-            "DartsModel.conditions. Call self.conditions.add(item) instead.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-
-    def append(self, item):
-        """Register ``item`` on the condition set; returns it."""
-        self._warn()
-        return self._conditions.add(item)
-
-    def extend(self, items):
-        """Register every item of ``items``."""
-        self._warn()
-        for item in items:
-            self._conditions.add(item)
-
-    def __iter__(self):
-        return iter(self._conditions.items)
-
-    def __len__(self):
-        return len(self._conditions.items)
-
-    def __getitem__(self, index):
-        return self._conditions.items[index]
-
-    def __contains__(self, item):
-        return item in self._conditions.items
-
-    def __bool__(self):
-        return bool(self._conditions.items)
-
-    def __repr__(self):
-        return (
-            f"<LegacyHookRegistration -> ConditionSet with "
-            f"{len(self._conditions.items)} item(s)>"
-        )

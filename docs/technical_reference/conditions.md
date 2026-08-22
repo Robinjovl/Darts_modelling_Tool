@@ -2,12 +2,11 @@
 
 `model.conditions` is the unified Python-side layer for source terms, interface
 fluxes and prescribed states: everything a model needs to add to the assembled
-system that is neither a well nor a constitutive property. It is the only such
-channel that new code should use: the ad-hoc `DartsModel.set_rhs_flux()`
-override and the untyped `model.rhs_flux_hooks` list it replaced are
-deprecated. Both still work for one release -- a `set_rhs_flux()` override is
-wrapped in an adapter item and `rhs_flux_hooks.append()` registers onto this
-same set -- and both warn once (see {ref}`conditions-migration`).
+system that is neither a well nor a constitutive property. It is the **only**
+such channel: the ad-hoc `DartsModel.set_rhs_flux()` override and the untyped
+`model.rhs_flux_hooks` list it replaced are **removed** — the base class defines
+neither name, and a model that still carries one is refused at `init()` rather
+than left to run without its source term (see {ref}`conditions-migration`).
 
 The classes live in `darts.models.conditions`; the generated API reference is
 in the *Conditions* section of the API page.
@@ -149,6 +148,11 @@ declare nothing may be registered in either place.
 against the model, and each of these is an error rather than a silent
 mis-simulation:
 
+0. the model still carries a removed legacy channel — a `set_rhs_flux()`
+   override, or a `rhs_flux_hooks` attribute of its own. Nothing calls or reads
+   either, so the contribution would simply vanish; this check runs even when
+   the model registers nothing, which is exactly the case that would otherwise
+   go unnoticed;
 1. the model overrides `apply_rhs_flux()` — it is the framework's entry point, not an extension point, and the registered items would never run;
 2. a Jacobian-providing item on a non-CPU platform, or on an engine that does
    not expose its block-CSR matrix;
@@ -522,28 +526,29 @@ is enforced rather than left to be discovered:
 (conditions-migration)=
 ## Migrating from `set_rhs_flux` / `rhs_flux_hooks`
 
-Both legacy paths are gone from `DartsModel`: `apply_rhs_flux()` is the
-conditions stage plus the observer stage and nothing else, the base class no
-longer defines `set_rhs_flux`, and nothing consults a hook list. They were
-untyped — no declared stencil, no platform validation, no row-conflict check, no
-restart contract — and a `set_rhs_flux` override allocated and returned a whole
-`n_blocks * n_vars` vector on every Newton iteration in order to write a handful
-of entries.
+Both legacy paths are **gone** from `DartsModel` — not deprecated, removed.
+`apply_rhs_flux()` is the conditions stage plus the observer stage and nothing
+else, the base class defines neither `set_rhs_flux` nor `rhs_flux_hooks`, and
+nothing consults a hook list. They were untyped — no declared stencil, no
+platform validation, no row-conflict check, no restart contract — and a
+`set_rhs_flux` override allocated and returned a whole `n_blocks * n_vars`
+vector on every Newton iteration in order to write a handful of entries.
 
-Only the two *spellings* survive, as thin adapters onto this layer, and only so
-that a model outside this repository keeps working rather than failing with an
-`AttributeError` or (worse) running on while silently dropping a source term:
+Removing them must not turn a working model into a quietly wrong one, so each
+of the three ways the old spellings can still appear fails **loudly**:
 
-* a class that still overrides `set_rhs_flux()` gets a `LegacyRhsFluxOverride`
-  registered as the **first** item — the position the legacy stage ran in — which
-  applies `ctx.rhs += model.set_rhs_flux(t) * dt`, and warns once;
-* `model.rhs_flux_hooks` is no longer a list but a registration alias:
-  `.append(item)` forwards to `conditions.add(item)` and warns. The appended
-  object must therefore be a `ConditionItem`.
+| Old spelling | What happens now |
+|---|---|
+| `self.rhs_flux_hooks.append(item)` | `AttributeError` at the call — there is no such attribute |
+| a `set_rhs_flux()` override | `ConditionSet.compile()` refuses at `init()`, naming the migration and the sign flip — nothing would call the override |
+| a self-assigned `self.rhs_flux_hooks = []` then `.append(...)` | the same refusal at `init()` — nothing would read the list |
 
-Neither adapter can declare a stencil, a row set, a platform or a restart state
-on the override's behalf, which is the reason to migrate rather than to rely on
-them.
+The second and third are the ones worth the check: they would otherwise succeed
+and the model would run on without its source term. The refusal is raised before
+the registered-item count is even looked at, because the model in danger is
+precisely the one that registers nothing.
+
+The translations below are mechanical.
 
 **`set_rhs_flux()` → `CellSource`.** The legacy return value was added as
 `rhs += rhs_flux * dt`, so a *positive* legacy entry removed mass from the cell.
@@ -567,6 +572,36 @@ def mass_flux_rates(self, t: float) -> np.ndarray:
     rates[:, self.inflow_var_idx] = -self.outflow      # positive INTO the cell
     return rates
 ```
+
+**A DFM-well source override → `PipeSourceTerm`.** The overrides of the
+DFM-well models all had one body: read the pipe source/sink's current
+component/energy rates at the specific potential energy of the receiving block,
+and write them negated at `(n_res_blocks + segment_idx) * n_vars`. That is
+exactly `PipeSourceTerm`, so the whole method collapses to one registration in
+`set_wells()`:
+
+```python
+# Before
+def set_rhs_flux(self, t=None):
+    source = self.wells['I1'].source_sinks['RampUpRate1']
+    block = self.reservoir.mesh.n_res_blocks + source.segment_idx
+    rates = source.get_component_energy_rates(self.physics,
+                                              self.reservoir.mesh.cell_spe[block])
+    rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * self.physics.n_vars)
+    start = block * self.physics.n_vars
+    rhs_flux[start:start + self.physics.n_vars] = -rates
+    return rhs_flux
+
+# After
+self.conditions.add(PipeSourceTerm(well_name='I1', source_sink_name='RampUpRate1'))
+```
+
+If the override did something the source/sink object does not — the choke
+boundary node, for instance, whose rates carry the *discharge* enthalpy the
+valve produces rather than the constant upstream one
+`get_component_energy_rates()` returns — subclass `PipeSourceTerm` and override
+`apply()`. Such a term is model-specific, so under the placement policy it
+belongs in the model's own directory, not in `darts/`.
 
 **A hand-rolled state pin → `DirichletPin`.** A model that overwrote entries of
 `engine.X` before each assembly registers a `DirichletPin(mode='state')` and

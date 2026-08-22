@@ -148,8 +148,9 @@ class FakeModel:
 
     Mirrors the post-assembly surface of the real model: the (empty) unified
     ``conditions`` set that ``DartsModel.apply_rhs_flux`` applies, and the
-    ``after_assembly`` policy hook it ends with. There is no ``rhs_flux_hooks``
-    list on the real model any more, so there is none here.
+    ``after_assembly`` policy hook it ends with. That is the whole surface --
+    the legacy ``set_rhs_flux`` override and the ``rhs_flux_hooks`` list are
+    removed from ``DartsModel``, so there is nothing else to mirror.
     """
 
     def __init__(self, engine, n_vars=2):

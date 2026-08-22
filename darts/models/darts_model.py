@@ -19,8 +19,6 @@ from darts.models.conditions import (
     AssemblyContext,
     BlockCSRView,
     ConditionSet,
-    LegacyHookRegistration,
-    LegacyRhsFluxOverride,
     pattern_identity,
 )
 from darts.models.output import Output
@@ -141,15 +139,10 @@ class DartsModel:
         # Create member variable wells (it is needed only for DFM wells)
         self.wells = None
         # Unified Python-side conditions (sources, interface fluxes) -- the ONLY
-        # channel: it replaced set_rhs_flux()/rhs_flux_hooks, which are gone.
-        # Items are added via self.conditions.add(...) and validated/bound at
-        # the end of init().
+        # channel: it replaced set_rhs_flux()/rhs_flux_hooks, which are gone
+        # (the base class defines neither). Items are added via
+        # self.conditions.add(...) and validated/bound at the end of init().
         self.conditions = ConditionSet()
-        # Out-of-tree compatibility: a class that still overrides the removed
-        # set_rhs_flux() gets it applied through an adapter item, registered
-        # FIRST so the legacy ordering (override, then the hooks, then the rest)
-        # is reproduced exactly. See conditions.LegacyRhsFluxOverride.
-        self._register_legacy_rhs_flux_override()
         self._conditions_csr_view = None  # lazy BlockCSRView (False = unavailable)
         self._assembly_iteration = 0  # Newton iteration index within a timestep
         # Bumped by every reset() (i.e. every engine.init()), which reallocates
@@ -1440,44 +1433,6 @@ class DartsModel:
         :type t: float
         """
         pass
-
-    @property
-    def rhs_flux_hooks(self):
-        """Deprecated alias that REGISTERS on :attr:`conditions`.
-
-        ``self.rhs_flux_hooks.append(item)`` is ``self.conditions.add(item)``.
-        Nothing reads this attribute -- the legacy hook list and the
-        :meth:`apply_rhs_flux` stage that walked it are gone -- it exists so a
-        model outside this repository keeps working, and keeps working through
-        the typed contract. See
-        :class:`darts.models.conditions.LegacyHookRegistration`.
-
-        .. deprecated::
-            Call ``self.conditions.add(item)``.
-        """
-        return LegacyHookRegistration(self.conditions)
-
-    def _register_legacy_rhs_flux_override(self):
-        """Adapt a legacy ``set_rhs_flux()`` override onto :attr:`conditions`.
-
-        ``DartsModel`` no longer defines ``set_rhs_flux``, so the attribute
-        exists only on a class that overrides it. Such a class gets a
-        :class:`darts.models.conditions.LegacyRhsFluxOverride` registered as the
-        FIRST item, which is where the legacy stage ran. A model that does not
-        override it registers nothing at all.
-        """
-        if not callable(getattr(type(self), "set_rhs_flux", None)):
-            return
-        warnings.warn(
-            f"{type(self).__name__} overrides set_rhs_flux(), which has been "
-            "removed from DartsModel: its return value is applied through a "
-            "LegacyRhsFluxOverride condition item. Register a ConditionItem "
-            "(CellSource, SegmentSource, PipeSourceTerm, ...) on "
-            "self.conditions instead.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        self.conditions.add(LegacyRhsFluxOverride(self))
 
     def apply_rhs_flux(self, dt: float, t: float):
         """
