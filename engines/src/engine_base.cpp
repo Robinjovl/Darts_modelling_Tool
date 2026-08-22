@@ -7,6 +7,11 @@
 #include <iostream>
 #include <functional>  // adjoint method -- function 'bind1st'
 #include <limits>
+#include <map>
+#include <sstream>
+#include <stdexcept>
+#include <tuple>
+#include <utility>
 #ifdef __GNUC__
 #include <cxxabi.h>
 #endif
@@ -3258,4 +3263,108 @@ int engine_base::post_newtonloop(value_t deltat, value_t time, index_t converged
 
 	}
 	return converged;
+}
+
+void engine_base::build_perforation_flow_laws()
+{
+	perforation_law_of_conn.clear();
+	perforation_law_conns.clear();
+
+	bool any = false;
+	for (ms_well *w : wells)
+	{
+		if (w->has_non_darcy_perforation())
+		{
+			any = true;
+			break;
+		}
+	}
+	if (!any)
+		return;
+
+	if (!supports_perforation_flow_laws())
+	{
+		std::ostringstream msg;
+		msg << "A well perforation declares a non-Darcy flow law, but the engine '"
+		    << engine_name << "' does not assemble perforation flow laws. "
+		    << "The well-reservoir coupling would be silently dropped. "
+		    << "Engine-side perforation flow laws are implemented for the CPU super engine only; "
+		    << "use the Python LinearDFMWellIPRHook condition item instead.";
+		throw std::runtime_error(msg.str());
+	}
+	if (opt_history_matching)
+	{
+		throw std::runtime_error(
+		    "A well perforation declares a non-Darcy flow law and history matching is enabled, "
+		    "but the adjoint does not differentiate perforation flow laws yet. The gradient "
+		    "would be silently wrong.");
+	}
+	if (n_solid > 0)
+	{
+		throw std::runtime_error(
+		    "A well perforation declares a non-Darcy flow law on a physics with solid species. "
+		    "The mixture properties the law converts with (molar density, molecular weight, "
+		    "molar enthalpy) are assembled from the FLUID phase operators only.");
+	}
+
+	// (well_block, res_block) -> index into perforation_law_conns
+	std::map<std::pair<index_t, index_t>, int> by_pair;
+	for (ms_well *w : wells)
+	{
+		for (size_t p = 0; p < w->perforations.size(); ++p)
+		{
+			const perforation_flow_law &law = w->get_perforation_flow_law((index_t)p);
+			if (law.law == perforation_flow_law_type::DARCY)
+				continue;
+
+			index_t i_w, i_r;
+			value_t wi, wid;
+			std::tie(i_w, i_r, wi, wid) = w->perforations[p];
+
+			perforation_law_conn conn;
+			conn.well_block = w->well_head_idx + i_w + 1;
+			conn.res_block = i_r;
+			conn.law = law;
+
+			auto key = std::make_pair(conn.well_block, conn.res_block);
+			if (by_pair.count(key))
+			{
+				std::ostringstream msg;
+				msg << "Well '" << w->name << "': two perforations with a flow law address "
+				    << "well block " << conn.well_block << " / reservoir block "
+				    << conn.res_block << "; the flux would be applied twice.";
+				throw std::runtime_error(msg.str());
+			}
+			by_pair[key] = (int)perforation_law_conns.size();
+			perforation_law_conns.push_back(conn);
+		}
+	}
+
+	perforation_law_of_conn.assign(mesh->n_conns, -1);
+	index_t matched = 0;
+	for (index_t k = 0; k < mesh->n_conns; ++k)
+	{
+		const index_t a = mesh->block_m[k];
+		const index_t b = mesh->block_p[k];
+		auto it = by_pair.find(std::make_pair(a, b));
+		if (it == by_pair.end())
+			it = by_pair.find(std::make_pair(b, a));
+		if (it != by_pair.end())
+		{
+			perforation_law_of_conn[k] = it->second;
+			matched++;
+		}
+	}
+
+	// Every perforation must appear exactly once in each direction of the two-way
+	// connection list. A mismatch means the pair was not connected (or was connected
+	// twice), which would drop or double the flux -- fail loudly rather than run.
+	if (matched != 2 * (index_t)perforation_law_conns.size())
+	{
+		std::ostringstream msg;
+		msg << "Perforation flow laws: " << perforation_law_conns.size()
+		    << " perforation(s) declare a flow law, so " << 2 * perforation_law_conns.size()
+		    << " mesh connections were expected, but " << matched << " were found.";
+		throw std::runtime_error(msg.str());
+	}
 }

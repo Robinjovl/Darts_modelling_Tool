@@ -248,6 +248,7 @@ class ReservoirBase:
         segment_direction: str = "z_axis",
         skin: float = 0.0,
         ms_epm: bool = False,
+        flow_law=None,
         verbose: bool = False,
     ):
         """
@@ -276,10 +277,41 @@ class ReservoirBase:
         :type skin: float
         :param ms_epm: Whether the EPM well model uses a separate well segment per perforation or not (a single well segment for all perforations).
         :type ms_epm: bool
+        :param flow_law: Optional flow law computed ENGINE-SIDE for this perforation
+                         instead of the Darcy/Peaceman flux, e.g.
+                         :class:`~darts.pipes.linear_dfm_well_ipr.LinearIPR`. Any
+                         object with a ``to_engine()`` returning a
+                         ``darts.engines.perforation_flow_law`` is accepted, as is
+                         such a ``perforation_flow_law`` itself. A non-Darcy law
+                         requires ``well_index=0.0``: the engine would otherwise
+                         assemble the Peaceman flux across the very interface the
+                         law carries.
+        :type flow_law: object or None
         :param verbose: Switch to set verbose level
         :type verbose: bool
         """
         pass
+
+    @staticmethod
+    def _attach_perforation_flow_law(well, perforation_index: int, flow_law):
+        """Attach ``flow_law`` to one perforation of ``well``.
+
+        Shared by the concrete ``add_perforation`` implementations so that the
+        translation and the validation live in one place. ``flow_law`` is either
+        a ``darts.engines.perforation_flow_law`` or anything exposing
+        ``to_engine()`` (which is what
+        :class:`~darts.pipes.linear_dfm_well_ipr.LinearIPR` provides) -- the
+        reservoir package deliberately does not import the flow-law classes, so
+        a new law needs no change here.
+
+        :param well: the ``ms_well`` the perforation belongs to
+        :param perforation_index: index into ``well.perforations``
+        :param flow_law: the law to attach
+        """
+        engine_law = (
+            flow_law.to_engine() if hasattr(flow_law, "to_engine") else flow_law
+        )
+        well.set_perforation_flow_law(perforation_index, engine_law)
 
     @abc.abstractmethod
     def find_cell_index(self, coord: list | np.ndarray) -> int:

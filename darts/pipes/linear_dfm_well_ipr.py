@@ -3,7 +3,13 @@ from enum import Enum
 
 import numpy as np
 
-from darts.engines import ms_well, value_vector
+from darts.engines import (
+    ipr_rate_basis,
+    ms_well,
+    perforation_flow_law,
+    perforation_flow_law_type,
+    value_vector,
+)
 from darts.models.conditions import (
     AssemblyContext,
     BlockCSRView,
@@ -17,6 +23,94 @@ class PI_Type(Enum):
     MOLAR = "molar"
     MASS = "mass"
     VOLUMETRIC = "volumetric"
+
+
+#: ``PI_Type`` -> the engine's ``ipr_rate_basis`` enum
+_IPR_BASIS_OF_PI_TYPE = {
+    PI_Type.MOLAR: ipr_rate_basis.MOLAR,
+    PI_Type.MASS: ipr_rate_basis.MASS,
+    PI_Type.VOLUMETRIC: ipr_rate_basis.VOLUMETRIC,
+}
+
+
+@dataclass(frozen=True)
+class LinearIPR:
+    r"""A linear inflow performance relation, as a PERFORATION FLOW LAW.
+
+    This is the engine-side spelling of the linear IPR: the flux across the
+    perforation is computed by the well assembler in C++, with analytic
+    derivatives with respect to both connected blocks, instead of by the
+    per-Newton Python callback :class:`LinearDFMWellIPRHook`. Pass it to
+    :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.add_perforation`::
+
+        reservoir.add_perforation(
+            'I1', res_cell_idx=(1, 1, 1), well_seg_idx=20,
+            well_index=0.0, well_indexD=0.0,
+            flow_law=LinearIPR(productivity=1e5, basis=PI_Type.MASS),
+        )
+
+    The law is
+
+    .. math:: q_{total} = A + B\,(p_{well} - p_{res} - \Delta p)
+
+    positive FROM the well INTO the reservoir, with ``B`` = :attr:`productivity`,
+    ``A`` = :attr:`intercept` and ``dp`` = :attr:`offset`. The total rate is
+    converted to component molar rates (and, for thermal physics, an energy
+    rate) with the state and mixture properties of the UPSTREAM block, exactly
+    as :class:`LinearDFMWellIPRHook` does.
+
+    **How it differs from the Python hook.** The hook differentiates its flux by
+    finite differences and evaluates the upstream mixture properties by calling
+    the property container (a fresh flash); the engine differentiates
+    analytically and reads the same interpolated operator table the rest of the
+    assembly uses. The converged solutions agree to solver tolerance, but they
+    are not bit-identical and the iteration counts may differ, so the two paths
+    are not interchangeable against an existing reference. The Python hook stays
+    the default; this is the opt-in.
+
+    **Limits** (each refused at ``init()``, never silently wrong):
+
+    * CPU super engine only -- any other engine refuses a model that declares a law;
+    * no adjoint/history matching;
+    * no solid species (the conversion uses the fluid-phase operators);
+    * the perforation must have ``well_index=0.0``, or the engine would assemble
+      the Peaceman flux across the same interface.
+
+    :param productivity: ``B``, per bar of drawdown, in the rate units of ``basis``.
+    :param basis: :class:`PI_Type` -- MOLAR (kmol/day/bar), MASS (kg/day/bar) or
+        VOLUMETRIC (m3/day/bar at upstream in-situ conditions).
+    :param offset: ``dp`` [bar].
+    :param intercept: ``A``, in the same rate units as ``productivity``.
+    """
+
+    productivity: float
+    basis: PI_Type = PI_Type.MOLAR
+    offset: float = 0.0
+    intercept: float = 0.0
+
+    def __post_init__(self):
+        if not isinstance(self.basis, PI_Type):
+            raise ValueError(f"LinearIPR: basis must be a PI_Type, got {self.basis!r}.")
+        if self.productivity < 0.0:
+            raise ValueError(
+                f"LinearIPR: productivity={self.productivity} is negative. A "
+                "negative productivity is an unconditionally unstable "
+                "anti-physical feedback (the flux grows with the pressure "
+                "difference it opposes)."
+            )
+
+    def to_engine(self) -> perforation_flow_law:
+        """The engine-side ``perforation_flow_law`` this law compiles to.
+
+        :returns: a ``darts.engines.perforation_flow_law``
+        """
+        law = perforation_flow_law()
+        law.law = perforation_flow_law_type.LINEAR_IPR
+        law.basis = _IPR_BASIS_OF_PI_TYPE[self.basis]
+        law.productivity = float(self.productivity)
+        law.offset = float(self.offset)
+        law.intercept = float(self.intercept)
+        return law
 
 
 # --------------------------------------------------------------------------
@@ -625,6 +719,20 @@ class LinearDFMWellIPRHook(ConditionItem):
         Peaceman flux across the very interface this hook carries, so the two
         would be summed.
         """
+        # Older ms_well builds (and the lightweight test doubles) have no flow-law
+        # accessor at all, which means no engine-side law can exist either.
+        read_flow_law = getattr(well, "get_perforation_flow_law", None)
+        engine_law = None if read_flow_law is None else read_flow_law(perforation_index)
+        if engine_law is not None and engine_law.law != perforation_flow_law_type.DARCY:
+            raise ValueError(
+                f"Perforation {perforation_index} of well {connection.well_name!r} "
+                "already carries an ENGINE-SIDE flow law "
+                f"({engine_law.law}), and LinearDFMWellIPRHook would add a second "
+                "IPR flux across the same interface. Use one path or the other: "
+                "add_perforation(..., flow_law=LinearIPR(...)) for the engine-side "
+                "law, or this hook for the Python one."
+            )
+
         well_index, well_indexD = well.perforations[perforation_index][2:4]
         if well_index != 0.0:
             raise ValueError(

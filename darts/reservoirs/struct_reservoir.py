@@ -242,6 +242,7 @@ class StructReservoir(ReservoirBase):
         skin: float = 0.0,
         ms_epm: bool = None,
         with_peaceman_for_dfm_well: bool = False,
+        flow_law=None,
         verbose: bool = False,
     ):
         """
@@ -250,6 +251,11 @@ class StructReservoir(ReservoirBase):
         :param with_peaceman_for_dfm_well: If True and the well is of type DFM, it uses the modified Darcy's law based
                                            on the Peaceman model. Otherwise, it uses the Darcy's law without modification.
         :type with_peaceman_for_dfm_well: bool
+        :param flow_law: Optional engine-side perforation flow law, e.g.
+                         :class:`~darts.pipes.linear_dfm_well_ipr.LinearIPR`; see
+                         :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.add_perforation`.
+                         Requires ``well_index=0.0``.
+        :type flow_law: object or None
         """
         well = self.get_well(well_name)
 
@@ -344,6 +350,14 @@ class StructReservoir(ReservoirBase):
 
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
+                    if flow_law is not None:
+                        raise ValueError(
+                            f"Well {well.name!r} already has a perforation of block "
+                            f"[{i:d}, {j:d}, {k:d}]; a duplicate is normally dropped "
+                            "with a warning, but this one carries a flow law, which "
+                            "would then be silently ignored. Attach the flow law to "
+                            "the first perforation of that block instead."
+                        )
                     print(
                         f'Neglected duplicate perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}]'
                     )
@@ -353,12 +367,26 @@ class StructReservoir(ReservoirBase):
                 (well_block, res_block_local, well_index, well_indexD)
             ]
 
+            if flow_law is not None:
+                # After the perforation exists: the law is attached to it by index,
+                # and the engine's own validation (zero well index, non-negative
+                # productivity) runs here rather than at the first Newton iteration.
+                self._attach_perforation_flow_law(
+                    well, len(well.perforations) - 1, flow_law
+                )
+
             if verbose:
                 print(
                     f'Added perforation for well {well.name} to block {res_block_local:d} '
                     f'[{i:d}, {j:d}, {k:d}] with WI={well_index:f} and WID={well_indexD:f}'
                 )
         else:
+            if flow_law is not None:
+                raise ValueError(
+                    f"Well {well.name!r}: block [{i:d}, {j:d}, {k:d}] is inactive, so "
+                    "the perforation is dropped -- but it carries a flow law, which "
+                    "would then be silently ignored, leaving the well uncoupled."
+                )
             if verbose:
                 print(
                     f'Neglected perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}] (inactive block)'

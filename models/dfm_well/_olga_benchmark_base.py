@@ -43,12 +43,25 @@ from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 from darts.pipes.linear_dfm_well_ipr import (
     LinearDFMWellIPRConnection,
     LinearDFMWellIPRHook,
+    LinearIPR,
     PI_Type,
 )
 from darts.pipes.pipe import Pipe
 from darts.pipes.set_initial_conditions import SingleAmbientTemperature
 from darts.pipes.upstream_ramp_up_rate import UpstreamRampUpRate
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
+
+#: Engine-side counterparts of the IPR variants: the SAME model, with the linear
+#: IPR assembled by the well assembler in C++ (``add_perforation(flow_law=...)``)
+#: instead of by the per-Newton Python condition item. They map onto the base
+#: variant they replicate. Available on every OLGA benchmark whose base variant is
+#: supported; they exist for the M5 A/B comparison and are NOT CI cases, because
+#: analytic derivatives change the iteration path and so the references.
+ENGINE_IPR_FORMULATIONS = {
+    'ipr_engine': None,
+    'ipr_engine_volumetric': 'ipr_volumetric',
+    'ipr_engine_producer': 'ipr_producer',
+}
 
 
 class OLGABenchmarkModel(CICDModel):
@@ -78,6 +91,11 @@ class OLGABenchmarkModel(CICDModel):
         # Call base class constructor
         super().__init__()
 
+        #: whether the linear IPR is assembled engine-side rather than by the
+        #: Python condition item; the rest of the model is identical
+        self.engine_side_ipr = formulation in ENGINE_IPR_FORMULATIONS
+        if self.engine_side_ipr:
+            formulation = ENGINE_IPR_FORMULATIONS[formulation]
         assert formulation is None or formulation in self.supported_formulations, (
             f"unknown formulation {formulation!r}"
         )
@@ -364,21 +382,30 @@ class OLGABenchmarkModel(CICDModel):
             # well_index=65.54393 would model the variable injectivity equivalent to 1e5 kg/day/bar
             well_index=0.0,
             well_indexD=0.0,
+            # engine-side variants: the perforation IS the IPR, assembled in C++
+            flow_law=self.get_ipr_flow_law() if self.engine_side_ipr else None,
         )
 
-        self.conditions.add(
-            LinearDFMWellIPRHook(self, [self.get_ipr_connection(well_1_name)])
-        )
+        if not self.engine_side_ipr:
+            self.conditions.add(
+                LinearDFMWellIPRHook(self, [self.get_ipr_connection(well_1_name)])
+            )
 
-    def get_ipr_connection(self, well_name):
-        """Return the IPR connection of the well perforation for the active formulation."""
-        perforation_index = len(self.reservoir.get_well(well_name).perforations) - 1
+    def get_ipr_parameters(self) -> dict:
+        """IPR coefficients of the active formulation, in one place.
+
+        Both spellings of the IPR -- the Python condition item
+        (:meth:`get_ipr_connection`) and the engine-side perforation flow law
+        (:meth:`get_ipr_flow_law`) -- are built from this, so the two paths
+        cannot drift apart numerically.
+
+        :returns: ``pi`` / ``pi_type`` / ``ipr_pressure_offset`` / ``ipr_intercept``
+        :rtype: dict
+        """
         if self.formulation == 'ipr_volumetric':
             # Volumetric PI (m3/day/bar at upstream in-situ conditions) of a magnitude
             # equivalent to the base mass PI, with nonzero intercept and pressure offset
-            return LinearDFMWellIPRConnection(
-                well_name=well_name,
-                perforation_index=perforation_index,
+            return dict(
                 pi=100.0,
                 pi_type=PI_Type.VOLUMETRIC,
                 ipr_pressure_offset=0.05,
@@ -386,19 +413,37 @@ class OLGABenchmarkModel(CICDModel):
             )
         if self.formulation == 'ipr_producer':
             # Molar PI for the BHP-controlled producer variant (reservoir-upstream branch)
-            return LinearDFMWellIPRConnection(
-                well_name=well_name,
-                perforation_index=perforation_index,
+            return dict(
                 pi=5e3,
                 pi_type=PI_Type.MOLAR,
                 ipr_pressure_offset=0.0,
+                ipr_intercept=0.0,
             )
-        return LinearDFMWellIPRConnection(
-            well_name=well_name,
-            perforation_index=perforation_index,
+        return dict(
             pi=1e5,
             pi_type=PI_Type.MASS,
             ipr_pressure_offset=0.0,
+            ipr_intercept=0.0,
+        )
+
+    def get_ipr_connection(self, well_name):
+        """Return the IPR connection of the well perforation for the active formulation."""
+        params = self.get_ipr_parameters()
+        perforation_index = len(self.reservoir.get_well(well_name).perforations) - 1
+        return LinearDFMWellIPRConnection(
+            well_name=well_name,
+            perforation_index=perforation_index,
+            **params,
+        )
+
+    def get_ipr_flow_law(self) -> LinearIPR:
+        """The same IPR as :meth:`get_ipr_connection`, as an engine-side flow law."""
+        params = self.get_ipr_parameters()
+        return LinearIPR(
+            productivity=params['pi'],
+            basis=params['pi_type'],
+            offset=params['ipr_pressure_offset'],
+            intercept=params['ipr_intercept'],
         )
 
     def set_well_controls(self):

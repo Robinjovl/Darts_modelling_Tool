@@ -94,6 +94,318 @@ void engine_super_cpu<NC, NP, THERMAL>::enable_flux_output()
   }
 }
 
+// ---------------------------------------------------------------------------
+// Perforation flow laws (engine-side well flux laws)
+// ---------------------------------------------------------------------------
+//
+// A perforation whose flow law is LINEAR_IPR carries
+//
+//     q_total = intercept + productivity * (p_well - p_res - offset)      [1]
+//
+// positive FROM the well INTO the reservoir. `q_total` is a total rate in the
+// units of the law's basis (kmol/day, kg/day, or m3/day at upstream in-situ
+// conditions) and is converted to component molar rates with the state and the
+// mixture properties of the UPSTREAM block:
+//
+//     m       = q_total                    (MOLAR)
+//             = q_total / Mw               (MASS)
+//             = q_total * rho_m            (VOLUMETRIC)
+//     q_c     = m * z_c
+//     q_e     = m * (h + spe * Mw)                                        [2]
+//
+// The three upstream mixture properties are read from the SAME interpolated
+// operator table the rest of the assembly uses, so the law is differentiated
+// exactly rather than by finite differences:
+//
+//     rho_m   = sum_j  SAT_j * sum_c FLUX_OP[j, c]   = sum_j s_j rho_mj   [kmol/m3]
+//     rho_mass= sum_j  SAT_j * GRAV_OP[j]            = sum_j s_j rho_j    [kg/m3]
+//     rho_h   = sum_j  SAT_j * FLUX_OP[j, NC]        = sum_j s_j rho_mj h_j
+//     Mw      = rho_mass / rho_m           (mixture molecular weight, kg/kmol)
+//     h       = rho_h    / rho_m           (mixture molar enthalpy, kJ/kmol)
+//
+// The identity Mw = sum_c Mw_c z_c holds because rho_j = rho_mj * sum_c Mw_c x_cj,
+// so the mass/molar density ratio IS the mole-weighted mixture weight -- which is
+// why no per-component molecular weight table has to be handed to the engine.
+// Likewise h = sum_j nu_j h_j with nu_j = s_j rho_mj / rho_m, which is exactly the
+// mixture molar enthalpy.
+//
+// z_c is taken from the upstream STATE (clipped at params->sim_eps and
+// renormalized), not from the operators, so that sum_c z_c == 1 identically and
+// the composition split is the state's own.
+//
+// The residual convention is the engine's: RHS[i] accumulates -dt*(inflow), so
+// a rate leaving block i is added with a plus sign.
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_cpu<NC, NP, THERMAL>::add_perforation_flow_law(
+    index_t conn_idx, index_t i, index_t j, index_t diag_idx, index_t jac_idx,
+    value_t dt, const std::vector<value_t> &X, value_t *Jac, std::vector<value_t> &RHS)
+{
+    const perforation_law_conn &pconn = perforation_law_conns[perforation_law_of_conn[conn_idx]];
+    const perforation_flow_law &law = pconn.law;
+    const index_t wb = pconn.well_block;
+    const index_t rb = pconn.res_block;
+    const bool i_is_well = (i == wb);
+    (void)j;
+
+    // [1] total rate and its (pressure-only) derivatives
+    const value_t q_tot = law.intercept +
+                          law.productivity * (X[wb * N_VARS + P_VAR] - X[rb * N_VARS + P_VAR] - law.offset);
+    const bool up_is_well = (q_tot >= 0.0);
+    const index_t up = up_is_well ? wb : rb;
+
+    value_t dq_w[N_VARS], dq_r[N_VARS];
+    for (uint8_t v = 0; v < N_VARS; v++)
+    {
+        dq_w[v] = 0.0;
+        dq_r[v] = 0.0;
+    }
+    dq_w[P_VAR] = law.productivity;
+    dq_r[P_VAR] = -law.productivity;
+
+    // [2] upstream overall composition from the state, clipped and renormalized
+    value_t z[NC];
+    value_t dz[NC][N_VARS];
+    for (uint8_t c = 0; c < NC; c++)
+        for (uint8_t v = 0; v < N_VARS; v++)
+            dz[c][v] = 0.0;
+
+    if constexpr (NC == 1)
+    {
+        z[0] = 1.0;
+    }
+    else
+    {
+        value_t w[NC];
+        value_t dw[NC][N_VARS];
+        for (uint8_t c = 0; c < NC; c++)
+            for (uint8_t v = 0; v < N_VARS; v++)
+                dw[c][v] = 0.0;
+
+        value_t sum_z = 0.0;
+        for (uint8_t c = 0; c < NC - 1; c++)
+        {
+            w[c] = X[up * N_VARS + Z_VAR + c];
+            dw[c][Z_VAR + c] = 1.0;
+            sum_z += w[c];
+        }
+        w[NC - 1] = 1.0 - sum_z;
+        for (uint8_t c = 0; c < NC - 1; c++)
+            dw[NC - 1][Z_VAR + c] = -1.0;
+
+        const value_t eps_z = params->sim_eps;
+        value_t S = 0.0;
+        value_t dS[N_VARS];
+        for (uint8_t v = 0; v < N_VARS; v++)
+            dS[v] = 0.0;
+        for (uint8_t c = 0; c < NC; c++)
+        {
+            if (!(w[c] > eps_z))
+            {
+                w[c] = eps_z;
+                for (uint8_t v = 0; v < N_VARS; v++)
+                    dw[c][v] = 0.0;
+            }
+            S += w[c];
+            for (uint8_t v = 0; v < N_VARS; v++)
+                dS[v] += dw[c][v];
+        }
+        for (uint8_t c = 0; c < NC; c++)
+        {
+            z[c] = w[c] / S;
+            for (uint8_t v = 0; v < N_VARS; v++)
+                dz[c][v] = (dw[c][v] - z[c] * dS[v]) / S;
+        }
+    }
+
+    // [3] upstream mixture properties from the interpolated operators.
+    // An isothermal MOLAR law needs none of them, and then the flux is an exact
+    // function of the state alone.
+    const bool need_molar_density = THERMAL || (law.basis != ipr_rate_basis::MOLAR);
+    const bool need_molecular_weight = THERMAL || (law.basis == ipr_rate_basis::MASS);
+
+    value_t rho_m = 1.0, Mw = 1.0, h = 0.0;
+    value_t drho_m[N_VARS], dMw[N_VARS], dh[N_VARS];
+    for (uint8_t v = 0; v < N_VARS; v++)
+    {
+        drho_m[v] = 0.0;
+        dMw[v] = 0.0;
+        dh[v] = 0.0;
+    }
+
+    if (need_molar_density)
+    {
+        value_t rho_mass = 0.0, rho_h = 0.0;
+        value_t drho_mass[N_VARS], drho_h[N_VARS];
+        rho_m = 0.0;
+        for (uint8_t v = 0; v < N_VARS; v++)
+        {
+            drho_mass[v] = 0.0;
+            drho_h[v] = 0.0;
+        }
+
+        for (uint8_t p = 0; p < NP; p++)
+        {
+            const value_t s_p = op_vals_arr[up * N_OPS + SAT_OP + p];
+            const value_t *ds_p = &op_ders_arr[(up * N_OPS + SAT_OP + p) * N_VARS];
+
+            value_t f_p = 0.0;
+            value_t df_p[N_VARS];
+            for (uint8_t v = 0; v < N_VARS; v++)
+                df_p[v] = 0.0;
+            for (uint8_t c = 0; c < NC; c++)
+            {
+                f_p += op_vals_arr[up * N_OPS + FLUX_OP + p * NE + c];
+                for (uint8_t v = 0; v < N_VARS; v++)
+                    df_p[v] += op_ders_arr[(up * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v];
+            }
+            rho_m += s_p * f_p;
+            for (uint8_t v = 0; v < N_VARS; v++)
+                drho_m[v] += ds_p[v] * f_p + s_p * df_p[v];
+
+            if (need_molecular_weight)
+            {
+                const value_t g_p = op_vals_arr[up * N_OPS + GRAV_OP + p];
+                rho_mass += s_p * g_p;
+                for (uint8_t v = 0; v < N_VARS; v++)
+                    drho_mass[v] += ds_p[v] * g_p + s_p * op_ders_arr[(up * N_OPS + GRAV_OP + p) * N_VARS + v];
+            }
+
+            if constexpr (THERMAL)
+            {
+                const value_t e_p = op_vals_arr[up * N_OPS + FLUX_OP + p * NE + NC];
+                rho_h += s_p * e_p;
+                for (uint8_t v = 0; v < N_VARS; v++)
+                    drho_h[v] += ds_p[v] * e_p + s_p * op_ders_arr[(up * N_OPS + FLUX_OP + p * NE + NC) * N_VARS + v];
+            }
+        }
+
+        if (rho_m > 0.0)
+        {
+            if (need_molecular_weight)
+            {
+                Mw = rho_mass / rho_m;
+                for (uint8_t v = 0; v < N_VARS; v++)
+                    dMw[v] = (drho_mass[v] - Mw * drho_m[v]) / rho_m;
+            }
+            if constexpr (THERMAL)
+            {
+                h = rho_h / rho_m;
+                for (uint8_t v = 0; v < N_VARS; v++)
+                    dh[v] = (drho_h[v] - h * drho_m[v]) / rho_m;
+            }
+        }
+        else
+        {
+            // No fluid at the upstream block: nothing can flow through the perforation.
+            rho_m = 0.0;
+            Mw = 1.0;
+            h = 0.0;
+            for (uint8_t v = 0; v < N_VARS; v++)
+            {
+                drho_m[v] = 0.0;
+                dMw[v] = 0.0;
+                dh[v] = 0.0;
+            }
+        }
+    }
+
+    // [4] total MOLAR rate and its derivatives w.r.t. both connected blocks
+    value_t m_rate = 0.0;
+    value_t dm_w[N_VARS], dm_r[N_VARS];
+    for (uint8_t v = 0; v < N_VARS; v++)
+    {
+        dm_w[v] = 0.0;
+        dm_r[v] = 0.0;
+    }
+
+    switch (law.basis)
+    {
+    case ipr_rate_basis::MOLAR:
+        m_rate = q_tot;
+        for (uint8_t v = 0; v < N_VARS; v++)
+        {
+            dm_w[v] = dq_w[v];
+            dm_r[v] = dq_r[v];
+        }
+        break;
+
+    case ipr_rate_basis::MASS:
+    {
+        m_rate = q_tot / Mw;
+        value_t *dm_up = up_is_well ? dm_w : dm_r;
+        for (uint8_t v = 0; v < N_VARS; v++)
+        {
+            dm_w[v] = dq_w[v] / Mw;
+            dm_r[v] = dq_r[v] / Mw;
+        }
+        for (uint8_t v = 0; v < N_VARS; v++)
+            dm_up[v] -= q_tot * dMw[v] / (Mw * Mw);
+        break;
+    }
+
+    case ipr_rate_basis::VOLUMETRIC:
+    {
+        m_rate = q_tot * rho_m;
+        value_t *dm_up = up_is_well ? dm_w : dm_r;
+        for (uint8_t v = 0; v < N_VARS; v++)
+        {
+            dm_w[v] = dq_w[v] * rho_m;
+            dm_r[v] = dq_r[v] * rho_m;
+        }
+        for (uint8_t v = 0; v < N_VARS; v++)
+            dm_up[v] += q_tot * drho_m[v];
+        break;
+    }
+    }
+
+    // [5] component and energy rates, positive from the well into the reservoir
+    value_t rate[NE];
+    value_t drate_w[NE][N_VARS], drate_r[NE][N_VARS];
+
+    for (uint8_t c = 0; c < NC; c++)
+    {
+        rate[c] = m_rate * z[c];
+        for (uint8_t v = 0; v < N_VARS; v++)
+        {
+            drate_w[c][v] = dm_w[v] * z[c];
+            drate_r[c][v] = dm_r[v] * z[c];
+        }
+        value_t *drate_up = up_is_well ? drate_w[c] : drate_r[c];
+        for (uint8_t v = 0; v < N_VARS; v++)
+            drate_up[v] += m_rate * dz[c][v];
+    }
+
+    if constexpr (THERMAL)
+    {
+        const value_t spe = mesh->cell_spe[up];
+        const value_t specific = h + spe * Mw;
+        rate[NC] = m_rate * specific;
+        for (uint8_t v = 0; v < N_VARS; v++)
+        {
+            drate_w[NC][v] = dm_w[v] * specific;
+            drate_r[NC][v] = dm_r[v] * specific;
+        }
+        value_t *drate_up = up_is_well ? drate_w[NC] : drate_r[NC];
+        for (uint8_t v = 0; v < N_VARS; v++)
+            drate_up[v] += m_rate * (dh[v] + spe * dMw[v]);
+    }
+
+    // [6] scatter into row i: the well side loses the rate, the reservoir side gains it
+    const value_t sgn = i_is_well ? 1.0 : -1.0;
+    for (uint8_t c = 0; c < NE; c++)
+    {
+        RHS[i * N_VARS + c] += sgn * rate[c] * dt;
+
+        const value_t *d_self = i_is_well ? drate_w[c] : drate_r[c];
+        const value_t *d_other = i_is_well ? drate_r[c] : drate_w[c];
+        for (uint8_t v = 0; v < N_VARS; v++)
+        {
+            Jac[diag_idx + c * N_VARS + v] += sgn * d_self[v] * dt;
+            Jac[jac_idx + c * N_VARS + v] += sgn * d_other[v] * dt;
+        }
+    }
+}
+
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
 {
@@ -109,6 +421,12 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     const std::vector<index_t>& velocity_offset = mesh->velocity_offset;
     const std::vector<index_t>& op_num = mesh->op_num;
     const std::vector<value_t>& cell_spe = mesh->cell_spe;
+    // Engine-side perforation flow laws. Hoisted to a raw pointer, null unless
+    // some perforation declares one: the connection loop writes RHS and Jac, so
+    // the compiler cannot prove a std::vector member is not aliased by those
+    // writes and would reload its begin/end on every connection.
+    const int *perf_law_of_conn =
+        perforation_law_of_conn.empty() ? nullptr : perforation_law_of_conn.data();
 
     value_t* Jac = jacobian->get_values();
     index_t* diag_ind = jacobian->get_diag_ind();
@@ -670,6 +988,14 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
             }
 
+
+            // [4b] engine-side perforation flow law (e.g. a linear IPR). The
+            // perforation carries a zero well index, so the Darcy branch above
+            // contributed nothing to it and this is the whole coupling.
+            if (perf_law_of_conn != nullptr && perf_law_of_conn[conn_idx] >= 0)
+            {
+                add_perforation_flow_law(conn_idx, i, j, diag_idx, jac_idx, dt, X, Jac, RHS);
+            }
 
             conn_idx++;
             if (j < n_res_blocks)

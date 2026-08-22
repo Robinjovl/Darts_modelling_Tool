@@ -1,4 +1,6 @@
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 
 #include "ms_well.h"
 
@@ -356,4 +358,61 @@ int ms_well::cross_flow(std::vector<value_t>& X)
     }
 
     return 0;
+}
+
+void ms_well::set_perforation_flow_law(index_t perforation_index, const perforation_flow_law &law)
+{
+    if (perforation_index < 0 || (size_t)perforation_index >= perforations.size())
+    {
+        std::ostringstream msg;
+        msg << "Well '" << name << "': perforation index " << perforation_index
+            << " is out of bounds (" << perforations.size() << " perforations). "
+            << "Attach the flow law after the perforation has been added.";
+        throw std::runtime_error(msg.str());
+    }
+
+    if (law.law != perforation_flow_law_type::DARCY)
+    {
+        const value_t wi = std::get<2>(perforations[perforation_index]);
+        if (wi != 0.0)
+        {
+            std::ostringstream msg;
+            msg << "Well '" << name << "': perforation " << perforation_index
+                << " has a non-zero well index (WI=" << wi << ") and a non-Darcy flow law. "
+                << "The engine would assemble the Peaceman flux across the very interface "
+                << "the flow law carries, double-counting it. Pass well_index=0.0 to "
+                << "add_perforation() when giving that perforation a flow law.";
+            throw std::runtime_error(msg.str());
+        }
+        if (law.productivity < 0.0)
+        {
+            std::ostringstream msg;
+            msg << "Well '" << name << "': perforation " << perforation_index
+                << " has a negative productivity index (" << law.productivity
+                << "). A negative productivity is an unconditionally unstable "
+                << "anti-physical feedback (the flux grows with the pressure "
+                << "difference it opposes).";
+            throw std::runtime_error(msg.str());
+        }
+    }
+
+    if (perforation_flow_laws.size() < perforations.size())
+        perforation_flow_laws.resize(perforations.size());
+    perforation_flow_laws[perforation_index] = law;
+}
+
+const perforation_flow_law &ms_well::get_perforation_flow_law(index_t perforation_index) const
+{
+    static const perforation_flow_law darcy_default;
+    if (perforation_index < 0 || (size_t)perforation_index >= perforation_flow_laws.size())
+        return darcy_default;
+    return perforation_flow_laws[perforation_index];
+}
+
+bool ms_well::has_non_darcy_perforation() const
+{
+    for (const perforation_flow_law &law : perforation_flow_laws)
+        if (law.law != perforation_flow_law_type::DARCY)
+            return true;
+    return false;
 }

@@ -25,8 +25,12 @@ from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 from darts.pipes.linear_dfm_well_ipr import (
     LinearDFMWellIPRHook,
     LinearDFMWellIPRConnection,
+    LinearIPR,
     PI_Type,
 )
+
+#: Productivity index of the single perforation, kg/day/bar
+IPR_PRODUCTIVITY = 1e5
 
 
 class Model(CICDModel):
@@ -41,14 +45,23 @@ class Model(CICDModel):
               SemiAnalyticalWellLateralHeatTransferHook.
             * ``'exclude_top'`` — excludes the top (well-control) block from the DFM
               velocity evaluation in the pipe.
+            * ``'ipr_engine'`` — the base model with the linear IPR assembled
+              ENGINE-SIDE as a perforation flow law
+              (``add_perforation(flow_law=LinearIPR(...))``) instead of by the
+              per-Newton Python condition item. Not a CI case: analytic
+              derivatives change the iteration path, so it does not reproduce
+              the reference bit-for-bit; it exists for the M5 A/B comparison.
         :type formulation: str or None
         """
         # Call base class constructor
         super().__init__()
 
-        assert formulation in (None, 'lateral_heat', 'exclude_top'), \
+        assert formulation in (None, 'lateral_heat', 'exclude_top', 'ipr_engine'), \
             f"unknown formulation {formulation!r}"
-        self.formulation = formulation
+        #: whether the linear IPR is assembled engine-side rather than by the
+        #: Python condition item; the rest of the model is identical
+        self.engine_side_ipr = formulation == 'ipr_engine'
+        self.formulation = None if self.engine_side_ipr else formulation
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -203,25 +216,28 @@ class Model(CICDModel):
                                        well_diameter=well_1_geometry.pipe_ID,
                                        well_index=0.0,
                                        well_indexD=0.0,
+                                       # engine-side variant: the perforation IS the IPR, assembled in C++
+                                       flow_law=self.get_ipr_flow_law() if self.engine_side_ipr else None,
                                        )
 
-        self.conditions.add(
-            LinearDFMWellIPRHook(
-                self,
-                [
-                    LinearDFMWellIPRConnection(
-                        well_name=well_1_name,
-                        perforation_index=len(
-                            self.reservoir.get_well(well_1_name).perforations
+        if not self.engine_side_ipr:
+            self.conditions.add(
+                LinearDFMWellIPRHook(
+                    self,
+                    [
+                        LinearDFMWellIPRConnection(
+                            well_name=well_1_name,
+                            perforation_index=len(
+                                self.reservoir.get_well(well_1_name).perforations
+                            )
+                            - 1,
+                            pi=IPR_PRODUCTIVITY,
+                            pi_type=PI_Type.MASS,
+                            ipr_pressure_offset=0.0,
                         )
-                        - 1,
-                        pi=1e5,
-                        pi_type=PI_Type.MASS,
-                        ipr_pressure_offset=0.0,
-                    )
-                ],
+                    ],
+                )
             )
-        )
 
         if self.formulation == 'lateral_heat':
             # Semi-analytical wellbore-earth lateral heat exchange. The earth temperature
@@ -241,6 +257,15 @@ class Model(CICDModel):
             self.conditions.add(
                 SemiAnalyticalWellLateralHeatTransferHook(
                     self, self.reservoir.get_well(well_1_name), lateral_heat_ev))
+
+    def get_ipr_flow_law(self):
+        """The IPR of this model as an engine-side perforation flow law.
+
+        The same coefficients the Python condition item uses, so the two paths
+        cannot drift apart -- and the single override point a test needs to turn
+        the engine-side law off without changing anything else about the model.
+        """
+        return LinearIPR(productivity=IPR_PRODUCTIVITY, basis=PI_Type.MASS, offset=0.0)
 
     def set_well_controls(self):
         """

@@ -25,6 +25,39 @@ struct segment
 };
 
 
+/// @brief Flow law of a single well perforation: HOW the flux across it is computed.
+///
+/// The default, DARCY, is the Peaceman/Darcy flux the engine has always assembled
+/// from the perforation well index. LINEAR_IPR replaces it with a linear inflow
+/// performance relation evaluated by the well assembler, with analytic derivatives
+/// with respect to both connected blocks.
+enum class perforation_flow_law_type : int
+{
+    DARCY = 0,      ///< Peaceman/Darcy flux from the perforation well index (default)
+    LINEAR_IPR = 1  ///< q_total = intercept + productivity * (p_well - p_res - offset)
+};
+
+/// @brief Basis in which the total rate of a LINEAR_IPR perforation is expressed.
+enum class ipr_rate_basis : int
+{
+    MOLAR = 0,      ///< kmol/day      (productivity in kmol/day/bar)
+    MASS = 1,       ///< kg/day        (productivity in kg/day/bar)
+    VOLUMETRIC = 2  ///< m3/day at upstream in-situ conditions (m3/day/bar)
+};
+
+/// @brief Parameters of the flow law of one perforation.
+///
+/// Only the LINEAR_IPR fields are carried; a DARCY perforation keeps using its
+/// well index and ignores all of them.
+struct perforation_flow_law
+{
+    perforation_flow_law_type law = perforation_flow_law_type::DARCY;
+    ipr_rate_basis basis = ipr_rate_basis::MOLAR;
+    value_t productivity = 0.0;  ///< B, per bar of drawdown, in the rate units of `basis`
+    value_t offset = 0.0;        ///< dp [bar]
+    value_t intercept = 0.0;     ///< A, in the rate units of `basis`
+};
+
 /// Class for a multi-segment well
 class ms_well
 {
@@ -94,6 +127,17 @@ public:
 
     int cross_flow(std::vector<value_t>& X);
 
+    /// @brief Attach a flow law to one perforation (the perforation must already exist).
+    /// A non-DARCY law requires a zero well index: the engine would otherwise assemble
+    /// the Peaceman flux across the very interface the law carries.
+    void set_perforation_flow_law(index_t perforation_index, const perforation_flow_law &law);
+
+    /// @brief Flow law of one perforation; DARCY when none was attached.
+    const perforation_flow_law &get_perforation_flow_law(index_t perforation_index) const;
+
+    /// @brief Whether any perforation of this well carries a non-DARCY flow law.
+    bool has_non_darcy_perforation() const;
+
     std::string name;
     MS_Type ms_type;
     WellType well_type; // type to be producer or injector
@@ -121,6 +165,9 @@ public:
     index_t well_head_conn_idx;   // index of the connection between the two well segments at the top of the well (for EPM wells, connection is between the ghost segment and the lower segment)
 
     std::vector<std::tuple<index_t, index_t, value_t, value_t>> perforations;
+    /// Per-perforation flow law, parallel to `perforations`. Perforations beyond
+    /// its size are DARCY, so a well that never sets one costs nothing.
+    std::vector<perforation_flow_law> perforation_flow_laws;
     bool with_lateral_heat_transfer = false;   // only used for a DFM well. If true, lateral heat transfer between the DFM well segments and reservoir blocks is considered.
     std::vector<std::tuple<index_t, index_t, value_t>> connections_for_lateral_heat_transfer; // tuple of (dfm_segment_index, reservoir_block_index, geometric_part_of_the_heat_transfer_equation)
 
