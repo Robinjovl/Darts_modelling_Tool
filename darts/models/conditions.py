@@ -23,12 +23,85 @@ Structure:
   pairs, in two modes: ``"state"`` (the projection the models used to hand-roll:
   overwrite the entry in the state vector) and ``"row"`` (the assembly-consistent
   block-CSR row replacement). See its docstring for the trade-off.
+
+The contract hardening added in M4 (review items E5-E9):
+
+- **Declared stencils** (:meth:`ConditionItem.declare_stencil`) — an item reports
+  the ``(row_block, col_block)`` couplings it will write BEFORE the engine
+  allocates its matrix, and :meth:`ConditionSet.declare_stencil` adds the missing
+  ones to the mesh as zero-transmissibility connections. This is what removes the
+  need for a "fake" zero-well-index perforation whose only purpose was to smuggle
+  four blocks into the sparsity pattern.
+- **Pattern versioning** (:func:`pattern_identity`) — compiled CSR positions are
+  stamped with the identity of the pattern they were resolved against, and are
+  re-resolved instead of silently written at stale offsets when the engine is
+  rebuilt (restart, or any second :meth:`~darts.models.darts_model.DartsModel.reset`).
+- **Additive vs replacement** (:attr:`ConditionItem.contribution`) — an item
+  either ADDS to a row or CLAIMS it as a constraint; the two are mutually
+  exclusive per row and :meth:`ConditionSet.compile` rejects a conflict, naming
+  both items.
+- **Typed observers** (:class:`NonlinearIterationObserver`) — read-only
+  per-iteration diagnostics/policy checks, registered alongside conditions,
+  handed a context whose arrays are not writable.
+- **Restart** (:attr:`ConditionItem.carries_restart_state`) — an item declares
+  whether it carries state that must survive a restart and how it serializes; an
+  item with state is either restored from the sidecar file or refuses to restart.
+- **Selectors** (:class:`Selector`) — a compile-time description of a set of
+  blocks (explicit indices, a predicate over cell centroids, or a named region),
+  accepted anywhere a plain index array is accepted. Strictly additive: every
+  existing call that passes indices keeps working unchanged.
 """
 
 import inspect
+import json
+import os
 from dataclasses import dataclass
 
 import numpy as np
+
+#: contribution kinds, see :attr:`ConditionItem.contribution`
+ADDITIVE = "additive"
+REPLACEMENT = "replacement"
+NO_CONTRIBUTION = "none"
+_CONTRIBUTION_KINDS = (ADDITIVE, REPLACEMENT, NO_CONTRIBUTION)
+
+
+def pattern_identity(model) -> tuple:
+    """Identity of the Jacobian sparsity pattern currently owned by the engine.
+
+    Compiled CSR positions (and the numpy views into ``jac_vals``) are only valid
+    for the pattern they were resolved against. ``engine.init()`` reallocates the
+    matrix, so a model that is re-initialized -- the restart flow calls
+    :meth:`~darts.models.darts_model.DartsModel.reset` a second time, and so does
+    any manual re-init -- silently invalidates them: the row/column arrays may
+    even come back the same size, so comparing sizes alone is not enough.
+
+    The identity therefore combines
+
+    * the engine object identity,
+    * ``DartsModel._pattern_version``, a counter bumped by every
+      :meth:`~darts.models.darts_model.DartsModel.reset` (the authoritative half),
+    * the row / column / value array sizes (a cheap independent cross-check).
+
+    :param model: the model (or anything exposing ``physics.engine``)
+    :returns: an opaque, comparable tuple; ``None`` when no engine is available
+    """
+    engine = getattr(getattr(model, "physics", None), "engine", None)
+    if engine is None:
+        return None
+    try:
+        n_rows = len(engine.jac_rows)
+        n_cols = len(engine.jac_cols)
+        n_vals = len(engine.jac_vals)
+    except (AttributeError, TypeError):
+        n_rows = n_cols = n_vals = -1
+    return (
+        id(engine),
+        int(getattr(model, "_pattern_version", 0)),
+        n_rows,
+        n_cols,
+        n_vals,
+    )
 
 
 class BlockCSRView:
@@ -41,7 +114,7 @@ class BlockCSRView:
     ``pos * n_vars**2 + c * n_vars + v``.
     """
 
-    def __init__(self, engine, n_vars: int):
+    def __init__(self, engine, n_vars: int, pattern=None):
         jac_diags = getattr(engine, "jac_diags", None)
         if jac_diags is None or len(jac_diags) == 0:
             raise RuntimeError(
@@ -58,6 +131,26 @@ class BlockCSRView:
         self.jac_vals = np.asarray(engine.jac_vals)
         self.n_vars = int(n_vars)
         self.block_size = self.n_vars * self.n_vars
+        #: identity of the pattern these positions/views address (see
+        #: :func:`pattern_identity`); ``None`` when the caller did not stamp one.
+        self.pattern = pattern
+
+    def read_only(self) -> "BlockCSRView":
+        """A twin of this view whose value array cannot be written.
+
+        Handed to :class:`NonlinearIterationObserver` implementations so a
+        read-only observer cannot mutate the Jacobian even by accident (a write
+        raises ``ValueError: assignment destination is read-only``).
+        """
+        twin = object.__new__(BlockCSRView)
+        twin.jac_rows = self.jac_rows
+        twin.jac_cols = self.jac_cols
+        twin.jac_diags = self.jac_diags
+        twin.jac_vals = _frozen(self.jac_vals)
+        twin.n_vars = self.n_vars
+        twin.block_size = self.block_size
+        twin.pattern = self.pattern
+        return twin
 
     def block_pos(self, row_block: int, col_block: int) -> int:
         """Flat CSR position of dense block ``(row_block, col_block)``.
@@ -88,6 +181,187 @@ class BlockCSRView:
         self.jac_vals[start : start + self.block_size] += np.asarray(dense).reshape(-1)
 
 
+def _frozen(array: np.ndarray) -> np.ndarray:
+    """A non-writable view of ``array`` (the array itself stays writable)."""
+    view = np.asarray(array).view()
+    view.flags.writeable = False
+    return view
+
+
+# ------------------------------------------------------------------ selectors
+class Selector:
+    """A compile-time description of a SET OF BLOCKS (review item E7).
+
+    A selector answers one question -- *which blocks?* -- and answers it once,
+    at bind time, against the model. It is the "where" half of the
+    selector/law split: the "what" half (the behaviour: a rate, a pinned value,
+    a flux law) stays in the item.
+
+    Selectors are accepted ANYWHERE a plain index array is accepted today
+    (:class:`CellSource`, :class:`DirichletPin`, and the block members of an
+    :class:`InterfaceFlux` connection list), through :func:`resolve_blocks`.
+    This is strictly additive: passing indices keeps working exactly as before,
+    and no existing item constructor changed shape.
+
+    Subclasses implement :meth:`resolve`.
+    """
+
+    def resolve(self, model) -> np.ndarray:
+        """Return the selected block indices as an int64 array."""
+        raise NotImplementedError(f"{type(self).__name__}.resolve() is not implemented")
+
+    def __len__(self):
+        raise TypeError(
+            f"{type(self).__name__} has no length before it is resolved against a "
+            "model; the item resolves it in bind()."
+        )
+
+
+class BlockIndices(Selector):
+    """The identity selector: an explicit list of block indices.
+
+    :param indices: iterable of block indices.
+    """
+
+    def __init__(self, indices):
+        self.indices = np.asarray(indices, dtype=np.int64).ravel()
+
+    def resolve(self, model) -> np.ndarray:
+        return self.indices
+
+
+class Where(Selector):
+    """Blocks whose cell centroid satisfies a predicate.
+
+    :param predicate: callable ``f(x, y, z) -> bool array`` over the reservoir
+        cell centroid coordinate arrays (each of length ``n_res_blocks``).
+    :param centroids: optional explicit ``(n, 3)`` centroid array. When omitted
+        the centroids are resolved from the reservoir (see
+        :func:`cell_centroids`), which is not available for every reservoir
+        family -- pass them explicitly when it raises.
+
+    Only RESERVOIR blocks are considered: a well segment has no reservoir
+    centroid, and selecting one by geometry would be ambiguous.
+    """
+
+    def __init__(self, predicate, centroids=None):
+        if not callable(predicate):
+            raise TypeError("Where(predicate=...) expects a callable f(x, y, z).")
+        self.predicate = predicate
+        self.centroids = (
+            None if centroids is None else np.asarray(centroids, dtype=float)
+        )
+
+    def resolve(self, model) -> np.ndarray:
+        centroids = (
+            self.centroids if self.centroids is not None else cell_centroids(model)
+        )
+        centroids = np.asarray(centroids, dtype=float)
+        if centroids.ndim != 2 or centroids.shape[1] != 3:
+            raise ValueError(
+                f"Where: centroids must have shape (n_cells, 3), got {centroids.shape}."
+            )
+        mask = np.asarray(
+            self.predicate(centroids[:, 0], centroids[:, 1], centroids[:, 2])
+        )
+        if mask.shape != (centroids.shape[0],):
+            raise ValueError(
+                f"Where: the predicate returned shape {mask.shape}, expected "
+                f"{(centroids.shape[0],)} (one bool per cell)."
+            )
+        return np.flatnonzero(mask.astype(bool)).astype(np.int64)
+
+
+class NamedRegion(Selector):
+    """Blocks of a named region.
+
+    Resolution order, first hit wins:
+
+    1. ``reservoir.regions[name]`` / ``reservoir.cell_groups[name]`` -- a
+       reservoir that keeps its own named cell groups (index arrays or masks);
+    2. an OPERATOR region tag: reservoir blocks whose ``mesh.op_num`` slot maps
+       to ``name`` in ``physics.regions`` (slot ``i`` is region
+       ``physics.regions[i]``, the same convention the engine and
+       ``DartsModel.set_op_list`` use).
+
+    :param name: the region key / operator-region tag.
+    """
+
+    def __init__(self, name):
+        self.name = name
+
+    def resolve(self, model) -> np.ndarray:
+        reservoir = getattr(model, "reservoir", None)
+        for attribute in ("regions", "cell_groups"):
+            groups = getattr(reservoir, attribute, None)
+            if isinstance(groups, dict) and self.name in groups:
+                selected = np.asarray(groups[self.name])
+                if selected.dtype == bool:
+                    return np.flatnonzero(selected).astype(np.int64)
+                return selected.astype(np.int64).ravel()
+
+        physics = getattr(model, "physics", None)
+        regions = list(getattr(physics, "regions", None) or [])
+        if self.name not in regions:
+            raise KeyError(
+                f"NamedRegion({self.name!r}): no such named cell group on "
+                f"{type(reservoir).__name__} and no such operator region; the "
+                f"registered operator regions are {regions}."
+            )
+        slot = regions.index(self.name)
+        mesh = reservoir.mesh
+        n_res_blocks = int(mesh.n_res_blocks)
+        op_num = np.asarray(mesh.op_num)[:n_res_blocks]
+        return np.flatnonzero(op_num == slot).astype(np.int64)
+
+
+def cell_centroids(model) -> np.ndarray:
+    """Reservoir cell centroids as an ``(n_res_blocks, 3)`` array.
+
+    Tries, in order, ``reservoir.centroids``, ``reservoir.discr_mesh.centroids``
+    and ``reservoir.discretizer.centroids_all_cells``; raises when the reservoir
+    family exposes none of them.
+
+    :param model: model owning ``reservoir``
+    :raises RuntimeError: when no centroid array can be found
+    """
+    reservoir = getattr(model, "reservoir", None)
+    n_res_blocks = int(reservoir.mesh.n_res_blocks)
+    candidates = (
+        getattr(reservoir, "centroids", None),
+        getattr(getattr(reservoir, "discr_mesh", None), "centroids", None),
+        getattr(getattr(reservoir, "discretizer", None), "centroids_all_cells", None),
+    )
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        array = np.asarray([[c[0], c[1], c[2]] for c in candidate], dtype=float)
+        if array.ndim == 2 and array.shape[1] == 3 and array.shape[0] >= n_res_blocks:
+            return array[:n_res_blocks]
+    raise RuntimeError(
+        f"Where(...): {type(reservoir).__name__} exposes no cell centroids "
+        "(tried reservoir.centroids, reservoir.discr_mesh.centroids and "
+        "reservoir.discretizer.centroids_all_cells). Pass them explicitly: "
+        "Where(predicate, centroids=my_centroids)."
+    )
+
+
+def resolve_blocks(value, model) -> np.ndarray:
+    """Block indices of ``value``: a :class:`Selector`, or an index array.
+
+    The single entry point every item uses, so a selector is accepted exactly
+    where an index array is.
+
+    :param value: a :class:`Selector` instance or anything ``np.asarray`` turns
+        into an integer index array
+    :param model: the model the selector resolves against
+    :returns: int64 array of block indices
+    """
+    if isinstance(value, Selector):
+        return np.asarray(value.resolve(model), dtype=np.int64).ravel()
+    return np.asarray(value, dtype=np.int64).ravel()
+
+
 @dataclass
 class AssemblyContext:
     """Per-Newton-iteration snapshot handed to :meth:`ConditionItem.apply`.
@@ -114,6 +388,82 @@ class AssemblyContext:
     n_vars: int
     n_res_blocks: int
 
+    def read_only(self) -> "AssemblyContext":
+        """A twin of this context whose arrays cannot be written.
+
+        Handed to every :class:`NonlinearIterationObserver`: ``rhs``, ``X``,
+        ``Xn`` and the Jacobian values are non-writable numpy views, so an
+        observer that tries to mutate the assembled system raises
+        ``ValueError: assignment destination is read-only`` instead of quietly
+        changing the answer.
+        """
+        return AssemblyContext(
+            rhs=_frozen(self.rhs),
+            jac=None if self.jac is None else self.jac.read_only(),
+            X=_frozen(self.X),
+            Xn=_frozen(self.Xn),
+            dt=self.dt,
+            t=self.t,
+            iteration=self.iteration,
+            n_vars=self.n_vars,
+            n_res_blocks=self.n_res_blocks,
+        )
+
+
+class NonlinearIterationObserver:
+    """Read-only observer of the assembled system, once per Newton iteration.
+
+    THE TYPED SUCCESSOR OF ``DartsModel.after_assembly`` (review item E8). An
+    observer is for everything that must SEE every assembled system and
+    contribute NOTHING to it: policing what the property evaluators did during
+    the assembly, gathering diagnostics, or raising to force a timestep cut.
+
+    Registered alongside conditions::
+
+        model.conditions.add(MyObserver())      # or add_observer(...)
+
+    and called from the ``conditions`` stage of
+    :meth:`~darts.models.darts_model.DartsModel.apply_rhs_flux`, AFTER every
+    condition item has contributed, so what an observer sees is the final
+    system of that iteration.
+
+    **It is forbidden to mutate the residual or the Jacobian**, and the
+    framework enforces it rather than trusting it: the context handed to
+    :meth:`observe` is :meth:`AssemblyContext.read_only`, whose ``rhs``, ``X``,
+    ``Xn`` and ``jac.jac_vals`` are non-writable numpy views. An observer that
+    needs to CHANGE the system is not an observer -- it is a
+    :class:`ConditionItem`.
+
+    An exception raised in :meth:`observe` propagates out of the Newton loop;
+    a model that raises deliberately (to force a timestep cut) is responsible
+    for catching it, exactly as with the legacy hook.
+
+    .. note::
+       ``DartsModel.after_assembly(dt, t)`` remains supported as the LEGACY
+       path and still runs last, after the observers. It is untyped (it gets no
+       context and nothing stops it from writing), and new code should register
+       a ``NonlinearIterationObserver`` instead.
+    """
+
+    def observe(self, ctx: AssemblyContext):
+        """Inspect the assembled system. Must not mutate anything.
+
+        :param ctx: the read-only per-iteration context.
+        """
+        raise NotImplementedError(f"{type(self).__name__}.observe() is not implemented")
+
+    def on_timestep_start(self, dt: float, t: float):
+        """Called once before each timestep solve attempt."""
+        pass
+
+    def on_timestep_converged(self, dt: float, t: float):
+        """Called once when a timestep converged."""
+        pass
+
+    def on_timestep_failed(self, dt: float, t: float):
+        """Called once when a timestep solve failed (before the dt cut)."""
+        pass
+
 
 class ConditionItem:
     """Base class of a unified condition — THE CONTRACT.
@@ -129,26 +479,148 @@ class ConditionItem:
     the Jacobian declare ``provides_jacobian = True`` so
     :meth:`ConditionSet.compile` can validate the platform/engine up front.
 
+    ADDITIVE VERSUS REPLACEMENT (review item E6). The two are distinct, typed
+    and mutually exclusive per row, declared by :attr:`contribution`:
+
+    - ``"additive"`` — the item ADDS to the rows it touches. Several additive
+      items may share a row; their contributions sum.
+    - ``"replacement"`` — the item CLAIMS the rows it touches: it overwrites
+      them with a constraint (``DirichletPin(mode="row")`` is the shipped
+      example). A claimed row admits exactly ONE claimant and no additive
+      contribution — otherwise the added term would either be overwritten
+      (silently dropped) or corrupt the constraint, depending on the order the
+      items happen to run in.
+    - ``"none"`` — the item writes neither residual nor Jacobian. Declarative
+      items (:class:`ConstantStateBC`) and pure projections
+      (``DirichletPin(mode="state")``, which writes the STATE, not the system)
+      are in this class and take part in no row conflict.
+
+    The rows an item writes are reported by :meth:`written_rows`, and
+    :meth:`ConditionSet.compile` rejects a conflict naming both items. An item
+    that does not implement :meth:`written_rows` reports no rows and is
+    therefore exempt from the check — implement it.
+
     :ivar provides_jacobian: item adds analytic Jacobian contributions.
     :ivar requires_platform: restrict to one platform (``"cpu"``/``"gpu"``),
         or ``None`` for any.
     :ivar adjoint_transparent: contributions are correctly differentiated by
         the adjoint machinery (they are not, unless an item proves otherwise);
         the opt/history-matching driver rejects opaque items.
+    :ivar contribution: ``"additive"`` (default), ``"replacement"`` or
+        ``"none"``, as described above.
+    :ivar carries_restart_state: the item owns internal state that must survive
+        a restart; see :meth:`save_restart_state`.
     """
 
     provides_jacobian: bool = False
     requires_platform: str | None = None
     adjoint_transparent: bool = False
+    contribution: str = ADDITIVE
+    carries_restart_state: bool = False
 
     def bind(self, model):
         """Resolve model-dependent data (indices, CSR positions). Called once
-        by :meth:`ConditionSet.compile` after the engine exists."""
+        by :meth:`ConditionSet.compile` after the engine exists.
+
+        An implementation that caches CSR positions must stamp them with
+        :func:`pattern_identity` and re-resolve when the pattern changes; the
+        framework calls :meth:`rebind_if_stale` before every :meth:`apply` for
+        items that opt in by storing ``self._pattern`` (see
+        :meth:`stamp_pattern`)."""
         pass
+
+    def declare_stencil(self, model):
+        """Declare the Jacobian couplings this item will write (review item E5).
+
+        Called ONCE, BEFORE the mesh connection list is frozen and long before
+        the engine allocates its matrix, so an item may introduce a coupling
+        that does not exist in the mesh: :meth:`ConditionSet.declare_stencil`
+        adds every declared-but-absent coupling as a zero-transmissibility
+        connection, and the block-CSR pattern then contains the blocks the item
+        needs.
+
+        Return an iterable of ``(row_block, col_block)`` pairs. Each pair
+        declares the OFF-DIAGONAL blocks in BOTH directions -- ``(row, col)``
+        and ``(col, row)`` -- because a mesh connection is symmetric in the
+        pattern; diagonal blocks always exist and need not be declared. Order
+        within a pair is irrelevant.
+
+        Because it runs before the engine exists, an implementation may only use
+        mesh/well information: block indices, well head/body indices and
+        perforations. It must not touch ``physics.engine``.
+
+        The default declares nothing, which is what every item that only writes
+        blocks the mesh already contains (a diagonal source, a flux across an
+        existing connection) should do.
+
+        :param model: the model being initialized
+        :returns: iterable of ``(row_block, col_block)`` pairs; empty by default
+        """
+        return ()
+
+    def written_rows(self, model):
+        """Flat row indices (``block * n_vars + equation``) this item writes.
+
+        Used by :meth:`ConditionSet.compile` for the additive/replacement
+        conflict check (review item E6). Called AFTER :meth:`bind`, so resolved
+        indices are available. The default reports nothing, which exempts the
+        item from the check.
+
+        :param model: the model being initialized
+        :returns: iterable of flat row indices
+        """
+        return ()
 
     def apply(self, ctx: AssemblyContext):
         """Add this item's contributions to ``ctx.rhs`` (and ``ctx.jac``)."""
         raise NotImplementedError(f"{type(self).__name__}.apply() is not implemented")
+
+    # -------------------------------------------------------- pattern version
+    def stamp_pattern(self, model):
+        """Record the pattern the CSR positions just resolved in :meth:`bind`
+        belong to. Call at the END of a :meth:`bind` that caches positions."""
+        self._model = model
+        self._pattern = pattern_identity(model)
+
+    def rebind_if_stale(self, ctx: AssemblyContext):
+        """Re-run :meth:`bind` when the Jacobian pattern was rebuilt.
+
+        A no-op for an item that never called :meth:`stamp_pattern`, and for the
+        overwhelmingly common case of a pattern that never changed (one tuple
+        comparison per item per Newton iteration).
+        """
+        stamped = getattr(self, "_pattern", None)
+        if stamped is None:
+            return
+        current = ctx.jac.pattern if ctx.jac is not None else None
+        if current is not None and current != stamped:
+            self.bind(self._model)
+
+    # ------------------------------------------------------- restart contract
+    def save_restart_state(self) -> dict:
+        """Serialize the internal state that must survive a restart.
+
+        Only called for an item with :attr:`carries_restart_state` set. The
+        returned mapping must be JSON-serializable (numbers, strings, lists,
+        nested dicts); numpy arrays should be converted with ``.tolist()``.
+
+        :returns: the item's state
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} sets carries_restart_state = True but does "
+            "not implement save_restart_state()."
+        )
+
+    def load_restart_state(self, state: dict):
+        """Restore the state produced by :meth:`save_restart_state`.
+
+        :param state: the mapping previously returned by
+            :meth:`save_restart_state`
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} sets carries_restart_state = True but does "
+            "not implement load_restart_state()."
+        )
 
     def project_state(self, t: float):
         """Project the engine state vector BEFORE the engine assembly.
@@ -191,13 +663,25 @@ class ConditionSet:
     ``DartsModel`` owns one instance as ``model.conditions``; items are added
     with :meth:`add` (typically in ``set_wells``/``set_boundary_conditions``)
     and validated+bound once by :meth:`compile` at the end of ``init()``.
+
+    The set also owns the read-only :class:`NonlinearIterationObserver` list
+    (added through the same :meth:`add`, or :meth:`add_observer`) and, in
+    ``init()``, the stencil-declaration stage (:meth:`declare_stencil` /
+    :meth:`verify_stencil`) that runs before the mesh connection list is frozen.
     """
 
     def __init__(self):
         self.items = []
+        self.observers = []
+        #: filled by :meth:`declare_stencil`
+        self.declared_couplings = ()
+        self.added_couplings = ()
+        #: True when compile() deferred binding because the engine did not exist
+        #: yet (the restart flow); DartsModel re-runs compile() after reset().
+        self.deferred = False
 
     def __bool__(self):
-        return bool(self.items)
+        return bool(self.items) or bool(self.observers)
 
     def __len__(self):
         return len(self.items)
@@ -205,14 +689,319 @@ class ConditionSet:
     def __iter__(self):
         return iter(self.items)
 
-    def add(self, item: ConditionItem) -> ConditionItem:
-        """Register an item; returns it for chaining/keeping a reference."""
+    def add(self, item):
+        """Register a :class:`ConditionItem` or a
+        :class:`NonlinearIterationObserver`; returns it for chaining."""
+        if isinstance(item, NonlinearIterationObserver):
+            return self.add_observer(item)
         if not isinstance(item, ConditionItem):
             raise TypeError(
-                f"ConditionSet.add expects a ConditionItem, got {type(item).__name__}"
+                "ConditionSet.add expects a ConditionItem or a "
+                f"NonlinearIterationObserver, got {type(item).__name__}"
+            )
+        if item.contribution not in _CONTRIBUTION_KINDS:
+            raise ValueError(
+                f"{type(item).__name__}.contribution is {item.contribution!r}; "
+                f"expected one of {list(_CONTRIBUTION_KINDS)}."
             )
         self.items.append(item)
         return item
+
+    def add_observer(
+        self, observer: NonlinearIterationObserver
+    ) -> NonlinearIterationObserver:
+        """Register a read-only per-iteration observer (review item E8)."""
+        if not isinstance(observer, NonlinearIterationObserver):
+            raise TypeError(
+                "ConditionSet.add_observer expects a NonlinearIterationObserver, "
+                f"got {type(observer).__name__}"
+            )
+        self.observers.append(observer)
+        return observer
+
+    # ------------------------------------------------- stencil declaration (E5)
+    def stencil_declarers(self, model) -> list:
+        """Everything registered on ``model`` that declares a Jacobian stencil.
+
+        Scans the registered items and -- because the legacy ``rhs_flux_hooks``
+        list is still a supported registration path -- ``model.rhs_flux_hooks``
+        as well. Only objects that actually OVERRIDE
+        :meth:`ConditionItem.declare_stencil` (or, for a legacy hook, define a
+        ``declare_stencil`` attribute at all) are returned, so the whole stage
+        is skipped -- with no side effect of any kind -- for every model that
+        declares nothing.
+
+        :param model: the model being initialized
+        :returns: list of declaring objects, in registration order
+        """
+        declarers = [
+            item
+            for item in self.items
+            if type(item).declare_stencil is not ConditionItem.declare_stencil
+        ]
+        declarers += [
+            hook
+            for hook in (getattr(model, "rhs_flux_hooks", None) or [])
+            if callable(getattr(hook, "declare_stencil", None))
+        ]
+        return declarers
+
+    def declare_stencil(self, model, declarers=None) -> tuple:
+        """Add the declared-but-absent couplings to the mesh connection list.
+
+        THE TIMING IS THE WHOLE POINT and it is narrow. The block-CSR sparsity
+        pattern is built by ``engine.init_jacobian_structure()`` from the
+        SORTED, TWO-WAY connection arrays ``mesh.block_m``/``mesh.block_p``, and
+        those are built once by ``conn_mesh::reverse_and_sort()``, which
+        ``ReservoirBase.init_wells()`` calls right after ``mesh.add_wells()``.
+        Before that call the connection list is still open and
+        ``conn_mesh::add_conn`` appends to it; after it, it is frozen --
+        ``reverse_and_sort()`` doubles ``n_conns`` in place and cannot be run
+        twice, and ``n_conns`` is not writable from Python. The only valid
+        window is therefore BETWEEN ``add_wells()`` (which assigns
+        ``well_head_idx`` / ``well_body_idx``, so block indices exist) and
+        ``reverse_and_sort()``, which is exactly where
+        :meth:`~darts.models.darts_model.DartsModel._init_wells_with_declared_stencil`
+        calls this method.
+
+        A declared coupling that the mesh ALREADY contains must not be added
+        again: a duplicate ``(row, col)`` would appear twice in the block row
+        and the matrix would be malformed. Existing couplings are reconstructed
+        from the Python-side sources of every connection the mesh holds at this
+        point (:meth:`_existing_couplings`), and :meth:`verify_stencil` then
+        checks the reconstruction against the real, sorted connection arrays
+        once ``reverse_and_sort()`` has run -- so the reconstruction is
+        VERIFIED at every run, not assumed.
+
+        The added connections carry ``trans = 0`` and ``transD = 0`` and are not
+        DFM connections, so they contribute NOTHING to the residual on their
+        own: every flux term of the assembly is multiplied by ``tran[conn]``
+        (Darcy/advection), ``tranD[conn]`` (diffusion, conduction and
+        dispersion) or -- for a DFM connection -- by a phase velocity this one
+        does not carry. Their only effect is the pair of off-diagonal blocks
+        they add to the pattern for the declaring item to write.
+
+        :param model: the model being initialized
+        :param declarers: the result of :meth:`stencil_declarers` (recomputed
+            when omitted)
+        :returns: tuple of the couplings that were ADDED to the mesh
+        """
+        declarers = (
+            self.stencil_declarers(model) if declarers is None else list(declarers)
+        )
+        self.declared_couplings = ()
+        self.added_couplings = ()
+        if not declarers:
+            return ()
+
+        mesh = model.reservoir.mesh
+        n_blocks = int(mesh.n_blocks)
+        n_res_blocks = int(mesh.n_res_blocks)
+
+        declared = []
+        owners = {}
+        for declarer in declarers:
+            for coupling in declarer.declare_stencil(model) or ():
+                row, col = (int(coupling[0]), int(coupling[1]))
+                for block in (row, col):
+                    if not 0 <= block < n_blocks:
+                        raise IndexError(
+                            f"{type(declarer).__name__}.declare_stencil() declared "
+                            f"the coupling ({row}, {col}), but block {block} is "
+                            f"outside [0, {n_blocks})."
+                        )
+                if row == col:
+                    raise ValueError(
+                        f"{type(declarer).__name__}.declare_stencil() declared the "
+                        f"self-coupling ({row}, {col}). The diagonal block of every "
+                        "block always exists in the pattern; declare only "
+                        "off-diagonal couplings."
+                    )
+                pair = (min(row, col), max(row, col))
+                declared.append(pair)
+                owners.setdefault(pair, type(declarer).__name__)
+
+        self.declared_couplings = tuple(dict.fromkeys(declared))
+        if not self.declared_couplings:
+            return ()
+
+        self._reject_wellhead_couplings(model, self.declared_couplings, owners)
+
+        existing = self._existing_couplings(
+            model, self.declared_couplings, n_res_blocks, owners
+        )
+        added = []
+        for pair in self.declared_couplings:
+            if pair in existing:
+                continue
+            mesh.add_conn(pair[0], pair[1], 0.0, 0.0, False)
+            existing.add(pair)
+            added.append(pair)
+        self.added_couplings = tuple(added)
+        return self.added_couplings
+
+    @staticmethod
+    def _reject_wellhead_couplings(model, couplings, owners):
+        """Refuse a coupling that would add a column to a WELLHEAD row.
+
+        The wellhead (ghost) block of every well carries the well-CONTROL
+        equations, which ``well_controls.cpp`` writes into a block row it
+        assumes holds exactly two column blocks -- its diagonal and the well
+        body. ``conn_mesh::add_connection_for_lateral_heat_exchange_for_dfm``
+        skips segment 0 for the same reason. An extra column there would be
+        overwritten by the control assembly (at best) or mis-addressed (at
+        worst), so it is refused here instead.
+        """
+        wellheads = {
+            int(well.well_head_idx): well.name
+            for well in getattr(model.reservoir, "wells", ()) or ()
+        }
+        for pair in couplings:
+            for block in pair:
+                if block in wellheads:
+                    raise ValueError(
+                        f"{owners.get(pair, 'A condition item')} declared the "
+                        f"coupling {pair}, which attaches block {block} -- the "
+                        f"WELLHEAD block of well {wellheads[block]!r} -- to another "
+                        "block. The wellhead row carries the well-control "
+                        "equations and must keep exactly its diagonal and the "
+                        "well-body column; declare the coupling on a well BODY "
+                        "segment instead."
+                    )
+
+    @staticmethod
+    def _existing_couplings(model, declared, n_res_blocks: int, owners: dict) -> set:
+        """Which of the DECLARED couplings the connection list already holds.
+
+        Reconstructed from the Python-visible sources of every connection
+        ``conn_mesh`` contains at declaration time, because the sorted two-way
+        arrays do not exist yet (they are built by ``reverse_and_sort()``, the
+        very call this stage must precede) and the one-way arrays are not
+        exposed to Python. Every connection has exactly one of these sources:
+
+        * WELL connections -- perforations (well body segment
+          ``well_head_idx + 1 + i_w`` to reservoir block ``i_r``), the well
+          segment chain ``(head + s, head + s + 1)``, DFM lateral-heat
+          connections (``well.connections_for_lateral_heat_transfer``, minus the
+          wellhead segment and the segments a perforation already covers), and
+          ``reservoir.connected_well_segments``. There are few of these, so they
+          are enumerated into a set;
+        * RESERVOIR-internal connections -- ``reservoir.cell_m`` /
+          ``reservoir.cell_p``, the discretizer output the reservoir keeps.
+          There can be millions, so they are never enumerated: a declared
+          reservoir-to-reservoir pair is looked up with one vectorized scan
+          instead.
+
+        Only the declared pairs are answered, and only reservoir pairs touch the
+        big arrays -- the common case (a well segment coupled to a cell) never
+        does.
+
+        :raises RuntimeError: when a declared reservoir-to-reservoir coupling
+            cannot be checked because the reservoir keeps no connection list.
+        """
+        from darts.engines import ms_well
+
+        reservoir = model.reservoir
+        existing = set()
+
+        for well in getattr(reservoir, "wells", ()) or ():
+            head = int(well.well_head_idx)
+            perforated_segments = set()
+            for perforation in well.perforations:
+                i_w, i_r = int(perforation[0]), int(perforation[1])
+                block = head + 1 + i_w
+                existing.add((min(block, i_r), max(block, i_r)))
+                perforated_segments.add(i_w + 1)
+            n_segment_conns = (
+                int(well.num_segments) - 1
+                if well.ms_type == ms_well.MS_Type.DFM
+                else int(well.n_segments)
+            )
+            for segment in range(n_segment_conns):
+                existing.add((head + segment, head + segment + 1))
+            if getattr(well, "with_lateral_heat_transfer", False):
+                for lateral in well.connections_for_lateral_heat_transfer:
+                    i_w, i_r = int(lateral[0]), int(lateral[1])
+                    if i_w == 0 or i_w in perforated_segments:
+                        continue  # skipped by add_connection_for_lateral_heat_exchange_for_dfm
+                    block = head + i_w
+                    existing.add((min(block, i_r), max(block, i_r)))
+
+        for pair, segments in (
+            getattr(reservoir, "connected_well_segments", None) or {}
+        ).items():
+            first = reservoir.get_well(pair[0])
+            second = reservoir.get_well(pair[1])
+            for seg_1, seg_2 in segments:
+                a = int(first.well_head_idx) + int(seg_1)
+                b = int(second.well_head_idx) + int(seg_2)
+                existing.add((min(a, b), max(a, b)))
+
+        # reservoir-to-reservoir pairs: one vectorized lookup each, no enumeration
+        reservoir_pairs = [
+            pair for pair in declared if pair not in existing and pair[1] < n_res_blocks
+        ]
+        if reservoir_pairs:
+            cell_m = getattr(reservoir, "cell_m", None)
+            cell_p = getattr(reservoir, "cell_p", None)
+            if cell_m is None or cell_p is None:
+                raise RuntimeError(
+                    f"{owners[reservoir_pairs[0]]} declared the reservoir-to-"
+                    f"reservoir coupling {reservoir_pairs[0]}, but "
+                    f"{type(reservoir).__name__} does not expose its connection "
+                    "list (cell_m/cell_p), so the framework cannot tell whether "
+                    "that coupling already exists -- and adding a duplicate "
+                    "connection would corrupt the matrix."
+                )
+            cell_m = np.asarray(cell_m, dtype=np.int64).ravel()
+            cell_p = np.asarray(cell_p, dtype=np.int64).ravel()
+            low = np.minimum(cell_m, cell_p)
+            high = np.maximum(cell_m, cell_p)
+            for pair in reservoir_pairs:
+                if np.any((low == pair[0]) & (high == pair[1])):
+                    existing.add(pair)
+
+        return existing
+
+    def verify_stencil(self, model) -> "ConditionSet":
+        """Check the declared couplings against the FROZEN connection arrays.
+
+        Runs after ``reverse_and_sort()``, when ``mesh.block_m``/``block_p`` are
+        the authoritative, sorted, two-way connection list the engine will build
+        its pattern from. It verifies that every declared coupling is present
+        exactly ONCE in each direction -- which fails loudly both when a needed
+        coupling was not added (the item would write into a block that does not
+        exist) and when a duplicate was created (the reconstruction in
+        :meth:`_existing_couplings` missed an existing connection, and the
+        matrix would be malformed).
+
+        :param model: the model being initialized
+        :raises RuntimeError: on a missing or duplicated declared coupling
+        """
+        if not self.declared_couplings:
+            return self
+        mesh = model.reservoir.mesh
+        block_m = np.asarray(mesh.block_m, dtype=np.int64)
+        block_p = np.asarray(mesh.block_p, dtype=np.int64)
+        for pair in self.declared_couplings:
+            forward = int(np.count_nonzero((block_m == pair[0]) & (block_p == pair[1])))
+            reverse = int(np.count_nonzero((block_m == pair[1]) & (block_p == pair[0])))
+            if forward == 1 and reverse == 1:
+                continue
+            added = "added" if pair in self.added_couplings else "already present"
+            raise RuntimeError(
+                f"The declared Jacobian coupling {pair} ({added} by the stencil "
+                f"declaration stage) appears {forward} time(s) as "
+                f"({pair[0]}, {pair[1]}) and {reverse} time(s) as "
+                f"({pair[1]}, {pair[0]}) in the frozen mesh connection list, "
+                "expected exactly one of each. "
+                + (
+                    "A count of 2 means the coupling was added although the mesh "
+                    "already contained it (duplicate columns in the block row); a "
+                    "count of 0 means it was not added at all."
+                )
+            )
+        return self
 
     def compile(self, model) -> "ConditionSet":
         """Validate the set against the model/engine and bind every item.
@@ -223,7 +1012,17 @@ class ConditionSet:
         exposed block-CSR matrix, (iii) the model runs a mechanics engine
         (rows are rescaled inside assembly, post-assembly writes would be
         mis-scaled), or (iv) the adjoint/history-matching driver is active and
-        an item is not ``adjoint_transparent``.
+        an item is not ``adjoint_transparent``. It then rejects any
+        additive/replacement row conflict (review item E6).
+
+        BINDING IS DEFERRED WHEN THE ENGINE DOES NOT EXIST YET. ``init()`` runs
+        this at its end, but on the RESTART path it has not called
+        :meth:`~darts.models.darts_model.DartsModel.reset` -- the engine is
+        initialized later, inside
+        :meth:`~darts.models.darts_model.DartsModel.load_restart_data`. Binding
+        there would resolve CSR positions against a matrix that does not exist,
+        so the set records :attr:`deferred` and ``load_restart_data`` re-runs
+        ``compile()`` once the engine is up.
         """
         # The engine caches PV = volume * poro ONCE, in engine.init() (run by
         # DartsModel.reset() from DartsModel.init()). compile() is the single
@@ -234,7 +1033,8 @@ class ConditionSet:
         # it in load_restart_data() after init() returned).
         self._freeze_reservoir_pore_volumes(model)
 
-        if not self.items:
+        if not self.items and not self.observers:
+            self.deferred = False
             return self
 
         from darts.models.darts_model import DartsModel
@@ -242,14 +1042,31 @@ class ConditionSet:
 
         # (i) an overridden apply_rhs_flux bypasses the conditions stage
         if type(model).apply_rhs_flux is not DartsModel.apply_rhs_flux:
+            registered = (
+                f"{len(self.items)} registered condition item(s)"
+                if self.items
+                else f"{len(self.observers)} registered observer(s)"
+            )
             raise RuntimeError(
                 f"{type(model).__name__} overrides apply_rhs_flux(), so the "
-                f"{len(self.items)} registered condition item(s) would silently "
-                "never run. Move a post-assembly policy check into the "
-                "DartsModel.after_assembly(dt, t) hook, migrate a source/flux "
+                f"{registered} would silently never run. Move a post-assembly "
+                "policy check into a NonlinearIterationObserver (or the legacy "
+                "DartsModel.after_assembly(dt, t) hook), migrate a source/flux "
                 "override into condition items, or (legacy) call "
                 "super().apply_rhs_flux(dt, t) from the override."
             )
+
+        if not self.items:
+            self.deferred = False
+            return self
+
+        if getattr(model, "restart", False) and not self._engine_initialized(model):
+            # restart path: init() skipped reset(), so the engine (and its
+            # Jacobian) does not exist yet. Bind in load_restart_data(), which
+            # resets the engine and re-runs compile().
+            self.deferred = True
+            return self
+        self.deferred = False
 
         # (iii) mechanics engines rescale equation rows inside assembly
         if isinstance(getattr(model, "nonlinear_solver", None), MechanicsNewtonSolver):
@@ -308,7 +1125,96 @@ class ConditionSet:
 
         for item in self.items:
             item.bind(model)
+
+        self._check_row_conflicts(model)
         return self
+
+    def _check_row_conflicts(self, model):
+        """Reject additive/replacement row conflicts (review item E6).
+
+        A row CLAIMED by a replacement item admits exactly one claimant and no
+        additive contribution. Both failures are silent otherwise -- whichever
+        item happens to run last wins -- so they are refused at ``init()`` time,
+        naming both items and the offending ``(block, equation)``.
+        """
+        n_vars = int(model.physics.n_vars)
+        claims, additions = [], []
+        for item in self.items:
+            if item.contribution == NO_CONTRIBUTION:
+                continue
+            written = item.written_rows(model)
+            if written is None:
+                continue
+            rows = np.asarray(written, dtype=np.int64).ravel()
+            if not rows.size:
+                continue
+            target = claims if item.contribution == REPLACEMENT else additions
+            target.append((item, rows))
+
+        if not claims:
+            return  # nothing is claimed, so nothing can conflict
+        claimed = np.concatenate([rows for _, rows in claims])
+
+        # (a) two claims on the same row
+        unique, counts = np.unique(claimed, return_counts=True)
+        duplicated = unique[counts > 1]
+        if duplicated.size:
+            row = int(duplicated[0])
+            first, second = self._two_owners(claims, row)
+            raise RuntimeError(
+                self._conflict_message(
+                    "Two condition items claim the same equation row",
+                    row,
+                    n_vars,
+                    first,
+                    second,
+                    "A row replaced by a constraint admits exactly one claimant: "
+                    "the second claim would silently overwrite the first.",
+                )
+            )
+
+        # (b) an additive contribution to a claimed row
+        for item, rows in additions:
+            overlap = rows[np.isin(rows, unique)]
+            if overlap.size:
+                row = int(overlap[0])
+                claimant, _ = self._two_owners(claims, row)
+                raise RuntimeError(
+                    self._conflict_message(
+                        "A condition item contributes additively to an equation row "
+                        "another item claims as a constraint",
+                        row,
+                        n_vars,
+                        claimant,
+                        item,
+                        "An additive contribution to a claimed row is either "
+                        "silently discarded (the constraint overwrites it) or "
+                        "corrupts the constraint, depending on registration order.",
+                    )
+                )
+
+    @staticmethod
+    def _two_owners(claims, row: int):
+        """The first (and, when present, second) claimant of ``row``."""
+        owners = [item for item, rows in claims if np.any(rows == row)]
+        return owners[0], (owners[1] if len(owners) > 1 else owners[0])
+
+    @staticmethod
+    def _conflict_message(headline, row, n_vars, first, second, explanation):
+        return (
+            f"{headline}: block {row // n_vars}, equation {row % n_vars} "
+            f"(flat row {row}). {type(first).__name__} claims it; "
+            f"{type(second).__name__} also writes it. {explanation}"
+        )
+
+    @staticmethod
+    def _engine_initialized(model) -> bool:
+        """True when ``engine.init()`` has run (the state vector is allocated)."""
+        engine = getattr(getattr(model, "physics", None), "engine", None)
+        try:
+            return len(engine.X) > 0
+        except (AttributeError, TypeError):
+            return False
 
     @staticmethod
     def _freeze_reservoir_pore_volumes(model):
@@ -317,17 +1223,28 @@ class ConditionSet:
         freeze = getattr(reservoir, "freeze_pore_volumes", None)
         if not callable(freeze):
             return
-        engine = getattr(getattr(model, "physics", None), "engine", None)
-        try:
-            engine_initialized = len(engine.X) > 0
-        except (AttributeError, TypeError):
-            return
-        if engine_initialized:
+        if ConditionSet._engine_initialized(model):
             freeze()
 
     def apply(self, ctx: AssemblyContext):
         for item in self.items:
+            item.rebind_if_stale(ctx)
             item.apply(ctx)
+        self.observe(ctx)
+
+    def observe(self, ctx: AssemblyContext):
+        """Run every registered :class:`NonlinearIterationObserver`.
+
+        Called at the end of :meth:`apply` with a READ-ONLY twin of the context
+        (see :meth:`AssemblyContext.read_only`), so what an observer sees is the
+        final assembled system of the iteration and what it can do to it is
+        nothing.
+        """
+        if not self.observers:
+            return
+        read_only = ctx.read_only()
+        for observer in self.observers:
+            observer.observe(read_only)
 
     def project_state(self, t: float):
         """Run every item's pre-assembly state projection (see
@@ -345,14 +1262,110 @@ class ConditionSet:
     def on_timestep_start(self, dt: float, t: float):
         for item in self.items:
             item.on_timestep_start(dt, t)
+        for observer in self.observers:
+            observer.on_timestep_start(dt, t)
 
     def on_timestep_converged(self, dt: float, t: float):
         for item in self.items:
             item.on_timestep_converged(dt, t)
+        for observer in self.observers:
+            observer.on_timestep_converged(dt, t)
 
     def on_timestep_failed(self, dt: float, t: float):
         for item in self.items:
             item.on_timestep_failed(dt, t)
+        for observer in self.observers:
+            observer.on_timestep_failed(dt, t)
+
+    # ------------------------------------------------------------ restart (E9)
+    #: sidecar file name suffix appended to the restart (reservoir) file path
+    RESTART_SIDECAR_SUFFIX = ".conditions.json"
+
+    @classmethod
+    def restart_sidecar_path(cls, reservoir_filepath: str) -> str:
+        """Path of the condition-state sidecar next to a restart file."""
+        return str(reservoir_filepath) + cls.RESTART_SIDECAR_SUFFIX
+
+    def stateful_items(self) -> list:
+        """Items that declared :attr:`ConditionItem.carries_restart_state`."""
+        return [item for item in self.items if item.carries_restart_state]
+
+    def save_restart_state(self, reservoir_filepath: str):
+        """Write the sidecar holding every stateful item's serialized state.
+
+        Called by :meth:`~darts.models.darts_model.DartsModel.save_restart_state`.
+        Writes nothing when no item carries state.
+
+        :param reservoir_filepath: the restart (``.h5``) file the sidecar
+            accompanies
+        :returns: the sidecar path, or ``None`` when nothing was written
+        """
+        stateful = self.stateful_items()
+        if not stateful:
+            return None
+        payload = {
+            "items": [
+                {
+                    "index": self.items.index(item),
+                    "type": type(item).__name__,
+                    "state": item.save_restart_state(),
+                }
+                for item in stateful
+            ]
+        }
+        path = self.restart_sidecar_path(reservoir_filepath)
+        with open(path, "w") as handle:
+            json.dump(payload, handle, indent=1)
+        return path
+
+    def load_restart_state(self, reservoir_filepath: str):
+        """Restore every stateful item, or REFUSE the restart (review item E9).
+
+        The restart file carries reservoir block data and the OBL history
+        columns -- nothing else. An item that declares
+        :attr:`ConditionItem.carries_restart_state` therefore has its state
+        restored from the sidecar written by :meth:`save_restart_state`, and if
+        that sidecar is missing, or does not describe the same set of items, the
+        restart is REFUSED with a message that says what to do. Continuing would
+        restart the item from its constructor defaults while the reservoir state
+        is two years old -- a silently wrong answer, which is the one outcome
+        the contract must not allow.
+
+        :param reservoir_filepath: the restart file being loaded
+        :raises RuntimeError: when a stateful item cannot be restored
+        """
+        stateful = self.stateful_items()
+        if not stateful:
+            return
+        path = self.restart_sidecar_path(reservoir_filepath)
+        names = ", ".join(type(item).__name__ for item in stateful)
+        if not os.path.exists(path):
+            raise RuntimeError(
+                f"Cannot restart: condition item(s) {names} declare "
+                "carries_restart_state = True, but the state sidecar "
+                f"'{path}' does not exist. The restart file holds reservoir "
+                "block data only, so their internal state cannot be recovered "
+                "from it and restarting would silently continue from the "
+                "constructor defaults. Write the sidecar in the original run "
+                "(DartsModel.save_restart_state(<restart file>), alongside every "
+                "save_data_to_h5), or make the item stateless."
+            )
+        with open(path) as handle:
+            payload = json.load(handle)
+        by_index = {int(entry["index"]): entry for entry in payload.get("items", ())}
+        for item in stateful:
+            index = self.items.index(item)
+            entry = by_index.get(index)
+            if entry is None or entry["type"] != type(item).__name__:
+                found = entry["type"] if entry else "nothing"
+                raise RuntimeError(
+                    f"Cannot restart: the state sidecar '{path}' describes "
+                    f"{found} at condition index {index}, but the model "
+                    f"registered a {type(item).__name__} there. The sidecar was "
+                    "written by a model with a different set of conditions; "
+                    "restarting would restore one item's state into another."
+                )
+            item.load_restart_state(entry["state"])
 
 
 def _callable_takes_states(func) -> bool:
@@ -376,7 +1389,8 @@ def _callable_takes_states(func) -> bool:
 class CellSource(ConditionItem):
     """Source/sink rates in a fixed set of blocks (vectorized by the framework).
 
-    :param cells: int array of block indices the rates apply to.
+    :param cells: the blocks the rates apply to: an int array of block indices,
+        or a :class:`Selector` resolved at bind time.
     :param rates: injection rates ``q`` per block, positive INTO the block, in
         engine residual units per day (e.g. kmol/day per component equation,
         kJ/day for the energy equation). One of:
@@ -395,7 +1409,13 @@ class CellSource(ConditionItem):
     """
 
     def __init__(self, cells, rates, d_rates=None):
-        self.cells = np.asarray(cells, dtype=np.int64).ravel()
+        # A Selector is kept as-is and resolved in bind(); an index array is
+        # materialized now, exactly as before.
+        self.cells = (
+            cells
+            if isinstance(cells, Selector)
+            else np.asarray(cells, dtype=np.int64).ravel()
+        )
         self.rates = rates
         self.d_rates = d_rates
         self.provides_jacobian = d_rates is not None
@@ -404,9 +1424,15 @@ class CellSource(ConditionItem):
         self._diag_pos = None
         self._n_vars = None
 
+    def written_rows(self, model):
+        if self._rhs_idx is None:  # not bound yet: nothing resolved to report
+            return ()
+        return self._rhs_idx
+
     def bind(self, model):
         n_vars = model.physics.n_vars
         n_blocks = model.reservoir.mesh.n_blocks
+        self.cells = resolve_blocks(self.cells, model)
         if len(self.cells) and (self.cells.min() < 0 or self.cells.max() >= n_blocks):
             raise IndexError(
                 f"{type(self).__name__}: cell indices must be within [0, {n_blocks})."
@@ -428,6 +1454,7 @@ class CellSource(ConditionItem):
                 self._check_shape(
                     self.d_rates, (len(self.cells), n_vars, n_vars), "d_rates"
                 )
+            self.stamp_pattern(model)
 
     def _check_shape(self, array, expected, name):
         if array.shape != expected:
@@ -546,6 +1573,12 @@ class PipeSourceTerm(ConditionItem):
         self._thermal = False
         self._rhs_slice = None
 
+    def written_rows(self, model):
+        if self.block is None:  # not bound yet
+            return ()
+        n_vars = int(model.physics.n_vars)
+        return range(self.block * n_vars, (self.block + 1) * n_vars)
+
     def bind(self, model):
         wells = getattr(model, "wells", None) or {}
         if self.well_name not in wells:
@@ -601,8 +1634,15 @@ class InterfaceFlux(ConditionItem):
     Subclasses provide the per-connection flux and its derivatives; the
     framework owns the CSR positions, the state gather / residual scatter and
     the dt scaling. ``connections`` is a list of ``(row_block, col_block)``
-    pairs; both blocks of every pair must be neighbours in the Jacobian
-    sparsity pattern (their off-diagonal blocks must exist).
+    pairs; either member may be a :class:`Selector` resolving to exactly one
+    block.
+
+    The pairs no longer have to be neighbours in the mesh: this item DECLARES
+    them (:meth:`declare_stencil`), so a pair the mesh does not connect is added
+    as a zero-transmissibility connection before the engine allocates its matrix
+    and its four blocks exist by the time :meth:`bind` resolves their positions.
+    Declaring a coupling the mesh already has is free -- the declaration stage
+    adds nothing for it.
 
     Subclasses implement :meth:`connection_flux` returning
     ``(flux, d_flux_d_row, d_flux_d_col)`` where ``flux`` (shape
@@ -619,13 +1659,61 @@ class InterfaceFlux(ConditionItem):
     provides_jacobian = True
 
     def __init__(self, connections):
-        self.connections = [(int(r), int(c)) for r, c in connections]
+        self._raw_connections = list(connections)
+        # Either member of a pair may be a Selector, which needs a model to
+        # resolve; plain indices are materialized right away, as before.
+        self.connections = (
+            None
+            if any(
+                isinstance(block, Selector)
+                for pair in self._raw_connections
+                for block in pair
+            )
+            else [(int(r), int(c)) for r, c in self._raw_connections]
+        )
         self._positions = None
         self._n_vars = None
+
+    def resolve_connections(self, model):
+        """Materialize the connection list, resolving any :class:`Selector`.
+
+        A selector used as a connection member must resolve to exactly ONE
+        block: a connection couples one block to one other block.
+        """
+        if self.connections is not None:
+            return self.connections
+        resolved = []
+        for pair in self._raw_connections:
+            blocks = []
+            for block in pair:
+                indices = resolve_blocks(block, model)
+                if indices.size != 1:
+                    raise ValueError(
+                        f"{type(self).__name__}: {type(block).__name__} selected "
+                        f"{indices.size} blocks for one side of a connection; a "
+                        "connection couples exactly one block to one other block."
+                    )
+                blocks.append(int(indices[0]))
+            resolved.append((blocks[0], blocks[1]))
+        self.connections = resolved
+        return self.connections
+
+    def declare_stencil(self, model):
+        """Declare every connection's off-diagonal pair (see :class:`InterfaceFlux`)."""
+        return tuple(self.resolve_connections(model))
+
+    def written_rows(self, model):
+        n_vars = int(model.physics.n_vars)
+        rows = []
+        for row, col in self.resolve_connections(model):
+            rows.extend(range(row * n_vars, (row + 1) * n_vars))
+            rows.extend(range(col * n_vars, (col + 1) * n_vars))
+        return rows
 
     def bind(self, model):
         n_vars = model.physics.n_vars
         self._n_vars = n_vars
+        self.resolve_connections(model)
         view = BlockCSRView(model.physics.engine, n_vars)
         self._positions = [
             (
@@ -636,6 +1724,7 @@ class InterfaceFlux(ConditionItem):
             )
             for row, col in self.connections
         ]
+        self.stamp_pattern(model)
 
     def connection_flux(self, t: float, state_row: np.ndarray, state_col: np.ndarray):
         """Return ``(flux, d_flux_d_row, d_flux_d_col)`` for one connection."""
@@ -717,6 +1806,8 @@ class ConstantStateBC(ConditionItem):
     # The item contributes nothing to the residual/Jacobian, so the system the
     # adjoint differentiates is exactly the one it always was.
     adjoint_transparent = True
+    # Declarative: neither an additive contribution nor a row claim.
+    contribution = NO_CONTRIBUTION
 
     def __init__(self, faces=None, mode: str = "volume", rtol: float = 1e-9):
         if mode == "dirichlet":
@@ -892,7 +1983,17 @@ class DirichletPin(ConditionItem):
     the host mirror fresh for them, which is how SPE11b's CO2 source reads a
     valid well-block pressure on GPU.)
 
-    :param cells: int array of block indices to pin.
+    CONTRIBUTION TYPE (review item E6). ``mode="row"`` is the shipped
+    REPLACEMENT case: it claims the pinned rows, so no other item may
+    contribute additively to them and no second item may claim them.
+    ``mode="state"`` is a projection of the STATE, not a contribution to the
+    system — it declares ``contribution = "none"`` and takes part in no row
+    conflict, because an additive source on a pinned equation is perfectly
+    meaningful there (it changes the residual, which the projection then
+    ignores).
+
+    :param cells: the blocks to pin: an int array of block indices, or a
+        :class:`Selector` resolved at bind time.
     :param equation: index of the pinned equation/variable within the block —
         an int applied to every cell, or one index per cell.
     :param values: the pinned value(s): a scalar, an array of one value per
@@ -906,12 +2007,17 @@ class DirichletPin(ConditionItem):
                 f"DirichletPin: unknown mode '{mode}'; supported: 'state', 'row'."
             )
         self.mode = mode
-        self.cells = np.asarray(cells, dtype=np.int64).ravel()
+        self.cells = (
+            cells
+            if isinstance(cells, Selector)
+            else np.asarray(cells, dtype=np.int64).ravel()
+        )
         self.equation = equation
         self.values = values
         # row mode replaces Jacobian rows; state mode writes nothing but X
         self.provides_jacobian = mode == "row"
         self.requires_platform = "cpu" if mode == "row" else None
+        self.contribution = REPLACEMENT if mode == "row" else NO_CONTRIBUTION
         self.equations = None
         self._x_idx = None  # flat X/rhs indices of the pinned entries
         self._zero_idx = None  # row mode: flat jac_vals indices to zero
@@ -921,9 +2027,13 @@ class DirichletPin(ConditionItem):
         self._copy_to_host = None
         self._copy_to_device = None
 
+    def written_rows(self, model):
+        return () if self._x_idx is None else self._x_idx
+
     def bind(self, model):
         n_vars = model.physics.n_vars
         n_blocks = model.reservoir.mesh.n_blocks
+        self.cells = resolve_blocks(self.cells, model)
         if len(self.cells) and (self.cells.min() < 0 or self.cells.max() >= n_blocks):
             raise IndexError(
                 f"DirichletPin: cell indices must be within [0, {n_blocks})."
@@ -974,6 +2084,7 @@ class DirichletPin(ConditionItem):
                 )
             self._zero_idx = np.asarray(zero_idx, dtype=np.int64)
             self._diag_idx = np.asarray(diag_idx, dtype=np.int64)
+            self.stamp_pattern(model)
 
     def evaluate_values(self, t: float) -> np.ndarray:
         """The pinned value of every cell at time ``t``."""

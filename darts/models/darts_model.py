@@ -15,7 +15,12 @@ from darts.engines import (
 from darts.engines import print_build_info as engines_pbi
 from darts.input.input_data import linear_solver_types
 from darts.interpolators import op_vector
-from darts.models.conditions import AssemblyContext, BlockCSRView, ConditionSet
+from darts.models.conditions import (
+    AssemblyContext,
+    BlockCSRView,
+    ConditionSet,
+    pattern_identity,
+)
 from darts.models.output import Output
 from darts.nonlinear_solvers import (
     ChopSpec,
@@ -144,6 +149,11 @@ class DartsModel:
         self.conditions = ConditionSet()
         self._conditions_csr_view = None  # lazy BlockCSRView (False = unavailable)
         self._assembly_iteration = 0  # Newton iteration index within a timestep
+        # Bumped by every reset() (i.e. every engine.init()), which reallocates
+        # the Jacobian: it is the authoritative half of pattern_identity(), so
+        # compiled CSR positions and numpy views into jac_vals are re-resolved
+        # instead of silently writing at stale offsets. See conditions.py.
+        self._pattern_version = 0
 
         # Single source of truth for verbosity. Methods with a ``verbose`` parameter
         # default to ``None`` and fall back to this attribute, so the level is set once
@@ -338,8 +348,9 @@ class DartsModel:
             self.params.linear_type = sim_params.gpu_gmres_cpr_amgx_ilu
         self.params.sim_eps = self.physics.sim_eps
 
-        # Initialize well objects
-        self.reservoir.init_wells()
+        # Initialize well objects (with the stencil-declaration stage inserted
+        # in its only valid window -- see _init_wells_with_declared_stencil)
+        self._init_wells_with_declared_stencil()
         self.physics.init_wells(self.reservoir.wells)
 
         self.set_op_list()
@@ -383,6 +394,14 @@ class DartsModel:
     def reset(self):
         """
         Function to initialize the engine by calling 'engine.init()' method.
+
+        ``engine.init()`` (re)allocates the block-CSR Jacobian, so every call
+        invalidates the CSR positions and the numpy views condition items cached
+        against the previous matrix. The pattern version is bumped here and the
+        cached Jacobian view is dropped, which is what makes a second ``reset()``
+        -- the restart flow, or any manual re-init -- safe instead of silently
+        writing into a freed buffer. See
+        :func:`darts.models.conditions.pattern_identity`.
         """
         self.physics.engine.init(
             self.reservoir.mesh,
@@ -391,6 +410,124 @@ class DartsModel:
             self.physics.thermal_var_itor,
             self.params,
             self.timer.node["simulation"],
+        )
+        self._pattern_version += 1
+        self._conditions_csr_view = None
+
+    def _init_wells_with_declared_stencil(self):
+        """Run the reservoir's well initialization, declaring stencils inside it.
+
+        WHY THIS IS NOT SIMPLY ``self.reservoir.init_wells()``. A Python-side
+        contribution can only write Jacobian blocks that exist in the block-CSR
+        pattern, and that pattern is built by ``engine.init_jacobian_structure()``
+        from the SORTED, TWO-WAY mesh connection arrays. Those arrays are built
+        once, by ``conn_mesh::reverse_and_sort()``, which
+        :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.init_wells` calls
+        immediately after ``mesh.add_wells()``. So the window in which a
+        condition may still introduce a coupling is exactly BETWEEN those two
+        calls:
+
+        * before ``add_wells()`` the well block indices do not exist yet (it is
+          what assigns ``well_head_idx``/``well_body_idx``), and any connection
+          added there would be counted as a RESERVOIR connection by
+          ``n_res_conns = n_conns``;
+        * after ``reverse_and_sort()`` the list is frozen -- it doubles
+          ``n_conns`` in place, so it cannot be run a second time, and
+          ``n_conns`` is not writable from Python.
+
+        Since that window is inside one reservoir method, this model-side method
+        reproduces its sequence -- and ONLY when something actually declares a
+        stencil. With no declarations (every model shipped today) it delegates
+        to the reservoir verbatim and nothing at all changes.
+
+        The reproduction is faithful to
+        ``ReservoirBase.init_wells``, with two deliberate differences:
+
+        * the declaration stage runs between ``add_wells()`` and
+          ``reverse_and_sort()``;
+        * the "every well must perforate a block" assertion is relaxed for a
+          well whose reservoir coupling is supplied by a declared stencil --
+          that is the whole point of E5: such a well no longer needs a
+          zero-transmissibility "fake" perforation to exist.
+
+        A reservoir that OVERRIDES ``init_wells`` (the mechanics family, which
+        sorts with the MPFA/MPSA variants) is refused rather than guessed at.
+
+        .. warning::
+           THE SEQUENCE BELOW MUST BE KEPT IN SYNC with
+           ``ReservoirBase.init_wells``. It is duplicated only because the
+           insertion point is in the middle of that method and there is no
+           callback into it; the clean fix is one parameter there --
+           ``init_wells(on_connections_open=None)``, invoked between
+           ``add_wells()`` and ``reverse_and_sort()`` -- after which this method
+           collapses to passing ``self.conditions.declare_stencil``.
+        """
+        from darts.reservoirs.reservoir_base import ReservoirBase
+
+        reservoir = self.reservoir
+        declarers = self.conditions.stencil_declarers(self)
+        if not declarers:
+            reservoir.init_wells()
+            return
+
+        if type(reservoir).init_wells is not ReservoirBase.init_wells:
+            raise RuntimeError(
+                f"{type(reservoir).__name__} overrides init_wells(), so the "
+                "framework cannot insert the stencil-declaration stage into its "
+                "well-initialization sequence. Declared Jacobian stencils "
+                f"({', '.join(type(d).__name__ for d in declarers)}) are "
+                "supported on the reservoirs that use the base implementation."
+            )
+
+        # --- ReservoirBase.init_wells(), with the declaration stage inserted ---
+        for well in reservoir.wells:
+            if len(well.perforations) == 0:
+                self._require_declared_well_coupling(well, declarers)
+        reservoir.mesh.add_wells(ms_well_vector(reservoir.wells))
+
+        # connect perforations of wells (for example, for closed loop geothermal)
+        for well_pair in getattr(reservoir, "connected_well_segments", None) or {}:
+            well_1 = reservoir.get_well(well_pair[0])
+            well_2 = reservoir.get_well(well_pair[1])
+            for perf_pair in reservoir.connected_well_segments[well_pair]:
+                reservoir.mesh.connect_segments(
+                    well_1, well_2, perf_pair[0], perf_pair[1], 1
+                )
+
+        # THE DECLARATION STAGE: the connection list is still open here
+        self.conditions.declare_stencil(self, declarers)
+
+        # allocate mesh arrays
+        reservoir.mesh.reverse_and_sort()
+        reservoir.mesh.init_grav_coef()
+        reservoir.mesh.init_spe(
+            grav_acceleration_for_spe=reservoir.grav_acceleration_for_spe
+        )
+
+        # the connection list is frozen from here on: check what we declared
+        # against it before anything consumes it
+        self.conditions.verify_stencil(self)
+
+    def _require_declared_well_coupling(self, well, declarers):
+        """Allow a perforation-free well only when a stencil declares its coupling.
+
+        ``ReservoirBase.init_wells`` asserts that every well perforates at least
+        one block, because a well with no perforation and no declared coupling is
+        disconnected from the reservoir -- a modelling mistake, not a feature.
+        A declared stencil supplies that coupling instead, which is exactly what
+        makes the zero-well-index "fake" perforation unnecessary.
+        """
+        for declarer in declarers:
+            wells = getattr(declarer, "declared_well_names", None)
+            if callable(wells) and well.name in (wells(self) or ()):
+                return
+        raise AssertionError(
+            f"Well {well.name} does not perforate any active reservoir block, "
+            "and no registered condition item declares a Jacobian coupling for "
+            "it either, so it is not connected to the reservoir at all. Add a "
+            "perforation, or register an item whose declare_stencil() couples "
+            "one of its segments to a reservoir block (and which reports the "
+            "well through declared_well_names())."
         )
 
     def initialize_history_fields(self):
@@ -445,6 +582,22 @@ class DartsModel:
         :type reservoir_filepath: str
         :param ts_idx: The timestep index to load from the file (default: -1 for the last timestep)
         :type ts_idx: int
+
+        CONDITIONS ACROSS A RESTART (review item E9). Two things happen here for
+        the registered condition items, and both are consequences of this method
+        calling :meth:`reset`:
+
+        * the engine, and with it the Jacobian, is REBUILT. ``init(restart=True)``
+          therefore leaves the set unbound (``conditions.deferred``) instead of
+          resolving CSR positions against a matrix that does not exist yet, and
+          the set is compiled here, once the engine is up.
+        * an item that declares
+          :attr:`~darts.models.conditions.ConditionItem.carries_restart_state`
+          has its state restored from the sidecar written by
+          :meth:`save_restart_state`, or the restart is REFUSED. The restart file
+          carries reservoir block data and OBL history columns only, so there is
+          nowhere else for that state to come from, and continuing from
+          constructor defaults would be a silently wrong answer.
         """
         # check if the files with data exist
         if not os.path.exists(
@@ -453,6 +606,9 @@ class DartsModel:
             raise FileNotFoundError(
                 f"The restart file does not exist: {reservoir_filepath}"
             )
+
+        # Refuse before doing any work when a stateful item cannot be restored.
+        self.conditions.load_restart_state(reservoir_filepath)
 
         # Read data from the file
         time_res, reservoir_cell_id, Xres, var_names = self.output.read_specific_data(
@@ -494,11 +650,32 @@ class DartsModel:
                 n_blocks=self.reservoir.mesh.n_res_blocks,
             )
 
+        # The engine (and its Jacobian) exists only now: bind the conditions that
+        # init(restart=True) deliberately left unbound.
+        self.conditions.compile(self)
+
         # save initial conditions to *.h5 file
         print(rf'Restarting model from {reservoir_filepath} at day {time_res[0]}.')
         self.output.save_data_to_h5(kind='reservoir')
 
         return
+
+    def save_restart_state(self, reservoir_filepath: str):
+        """Write the condition-state sidecar accompanying a restart file.
+
+        The counterpart of the restore in :meth:`load_restart_data`: call it
+        alongside the ``.h5`` writes of a run whose model registers a condition
+        item with
+        :attr:`~darts.models.conditions.ConditionItem.carries_restart_state`.
+        Writes nothing (and returns ``None``) when no item carries state, so it
+        is safe to call unconditionally.
+
+        :param reservoir_filepath: the restart (``.h5``) file the sidecar
+            accompanies
+        :returns: the sidecar path, or ``None`` when nothing was written
+        :rtype: str | None
+        """
+        return self.conditions.save_restart_state(reservoir_filepath)
 
     def set_output(
         self,
@@ -1247,6 +1424,16 @@ class DartsModel:
         every Python-side contribution (the legacy ``set_rhs_flux`` /
         ``rhs_flux_hooks`` paths and the unified ``self.conditions``) was added to it.
 
+        .. deprecated::
+            This is the UNTYPED legacy seam. Register a
+            :class:`darts.models.conditions.NonlinearIterationObserver` on
+            ``self.conditions`` instead: it is typed, it is documented as
+            read-only, and the framework ENFORCES that by handing it a context
+            whose residual/Jacobian arrays are non-writable -- whereas this hook
+            receives only ``(dt, t)``, is free to mutate the assembled system,
+            and nothing about its signature says it must not. Observers run
+            before this hook; both keep working.
+
         This is the extension point for model-specific checks that must see every
         assembled system but contribute nothing to it: inspecting what the property
         evaluators did during this assembly, gathering diagnostics, or raising to
@@ -1279,11 +1466,14 @@ class DartsModel:
         3. the unified ``self.conditions``
            (:class:`darts.models.conditions.ConditionSet`), applied through an
            :class:`darts.models.conditions.AssemblyContext` built from the
-           engine views.
+           engine views, followed by every registered
+           :class:`darts.models.conditions.NonlinearIterationObserver` on a
+           READ-ONLY twin of that context.
 
         :meth:`after_assembly` is then called (a no-op unless the model overrides
         it) so post-assembly policy checks do not have to override this method and
-        bypass the conditions stage.
+        bypass the conditions stage. It is the untyped legacy form of stage 3's
+        observers.
 
         Called by the nonlinear solver after every engine assembly.
         ``set_rhs_flux`` and ``rhs_flux_hooks`` are deprecated in favor of
@@ -1331,11 +1521,16 @@ class DartsModel:
 
         The block-CSR Jacobian view is built lazily once and reused; ``jac`` is
         ``None`` when the engine does not expose the Jacobian (RHS-only items
-        still run)."""
+        still run). The view is stamped with
+        :func:`~darts.models.conditions.pattern_identity` and dropped by
+        :meth:`reset`, so it can never address a matrix the engine has since
+        reallocated."""
         engine = self.physics.engine
         if self._conditions_csr_view is None:
             try:
-                self._conditions_csr_view = BlockCSRView(engine, self.physics.n_vars)
+                self._conditions_csr_view = BlockCSRView(
+                    engine, self.physics.n_vars, pattern=pattern_identity(self)
+                )
             except RuntimeError:
                 self._conditions_csr_view = False  # engine has no exposed Jacobian
         ctx = AssemblyContext(
