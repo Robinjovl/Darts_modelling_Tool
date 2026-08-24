@@ -327,7 +327,18 @@ guard of §3.1 must actually fire.
 
 ---
 
-## 4. The inclusion gate (M6)
+## 4. The inclusion gate (M6) — an assessment, with the inclusion decision pending
+
+> **Status: ASSESSMENT, not an applied decision.** This section defines the gate
+> and audits three features against it. The audit finds that two of the three —
+> the drift-flux correlations and the lateral-heat model — currently **fail**
+> gates while remaining in `darts/` with CI variants. The gate's own rule
+> ("not yet" means model-side) has therefore **not been enforced**: enforcing it
+> would mean either closing the recorded gaps or evicting shipped, CI-covered
+> features, and that trade-off is a maintainer decision, not something this
+> branch decides unilaterally. §4.4 states exactly what is unmet per feature and
+> what evidence would close it. Until that decision is recorded, read
+> §§4.1–4.3 as audit results, not as passed inclusion decisions.
 
 A feature enters `darts/` when a reviewer can tick every box. "Not applicable" is
 an allowed answer; **"not yet" is not** — it means the feature stays model-side.
@@ -420,6 +431,86 @@ down that GPU is out of scope because the item writes the Jacobian (G4).
 Of the three features, this is the closest to the gate: it fails on two items, one
 of which is a deletion.
 
+### 4.4 Maintainer decision required
+
+The audit above records "not yet" for gates of two features that are in core
+today. Per the gate's own rule they would stay model-side; per the shipped tree
+they are in `darts/` with CI variants. Neither state is wrong by itself — the
+contradiction is. The decision, per feature:
+
+**Drift-flux correlations (`darts/pipes/drift_flux.py` — `tang_2019`,
+`bhagwat_ghajar_2014`, `bai_2023`; CI variants on
+`2ph_2comp_isothermal_dfm_vertical_well_vs_olga`)**
+
+*Unmet:* G1 (no test compares any closure against a number from its source
+paper), G2 (no externally-owned reference data in the tree; the `vs_olga` CI
+variants compare against their own regenerated pickles), G3 (the `"OBL"` and
+`"numerical"` derivative paths of `Pipe` are never compared), G5 (no scaling
+measurement beyond the friction-solve component). *Partial:* G4 (CPU-only is
+enforced for DFM wells as a whole, not declared per closure; no multi-thread
+result recorded), G6 (guards implemented and tested, but the published validity
+envelope of each fit is not documented).
+
+*Decide:* keep in core **conditional on closing G1/G3 (cheap, see below)** with
+G2 tracked as follow-up work, or move the closures model-side until G1/G2 exist.
+
+**Lateral heat (`darts/pipes/add_lateral_heat_exchange.py` —
+`SemiAnalyticalWellLateralHeatTransfer(Hook)`; `lateral_heat` CI variant)**
+
+*Unmet:* G2 (no published verification case — no Ramey worked example, no
+Chiu–Thakur finite-radius comparison, no wellbore-temperature dataset), G5 (no
+segment-count scaling point). *Partial:* G3 (met for PT; the PH lagged-Jacobian
+convergence cost is unmeasured), G4 (the GPU restriction is real and enforced
+but not written down as a "not applicable"), G7 (`well_layers_props` is an
+advertised constructor argument that raises `NotImplementedError`).
+
+*Decide:* keep in core **conditional on the G7 deletion and the G2 equation-test
+closure (both cheap, see below)**, or move it model-side.
+
+**Choke** — already outside the repository; §4.1 is its re-admission
+checklist. No decision needed now.
+
+**What can be closed cheaply, from inside this repository** (actionable, no new
+machinery — each item is a test or a docstring):
+
+1. *Drift-flux G1:* the closures' own docstrings and the v3 review already cite
+   concrete published numbers (the Bhagwat–Ghajar `C0` bound and flow-pattern
+   coefficients, Tang's parameter sets, Bai's four documented deltas from
+   Bhagwat–Ghajar). Pin each closure against those citable values in
+   `tests/pipes/test_drift_flux_closures.py`, naming the paper, table/equation
+   and tolerance per assertion. Full digitized-figure tables would be better
+   still, but the pinned-constants form already converts "no number from any
+   paper" into a named external anchor.
+2. *Drift-flux G3:* one test per closure asserting
+   `eval_phase_vels_and_ders` agrees between `diff_method="OBL"` and
+   `diff_method="numerical"` to a stated tolerance. Both paths exist; nothing
+   compares them today.
+3. *Drift-flux G5 / lateral-heat G5:* one benchmark-style test each recording
+   timings at the feature's size axis (10⁴ interfaces for the closures,
+   segment count for lateral heat), plus the E10 assertion that the Python
+   callback count is O(1) in problem size — the same three-point method §1
+   already used, so the harness exists.
+4. *Drift-flux G6:* copy each paper's stated validity envelope (diameters,
+   fluids, inclinations, flow regimes) into the module docstring, with a
+   warning outside it — the lateral-heat docstring is the in-repo model of
+   what this looks like.
+5. *Lateral-heat G7:* delete the `well_layers_props` parameter (or implement
+   Willhite's U; deletion is the cheap branch).
+6. *Lateral-heat G2/G1:* Ramey's worked example is short enough to be an
+   equation test; add it with the citation.
+7. *Lateral-heat G3 (PH):* measure the PH lagged-temperature convergence cost
+   next to the existing PT finite-difference test and record the iteration
+   delta.
+8. *Lateral-heat G4:* one sentence in the docstring stating GPU is out of scope
+   because the item writes the Jacobian, referencing the enforced `compile()`
+   refusal.
+
+*Not cheap, and the real decision drivers:* drift-flux G2 (externally-owned
+integration data in the tree — OLGA exports or published profiles with
+redistribution rights) and lateral-heat G2 beyond the Ramey example. If those
+are judged indispensable for core, the features go model-side until the data
+exists.
+
 ---
 
 ## 5. Summary
@@ -440,4 +531,7 @@ of which is a deletion.
 * Of the three features the M6 gate governs, the lateral-heat model is close, the
   drift-flux correlations lack any validation against the papers they implement,
   and the choke is outside the repository with its best evidence recoverable from
-  git history.
+  git history. The gate itself is an **assessment whose inclusion decision is
+  pending** (§4.4): drift-flux and lateral heat remain in core while failing
+  gates, and resolving that — close the gaps or move them model-side — is an
+  explicit maintainer decision.

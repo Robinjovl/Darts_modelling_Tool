@@ -267,7 +267,7 @@ what shipped:
 | **E5** — declare the stencil before allocation | `ConditionItem.declare_stencil()` reports the `(row, col)` couplings an item will write, and the framework adds the missing ones as zero-transmissibility connections in the only valid window: between `mesh.add_wells()` (which assigns the well block indices) and `conn_mesh::reverse_and_sort()` (which freezes the list, in place, and cannot run twice). Existence is decided per pair — well connections enumerated, reservoir pairs matched by one vectorized scan — and the result is re-checked against the frozen arrays by `verify_stencil()`, so a missing *or* duplicated coupling fails loudly. A wellhead coupling is refused (that row carries the well-control equations). A perforation-free well is accepted when an item declares its coupling and reports it through `declared_well_names()`: **the zero-WI "fake" perforation is no longer needed**, proved on a twin of the vertical OLGA benchmark with the perforation deleted. Compiled CSR positions carry a `pattern_identity()` and are re-resolved after a matrix reallocation (reachable today through restart) instead of writing at stale offsets. |
 | **E6** — additive vs replacement, typed | `ConditionItem.contribution` (`additive` / `replacement` / `none`) plus `written_rows()`; `compile()` refuses two claims on one row and an additive contribution to a claimed row, naming both items and the `(block, equation)`. `DirichletPin(mode="row")` is the shipped replacement case; `mode="state"` declares `none`, which is the right answer rather than a loophole — it projects the state and does not contribute to the system, and SPE11b pins cells that also carry a source. |
 | **E7** — selector separated from law | `Selector` (`BlockIndices`, `Where`, `NamedRegion`) resolves a block set at bind time and is accepted anywhere an index array is (cell sets and either member of a connection). Strictly additive: every existing call that passes indices is unchanged. **Partial**: the *law* half is still the item subclass, not a composable law object — `CellSource(selector=…, law=PrescribedRate(…))` remains a target of the M5 lowering, where the law is what the backend kernel consumes. |
-| **E8** — typed observer | `NonlinearIterationObserver`, registered on `model.conditions`, called once per Newton iteration after every item has contributed. Read-only is *enforced*, not documented: the context handed to `observe()` has non-writable `rhs` / `X` / `Xn` / `jac.jac_vals` views. The untyped `DartsModel.after_assembly(dt, t)` runs last and is deprecated. |
+| **E8** — typed observer | `NonlinearIterationObserver`, registered on `model.conditions`, called once per Newton iteration after every item has contributed. Read-only is *enforced*, not documented: the context handed to `observe()` has non-writable `rhs` / `X` / `Xn` views and, since the M7 hardening, non-writable views of **all four** block-CSR arrays (`jac_vals`, `jac_rows`, `jac_cols`, `jac_diags`) — as first shipped only `jac_vals` was frozen and the structural arrays passed through writable (third-review finding R4, §11). The untyped `DartsModel.after_assembly(dt, t)` runs last and is deprecated. |
 | **E9** — restart in the contract | `carries_restart_state` + `save_restart_state()` / `load_restart_state()`, serialized into a `<restart file>.conditions.json` sidecar written by `DartsModel.save_restart_state()`. A stateful item with a missing or mismatched sidecar **refuses** the restart rather than silently continuing from constructor defaults. |
 
 Also landed in M4: the mechanics boundary conditions are declared through the
@@ -379,7 +379,7 @@ Still true of M4 and still M5's job: the Python `BlockCSRView` path is the
 implementation rather than the fallback §6 describes; Jacobian contributions are
 CPU-only; and the per-iteration cost is Python per item.
 
-### M6 — inclusion gate (written down, and applied)
+### M6 — inclusion gate (written down; audited, enforcement pending)
 
 The gate is now eight checkable criteria a reviewer can tick — equation tests
 against external numbers (G1), an independent public integration case with the
@@ -389,8 +389,13 @@ scaling at ~10²/10⁴/10⁶ with the E10 callback-count assertion (G5), documen
 applicability and failure modes (G6), a stable non-model-specific API (G7), and an
 in-repo consumer (G8). "Not applicable" is an allowed answer; "not yet" means the
 feature stays model-side. Stated in full, with the evidence each one demands, in
-`docs/for_developers/conditions_lowering.md` §4, where it is also applied honestly
-to the three features it governs:
+`docs/for_developers/conditions_lowering.md` §4, where it is also audited honestly
+against the three features it governs. The audit's verdicts are candid, but the
+gate's conclusion was **not enforced**: drift-flux and lateral heat fail gates
+and remain in core with CI variants (third-review finding R7, §11). The gate
+section is therefore labelled an assessment with the inclusion decision pending,
+and `conditions_lowering.md` §4.4 records the maintainer decision required per
+feature:
 
 - **Choke** (outside the repository): fails every gate today, but its best
   evidence is recoverable — the deleted `tests/pipes/test_choke_models.py`
@@ -474,3 +479,29 @@ composition boundaries; multiple wells with different creation orders.
 7. The heat-map `BoundaryNorm` crash when `n_cmap_bins_mu > n_cmap_bins_rho`, and
    the Colebrook array/scalar disagreement at exactly `Re == 2400` — both
    pre-existing, both preserved deliberately rather than silently changed.
+
+---
+
+## 11. Third independent review (2026-08-22) — findings R1–R8 and their disposition
+
+A third independent review (`IPR_REFACTORED_CRITICAL_REVIEW.md`, of head
+`19790f8f`) verified most of this document's resolutions, reproduced its open
+items, and found eight defects in the refactoring itself. Its reproductions were
+independently confirmed. The findings, and what the M7 hardening wave did about
+each:
+
+| ID | Finding | Disposition |
+|---|---|---|
+| **R1** | **Critical.** The native perforation flow law (`ipr_engine`) is assembled into residual/Jacobian, but both rate-reporting paths — modern `output.py` (WI-based transmissibility) and the legacy C++ `ms_well` time data (`p_diff * wi`) — know nothing about it. With the law's required zero geometric WI, every exported perforation and summed-well rate is exactly `0.0` while the simulation carries physically active IPR flow. | **Fixed in M7.** Rate reporting is made law-aware so exported perforation and summed-well rates equal the assembled law flux, with end-to-end rate/output tests. See CHANGELOG. |
+| **R2** | The `ipr` env's installed package is stale MR-head code (`6f482ef6`); the repo-local engine binary embeds `f8d999aa` yet exposes post-M5 API — a dirty, non-reproducible build. A passing repo-root run is not evidence the installation works. | **Deferred — release step, owner: maintainer.** After the M7 source fixes land: clean-build exact HEAD, install into `ipr`, verify module/binary provenance from outside the checkout, and rerun both matrices without `PYTHONPATH` shadowing. The bare-`python` subprocess (V12, §10.6) belongs to the same step. |
+| **R3** | Duplicate `CellSource` cells: the residual used advanced-index subtraction (last write wins) while the Jacobian used `np.add.at` (accumulates), so the advertised analytic Jacobian was not the derivative of the assembled residual. | **Fixed in M7.** Residual scatter accumulates (`np.add.at` semantics); duplicates now accumulate in **both** residual and Jacobian, with duplicate-cell tests. |
+| **R4** | The "read-only" observer context froze only `jac_vals`; `jac_rows`/`jac_cols`/`jac_diags` passed through writable, so an observer could corrupt CSR structure through an engine-backed view. | **Fixed in M7.** The read-only twin freezes all four block-CSR arrays; structural-write tests added. §M4's E8 row above is corrected accordingly. |
+| **R5** | `flow_law` is advertised on `ReservoirBase.add_perforation()` but only `StructReservoir` accepts it; `UnstructReservoir` and `CPG_Reservoir` raise an unexpected-keyword `TypeError`. | **In M7 scope (concurrent task): implement consistently or explicitly narrow.** If not closed in this wave it remains a merge blocker: either shared attachment in every concrete family with cross-family tests, or a documented capability/refusal narrowing to `StructReservoir`. |
+| **R6** | An observer-only set on a mechanics model passes `compile()` (deliberate early return) but `apply_rhs_flux()` rejects the whole set at first assembly — compile and runtime disagree. | **Fixed in M7**, in the direction the reviewer called coherent once R4 is fixed: observer-only sets are permitted through the mechanics runtime path; contributing items on mechanics models are still refused at compile. The conditions reference documents the exemption. |
+| **R7** | The M6 inclusion gate is documented but not enforced: its own audit records drift-flux and lateral heat failing gates, yet both remain in core with CI variants. | **Re-labelled in M7, decision escalated.** `conditions_lowering.md` §4 is now explicitly an assessment with the inclusion decision pending; §4.4 lists, per feature, the unmet gates, the evidence that would close each, and the cheap in-repo closures (paper-pinned closure values, the OBL-vs-numerical derivative test, the `well_layers_props` deletion, scaling points). Closing the gates or evicting the features is recorded as a maintainer decision — this wave neither softened the gate nor evicted anything. |
+| **R8** | 117 generated PDFs under `models/dfm_well/*/output/` (5.5 MB), two run logs and a 187 KB generated mesh are tracked; commit `e7ac4d03` changes 117 output files alongside 13 source files, obscuring review. | **Handled in M7.** Every path was verified to be regenerated by `main.py`/test runs and consumed by no comparison; the exact 120-path removal list is `scratchpad_m7_artifact_removal.txt` (the `git rm` is executed centrally), and `.gitignore` now blocks `models/dfm_well/*/output/`, `log.txt` and the generated `transfinite.msh` from returning. The delivery-splitting half of R8 remains §8's plan (E12), still not delivered. |
+
+The third review also confirmed as still open: V11 (bai 50 K), V12 (bare
+`python`; folded into R2's release step), V13, V14, V15, E1 (reproduced with the
+same `1.32e-08` L2), E3's Windows references, E12, and §10.7's two inherited
+defects — all remain maintainer decisions as listed in §10.

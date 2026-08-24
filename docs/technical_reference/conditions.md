@@ -156,7 +156,8 @@ mis-simulation:
 1. the model overrides `apply_rhs_flux()` — it is the framework's entry point, not an extension point, and the registered items would never run;
 2. a Jacobian-providing item on a non-CPU platform, or on an engine that does
    not expose its block-CSR matrix;
-3. any item on a mechanics model (see {ref}`conditions-limits`);
+3. any *contributing* item on a mechanics model — a set containing only
+   observers is permitted (see {ref}`conditions-limits`);
 4. the adjoint/history-matching driver is active and an item is not
    `adjoint_transparent`;
 5. an item requiring a platform the model does not run on;
@@ -202,6 +203,12 @@ self.conditions.add(CellSource(cells=self.leak_cells,
 
 Without `d_rates` a state-dependent rate is simply lagged by one Newton
 iteration; it converges, but it costs iterations.
+
+Duplicate cells in `cells` are legitimate and **accumulate** — in the residual
+and in the Jacobian alike. Two entries targeting the same cell contribute the
+sum of their rates to the residual and the sum of their `d_rates` blocks to
+the Jacobian, so the analytic Jacobian stays the exact derivative of the
+assembled residual.
 
 ### `SegmentSource` — rates in the body segments of a well
 
@@ -440,11 +447,18 @@ self.observer = self.conditions.add(MaxPressureObserver())
 Observers run at the end of the conditions stage, after every item has
 contributed, so what they see is the final system of that iteration. The
 read-only rule is **enforced, not trusted**: the context handed to `observe()`
-is a twin whose `rhs`, `X`, `Xn` and `jac.jac_vals` are non-writable numpy
-views, so a write raises `ValueError: assignment destination is read-only`. An
-observer that needs to change the system is not an observer — it is a
-`ConditionItem`. Observers also receive `on_timestep_start` /
-`on_timestep_converged` / `on_timestep_failed`.
+is a twin whose `rhs`, `X`, `Xn` and **all four block-CSR arrays** —
+`jac.jac_vals` and the structural arrays `jac.jac_rows`, `jac.jac_cols`,
+`jac.jac_diags` — are non-writable numpy views, so a write raises
+`ValueError: assignment destination is read-only`. An observer that needs to
+change the system is not an observer — it is a `ConditionItem`. Observers also
+receive `on_timestep_start` / `on_timestep_converged` / `on_timestep_failed`.
+
+Because an observer mutates nothing, observers are exempt from the mechanics
+restriction: a condition set that contains **only observers is permitted on a
+mechanics model** — both `compile()` and `apply_rhs_flux()` let it through —
+while any contributing item on a mechanics model is still refused (see
+{ref}`conditions-limits`).
 
 An exception raised in `observe()` propagates out of the Newton loop; a model
 that raises deliberately is responsible for catching it and turning it into a
@@ -491,11 +505,14 @@ engine is up.
 These are properties of the current implementation, not of the design, and each
 is enforced rather than left to be discovered:
 
-* **Mechanics models reject per-iteration items.** The pm/mech engines rescale
-  equation rows *inside* assembly, so a post-assembly RHS/Jacobian write would be
-  applied with the wrong scaling. `compile()` refuses any item on a model driven
-  by `MechanicsNewtonSolver`, and `apply_rhs_flux()` raises as well. Mechanics
-  boundary conditions go through the declarative spec
+* **Mechanics models reject per-iteration contributions.** The pm/mech engines
+  rescale equation rows *inside* assembly, so a post-assembly RHS/Jacobian write
+  would be applied with the wrong scaling. `compile()` refuses any contributing
+  item on a model driven by `MechanicsNewtonSolver`, and `apply_rhs_flux()`
+  raises as well. **Observer-only sets are exempt**: an observer is read-only,
+  so row rescaling cannot be corrupted, and both `compile()` and
+  `apply_rhs_flux()` let a set consisting only of observers run on a mechanics
+  model. Mechanics boundary conditions go through the declarative spec
   (`darts.reservoirs.boundary_spec`) instead, whose value half is owned and
   driven by the reservoir.
 * **The adjoint does not see Python contributions.** The
