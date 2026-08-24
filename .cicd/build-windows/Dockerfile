@@ -50,9 +50,15 @@ RUN powershell -Command `
 # Step 7: Set up environment variables
 RUN setx /M PATH "C:\cmake\cmake-3.29.3-windows-x86_64\bin;%PATH%"
 RUN setx /M PATH "C:\Git\cmd;%PATH%"
-RUN setx /M PATH "C:\conda;C:\conda\Scripts;%PATH%"
+RUN setx /M PATH "C:\conda;C:\conda\Scripts;C:\conda\Library\bin;%PATH%"
 
-# Step 8: Compile and install gmsh without graphical dependencies (DENABLE_FLTK=0)
+# Step 8: Create conda environment for the gmsh build.
+# Build-time only: gmsh's Python API is a pure-Python ctypes wrapper around gmsh.dll (the wheel is tagged py2.py3-none), 
+# so this version does NOT constrain which Python the CI matrix runs against.
+ARG PY_VER=3.11
+RUN C:\conda\Scripts\conda.exe create -n darts python=%PY_VER% --yes
+
+# Step 9: Compile and install gmsh without graphical dependencies (DENABLE_FLTK=0)
 ARG GMSH_REF=29461e8d64551661c57aca54bef830c1ed0e7218
 
 RUN git clone https://gitlab.onelab.info/gmsh/gmsh.git C:\src\gmsh `
@@ -60,6 +66,7 @@ RUN git clone https://gitlab.onelab.info/gmsh/gmsh.git C:\src\gmsh `
     && git checkout %GMSH_REF%
 
 RUN call "C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat" `
+    && call C:\conda\Scripts\activate.bat darts `
     && mkdir C:\src\gmsh\build `
     && cd C:\src\gmsh\build `
     && cmake .. -G "NMake Makefiles" `
@@ -69,6 +76,8 @@ RUN call "C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat" `
        -DENABLE_BUILD_DYNAMIC=1 `
        -DENABLE_OPENMP=0 `
        -DENABLE_TESTS=0 `
+       -DPython3_ROOT_DIR=C:/conda/envs/darts `
+       -DPython3_EXECUTABLE=C:/conda/envs/darts/python.exe `
     && nmake `
     && nmake install
 
@@ -83,10 +92,13 @@ RUN setx /M PYTHONPATH "C:\gmsh\lib"
 
 # Test gmsh
 RUN call "C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat" `
+    && call C:\conda\Scripts\activate.bat darts `
     && gmsh.exe -version `
     && gmsh.exe C:\gmsh\share\doc\gmsh\tutorials\t5.geo -3 -nopopup -o C:\Windows\Temp\smoke.msh `
     && python -c "import gmsh; gmsh.initialize(); print(gmsh.option.getString('General.Version')); gmsh.finalize()" `
     && del C:\Windows\Temp\smoke.msh
+
+# Note: install open-darts using: pip install . --ignore-installed gmsh
 
 # Set up the MSVC developer environment on entry
 ENTRYPOINT ["cmd", "/k", "C:\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat", "&&"]

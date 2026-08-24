@@ -1,16 +1,21 @@
 .build-windows:
     stage: build
-    # Will be executed on runner with windows shell tag - that assumed to run on windows host with shell executor
+    # Runs inside the Windows builder container (MSVC Build Tools, CMake, conda,
+    # git and a headless gmsh are all baked into the image - see
+    # .cicd/build-windows/Dockerfile). Requires a runner with the
+    # docker-windows executor whose host OS matches the image base.
+    image: "${WINDOWS_BUILDER_IMAGE}"
     tags:
-        - windows-shell
-    needs: []
+        - windows_docker
     variables:
         CONDA_ENV: "darts-win"
-        CONDA_BIN_PATH: 'D:\miniconda3\condabin'
-    script:
-        # Load MS Build Tools environment to the powershell
-        - D:\BuildTools\build_vars.ps1
-        - if (-not ($env:PATH.Split(';') -contains $env:CONDA_BIN_PATH)) { $env:PATH = "$env:CONDA_BIN_PATH;$env:PATH" }`
+        CONDA_BIN_PATH: 'C:\conda\condabin'
+    before_script:
+        # Load the MS Build Tools environment into this PowerShell session.
+        # The docker-windows executor bypasses the image ENTRYPOINT, so vcvars
+        # has to be imported explicitly.
+        - .\helper_scripts\build_vars.ps1
+        - if (-not ($env:PATH.Split(';') -contains $env:CONDA_BIN_PATH)) { $env:PATH = "$env:CONDA_BIN_PATH;$env:PATH" }
         - $condaRoot = Split-Path $env:CONDA_BIN_PATH -Parent
         - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
         - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
@@ -19,6 +24,7 @@
         - conda activate $env:CONDA_ENV
         # Make sure wheel package could be installed
         - python -m pip install --upgrade pip setuptools wheel
+    script:
         # Copy VS redist libraries
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
@@ -26,6 +32,11 @@
         - echo "ODLS:" $env:ODLS
         # Compile and make the wheel
         - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8 -p
+        # Install open-darts, passing gmsh explicitly so it is (re)installed
+        # cleanly alongside the package (see .cicd/build-windows/readme.txt).
+        # The headless gmsh baked into the image stays ahead of the PyPI one
+        # on PYTHONPATH, so that is the one actually imported at runtime.
+        - python -m pip install . --ignore-installed gmsh
         # Check for warnings
         - |
           $match = Select-String -Path make_darts.log -Pattern 'OPENDARTS_WARNING_COUNT=(\d+)' | Select-Object -Last 1
@@ -34,13 +45,9 @@
             Write-Host "FAILED: $warnCount open-DARTS compilation warning(s) on $($env:CI_COMMIT_BRANCH) branch"
             exit 1
           }
-    after_script:
-        - if (-not ($env:PATH.Split(';') -contains $env:CONDA_BIN_PATH)) { $env:PATH = "$env:CONDA_BIN_PATH;$env:PATH" }`
-        - $condaRoot = Split-Path $env:CONDA_BIN_PATH -Parent
-        - $condaHookPath = Join-Path $condaRoot 'shell\condabin\conda-hook.ps1'
-        - if (Test-Path $condaHookPath) { (& $condaHookPath) | Out-Null }
-        - conda deactivate
-        - conda env remove --name $env:CONDA_ENV --yes
+    needs:
+    - job: windows-image-builder
+      optional: true
     artifacts:
       paths:
         - '*.log'
