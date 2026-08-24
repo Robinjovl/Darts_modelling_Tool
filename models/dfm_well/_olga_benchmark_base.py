@@ -55,8 +55,10 @@ from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 #: IPR assembled by the well assembler in C++ (``add_perforation(flow_law=...)``)
 #: instead of by the per-Newton Python condition item. They map onto the base
 #: variant they replicate. Available on every OLGA benchmark whose base variant is
-#: supported; they exist for the M5 A/B comparison and are NOT CI cases, because
-#: analytic derivatives change the iteration path and so the references. Unlike
+#: supported. ``ipr_engine`` (injector) and ``ipr_engine_producer`` are CI cases
+#: with their own variant-tagged references; analytic derivatives change the
+#: iteration path relative to the Python hook, so they never share a reference
+#: with the base variant they replicate. Unlike
 #: the Python-hook variants (which address the coupling directly and need no
 #: perforation), these keep the zero-well-index perforation: the engine law
 #: lives ON a perforation.

@@ -226,6 +226,10 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
             (dfm_1ph_olga, {'formulation': 'lateral_heat'}),
             # Exclude the top (well-control) block from the DFM velocity evaluation
             (dfm_1ph_olga, {'formulation': 'exclude_top'}),
+            # Native engine-side linear IPR (perforation flow law) -- injector
+            (dfm_1ph_olga, {'formulation': 'ipr_engine'}),
+            # Native engine-side linear IPR -- BHP-controlled producer branch
+            (dfm_2ph_olga, {'formulation': 'ipr_engine_producer'}),
         ]
 
     # RUN
