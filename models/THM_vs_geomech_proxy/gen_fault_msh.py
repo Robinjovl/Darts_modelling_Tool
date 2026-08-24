@@ -4,9 +4,8 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 def generate_3d_fault_mesh(
+    input_data,
     msh_filename=os.path.join(BASE_DIR, 'meshes', 'case_5', "mesh.msh"),
-    prod_well_coords=None,
-    inj_well_coords=None,
     fault_dip_degrees=45.0,
     reservoir_block_offset=180.0,
     damage_width_left=100,
@@ -54,8 +53,12 @@ def generate_3d_fault_mesh(
         raise ValueError(
             "well_transition_radius must be larger than well_cylinder_radius"
         )
+    prod_well_coords = input_data.other.prod_well_coords
+    inj_well_coords = input_data.other.inj_well_coords
     if prod_well_coords is None or inj_well_coords is None:
-        raise ValueError("Production and injection well coordinates are required")
+        raise ValueError(
+            "input_data.other.prod_well_coords and inj_well_coords are required"
+        )
     well_coords = (prod_well_coords, inj_well_coords)
     if any(len(coords) != 4 for coords in well_coords):
         raise ValueError(
@@ -734,4 +737,6 @@ def generate_3d_fault_mesh(
 
 
 if __name__ == "__main__":
-    generate_3d_fault_mesh()
+    from set_case import set_input_data
+    idata = set_input_data('case_5', physics_type='single_phase_thermal', wells_type='doublet')
+    generate_3d_fault_mesh(idata)

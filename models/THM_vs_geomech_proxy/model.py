@@ -67,8 +67,7 @@ class Model(THMCModel):
     def __init__(self, model_folder, physics_type='single_phase',
                  uniform_props=False, wells_type=None,
                  decouple_geomech=False, generate_mesh=False, dummy='no',
-                 solver_type='by_env_var', prod_well_coords=None,
-                 inj_well_coords=None):
+                 solver_type='by_env_var'):
         self.model_folder = model_folder
         self.uniform_props = uniform_props
         self.physics_type = physics_type
@@ -78,8 +77,6 @@ class Model(THMCModel):
         self.generate_mesh = generate_mesh
         self.wells_type = wells_type
         self.solver_type = solver_type  # 'superlu', 'fs_cpr', 'by_env_var'
-        self.prod_well_coords = prod_well_coords
-        self.inj_well_coords = inj_well_coords
 
         if dummy == 'yes':  # save time for proxy run
             return
@@ -114,8 +111,6 @@ class Model(THMCModel):
             model_folder=self.model_folder,
             physics_type=self.physics_type,
             wells_type=self.wells_type,
-            prod_well_coords=self.prod_well_coords,
-            inj_well_coords=self.inj_well_coords,
         )
 
         super().set_input_data()

@@ -88,8 +88,7 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
                                                      stats.n_linear_total, stats.n_linear_wasted))
 def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90., plot_vtk_timesteps=[],
-        clear_output_dir=False, solver_type='fs_cpr', prod_well_coords=None,
-        inj_well_coords=None):
+        clear_output_dir=False, solver_type='fs_cpr'):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
     :param physics_type: 'single_phase', 'single_phase_thermal'
@@ -111,8 +110,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         pass
 
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type,
-              decouple_geomech=decouple_geomech, generate_mesh=generate_mesh, solver_type=solver_type,
-              prod_well_coords=prod_well_coords, inj_well_coords=inj_well_coords)
+              decouple_geomech=decouple_geomech, generate_mesh=generate_mesh, solver_type=solver_type)
 
     m.timer.node["model.init()"] = timer_node()
     m.timer.node["model.init()"].start()
@@ -326,19 +324,12 @@ if __name__ == '__main__':
     #sim_time = 30 # days
     #report_step = sim_time  # days
 
-    # Explicit [X, Y, Z1, Z2] well locations, the single source of truth shared between
-    # the case_5 fault-mesh generator and cases/case_5.py. None for all other cases.
-    prod_well_coords = None
-    inj_well_coords = None
-    if 'case_5' in cases:  # with a damage zone near the fault
-        prod_well_coords = [5500.0, 5000.0, 2830.0, 3030.0]
-        inj_well_coords = [4500.0, 5000.0, 2830.0, 3030.0]
-        if generate_mesh:
-            from gen_fault_msh import generate_3d_fault_mesh
-            generate_3d_fault_mesh(
-                prod_well_coords=prod_well_coords,
-                inj_well_coords=inj_well_coords,
-            )
+    if 'case_5' in cases and generate_mesh:  # with a damage zone near the fault
+        from set_case import set_input_data
+        from gen_fault_msh import generate_3d_fault_mesh
+        # case_5 owns its well locations; build its idata and hand it to the mesh generator
+        idata_case_5 = set_input_data('case_5', physics_type=physics_type, wells_type=wells_type)
+        generate_3d_fault_mesh(idata_case_5)
 
     if 'no_damage_zone' in cases:
         from gen_fault_msh_no_damage_zone import gen_fault_msh_no_damage_zone
@@ -353,6 +344,5 @@ if __name__ == '__main__':
 
         run(model_folder=case, physics_type=physics_type, generate_mesh=case_generate_mesh,
             wells_type=wells_type, decouple_geomech=decouple_geomech,
-            prod_well_coords=prod_well_coords, inj_well_coords=inj_well_coords,
             report_step=report_step, sim_time=sim_time,
             plot_vtk_timesteps=[0, -1]) # plot initial and last timesteps
