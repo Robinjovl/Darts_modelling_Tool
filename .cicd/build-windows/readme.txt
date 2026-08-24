@@ -1,4 +1,4 @@
-# ---------------------------------------------------------------------------
+﻿# ---------------------------------------------------------------------------
 # How to compile and run DARTS in the docker container (locally)
 # ---------------------------------------------------------------------------
 
@@ -9,7 +9,7 @@
 # Note: If you want to leave the container running but detach from it, press Ctrl+P then Ctrl+Q.
 
 # run bare MS container for testing purposes
-#docker run -it mcr.microsoft.com/windows/servercore:ltsc2019 cmd
+#docker run -it mcr.microsoft.com/windows/servercore:ltsc2022 cmd
 
 # build a docker image from a Dockerfile
 docker build -t vs-buildtools .
@@ -24,7 +24,7 @@ conda init
 cmd /k "C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat" "&" cmd
 conda activate darts
 
-# download, compile and install open-DARTS 
+# download, compile and install open-DARTS
 git clone --branch development --recursive https://gitlab.com/open-darts/open-darts.git
 cd open-darts
 helper_scripts\build_darts_cmake.bat -w -p -j 10
@@ -33,12 +33,12 @@ pip install . --ignore-installed gmsh  # custom gmsh compiled from source
 
 # run a test
 cd models\cpg_sloping_fault
-python main.py 
+python main.py
 cd ..\..
 
 # run all tests
 cd models
-python run_test_suite2.py 
+python run_test_suite2.py
 
 # ---------------------------------------------------------------------------
 # How this image is used by CI/CD
@@ -64,11 +64,11 @@ python run_test_suite2.py
 # Runner requirements for the "windows_docker" tag:
 #   - GitLab Runner with executor = "docker-windows"
 #   - Docker daemon in Windows-container mode; host OS build must match the
-#     image base (mcr.microsoft.com/windows/servercore:ltsc2019) or the
+#     image base (mcr.microsoft.com/windows/servercore:ltsc2022) or the
 #     container will not start.
 #   - Enough memory per container for the MSVC build, e.g. in config.toml:
 #         [runners.docker]
-#           image = "mcr.microsoft.com/windows/servercore:ltsc2019"
+#           image = "mcr.microsoft.com/windows/servercore:ltsc2022"
 #           memory = "16g"
 #           cpus = "8"
 #   - Registry credentials: either `docker login` on the host or

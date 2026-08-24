@@ -1,6 +1,6 @@
 # escape=`
 
-FROM mcr.microsoft.com/windows/servercore:ltsc2019
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 SHELL ["cmd", "/S", "/C"]
 
@@ -53,7 +53,7 @@ RUN setx /M PATH "C:\Git\cmd;%PATH%"
 RUN setx /M PATH "C:\conda;C:\conda\Scripts;C:\conda\Library\bin;%PATH%"
 
 # Step 8: Create conda environment for the gmsh build.
-# Build-time only: gmsh's Python API is a pure-Python ctypes wrapper around gmsh.dll (the wheel is tagged py2.py3-none), 
+# Build-time only: gmsh's Python API is a pure-Python ctypes wrapper around gmsh.dll (the wheel is tagged py2.py3-none),
 # so this version does NOT constrain which Python the CI matrix runs against.
 ARG PY_VER=3.11
 RUN C:\conda\Scripts\conda.exe create -n darts python=%PY_VER% --yes
