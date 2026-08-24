@@ -10,6 +10,8 @@ import xarray as xr
 
 from darts.engines import (
     index_vector,
+    ipr_rate_basis,
+    perforation_flow_law_type,
     timer_node,
     value_vector,
     well_control_iface,
@@ -2097,6 +2099,13 @@ class Output:
             ["advective_heat_rates"] if advective_heat_rates and self.thermal else []
         )
 
+        # Engine-side perforation flow laws (finding R1): a non-Darcy
+        # perforation has a ZERO well index by construction, so the Darcy
+        # `operators * WI * pressure_term` below would export exactly 0.0 for
+        # it while the assembled law flux is not. calc_rates_at_conns computes
+        # those perforations law-aware instead.
+        perf_flow_laws = self._perforation_flow_laws(perfs_conn_idxs)
+
         for rate_type in rate_types:
             # Compute perforation rates
             rates_perfs = self.calc_rates_at_conns(
@@ -2105,6 +2114,7 @@ class Output:
                 geometric_WI,
                 self.thermal,
                 rate_type,
+                flow_laws=perf_flow_laws,
             )
             # Store perforation rates
             self.store_perf_rates(time_data_dict, rates_perfs, rate_type)
@@ -2192,6 +2202,32 @@ class Output:
         )
 
         return perfs_conn_idxs, well_head_conn_idxs, geometric_WI, well_head_conn_trans
+
+    def _perforation_flow_laws(self, perfs_conn_idxs):
+        """Engine-side flow law of each perforation connection, or ``None``.
+
+        Returns a list parallel to ``perfs_conn_idxs`` holding the
+        ``perforation_flow_law`` of every perforation that carries a non-Darcy
+        law (matched by its (well block, reservoir block) pair, the same way
+        the engine resolves the laws to connections) and ``None`` for every
+        ordinary Darcy perforation. Used by :meth:`store_well_time_data` /
+        :meth:`calc_rates_at_conns` for law-aware rate reporting (finding R1).
+        """
+        laws_by_pair = {}
+        for well in self.reservoir.wells:
+            for perf_idx, perf in enumerate(well.perforations):
+                law = well.get_perforation_flow_law(perf_idx)
+                if law.law != perforation_flow_law_type.DARCY:
+                    well_block = int(well.well_body_idx) + int(perf[0])
+                    laws_by_pair[(well_block, int(perf[1]))] = law
+        if not laws_by_pair:
+            return [None] * len(perfs_conn_idxs)
+        block_m = np.array(self.reservoir.mesh.block_m, copy=False)
+        block_p = np.array(self.reservoir.mesh.block_p, copy=False)
+        return [
+            laws_by_pair.get((int(block_m[k]), int(block_p[k])))
+            for k in perfs_conn_idxs
+        ]
 
     def store_perf_rates(
         self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str
@@ -2395,6 +2431,7 @@ class Output:
         trans: np.ndarray,
         thermal: bool,
         rate_type: str,
+        flow_laws: list = None,
     ):
         """
         Calculate different types of rates at perforations or wellhead connections of wells.
@@ -2413,6 +2450,15 @@ class Output:
         :type thermal: bool
         :param rate_type: Type of well rate to calculate
         :type rate_type: str
+        :param flow_laws: Optional list parallel to ``conn_idxs`` holding the
+            engine-side ``perforation_flow_law`` of each connection, or ``None``
+            for an ordinary Darcy connection (see
+            :meth:`_perforation_flow_laws`). Connections carrying a non-Darcy
+            law have a zero well index by construction, so their rates are
+            computed from the law -- with the SAME state/operator arithmetic
+            the engine assembles -- instead of ``operators * WI * dp`` (which
+            would be identically zero; finding R1).
+        :type flow_laws: list
         """
         # Evaluate position of block_m, block_p in stored data for every connection
         block_m = h5_well_data["static"]["block_m"]
@@ -2686,7 +2732,10 @@ class Output:
         ]:
             ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
         elif rate_type in ["component_molar_rates", "component_mass_rates"]:
-            ops_reshaped = ops.reshape(n_ts, n_conns, -1)
+            # explicit width rather than -1: a well set with ZERO perforation
+            # connections (couplings declared directly, without a dummy
+            # perforation) makes this a size-0 reshape, where -1 is ambiguous
+            ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph * pc.nc_fl)
         elif rate_type == "advective_heat_rates":
             ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
 
@@ -2696,6 +2745,143 @@ class Output:
         else:
             pressure_term = phase_p_diff
         rates = -ops_reshaped * tran * pressure_term
+
+        # ------------------------------------------------------------------
+        # Engine-side perforation flow laws (finding R1). A law-carrying
+        # perforation has WI == 0 by construction, so the Darcy product above
+        # is identically zero for it; overwrite its rates with the law flux,
+        # mirroring the engine assembly arithmetic exactly (the shared C++
+        # source of truth is perforation_law_rates() in ms_well.cpp, pinned
+        # against this mirror by tests/pipes/test_native_ipr_rates.py):
+        #
+        #   q_total = intercept + productivity * (p_well - p_res - offset)
+        #             (positive from the well INTO the reservoir, which is the
+        #             positive-for-injection sign of the Darcy rates above)
+        #   z_c     from the UPSTREAM state, clipped at sim_eps, renormalized
+        #   rho_m   = sum_j s_j * sum_c FLUX_OP[j, c]   (molar density)
+        #   rho_mas = sum_j s_j * GRAV_OP[j]            (mass density)
+        #   Mw      = rho_mas / rho_m                   (1 when rho_m == 0)
+        #   m_rate  = q_total | q_total / Mw | q_total * rho_m   (per basis)
+        #
+        # The law defines TOTAL rates; per-phase columns receive the total
+        # split by the corresponding upstream phase fraction from the same
+        # operators (molar fraction s_j rho_mj / rho_m for molar/heat rates,
+        # mass fraction for mass rates, saturation for volumetric rates), so
+        # the sum over phases is exactly the assembled total. Component
+        # columns hold m_rate * z_c (times the component molecular weight for
+        # mass rates), stored in the phase-0 slots -- component rates are only
+        # ever consumed summed over phases. The advective heat rate follows
+        # the dead-state-referenced reporting convention of the Darcy branch:
+        # m_rate * (h - h_dead), with both mixture molar enthalpies read from
+        # the same operator table (the assembly's potential-energy term
+        # spe * Mw is excluded here exactly as it is for Darcy perforations).
+        # ------------------------------------------------------------------
+        law_conns = (
+            [(k, law) for k, law in enumerate(flow_laws) if law is not None]
+            if flow_laws is not None
+            else []
+        )
+        if law_conns:
+            eps_z = float(getattr(self.params, "sim_eps", 1e-12))
+            nc_fl = pc.nc_fl
+            nph = pc.nph
+            sat_start = reservoir_operator.SAT_OP
+            flux_start = reservoir_operator.FLUX_OP
+            grav_start = reservoir_operator.GRAV_OP
+
+            if rate_type == "advective_heat_rates":
+                reservoir_ops_m_dead = evaluate_ops(
+                    states_m_dead, n_reservoir_ops, physics.acc_flux_itor[0]
+                )
+                reservoir_ops_p_dead = evaluate_ops(
+                    states_p_dead, n_reservoir_ops, physics.acc_flux_itor[0]
+                )
+
+            def law_mixture(ops_up):
+                """(sat, flux, per-phase molar density, per-phase mass density,
+                rho_m, rho_mass) of the upstream blocks, one row per time."""
+                sat = ops_up[:, sat_start : sat_start + nph]
+                flux = ops_up[:, flux_start : flux_start + ne * nph]
+                flux = flux.reshape(n_ts, nph, ne)
+                f = np.sum(flux[:, :, :nc_fl], axis=2)
+                grav = ops_up[:, grav_start : grav_start + nph]
+                rho_m = np.sum(sat * f, axis=1)
+                rho_mass = np.sum(sat * grav, axis=1)
+                return sat, flux, f, grav, rho_m, rho_mass
+
+            for k, law in law_conns:
+                rows = np.arange(n_ts) * n_conns + k
+                p_well = p[:, cell_m[k]]
+                p_res = p[:, cell_p[k]]
+                q_tot = law.intercept + law.productivity * (p_well - p_res - law.offset)
+                pick_well = (q_tot >= 0.0)[:, None]
+                states_up = np.where(pick_well, states_m_2d[rows], states_p_2d[rows])
+                ops_up = np.where(
+                    pick_well, reservoir_ops_m[rows], reservoir_ops_p[rows]
+                )
+
+                # upstream overall composition from the STATE, clipped at
+                # sim_eps and renormalized (as the engine does)
+                if nc_fl == 1:
+                    z = np.ones((n_ts, 1))
+                else:
+                    w = np.empty((n_ts, nc_fl))
+                    w[:, :-1] = states_up[:, 1:nc_fl]
+                    w[:, -1] = 1.0 - np.sum(w[:, :-1], axis=1)
+                    w = np.maximum(w, eps_z)
+                    z = w / np.sum(w, axis=1, keepdims=True)
+
+                sat, flux, f, grav, rho_m, rho_mass = law_mixture(ops_up)
+                has_fluid = rho_m > 0.0
+                safe_rho_m = np.where(has_fluid, rho_m, 1.0)
+                # the engine's no-fluid fallback: Mw = 1 when rho_m == 0
+                mw_mix = np.where(has_fluid, rho_mass, 1.0) / safe_rho_m
+
+                if law.basis == ipr_rate_basis.MASS:
+                    m_rate = q_tot / mw_mix
+                elif law.basis == ipr_rate_basis.VOLUMETRIC:
+                    m_rate = q_tot * rho_m
+                else:  # MOLAR
+                    m_rate = q_tot
+
+                # upstream MOLAR phase fraction nu_j = s_j rho_mj / rho_m
+                nu = np.where(has_fluid[:, None], sat * f, 0.0) / safe_rho_m[:, None]
+
+                if rate_type in ("component_molar_rates", "component_mass_rates"):
+                    out = np.zeros((n_ts, nph * nc_fl))
+                    comp = m_rate[:, None] * z
+                    if rate_type == "component_mass_rates":
+                        comp = comp * np.asarray(pc.Mw[:nc_fl])[None, :]
+                    out[:, :nc_fl] = comp  # phase-0 slots; summed over phases
+                elif rate_type == "phase_molar_rates":
+                    out = m_rate[:, None] * nu
+                elif rate_type == "phase_mass_rates":
+                    has_mass = rho_mass > 0.0
+                    frac = (
+                        np.where(has_mass[:, None], sat * grav, 0.0)
+                        / np.where(has_mass, rho_mass, 1.0)[:, None]
+                    )
+                    out = (m_rate * mw_mix)[:, None] * frac
+                elif rate_type == "phase_volumetric_rates":
+                    q_vol = np.where(has_fluid, m_rate / safe_rho_m, 0.0)
+                    out = q_vol[:, None] * sat
+                else:  # advective_heat_rates
+                    rho_h = np.sum(sat * flux[:, :, nc_fl], axis=1)
+                    h_mix = np.where(has_fluid, rho_h, 0.0) / safe_rho_m
+                    ops_up_dead = np.where(
+                        pick_well,
+                        reservoir_ops_m_dead[rows],
+                        reservoir_ops_p_dead[rows],
+                    )
+                    sat_d, flux_d, _, _, rho_m_d, _ = law_mixture(ops_up_dead)
+                    has_fluid_d = rho_m_d > 0.0
+                    rho_h_d = np.sum(sat_d * flux_d[:, :, nc_fl], axis=1)
+                    h_dead = np.where(has_fluid_d, rho_h_d, 0.0) / np.where(
+                        has_fluid_d, rho_m_d, 1.0
+                    )
+                    out = (m_rate * (h_mix - h_dead))[:, None] * nu
+
+                rates[:, k, :] = out
 
         return rates
 

@@ -592,7 +592,15 @@ def _load_olga_model_module():
 
 
 def _build_olga_models():
-    """The shipped model and a perforation-free twin of it, both initialized."""
+    """The shipped (perforation-free) model and a perforated twin, initialized.
+
+    The shipped model IS the perforation-free configuration now: its hook
+    addresses the (well segment, reservoir block) pair directly and the
+    declaration stage adds the coupling. The twin reconstructs the HISTORICAL
+    configuration -- a zero-well-index perforation whose only purpose is to
+    smuggle the mesh connection in, and a hook addressed through it -- so the
+    equivalence of the two spellings stays proven in both directions.
+    """
     pytest.importorskip("dartsflash")
     if not MODEL_DIR.is_dir():
         pytest.skip(f"model directory not found: {MODEL_DIR}")
@@ -600,22 +608,34 @@ def _build_olga_models():
     from darts.pipes.linear_dfm_well_ipr import (
         LinearDFMWellIPRConnection,
         LinearDFMWellIPRHook,
-        PI_Type,
     )
 
-    class _NoPerforationModel(module.Model):
-        """Identical, except the well has NO PERFORATION at all.
+    class _PerforationModel(module.Model):
+        """Identical, except the coupling is carried by a zero-WI perforation.
 
-        The pair the IPR flux couples is named directly, so the coupling comes
-        from the stencil declaration rather than from a zero-well-index
-        perforation created only to carry it.
+        The perforation supplies the mesh connection (so the declaration stage
+        finds the coupling already present and adds nothing), and the hook is
+        re-addressed through ``perforation_index``, exactly as every model
+        spelled it before stencil declaration existed.
         """
 
         def set_wells(self, verbose=None):
             super().set_wells()
+            (hook,) = [
+                item
+                for item in self.conditions.items
+                if isinstance(item, LinearDFMWellIPRHook)
+            ]
+            (connection,) = hook.connections
+            self.reservoir.add_perforation(
+                "I1",
+                res_cell_idx=(1, 1, 1),
+                well_seg_idx=int(connection.well_segment_index),
+                well_diameter=self.well_1_ID,
+                well_index=0.0,
+                well_indexD=0.0,
+            )
             well = self.reservoir.get_well("I1")
-            segment_local, res_block = well.perforations[0][:2]
-            well.perforations = []
             self.conditions.items = [
                 item
                 for item in self.conditions.items
@@ -627,12 +647,11 @@ def _build_olga_models():
                     [
                         LinearDFMWellIPRConnection(
                             well_name="I1",
-                            # 1-based, index 1 being the wellhead ghost segment
-                            well_segment_index=int(segment_local) + 2,
-                            res_block_index=int(res_block),
-                            pi=1e5,
-                            pi_type=PI_Type.MASS,
-                            ipr_pressure_offset=0.0,
+                            perforation_index=len(well.perforations) - 1,
+                            pi=connection.pi,
+                            pi_type=connection.pi_type,
+                            ipr_pressure_offset=connection.ipr_pressure_offset,
+                            ipr_intercept=connection.ipr_intercept,
                         )
                     ],
                 )
@@ -645,11 +664,11 @@ def _build_olga_models():
     try:
         shipped = module.Model()
         shipped.init(platform="cpu", verbose=0)
-        declared = _NoPerforationModel()
-        declared.init(platform="cpu", verbose=0)
+        perforated = _PerforationModel()
+        perforated.init(platform="cpu", verbose=0)
     finally:
         os.chdir(cwd)
-    return shipped, declared
+    return shipped, perforated
 
 
 @pytest.fixture(scope="module")
@@ -657,29 +676,32 @@ def olga_models():
     return _build_olga_models()
 
 
-def test_shipped_model_declares_a_coupling_that_already_exists(olga_models):
+def test_shipped_model_no_longer_creates_the_dummy_perforation(olga_models):
     shipped, _ = olga_models
-    assert len(shipped.reservoir.get_well("I1").perforations) == 1
+    assert len(shipped.reservoir.get_well("I1").perforations) == 0
     assert shipped.conditions.declared_couplings  # the hook declared its pair
-    assert shipped.conditions.added_couplings == ()  # the perforation supplied it
+    # the coupling the perforation used to smuggle in is DECLARED and added
+    assert shipped.conditions.added_couplings == shipped.conditions.declared_couplings
 
 
-def test_the_ipr_hook_no_longer_needs_a_perforation(olga_models):
-    shipped, declared = olga_models
-    assert len(declared.reservoir.get_well("I1").perforations) == 0
-    # the coupling the perforation used to smuggle in is now DECLARED and added
-    assert declared.conditions.added_couplings == shipped.conditions.declared_couplings
+def test_the_perforated_twin_declares_a_coupling_that_already_exists(olga_models):
+    shipped, perforated = olga_models
+    assert len(perforated.reservoir.get_well("I1").perforations) == 1
+    assert perforated.conditions.declared_couplings == (
+        shipped.conditions.declared_couplings
+    )
+    assert perforated.conditions.added_couplings == ()  # the perforation supplied it
 
 
 def test_the_declared_pattern_equals_the_fake_perforation_pattern(olga_models):
-    shipped, declared = olga_models
+    shipped, perforated = olga_models
     for attribute in ("jac_rows", "jac_cols", "jac_diags"):
         np.testing.assert_array_equal(
             np.asarray(getattr(shipped.physics.engine, attribute)),
-            np.asarray(getattr(declared.physics.engine, attribute)),
+            np.asarray(getattr(perforated.physics.engine, attribute)),
             err_msg=f"{attribute} differs between the two configurations",
         )
-    assert len(shipped.reservoir.mesh.block_m) == len(declared.reservoir.mesh.block_m)
+    assert len(shipped.reservoir.mesh.block_m) == len(perforated.reservoir.mesh.block_m)
 
 
 def _ipr_hook(model):
@@ -732,9 +754,9 @@ def _hook_contribution(model, p_well, p_res, dt=1e-3):
 @pytest.mark.parametrize("p_well,p_res", [(110.0, 102.0), (95.0, 102.0)])
 def test_the_declared_configuration_produces_the_same_flux(olga_models, p_well, p_res):
     """The point of E5: identical flux and identical Jacobian, no perforation."""
-    shipped, declared = olga_models
+    shipped, perforated = olga_models
     rhs_a, jac_a, blocks_a = _hook_contribution(shipped, p_well, p_res)
-    rhs_b, jac_b, blocks_b = _hook_contribution(declared, p_well, p_res)
+    rhs_b, jac_b, blocks_b = _hook_contribution(perforated, p_well, p_res)
     assert blocks_a == blocks_b
     np.testing.assert_array_equal(rhs_a, rhs_b)
     np.testing.assert_array_equal(jac_a, jac_b)
@@ -752,11 +774,11 @@ def test_the_declared_configuration_simulates_identically(tmp_path):
     """
     import os
 
-    shipped, declared = _build_olga_models()
+    shipped, perforated = _build_olga_models()
     cwd = pathlib.Path.cwd()
     os.chdir(MODEL_DIR)
     try:
-        for index, model in enumerate((shipped, declared)):
+        for index, model in enumerate((shipped, perforated)):
             model.set_output(output_folder=str(tmp_path / f"out{index}"))
             model.run(
                 days=1e-3,
@@ -768,5 +790,5 @@ def test_the_declared_configuration_simulates_identically(tmp_path):
         os.chdir(cwd)
     np.testing.assert_array_equal(
         np.asarray(shipped.physics.engine.X),
-        np.asarray(declared.physics.engine.X),
+        np.asarray(perforated.physics.engine.X),
     )

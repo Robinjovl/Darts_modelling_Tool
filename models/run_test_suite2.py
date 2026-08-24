@@ -261,7 +261,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
         _ensure_parent_dir(stderr_path)
         well_time_series_snapshot = create_well_time_series_snapshot(model_path)
         with open(stdout_path, 'w') as stdout_file, open(stderr_path, 'w') as stderr_file:
-            mrun = subprocess.run(["python", "main.py", platform], stdout=stdout_file, stderr=stderr_file)
+            mrun = subprocess.run([sys.executable, "main.py", platform], stdout=stdout_file, stderr=stderr_file)
             rcode = mrun.returncode
         failed_well_time_series = 0
         n_well_time_series = 0

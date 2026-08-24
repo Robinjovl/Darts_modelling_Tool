@@ -70,6 +70,34 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
       max_axis_temp = thermal_var_etor->get_axis_max(T_VAR);
   }
 
+  // Stash this engine's operator-table layout on every well that carries a
+  // perforation flow law, so ms_well::calc_rates* can REPORT the law flux with
+  // the exact arithmetic this engine assembles (perforation_law_rates -- the
+  // shared source of truth; review finding R1). Reporting `p_diff * wi` there
+  // would export identically zero, because a non-Darcy perforation has a zero
+  // well index by construction.
+  for (ms_well *w : well_list_)
+  {
+    if (w->has_non_darcy_perforation())
+    {
+      perforation_law_layout &layout = w->law_layout;
+      layout.n_vars = N_VARS;
+      layout.p_var = P_VAR;
+      layout.z_var = Z_VAR;
+      layout.nc = NC;
+      layout.np = NP;
+      layout.ne = NE;
+      layout.n_ops = N_OPS;
+      layout.sat_op = SAT_OP;
+      layout.flux_op = FLUX_OP;
+      layout.grav_op = GRAV_OP;
+      layout.thermal = THERMAL ? 1 : 0;
+      layout.eps_z = params->sim_eps;
+      w->law_cell_spe = &mesh->cell_spe;
+      w->law_layout_set = true;
+    }
+  }
+
   return 0;
 }
 
@@ -135,6 +163,12 @@ void engine_super_cpu<NC, NP, THERMAL>::enable_flux_output()
 //
 // The residual convention is the engine's: RHS[i] accumulates -dt*(inflow), so
 // a rate leaving block i is added with a plus sign.
+//
+// Steps [1]-[5] (rates and analytic derivatives) live in the shared
+// perforation_law_rates() helper in ms_well.cpp, which the rate REPORTING
+// paths (ms_well::calc_rates*, value-only) call as well -- one source of
+// truth, so what is reported IS what was assembled (review finding R1). Only
+// the scatter [6] stays here.
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 void engine_super_cpu<NC, NP, THERMAL>::add_perforation_flow_law(
     index_t conn_idx, index_t i, index_t j, index_t diag_idx, index_t jac_idx,
@@ -147,248 +181,27 @@ void engine_super_cpu<NC, NP, THERMAL>::add_perforation_flow_law(
     const bool i_is_well = (i == wb);
     (void)j;
 
-    // [1] total rate and its (pressure-only) derivatives
-    const value_t q_tot = law.intercept +
-                          law.productivity * (X[wb * N_VARS + P_VAR] - X[rb * N_VARS + P_VAR] - law.offset);
-    const bool up_is_well = (q_tot >= 0.0);
-    const index_t up = up_is_well ? wb : rb;
+    perforation_law_layout layout;
+    layout.n_vars = N_VARS;
+    layout.p_var = P_VAR;
+    layout.z_var = Z_VAR;
+    layout.nc = NC;
+    layout.np = NP;
+    layout.ne = NE;
+    layout.n_ops = N_OPS;
+    layout.sat_op = SAT_OP;
+    layout.flux_op = FLUX_OP;
+    layout.grav_op = GRAV_OP;
+    layout.thermal = THERMAL ? 1 : 0;
+    layout.eps_z = params->sim_eps;
 
-    value_t dq_w[N_VARS], dq_r[N_VARS];
-    for (uint8_t v = 0; v < N_VARS; v++)
-    {
-        dq_w[v] = 0.0;
-        dq_r[v] = 0.0;
-    }
-    dq_w[P_VAR] = law.productivity;
-    dq_r[P_VAR] = -law.productivity;
-
-    // [2] upstream overall composition from the state, clipped and renormalized
-    value_t z[NC];
-    value_t dz[NC][N_VARS];
-    for (uint8_t c = 0; c < NC; c++)
-        for (uint8_t v = 0; v < N_VARS; v++)
-            dz[c][v] = 0.0;
-
-    if constexpr (NC == 1)
-    {
-        z[0] = 1.0;
-    }
-    else
-    {
-        value_t w[NC];
-        value_t dw[NC][N_VARS];
-        for (uint8_t c = 0; c < NC; c++)
-            for (uint8_t v = 0; v < N_VARS; v++)
-                dw[c][v] = 0.0;
-
-        value_t sum_z = 0.0;
-        for (uint8_t c = 0; c < NC - 1; c++)
-        {
-            w[c] = X[up * N_VARS + Z_VAR + c];
-            dw[c][Z_VAR + c] = 1.0;
-            sum_z += w[c];
-        }
-        w[NC - 1] = 1.0 - sum_z;
-        for (uint8_t c = 0; c < NC - 1; c++)
-            dw[NC - 1][Z_VAR + c] = -1.0;
-
-        const value_t eps_z = params->sim_eps;
-        value_t S = 0.0;
-        value_t dS[N_VARS];
-        for (uint8_t v = 0; v < N_VARS; v++)
-            dS[v] = 0.0;
-        for (uint8_t c = 0; c < NC; c++)
-        {
-            if (!(w[c] > eps_z))
-            {
-                w[c] = eps_z;
-                for (uint8_t v = 0; v < N_VARS; v++)
-                    dw[c][v] = 0.0;
-            }
-            S += w[c];
-            for (uint8_t v = 0; v < N_VARS; v++)
-                dS[v] += dw[c][v];
-        }
-        for (uint8_t c = 0; c < NC; c++)
-        {
-            z[c] = w[c] / S;
-            for (uint8_t v = 0; v < N_VARS; v++)
-                dz[c][v] = (dw[c][v] - z[c] * dS[v]) / S;
-        }
-    }
-
-    // [3] upstream mixture properties from the interpolated operators.
-    // An isothermal MOLAR law needs none of them, and then the flux is an exact
-    // function of the state alone.
-    const bool need_molar_density = THERMAL || (law.basis != ipr_rate_basis::MOLAR);
-    const bool need_molecular_weight = THERMAL || (law.basis == ipr_rate_basis::MASS);
-
-    value_t rho_m = 1.0, Mw = 1.0, h = 0.0;
-    value_t drho_m[N_VARS], dMw[N_VARS], dh[N_VARS];
-    for (uint8_t v = 0; v < N_VARS; v++)
-    {
-        drho_m[v] = 0.0;
-        dMw[v] = 0.0;
-        dh[v] = 0.0;
-    }
-
-    if (need_molar_density)
-    {
-        value_t rho_mass = 0.0, rho_h = 0.0;
-        value_t drho_mass[N_VARS], drho_h[N_VARS];
-        rho_m = 0.0;
-        for (uint8_t v = 0; v < N_VARS; v++)
-        {
-            drho_mass[v] = 0.0;
-            drho_h[v] = 0.0;
-        }
-
-        for (uint8_t p = 0; p < NP; p++)
-        {
-            const value_t s_p = op_vals_arr[up * N_OPS + SAT_OP + p];
-            const value_t *ds_p = &op_ders_arr[(up * N_OPS + SAT_OP + p) * N_VARS];
-
-            value_t f_p = 0.0;
-            value_t df_p[N_VARS];
-            for (uint8_t v = 0; v < N_VARS; v++)
-                df_p[v] = 0.0;
-            for (uint8_t c = 0; c < NC; c++)
-            {
-                f_p += op_vals_arr[up * N_OPS + FLUX_OP + p * NE + c];
-                for (uint8_t v = 0; v < N_VARS; v++)
-                    df_p[v] += op_ders_arr[(up * N_OPS + FLUX_OP + p * NE + c) * N_VARS + v];
-            }
-            rho_m += s_p * f_p;
-            for (uint8_t v = 0; v < N_VARS; v++)
-                drho_m[v] += ds_p[v] * f_p + s_p * df_p[v];
-
-            if (need_molecular_weight)
-            {
-                const value_t g_p = op_vals_arr[up * N_OPS + GRAV_OP + p];
-                rho_mass += s_p * g_p;
-                for (uint8_t v = 0; v < N_VARS; v++)
-                    drho_mass[v] += ds_p[v] * g_p + s_p * op_ders_arr[(up * N_OPS + GRAV_OP + p) * N_VARS + v];
-            }
-
-            if constexpr (THERMAL)
-            {
-                const value_t e_p = op_vals_arr[up * N_OPS + FLUX_OP + p * NE + NC];
-                rho_h += s_p * e_p;
-                for (uint8_t v = 0; v < N_VARS; v++)
-                    drho_h[v] += ds_p[v] * e_p + s_p * op_ders_arr[(up * N_OPS + FLUX_OP + p * NE + NC) * N_VARS + v];
-            }
-        }
-
-        if (rho_m > 0.0)
-        {
-            if (need_molecular_weight)
-            {
-                Mw = rho_mass / rho_m;
-                for (uint8_t v = 0; v < N_VARS; v++)
-                    dMw[v] = (drho_mass[v] - Mw * drho_m[v]) / rho_m;
-            }
-            if constexpr (THERMAL)
-            {
-                h = rho_h / rho_m;
-                for (uint8_t v = 0; v < N_VARS; v++)
-                    dh[v] = (drho_h[v] - h * drho_m[v]) / rho_m;
-            }
-        }
-        else
-        {
-            // No fluid at the upstream block: nothing can flow through the perforation.
-            rho_m = 0.0;
-            Mw = 1.0;
-            h = 0.0;
-            for (uint8_t v = 0; v < N_VARS; v++)
-            {
-                drho_m[v] = 0.0;
-                dMw[v] = 0.0;
-                dh[v] = 0.0;
-            }
-        }
-    }
-
-    // [4] total MOLAR rate and its derivatives w.r.t. both connected blocks
-    value_t m_rate = 0.0;
-    value_t dm_w[N_VARS], dm_r[N_VARS];
-    for (uint8_t v = 0; v < N_VARS; v++)
-    {
-        dm_w[v] = 0.0;
-        dm_r[v] = 0.0;
-    }
-
-    switch (law.basis)
-    {
-    case ipr_rate_basis::MOLAR:
-        m_rate = q_tot;
-        for (uint8_t v = 0; v < N_VARS; v++)
-        {
-            dm_w[v] = dq_w[v];
-            dm_r[v] = dq_r[v];
-        }
-        break;
-
-    case ipr_rate_basis::MASS:
-    {
-        m_rate = q_tot / Mw;
-        value_t *dm_up = up_is_well ? dm_w : dm_r;
-        for (uint8_t v = 0; v < N_VARS; v++)
-        {
-            dm_w[v] = dq_w[v] / Mw;
-            dm_r[v] = dq_r[v] / Mw;
-        }
-        for (uint8_t v = 0; v < N_VARS; v++)
-            dm_up[v] -= q_tot * dMw[v] / (Mw * Mw);
-        break;
-    }
-
-    case ipr_rate_basis::VOLUMETRIC:
-    {
-        m_rate = q_tot * rho_m;
-        value_t *dm_up = up_is_well ? dm_w : dm_r;
-        for (uint8_t v = 0; v < N_VARS; v++)
-        {
-            dm_w[v] = dq_w[v] * rho_m;
-            dm_r[v] = dq_r[v] * rho_m;
-        }
-        for (uint8_t v = 0; v < N_VARS; v++)
-            dm_up[v] += q_tot * drho_m[v];
-        break;
-    }
-    }
-
-    // [5] component and energy rates, positive from the well into the reservoir
+    // [1]-[5] rates (positive from the well into the reservoir) and analytic
+    // derivatives w.r.t. the states of both connected blocks
     value_t rate[NE];
-    value_t drate_w[NE][N_VARS], drate_r[NE][N_VARS];
-
-    for (uint8_t c = 0; c < NC; c++)
-    {
-        rate[c] = m_rate * z[c];
-        for (uint8_t v = 0; v < N_VARS; v++)
-        {
-            drate_w[c][v] = dm_w[v] * z[c];
-            drate_r[c][v] = dm_r[v] * z[c];
-        }
-        value_t *drate_up = up_is_well ? drate_w[c] : drate_r[c];
-        for (uint8_t v = 0; v < N_VARS; v++)
-            drate_up[v] += m_rate * dz[c][v];
-    }
-
-    if constexpr (THERMAL)
-    {
-        const value_t spe = mesh->cell_spe[up];
-        const value_t specific = h + spe * Mw;
-        rate[NC] = m_rate * specific;
-        for (uint8_t v = 0; v < N_VARS; v++)
-        {
-            drate_w[NC][v] = dm_w[v] * specific;
-            drate_r[NC][v] = dm_r[v] * specific;
-        }
-        value_t *drate_up = up_is_well ? drate_w[NC] : drate_r[NC];
-        for (uint8_t v = 0; v < N_VARS; v++)
-            drate_up[v] += m_rate * (dh[v] + spe * dMw[v]);
-    }
+    value_t drate_w[NE * N_VARS], drate_r[NE * N_VARS];
+    perforation_law_rates(law, wb, rb, layout, X.data(), op_vals_arr.data(), op_ders_arr.data(),
+                          THERMAL ? mesh->cell_spe.data() : nullptr,
+                          rate, drate_w, drate_r);
 
     // [6] scatter into row i: the well side loses the rate, the reservoir side gains it
     const value_t sgn = i_is_well ? 1.0 : -1.0;
@@ -396,8 +209,8 @@ void engine_super_cpu<NC, NP, THERMAL>::add_perforation_flow_law(
     {
         RHS[i * N_VARS + c] += sgn * rate[c] * dt;
 
-        const value_t *d_self = i_is_well ? drate_w[c] : drate_r[c];
-        const value_t *d_other = i_is_well ? drate_r[c] : drate_w[c];
+        const value_t *d_self = i_is_well ? &drate_w[c * N_VARS] : &drate_r[c * N_VARS];
+        const value_t *d_other = i_is_well ? &drate_r[c * N_VARS] : &drate_w[c * N_VARS];
         for (uint8_t v = 0; v < N_VARS; v++)
         {
             Jac[diag_idx + c * N_VARS + v] += sgn * d_self[v] * dt;

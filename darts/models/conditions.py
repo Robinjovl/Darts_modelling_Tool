@@ -141,16 +141,20 @@ class BlockCSRView:
         self.pattern = pattern
 
     def read_only(self) -> "BlockCSRView":
-        """A twin of this view whose value array cannot be written.
+        """A twin of this view none of whose arrays can be written.
 
         Handed to :class:`NonlinearIterationObserver` implementations so a
         read-only observer cannot mutate the Jacobian even by accident (a write
-        raises ``ValueError: assignment destination is read-only``).
+        raises ``ValueError: assignment destination is read-only``). ALL four
+        arrays are frozen -- corrupting the CSR structure (``jac_rows``,
+        ``jac_cols``, ``jac_diags``) through an observer would be worse than
+        changing a value, so the structural arrays get the same treatment as
+        ``jac_vals``.
         """
         twin = object.__new__(BlockCSRView)
-        twin.jac_rows = self.jac_rows
-        twin.jac_cols = self.jac_cols
-        twin.jac_diags = self.jac_diags
+        twin.jac_rows = _frozen(self.jac_rows)
+        twin.jac_cols = _frozen(self.jac_cols)
+        twin.jac_diags = _frozen(self.jac_diags)
         twin.jac_vals = _frozen(self.jac_vals)
         twin.n_vars = self.n_vars
         twin.block_size = self.block_size
@@ -397,7 +401,8 @@ class AssemblyContext:
         """A twin of this context whose arrays cannot be written.
 
         Handed to every :class:`NonlinearIterationObserver`: ``rhs``, ``X``,
-        ``Xn`` and the Jacobian values are non-writable numpy views, so an
+        ``Xn`` and the Jacobian (values AND the CSR rows/cols/diags structure)
+        are non-writable numpy views, so an
         observer that tries to mutate the assembled system raises
         ``ValueError: assignment destination is read-only`` instead of quietly
         changing the answer.
@@ -435,7 +440,8 @@ class NonlinearIterationObserver:
     **It is forbidden to mutate the residual or the Jacobian**, and the
     framework enforces it rather than trusting it: the context handed to
     :meth:`observe` is :meth:`AssemblyContext.read_only`, whose ``rhs``, ``X``,
-    ``Xn`` and ``jac.jac_vals`` are non-writable numpy views. An observer that
+    ``Xn`` and every ``jac`` array (values and CSR structure) are non-writable
+    numpy views. An observer that
     needs to CHANGE the system is not an observer -- it is a
     :class:`ConditionItem`.
 
@@ -1573,7 +1579,12 @@ class CellSource(ConditionItem):
         if not len(self.cells):
             return
         rates = self.evaluate_rates(ctx)
-        ctx.rhs[self._rhs_idx] -= (rates * ctx.dt).ravel()
+        # np.add.at rather than an advanced-index `-=` : a cell may
+        # legitimately appear twice in `cells`, and indexed subtraction DROPS
+        # duplicate contributions (the last write wins) while the Jacobian
+        # scatter below accumulates them -- the residual would then not be
+        # what the advertised analytic Jacobian differentiates.
+        np.add.at(ctx.rhs, self._rhs_idx, -(rates * ctx.dt).ravel())
         if self.provides_jacobian:
             d_rates = self.evaluate_d_rates(ctx)
             # np.add.at rather than += : a cell may legitimately appear twice

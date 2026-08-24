@@ -498,3 +498,106 @@ def test_interface_flux_without_selectors_resolves_at_construction():
             )
 
     assert _Flux([(1, 2)]).connections == [(1, 2)]
+
+
+# ----------------------------------------------- R4: frozen CSR STRUCTURE too
+# A "read-only" BlockCSRView twin froze only jac_vals; the structural arrays
+# (rows/cols/diags) passed through writable, so an observer could corrupt the
+# CSR pattern -- worse than writing a value. All four must refuse writes.
+
+
+def _observer_context_with_jacobian():
+    engine = _FakeCSREngine()
+    view = BlockCSRView(engine, N_VARS)
+    return engine, _ctx(jac=view)
+
+
+@pytest.mark.parametrize("array", ["jac_rows", "jac_cols", "jac_diags", "jac_vals"])
+def test_an_observer_cannot_write_any_jacobian_array(array):
+    engine, ctx = _observer_context_with_jacobian()
+    before = np.array(getattr(engine, array), copy=True)
+
+    class _Writer(NonlinearIterationObserver):
+        def observe(self, observed):
+            getattr(observed.jac, array)[0] = 7
+
+    conditions = ConditionSet()
+    conditions.add(_Writer())
+    with pytest.raises(ValueError, match="read-only"):
+        conditions.apply(ctx)
+    np.testing.assert_array_equal(getattr(engine, array), before)
+
+
+@pytest.mark.parametrize("array", ["jac_rows", "jac_cols", "jac_diags", "jac_vals"])
+def test_the_read_only_twin_freezes_every_array_directly(array):
+    engine = _FakeCSREngine()
+    twin = BlockCSRView(engine, N_VARS).read_only()
+    frozen = getattr(twin, array)
+    assert frozen.flags.writeable is False
+    with pytest.raises(ValueError, match="read-only"):
+        frozen[0] = 7
+    # freezing is a view property: the engine's own array stays writable
+    np.asarray(getattr(engine, array))[0] = np.asarray(getattr(engine, array))[0]
+
+
+def test_the_read_only_twin_still_navigates_the_pattern():
+    engine = _FakeCSREngine()
+    view = BlockCSRView(engine, N_VARS)
+    twin = view.read_only()
+    assert twin.block_pos(1, 2) == view.block_pos(1, 2)
+    assert twin.diag_pos(2) == view.diag_pos(2)
+
+
+# ------------------------------- R6: observer-only sets on a mechanics model
+# ConditionSet.compile() returns early for observer-only sets BEFORE its
+# mechanics rejection, so such a set compiles on a mechanics model. The runtime
+# guard in DartsModel.apply_rhs_flux() must agree: it triggers on contributing
+# ITEMS, not on the truthiness of the whole set, so the observer-only model
+# survives its first assembly (the exact scenario of the review).
+
+
+def _mechanics_stub_model(conditions):
+    from darts.models.darts_model import DartsModel
+    from darts.nonlinear_solvers.mechanics import MechanicsNewtonSolver
+
+    class _MechModel(DartsModel):
+        pass
+
+    engine = _FakeCSREngine()
+    engine.RHS = np.zeros(3 * N_VARS)
+    engine.Xn = np.zeros(3 * N_VARS)
+
+    model = object.__new__(_MechModel)
+    model.nonlinear_solver = object.__new__(MechanicsNewtonSolver)
+    model.platform = "cpu"
+    model.physics = _StubPhysics(engine)
+    model.reservoir = _StubReservoir()
+    model.conditions = conditions
+    model._conditions_csr_view = None
+    model._assembly_iteration = 0
+    model._pattern_version = 0
+    return model
+
+
+def test_observer_only_mechanics_model_compiles_and_survives_its_first_apply():
+    conditions = ConditionSet()
+    observer = conditions.add(_Recorder())
+    model = _mechanics_stub_model(conditions)
+
+    # compiles: the observer-only early return precedes the mechanics rejection
+    assert conditions.compile(model) is conditions
+
+    # ... and the first assembly must AGREE with that decision, not raise
+    model.apply_rhs_flux(dt=0.5, t=1.0)
+    assert len(observer.seen) == 1
+    (t_seen, dt_seen, rhs_seen) = observer.seen[0]
+    assert (t_seen, dt_seen) == (1.0, 0.5)
+    np.testing.assert_array_equal(rhs_seen, np.zeros(3 * N_VARS))
+
+
+def test_item_carrying_sets_still_refuse_the_mechanics_runtime_path():
+    conditions = ConditionSet()
+    conditions.add(CellSource(cells=[0], rates=[[1.0, 1.0]]))
+    model = _mechanics_stub_model(conditions)
+    with pytest.raises(RuntimeError, match="mechanics"):
+        model.apply_rhs_flux(dt=0.5, t=1.0)

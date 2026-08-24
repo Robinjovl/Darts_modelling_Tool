@@ -280,3 +280,79 @@ def test_finite_difference_check_rejects_a_wrong_d_rates():
     analytic = _diagonal_block(jac_vals, engine, 2)
     finite_difference = _fd_jacobian_columns(item, model, engine, X0, dt, 2)
     assert analytic != pytest.approx(finite_difference, rel=1e-6, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Duplicate cells (review finding R3): a cell may legitimately appear twice in
+# `cells`, and BOTH scatters must accumulate. Advanced-index subtraction on the
+# residual dropped the first contribution (the last write won) while the
+# np.add.at Jacobian scatter kept both -- so the advertised analytic Jacobian
+# was not the derivative of the assembled residual.
+# ---------------------------------------------------------------------------
+
+
+def test_duplicate_cells_accumulate_in_the_residual():
+    """The review's reproduction: cells [0, 0] with constant rates must yield
+    the ADDITIVE residual, not the last row alone."""
+    engine = FakeCSREngine()
+    model = _StubModel(engine)
+    item = CellSource(cells=[0, 0], rates=[[1.0, 2.0, 5.0], [3.0, 4.0, 7.0]])
+    item.bind(model)
+
+    rhs, _ = _apply(item, model, engine, _state_vector(), dt=1.0)
+    assert rhs[0:N_VARS] == pytest.approx([-4.0, -6.0, -12.0])
+    assert np.all(rhs[N_VARS:] == 0.0)
+
+
+def test_duplicate_cells_with_constant_d_rates_are_consistent():
+    """Constant `d_rates` on a duplicated cell: the accumulated diagonal block
+    must be the derivative of the accumulated residual (FD across the
+    duplicate), and the residual must carry BOTH contributions."""
+    engine = FakeCSREngine()
+    model = _StubModel(engine)
+    Mw = [44.01, 16.04, 58.12]
+    single = _CompositionSplitSource([2], mass_rate=10.0, Mw=Mw)
+    single.bind(model)
+    item = _CompositionSplitSource([2, 2], mass_rate=10.0, Mw=Mw)
+    item.bind(model)
+
+    dt = 0.75
+    X0 = _state_vector()
+    rhs_single, _ = _apply(single, model, engine, X0, dt)
+    rhs, jac_vals = _apply(item, model, engine, X0, dt)
+
+    # duplicating the cell exactly doubles the residual contribution
+    assert rhs == pytest.approx(2.0 * rhs_single)
+
+    analytic = _diagonal_block(jac_vals, engine, 2)
+    finite_difference = _fd_jacobian_columns(item, model, engine, X0, dt, 2)
+    assert analytic == pytest.approx(finite_difference, rel=1e-6, abs=1e-9)
+
+
+def test_duplicate_cells_with_a_state_dependent_callable_are_consistent():
+    """A rate CALLABLE with an analytic `d_rates` callable on a duplicated
+    cell: residual accumulates both rows, and the accumulated Jacobian matches
+    a central finite difference of the accumulated residual."""
+    engine = FakeCSREngine()
+    model = _StubModel(engine)
+    item = _CoupledRateSource(
+        [1, 1],
+        alpha=[[0.7, -0.4, 0.2], [0.1, 0.5, -0.3]],
+        beta=[[1.3, 0.8, -0.6], [-0.9, 0.4, 1.1]],
+        gamma=[[0.05, -0.02, 0.03], [-0.04, 0.06, 0.01]],
+    )
+    item.bind(model)
+
+    dt = 0.37
+    X0 = _state_vector()
+    rhs, jac_vals = _apply(item, model, engine, X0, dt)
+
+    # the residual carries the SUM of the two rate rows of the same cell
+    states = X0[N_VARS : 2 * N_VARS][None, :].repeat(2, axis=0)
+    both = item.state_rates(0.0, states)
+    assert rhs[N_VARS : 2 * N_VARS] == pytest.approx(-dt * both.sum(axis=0))
+
+    analytic = _diagonal_block(jac_vals, engine, 1)
+    finite_difference = _fd_jacobian_columns(item, model, engine, X0, dt, 1)
+    # rel 5e-6: the doubled trig terms carry twice the FD truncation error
+    assert analytic == pytest.approx(finite_difference, rel=5e-6, abs=1e-9)

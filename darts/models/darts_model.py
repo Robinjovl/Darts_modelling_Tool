@@ -1463,7 +1463,16 @@ class DartsModel:
         :type t: float
         """
         if self.conditions:
-            if isinstance(self.nonlinear_solver, MechanicsNewtonSolver):
+            # The mechanics rejection triggers on contributing ITEMS, not on
+            # the truthiness of the whole set: an observer-only set reads the
+            # assembled system and writes nothing, so row rescaling inside the
+            # pm/mech assembly cannot mis-scale anything it does. This matches
+            # ConditionSet.compile(), whose observer-only early return precedes
+            # its mechanics rejection -- an observer-only mechanics model that
+            # compiled must also survive its first assembly.
+            if self.conditions.items and isinstance(
+                self.nonlinear_solver, MechanicsNewtonSolver
+            ):
                 raise RuntimeError(
                     "Python-side RHS/Jacobian contributions (self.conditions) "
                     "are not supported with the mechanics engines: the pm/mech "
