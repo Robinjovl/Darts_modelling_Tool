@@ -579,12 +579,18 @@ class CPG_Reservoir(ReservoirBase):
         segment_direction: str = "z_axis",
         skin: float = 0.0,
         ms_epm: bool = False,
+        flow_law=None,
         verbose: bool = False,
     ):
         """
         Function to add a perforation to the well
 
         :param well_seg_idx: Currently, this is only used for struct_reservoir.
+        :param flow_law: Optional engine-side perforation flow law, e.g.
+                         :class:`~darts.pipes.linear_dfm_well_ipr.LinearIPR`; see
+                         :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.add_perforation`.
+                         Requires ``well_index=0.0``.
+        :type flow_law: object or None
         """
         well = self.get_well(well_name)
 
@@ -607,6 +613,12 @@ class CPG_Reservoir(ReservoirBase):
             well_indexD = wiD
 
         if res_block_local < 0:
+            if flow_law is not None:
+                raise ValueError(
+                    f"Well {well.name!r}: block [{i}, {j}, {k}] is inactive, so "
+                    "the perforation is dropped -- but it carries a flow law, which "
+                    "would then be silently ignored, leaving the well uncoupled."
+                )
             if verbose:
                 print(
                     f"Neglected perforation for well {well.name} to block [{i}, {j}, {k}] (inactive block)"
@@ -641,6 +653,14 @@ class CPG_Reservoir(ReservoirBase):
                 well.well_body_depth = well.well_head_depth
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
+                    if flow_law is not None:
+                        raise ValueError(
+                            f"Well {well.name!r} already has a perforation of block "
+                            f"[{i:d}, {j:d}, {k:d}]; a duplicate is normally dropped "
+                            "with a warning, but this one carries a flow law, which "
+                            "would then be silently ignored. Attach the flow law to "
+                            "the first perforation of that block instead."
+                        )
                     print(
                         f'Neglected duplicate perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}]'
                     )
@@ -648,6 +668,13 @@ class CPG_Reservoir(ReservoirBase):
             well.perforations = well.perforations + [
                 (well_block, res_block_local, well_index, well_indexD)
             ]
+            if flow_law is not None:
+                # After the perforation exists: the law is attached to it by index,
+                # and the engine's own validation (zero well index, non-negative
+                # productivity) runs here rather than at the first Newton iteration.
+                self._attach_perforation_flow_law(
+                    well, len(well.perforations) - 1, flow_law
+                )
             if verbose:
                 c = self.centroids_all_cells[res_block_local].values
                 print(

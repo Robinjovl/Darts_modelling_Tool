@@ -56,7 +56,10 @@ from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 #: instead of by the per-Newton Python condition item. They map onto the base
 #: variant they replicate. Available on every OLGA benchmark whose base variant is
 #: supported; they exist for the M5 A/B comparison and are NOT CI cases, because
-#: analytic derivatives change the iteration path and so the references.
+#: analytic derivatives change the iteration path and so the references. Unlike
+#: the Python-hook variants (which address the coupling directly and need no
+#: perforation), these keep the zero-well-index perforation: the engine law
+#: lives ON a perforation.
 ENGINE_IPR_FORMULATIONS = {
     'ipr_engine': None,
     'ipr_engine_volumetric': 'ipr_volumetric',
@@ -371,25 +374,55 @@ class OLGABenchmarkModel(CICDModel):
             well_1_name, well_1_ms_type, well_geometry=well_1_geometry
         )
 
-        # Well with a single perforation
-        well_1_perforated_segment = well_1_geometry.num_segments
+        # The lowermost well segment is coupled to reservoir cell (1, 1, 1)
+        well_1_coupled_segment = well_1_geometry.num_segments
 
-        self.reservoir.add_perforation(
-            well_1_name,
-            res_cell_idx=(1, 1, 1),
-            well_seg_idx=well_1_perforated_segment,
-            well_diameter=well_1_geometry.pipe_ID,
-            # well_index=65.54393 would model the variable injectivity equivalent to 1e5 kg/day/bar
-            well_index=0.0,
-            well_indexD=0.0,
-            # engine-side variants: the perforation IS the IPR, assembled in C++
-            flow_law=self.get_ipr_flow_law() if self.engine_side_ipr else None,
-        )
-
-        if not self.engine_side_ipr:
-            self.conditions.add(
-                LinearDFMWellIPRHook(self, [self.get_ipr_connection(well_1_name)])
+        if self.engine_side_ipr:
+            # Engine-side variants: the perforation IS the IPR, assembled in C++.
+            # The engine law lives ON a perforation, so these variants keep the
+            # zero-well-index perforation as the law's carrier.
+            self.reservoir.add_perforation(
+                well_1_name,
+                res_cell_idx=(1, 1, 1),
+                well_seg_idx=well_1_coupled_segment,
+                well_diameter=well_1_geometry.pipe_ID,
+                # well_index=65.54393 would model the variable injectivity equivalent to 1e5 kg/day/bar
+                well_index=0.0,
+                well_indexD=0.0,
+                flow_law=self.get_ipr_flow_law(),
             )
+        else:
+            # Python-hook variants: NO perforation at all. The connection is
+            # addressed directly by (well segment, reservoir block); the hook
+            # DECLARES the coupling and the framework adds it to the mesh as a
+            # zero-transmissibility connection before the engine allocates its
+            # matrix -- exactly what the zero-WI "dummy" perforation used to
+            # smuggle in (review item E5).
+            self.conditions.add(
+                LinearDFMWellIPRHook(
+                    self,
+                    [
+                        self.get_ipr_connection(
+                            well_1_name,
+                            well_segment_index=well_1_coupled_segment,
+                            res_block_index=self.res_block_of_cell(1, 1, 1),
+                        )
+                    ],
+                )
+            )
+
+    def res_block_of_cell(self, i: int, j: int, k: int) -> int:
+        """Local (active) block index of the 1-based structured cell ``(i, j, k)``.
+
+        The same global-index convention as ``StructDiscretizer.calc_well_index``:
+        I is the fastest index, K the slowest, and ``global_to_local`` maps the
+        full-grid index to the active-cell numbering the engine uses.
+        """
+        discretizer = self.reservoir.discretizer
+        global_index = (
+            (k - 1) * discretizer.nx * discretizer.ny + (j - 1) * discretizer.nx + (i - 1)
+        )
+        return int(discretizer.global_to_local[global_index])
 
     def get_ipr_parameters(self) -> dict:
         """IPR coefficients of the active formulation, in one place.
@@ -426,13 +459,22 @@ class OLGABenchmarkModel(CICDModel):
             ipr_intercept=0.0,
         )
 
-    def get_ipr_connection(self, well_name):
-        """Return the IPR connection of the well perforation for the active formulation."""
+    def get_ipr_connection(self, well_name, well_segment_index, res_block_index):
+        """The IPR connection of the active formulation, addressed DIRECTLY.
+
+        The pair is named by (well segment, reservoir block) -- no perforation is
+        involved: the hook declares the coupling and the framework adds it to the
+        mesh (see :class:`~darts.pipes.linear_dfm_well_ipr.LinearDFMWellIPRConnection`).
+
+        :param well_name: name of the DFM well
+        :param well_segment_index: 1-based well segment index (2..num_segments)
+        :param res_block_index: local (active) reservoir block index
+        """
         params = self.get_ipr_parameters()
-        perforation_index = len(self.reservoir.get_well(well_name).perforations) - 1
         return LinearDFMWellIPRConnection(
             well_name=well_name,
-            perforation_index=perforation_index,
+            well_segment_index=well_segment_index,
+            res_block_index=res_block_index,
             **params,
         )
 

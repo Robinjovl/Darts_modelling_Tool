@@ -137,8 +137,15 @@ class LinearIPR:
 #     with the well-operator slot (``len(op_list) - 1``), so ``op_num`` is NOT
 #     a region tag there and must not be used.
 #
-# TODO(M4): move these helpers into a shared ``darts.pipes`` utility module
-# once the conditions layer owns the block -> region mapping.
+# DECISION (M7; was a TODO left over from M4): the helpers STAY in this module.
+# The conditions layer still does not own a block -> region mapping -- the
+# engine-side ``mesh.op_num`` remains the single source of truth and is read
+# directly here -- so there is no conditions-side home to move them to. Within
+# ``darts.pipes`` this module IS the shared location: the only other consumer,
+# ``darts.pipes.add_lateral_heat_exchange``, imports
+# ``well_cell_property_container`` from here, and a separate utility module
+# would add an import hop without removing any duplication. Revisit only if
+# the conditions layer grows a first-class region map for lowered laws.
 # --------------------------------------------------------------------------
 
 

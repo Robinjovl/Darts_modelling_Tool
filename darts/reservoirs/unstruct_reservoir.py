@@ -166,6 +166,7 @@ class UnstructReservoir(ReservoirBase):
         segment_direction: str = "z_axis",
         skin: float = 0.0,
         ms_epm: bool = False,
+        flow_law=None,
         verbose: bool = False,
     ):
         """
@@ -174,6 +175,11 @@ class UnstructReservoir(ReservoirBase):
         :param well_seg_idx: Currently, this is only used for struct_reservoir.
         :param res_cell_idx: Index of reservoir cell to be perforated
         :type res_cell_idx: Reservoir cell index for the unstructured reservoir grid must be an integer.
+        :param flow_law: Optional engine-side perforation flow law, e.g.
+                         :class:`~darts.pipes.linear_dfm_well_ipr.LinearIPR`; see
+                         :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.add_perforation`.
+                         Requires ``well_index=0.0``.
+        :type flow_law: object or None
         """
         well = self.get_well(well_name)
 
@@ -181,6 +187,13 @@ class UnstructReservoir(ReservoirBase):
         # res_cell_idx has index=1 in perforation element: (well_block, res_cell_idx, well_index, well_indexD)
         perf_indices = perf_indices[:, 1] if len(well.perforations) > 0 else []
         if res_cell_idx in perf_indices:
+            if flow_law is not None:
+                raise ValueError(
+                    f"Well {well.name!r} already has a perforation of block "
+                    f"{res_cell_idx:d}, and this duplicate carries a flow law, "
+                    "which would then never be attached. Attach the flow law to "
+                    "the first perforation of that block instead."
+                )
             print(
                 "There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!"
             )
@@ -214,6 +227,14 @@ class UnstructReservoir(ReservoirBase):
         well.perforations = well.perforations + [
             (well_block, res_cell_idx, well_index, well_indexD)
         ]
+
+        if flow_law is not None:
+            # After the perforation exists: the law is attached to it by index,
+            # and the engine's own validation (zero well index, non-negative
+            # productivity) runs here rather than at the first Newton iteration.
+            self._attach_perforation_flow_law(
+                well, len(well.perforations) - 1, flow_law
+            )
 
         if verbose:
             print(

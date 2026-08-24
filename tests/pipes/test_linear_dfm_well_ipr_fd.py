@@ -83,13 +83,31 @@ def dfm_model():
 
 @pytest.fixture(scope="module")
 def harness(dfm_model):
-    """Static indices shared by all cases."""
+    """Static indices shared by all cases.
+
+    The shipped model no longer creates the zero-WI "dummy" perforation: its
+    hook addresses the (well segment, reservoir block) pair directly and
+    DECLARES the coupling. This suite exercises the perforation-index
+    addressing mode and its validation paths, so the pair is recovered from the
+    registered hook and an equivalent zero-WI perforation RECORD is installed
+    on the well. The record is metadata only -- the mesh and the engine are
+    already built (from the declared coupling), exactly as they were when the
+    perforation supplied it, which the declared-stencil suite proves
+    bit-identically.
+    """
+    from darts.pipes.linear_dfm_well_ipr import LinearDFMWellIPRHook
+
     engine = dfm_model.physics.engine
     n_vars = dfm_model.physics.n_vars
     well = dfm_model.reservoir.wells[0]
-    perf_segment_local, res_block, well_index, well_indexD = well.perforations[0]
-    assert well_index == 0.0 and well_indexD == 0.0  # IPR manages the flux
-    well_block = well.well_body_idx + perf_segment_local
+    (registered,) = [
+        item for item in dfm_model.conditions if isinstance(item, LinearDFMWellIPRHook)
+    ]
+    pair = registered._resolve_pairs()[0]
+    well_block = int(pair["well_block_idx"])
+    res_block = int(pair["res_block_idx"])
+    assert len(well.perforations) == 0  # the flagship: no dummy perforation
+    well.perforations = [(well_block - int(well.well_body_idx), res_block, 0.0, 0.0)]
     view = BlockCSRView(engine, n_vars)
     return {
         "model": dfm_model,

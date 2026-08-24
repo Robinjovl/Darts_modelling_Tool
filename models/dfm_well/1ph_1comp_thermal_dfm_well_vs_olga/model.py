@@ -209,28 +209,38 @@ class Model(CICDModel):
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
-        # Well with a single perforation
+        # The lowermost well segment is coupled to reservoir cell (1, 1, 1)
         well_1_perforated_segment = well_1_geometry.num_segments
 
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
-                                       well_diameter=well_1_geometry.pipe_ID,
-                                       well_index=0.0,
-                                       well_indexD=0.0,
-                                       # engine-side variant: the perforation IS the IPR, assembled in C++
-                                       flow_law=self.get_ipr_flow_law() if self.engine_side_ipr else None,
-                                       )
-
-        if not self.engine_side_ipr:
+        if self.engine_side_ipr:
+            # Engine-side variant: the perforation IS the IPR, assembled in C++.
+            # The engine law lives ON a perforation, so this variant keeps the
+            # zero-well-index perforation as the law's carrier.
+            self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1),
+                                           well_seg_idx=well_1_perforated_segment,
+                                           well_diameter=well_1_geometry.pipe_ID,
+                                           well_index=0.0,
+                                           well_indexD=0.0,
+                                           flow_law=self.get_ipr_flow_law(),
+                                           )
+        else:
+            # Python-hook variants: NO perforation at all. The connection is
+            # addressed directly by (well segment, reservoir block); the hook
+            # DECLARES the coupling and the framework adds it to the mesh as a
+            # zero-transmissibility connection before the engine allocates its
+            # matrix -- exactly what the zero-WI "dummy" perforation used to
+            # smuggle in (review item E5). Cell (1, 1, 1) is local block 0
+            # (I fastest, K slowest, mapped through global_to_local).
+            discretizer = self.reservoir.discretizer
+            res_block = int(discretizer.global_to_local[0])
             self.conditions.add(
                 LinearDFMWellIPRHook(
                     self,
                     [
                         LinearDFMWellIPRConnection(
                             well_name=well_1_name,
-                            perforation_index=len(
-                                self.reservoir.get_well(well_1_name).perforations
-                            )
-                            - 1,
+                            well_segment_index=well_1_perforated_segment,
+                            res_block_index=res_block,
                             pi=IPR_PRODUCTIVITY,
                             pi_type=PI_Type.MASS,
                             ipr_pressure_offset=0.0,
