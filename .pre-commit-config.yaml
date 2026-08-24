@@ -7,9 +7,13 @@ default_install_hook_types: [pre-commit, pre-push]
 repos:
   - repo: local
     hooks:
+      # The Windows jobs (.build-windows, .test-windows, windows-image-builder)
+      # run PowerShell, but gitlab-ci-verify always hands scripts to shellcheck
+      # as bash and offers no per-job opt-out. The excluded codes are the ones
+      # shellcheck raises purely from failing to parse PowerShell syntax.
       - id: gitlab-ci-verify
         name: gitlab-ci-verify
-        entry: gitlab-ci-verify --gitlab-ci-file .gitlab-ci.yml --no-lint-api --severity error --format json --output gitlab_ci_verify_report.json -E SC-1073,SC-1065,SC-1064,SC-1072
+        entry: gitlab-ci-verify --gitlab-ci-file .gitlab-ci.yml --no-lint-api --severity error --format json --output gitlab_ci_verify_report.json -E SC-1073,SC-1065,SC-1064,SC-1072,SC-2283,SC-1036,SC-1088
         language: python
         additional_dependencies: [gitlab-ci-verify==2.10.0]
         pass_filenames: false
