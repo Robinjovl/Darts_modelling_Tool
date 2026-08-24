@@ -7,7 +7,7 @@ from cases.base import (
 )
 
 
-def input_data_case_5(physics_type='single_phase_thermal'):
+def input_data_case_5(physics_type='single_phase_thermal', prod_well_coords=None, inj_well_coords=None):
     idata = input_data_base(thermal='thermal' in physics_type)
 
     # override permeability (default is 10 mD)
@@ -34,11 +34,14 @@ def input_data_case_5(physics_type='single_phase_thermal'):
     _set_wells(idata)
     _set_mesh_tags(idata)
     
-    idata.other.prod_well_coords = [idata.other.rsv_xy/2.+ idata.other.doublet_shift, idata.other.rsv_xy/2. ,
-            idata.other.rsv_top, idata.other.rsv_bottom]  # [X, Y, Z1, Z2]
+    if prod_well_coords is None or inj_well_coords is None:
+        raise ValueError("case_5 well coordinates must be supplied by main.py")
+    if len(prod_well_coords) != 4 or len(inj_well_coords) != 4:
+        raise ValueError("Well coordinates must be [X, Y, Z1, Z2]")
 
-    idata.other.inj_well_coords = [idata.other.rsv_xy/2.- idata.other.doublet_shift, idata.other.rsv_xy/2. ,
-            idata.other.rsv_top, idata.other.rsv_bottom]  # [X, Y, Z1, Z2]
+    # Use the same locations that main.py passes to the mesh generator.
+    idata.other.prod_well_coords = list(prod_well_coords)
+    idata.other.inj_well_coords = list(inj_well_coords)
 
     idata.other.points_xy = []  # no black reference line for case_1
     idata.other.use_mesh_bounds_in_plot = True

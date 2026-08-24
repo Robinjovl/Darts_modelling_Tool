@@ -13,6 +13,8 @@ def set_input_data(
     model_folder=None,
     physics_type="single_phase_thermal",
     wells_type="doublet",
+    prod_well_coords=None,
+    inj_well_coords=None,
 ):
 
     case_ = os.path.basename(case) # without meshes/ part
@@ -26,7 +28,11 @@ def set_input_data(
         case "case_4": # case_3 but heterogeneous geomechanical props (E, nu, biot, th_expn) per tag
             input_data = input_data_case_4(physics_type)
         case "case_5":
-            input_data = input_data_case_5(physics_type)
+            input_data = input_data_case_5(
+                physics_type,
+                prod_well_coords=prod_well_coords,
+                inj_well_coords=inj_well_coords,
+            )
         case "no_damage_zone":
             input_data = input_data_no_damage_zone(physics_type)
         case "no_damage_zone_heter_mech_prop":
