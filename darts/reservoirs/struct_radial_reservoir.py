@@ -276,8 +276,10 @@ class StructRadialReservoir(StructReservoir):
 
             # Perforate all boundary cells:
             for idxs in cell_idxs:
-                self.add_perforation(well_name, cell_index=idxs)
-                # self.add_perforation(well_name, cell_index=idxs, well_index=100, well_indexD=100)
+                # the parameter is res_cell_idx on every add_perforation
+                # signature; the historical cell_index= spelling raised TypeError
+                self.add_perforation(well_name, res_cell_idx=idxs)
+                # self.add_perforation(well_name, res_cell_idx=idxs, well_index=100, well_indexD=100)
 
         return
 

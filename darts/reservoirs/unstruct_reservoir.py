@@ -166,8 +166,8 @@ class UnstructReservoir(ReservoirBase):
         segment_direction: str = "z_axis",
         skin: float = 0.0,
         ms_epm: bool = False,
-        flow_law=None,
         verbose: bool = False,
+        flow_law=None,
     ):
         """
         Function to add a perforation to the well
@@ -178,10 +178,21 @@ class UnstructReservoir(ReservoirBase):
         :param flow_law: Optional engine-side perforation flow law, e.g.
                          :class:`~darts.pipes.linear_dfm_well_ipr.LinearIPR`; see
                          :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.add_perforation`.
-                         Requires ``well_index=0.0``.
+                         Requires ``well_index=0.0``. Deliberately the LAST
+                         parameter, after ``verbose``, so historical positional
+                         calls keep their meaning.
         :type flow_law: object or None
         """
         well = self.get_well(well_name)
+
+        # Translate the flow law BEFORE anything is mutated, so a wrong type or
+        # a failing to_engine() cannot leave a half-added perforation behind
+        # (finding F3).
+        engine_law = (
+            self._translate_perforation_flow_law(flow_law)
+            if flow_law is not None
+            else None
+        )
 
         perf_indices = np.array(well.perforations, dtype=int)
         # res_cell_idx has index=1 in perforation element: (well_block, res_cell_idx, well_index, well_indexD)
@@ -199,6 +210,25 @@ class UnstructReservoir(ReservoirBase):
             )
             exit()
 
+        if well_index is None or well_indexD is None:
+            # calculate well index and get local index of reservoir block
+            # (side-effect free, so it can run BEFORE any well mutation)
+            wi, wid = self.discretizer.calc_equivalent_well_index(
+                res_cell_idx, well_diameter, skin
+            )
+            well_index = wi if well_index is None else well_index
+            well_indexD = wid if well_indexD is None else well_indexD
+
+        # Validated BEFORE any mutation (finding F3): these used to run after
+        # the well depths were already updated, so a negative index aborted
+        # with the depth mutation kept.
+        assert well_index >= 0
+        assert well_indexD >= 0
+
+        # Everything below mutates the well; captured so a rejected flow law
+        # rolls the well back to this point (finding F3).
+        state_snapshot = self._snapshot_perforation_state(well)
+
         #  update well depth
         perf_indices = np.append(perf_indices, res_cell_idx).astype(
             int
@@ -206,17 +236,6 @@ class UnstructReservoir(ReservoirBase):
         # set well depth to the top perforation depth
         well.well_head_depth = np.array(self.mesh.depth, copy=False)[perf_indices].min()
         well.well_body_depth = well.well_head_depth
-
-        if well_index is None or well_indexD is None:
-            # calculate well index and get local index of reservoir block
-            wi, wid = self.discretizer.calc_equivalent_well_index(
-                res_cell_idx, well_diameter, skin
-            )
-            well_index = wi if well_index is None else well_index
-            well_indexD = wid if well_indexD is None else well_indexD
-
-        assert well_index >= 0
-        assert well_indexD >= 0
 
         # set well segment index (well block) equal to index of perforation layer
         if ms_epm:
@@ -228,13 +247,16 @@ class UnstructReservoir(ReservoirBase):
             (well_block, res_cell_idx, well_index, well_indexD)
         ]
 
-        if flow_law is not None:
+        if engine_law is not None:
             # After the perforation exists: the law is attached to it by index,
             # and the engine's own validation (zero well index, non-negative
             # productivity) runs here rather than at the first Newton iteration.
-            self._attach_perforation_flow_law(
-                well, len(well.perforations) - 1, flow_law
-            )
+            # A rejection rolls the whole method back (finding F3).
+            try:
+                well.set_perforation_flow_law(len(well.perforations) - 1, engine_law)
+            except Exception:
+                self._restore_perforation_state(well, state_snapshot)
+                raise
 
         if verbose:
             print(

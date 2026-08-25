@@ -161,7 +161,10 @@ class UnstructRadialReservoir(UnstructReservoir):
         )
         for _nth_perf, cell_index in enumerate(boundary_cells):
             self.add_perforation(
-                well_name="P1", cell_index=cell_index, well_index=100, well_indexD=100
+                well_name="P1",
+                res_cell_idx=cell_index,
+                well_index=100,
+                well_indexD=100,
             )
 
         return

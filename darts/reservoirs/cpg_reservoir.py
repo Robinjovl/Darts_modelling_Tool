@@ -579,8 +579,8 @@ class CPG_Reservoir(ReservoirBase):
         segment_direction: str = "z_axis",
         skin: float = 0.0,
         ms_epm: bool = False,
-        flow_law=None,
         verbose: bool = False,
+        flow_law=None,
     ):
         """
         Function to add a perforation to the well
@@ -589,10 +589,21 @@ class CPG_Reservoir(ReservoirBase):
         :param flow_law: Optional engine-side perforation flow law, e.g.
                          :class:`~darts.pipes.linear_dfm_well_ipr.LinearIPR`; see
                          :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.add_perforation`.
-                         Requires ``well_index=0.0``.
+                         Requires ``well_index=0.0``. Deliberately the LAST
+                         parameter, after ``verbose``, so historical positional
+                         calls keep their meaning.
         :type flow_law: object or None
         """
         well = self.get_well(well_name)
+
+        # Translate the flow law BEFORE anything is mutated, so a wrong type or
+        # a failing to_engine() cannot leave a half-added perforation behind
+        # (finding F3).
+        engine_law = (
+            self._translate_perforation_flow_law(flow_law)
+            if flow_law is not None
+            else None
+        )
 
         # calculate well index and get local index of reservoir block
         # ijk indices are is 1-based (starts from 1)
@@ -638,6 +649,10 @@ class CPG_Reservoir(ReservoirBase):
         else:
             well_block = 0
 
+        # Everything below mutates the well; captured so a rejected flow law
+        # rolls the well back to this point (finding F3).
+        state_snapshot = self._snapshot_perforation_state(well)
+
         # add completion only if target block is active
         if res_block_local > -1:
             if len(well.perforations) == 0:  # if adding the first perforation
@@ -654,6 +669,7 @@ class CPG_Reservoir(ReservoirBase):
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
                     if flow_law is not None:
+                        self._restore_perforation_state(well, state_snapshot)
                         raise ValueError(
                             f"Well {well.name!r} already has a perforation of block "
                             f"[{i:d}, {j:d}, {k:d}]; a duplicate is normally dropped "
@@ -668,13 +684,18 @@ class CPG_Reservoir(ReservoirBase):
             well.perforations = well.perforations + [
                 (well_block, res_block_local, well_index, well_indexD)
             ]
-            if flow_law is not None:
+            if engine_law is not None:
                 # After the perforation exists: the law is attached to it by index,
                 # and the engine's own validation (zero well index, non-negative
                 # productivity) runs here rather than at the first Newton iteration.
-                self._attach_perforation_flow_law(
-                    well, len(well.perforations) - 1, flow_law
-                )
+                # A rejection rolls the whole method back (finding F3).
+                try:
+                    well.set_perforation_flow_law(
+                        len(well.perforations) - 1, engine_law
+                    )
+                except Exception:
+                    self._restore_perforation_state(well, state_snapshot)
+                    raise
             if verbose:
                 c = self.centroids_all_cells[res_block_local].values
                 print(

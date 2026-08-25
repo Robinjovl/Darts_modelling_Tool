@@ -242,8 +242,8 @@ class StructReservoir(ReservoirBase):
         skin: float = 0.0,
         ms_epm: bool = None,
         with_peaceman_for_dfm_well: bool = False,
-        flow_law=None,
         verbose: bool = False,
+        flow_law=None,
     ):
         """
         Function to add a perforation to the well
@@ -258,6 +258,15 @@ class StructReservoir(ReservoirBase):
         :type flow_law: object or None
         """
         well = self.get_well(well_name)
+
+        # Translate the flow law BEFORE anything is mutated, so a wrong type or
+        # a failing to_engine() cannot leave a half-added perforation behind
+        # (finding F3).
+        engine_law = (
+            self._translate_perforation_flow_law(flow_law)
+            if flow_law is not None
+            else None
+        )
 
         # calculate well index and get local index of reservoir block
         i, j, k = res_cell_idx
@@ -306,6 +315,12 @@ class StructReservoir(ReservoirBase):
         if well_indexD is None:
             well_indexD = wid
 
+        # Validated BEFORE any mutation (finding F3): these used to sit at the
+        # end of the method, AFTER the perforation was appended and its flow
+        # law attached, so a negative index aborted with the mutations kept.
+        assert well_index >= 0
+        assert well_indexD >= 0
+
         if well.ms_type == ms_well.MS_Type.EPM:
             # set well segment index (well block) equal to index of perforation layer
             if ms_epm:
@@ -315,6 +330,10 @@ class StructReservoir(ReservoirBase):
         elif well.ms_type == ms_well.MS_Type.DFM:
             # Subtract 2 from the specified well_seg_idx because the index is 1-based here and DFM wells don't have the ghost cell.
             well_block = well_seg_idx - 2
+
+        # Everything below mutates the well; captured so a rejected flow law
+        # rolls the well back to this point (finding F3).
+        state_snapshot = self._snapshot_perforation_state(well)
 
         # add completion only if target block is active
         if res_block_local > -1:
@@ -351,6 +370,7 @@ class StructReservoir(ReservoirBase):
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
                     if flow_law is not None:
+                        self._restore_perforation_state(well, state_snapshot)
                         raise ValueError(
                             f"Well {well.name!r} already has a perforation of block "
                             f"[{i:d}, {j:d}, {k:d}]; a duplicate is normally dropped "
@@ -367,13 +387,18 @@ class StructReservoir(ReservoirBase):
                 (well_block, res_block_local, well_index, well_indexD)
             ]
 
-            if flow_law is not None:
+            if engine_law is not None:
                 # After the perforation exists: the law is attached to it by index,
                 # and the engine's own validation (zero well index, non-negative
                 # productivity) runs here rather than at the first Newton iteration.
-                self._attach_perforation_flow_law(
-                    well, len(well.perforations) - 1, flow_law
-                )
+                # A rejection rolls the whole method back (finding F3).
+                try:
+                    well.set_perforation_flow_law(
+                        len(well.perforations) - 1, engine_law
+                    )
+                except Exception:
+                    self._restore_perforation_state(well, state_snapshot)
+                    raise
 
             if verbose:
                 print(
@@ -392,9 +417,6 @@ class StructReservoir(ReservoirBase):
                     f'Neglected perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}] (inactive block)'
                 )
             return
-
-        assert well_index >= 0
-        assert well_indexD >= 0
 
         return
 
