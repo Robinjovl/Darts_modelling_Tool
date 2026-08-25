@@ -83,6 +83,7 @@ windows-image-builder:
   # shell runner (the only Windows job left that is not itself containerized).
   tags:
     - windows-shell
+  timeout: 6h
   needs: []
   variables:
     # Files whose content determines the Docker image content hash.
@@ -97,9 +98,7 @@ windows-image-builder:
     # Deliberately NOT tied to $DEFAULT_PY_VER: that would force a full
     # Windows image rebuild every time the default Python is bumped.
     GMSH_PY_VER: "3.11"
-    # Windows containers get a small default memory quota; the MSVC and gmsh
-    # builds need considerably more.
-    DOCKER_BUILD_MEMORY: "16g"
+    DOCKER_BUILD_MEMORY: "10g"
   before_script:
     # Pipe the token instead of passing -p: an argument would be visible in the
     # host process list. The shell runner shares a real machine, so this matters.
@@ -107,12 +106,19 @@ windows-image-builder:
   script:
     # --- content-hash check (mirrors docker-image-builder above) ---
     - |
+      # Stop on the first error: a silently skipped hash input would produce a
+      # stable tag that no longer tracks image content, so the registry check
+      # below would keep matching a stale image and never rebuild.
+      $ErrorActionPreference = 'Stop'
       $files = $env:DOCKER_HASH_FILES.Split(';') | Where-Object { $_ -ne '' } | ForEach-Object { $_.Trim() }
       Write-Host "Files included in content hash: $($files -join ' ')"
       $bytes = New-Object System.Collections.Generic.List[byte]
       foreach ($f in $files) {
-        if (-not (Test-Path $f)) { throw "Hash input file not found: $f" }
-        $bytes.AddRange([System.IO.File]::ReadAllBytes($f))
+        # Resolve to an absolute path: .NET methods resolve relative paths against
+        # [Environment]::CurrentDirectory, which PowerShell does not keep in sync
+        # with $PWD, so ReadAllBytes would look under the runner's start directory.
+        $full = (Resolve-Path -LiteralPath $f).Path
+        $bytes.AddRange([System.IO.File]::ReadAllBytes($full))
       }
       # Build args affect image content too, so hash them alongside the files.
       $bytes.AddRange([System.Text.Encoding]::UTF8.GetBytes("PY_VER=$env:GMSH_PY_VER"))
