@@ -493,15 +493,86 @@ each:
 | ID | Finding | Disposition |
 |---|---|---|
 | **R1** | **Critical.** The native perforation flow law (`ipr_engine`) is assembled into residual/Jacobian, but both rate-reporting paths — modern `output.py` (WI-based transmissibility) and the legacy C++ `ms_well` time data (`p_diff * wi`) — know nothing about it. With the law's required zero geometric WI, every exported perforation and summed-well rate is exactly `0.0` while the simulation carries physically active IPR flow. | **Fixed in M7.** Rate reporting is made law-aware so exported perforation and summed-well rates equal the assembled law flux, with end-to-end rate/output tests. See CHANGELOG. |
-| **R2** | The `ipr` env's installed package is stale MR-head code (`6f482ef6`); the repo-local engine binary embeds `f8d999aa` yet exposes post-M5 API — a dirty, non-reproducible build. A passing repo-root run is not evidence the installation works. | **Deferred — release step, owner: maintainer.** After the M7 source fixes land: clean-build exact HEAD, install into `ipr`, verify module/binary provenance from outside the checkout, and rerun both matrices without `PYTHONPATH` shadowing. The bare-`python` subprocess (V12, §10.6) belongs to the same step. |
+| **R2** | The `ipr` env's installed package is stale MR-head code (`6f482ef6`); the repo-local engine binary embeds `f8d999aa` yet exposes post-M5 API — a dirty, non-reproducible build. A passing repo-root run is not evidence the installation works. | **Resolved.** The exact M7 HEAD was clean-built and installed into `ipr`; module/binary provenance was verified from outside the checkout (installed and repo-local engines both embed the exact commit), and both matrices were rerun through the installed package without `PYTHONPATH` shadowing (500 pytest, 100/101 canonical — the one failure is the inherited `2ph_comp_solid` kinetic tolerance). The bare-`python` subprocess (V12) is fixed: `run_test_suite2.py` launches children with `sys.executable`. The 2026-08-24 follow-up review independently confirmed both. |
 | **R3** | Duplicate `CellSource` cells: the residual used advanced-index subtraction (last write wins) while the Jacobian used `np.add.at` (accumulates), so the advertised analytic Jacobian was not the derivative of the assembled residual. | **Fixed in M7.** Residual scatter accumulates (`np.add.at` semantics); duplicates now accumulate in **both** residual and Jacobian, with duplicate-cell tests. |
 | **R4** | The "read-only" observer context froze only `jac_vals`; `jac_rows`/`jac_cols`/`jac_diags` passed through writable, so an observer could corrupt CSR structure through an engine-backed view. | **Fixed in M7.** The read-only twin freezes all four block-CSR arrays; structural-write tests added. §M4's E8 row above is corrected accordingly. |
-| **R5** | `flow_law` is advertised on `ReservoirBase.add_perforation()` but only `StructReservoir` accepts it; `UnstructReservoir` and `CPG_Reservoir` raise an unexpected-keyword `TypeError`. | **In M7 scope (concurrent task): implement consistently or explicitly narrow.** If not closed in this wave it remains a merge blocker: either shared attachment in every concrete family with cross-family tests, or a documented capability/refusal narrowing to `StructReservoir`. |
+| **R5** | `flow_law` is advertised on `ReservoirBase.add_perforation()` but only `StructReservoir` accepts it; `UnstructReservoir` and `CPG_Reservoir` raise an unexpected-keyword `TypeError`. | **Fixed in M7** — every concrete family (`StructReservoir`, `UnstructReservoir`, `CPG_Reservoir`) accepts and attaches `flow_law` through shared translation code, with cross-family tests. The follow-up review then found two closure defects in this very fix — the parameter was inserted before `verbose` (breaking historical positional calls) and the attachment was not atomic on rejection — both fixed in M8 (§12: F2, F3). |
 | **R6** | An observer-only set on a mechanics model passes `compile()` (deliberate early return) but `apply_rhs_flux()` rejects the whole set at first assembly — compile and runtime disagree. | **Fixed in M7**, in the direction the reviewer called coherent once R4 is fixed: observer-only sets are permitted through the mechanics runtime path; contributing items on mechanics models are still refused at compile. The conditions reference documents the exemption. |
 | **R7** | The M6 inclusion gate is documented but not enforced: its own audit records drift-flux and lateral heat failing gates, yet both remain in core with CI variants. | **Re-labelled in M7, decision escalated.** `conditions_lowering.md` §4 is now explicitly an assessment with the inclusion decision pending; §4.4 lists, per feature, the unmet gates, the evidence that would close each, and the cheap in-repo closures (paper-pinned closure values, the OBL-vs-numerical derivative test, the `well_layers_props` deletion, scaling points). Closing the gates or evicting the features is recorded as a maintainer decision — this wave neither softened the gate nor evicted anything. |
 | **R8** | 117 generated PDFs under `models/dfm_well/*/output/` (5.5 MB), two run logs and a 187 KB generated mesh are tracked; commit `e7ac4d03` changes 117 output files alongside 13 source files, obscuring review. | **Handled in M7.** Every path was verified to be regenerated by `main.py`/test runs and consumed by no comparison; the exact 120-path removal list is `scratchpad_m7_artifact_removal.txt` (the `git rm` is executed centrally), and `.gitignore` now blocks `models/dfm_well/*/output/`, `log.txt` and the generated `transfinite.msh` from returning. The delivery-splitting half of R8 remains §8's plan (E12), still not delivered. |
 
-The third review also confirmed as still open: V11 (bai 50 K), V12 (bare
-`python`; folded into R2's release step), V13, V14, V15, E1 (reproduced with the
-same `1.32e-08` L2), E3's Windows references, E12, and §10.7's two inherited
-defects — all remain maintainer decisions as listed in §10.
+The third review also confirmed as still open: V11 (bai 50 K), V13, V14, V15,
+E1 (reproduced with the same `1.32e-08` L2), E3's Windows references, E12, and
+§10.7's two inherited defects — all remain maintainer decisions as listed in
+§10. V12 (bare `python` in `run_test_suite2.py`) has since been FIXED
+(`sys.executable`), verified by the installed-package canonical runs.
+
+## 12. Follow-up review (2026-08-24) — findings F1–F5/O1–O2 and their disposition
+
+A fourth review (`IPR_REFACTORED_FOLLOWUP_REVIEW_2026-08-24.md`, of head
+`1c98f9db`) verified every M7 fix above (R1, R3, R4, R6 resolved; R2's install
+provenance established) and found five new defects, all independently
+confirmed and resolved in the M8 wave:
+
+| ID | Finding | Disposition |
+|---|---|---|
+| **F1** | **High.** The modern Python rate exporter (`Output.calc_rates_at_conns()`) hard-coded operator region 0 for both connection endpoints (evaluators, layout, dead states), so the native-IPR law mirror read upstream density/molecular weight from the wrong region in multi-region models — reproduced: a two-region volumetric producer reported the region-0 rate while the engine assembled the region-1 rate (10x apart). | **Fixed in M8.** Endpoint operator rows are evaluated per block operator slot (`mesh.op_num` into the model's own `op_list`, exactly as the engine assembles; well blocks use the well-operator table), and every integer-`0` region key in `output.py` became `regions[0]`. A two-region native producer test pins Python == C++ reporting bit-for-bit AND the law arithmetic on the region-1 density; the test was verified to FAIL on the pre-fix code. Single-region exports are unchanged (the well-operator table holds identical FLUX/GRAV/SAT/LAMBDA/ENTH/TEMP entries; all existing references reproduce). |
+| **F2** | **High.** M7 inserted `flow_law` BEFORE the pre-existing final `verbose` parameter on every family, so a historical positional call ending in the verbose switch silently rebound it as a flow law (`TypeError` from the engine, speaking about a law the caller never supplied). | **Fixed in M8.** `flow_law` is the LAST parameter, after `verbose`, on the base and all three families — every pre-existing positional call binds as it always did. Signature-order pins plus per-family tests executing the full historical positional form. |
+| **F3** | **Medium.** All three `add_perforation` implementations appended the completion (and mutated depths / first-perforation segment geometry) before validating the law, so a rejected law left a live Darcy perforation and shifted state behind. | **Fixed in M8.** The law is translated (`to_engine()` + type check) before anything is mutated; every remaining rejection — engine zero-WI refusal, duplicate-target refusal — restores a full snapshot (perforations, both depths, segment increment/volume). Per-family tests assert zero observable state change across invalid-type, failing-conversion, junk-conversion, nonzero-WI, duplicate and inactive paths. |
+| **F4** | **Medium.** Retiring the dummy perforation removed ten rate columns from each of fourteen committed well-series references (33 -> 23 keys) with no breaking-output notice and no replacement diagnostic for the hook coupling. | **Resolved in M8 as a documented breaking schema change.** The removed columns were verified identically `0.0` in the old references (Darcy export with `WI == 0`) — they never carried the coupling flux. CHANGELOG now labels the change breaking, names the removed families and the migration; the actual coupling flux is served by the new `LinearDFMWellIPRHook.connection_rates()` diagnostic (assembly's own arithmetic, region-aware upstream properties), and the deliberate 23-key schema is pinned BY NAME in `tests/pipes/test_native_ipr_rates.py`. |
+| **F5** | **Low.** Docs contradicted the implemented state: the thermal model's docstring still called `ipr_engine` "not a CI case" while `run_test_suite2.py` registers it; this document still listed R5 as in-scope, R2 as deferred and V12 as open. | **Fixed in M8** — this section and the corrected rows above are that truth pass. |
+| **O1** | The M6 inclusion gate remains an unenforced maintainer decision (drift-flux / lateral-heat evidence gaps). | **Open — maintainer decision**, unchanged from R7: close the cheap gates listed in `conditions_lowering.md` §4.4, move the features model-side, or record a scoped exception with owners and deadlines. |
+| **O2** | E12's focused-MR split is undelivered; the branch is a single 184-file delivery over `development`, and live GitLab !305 still points at the unrefactored head. | **Open — maintainer decision**, unchanged from §8: deliver the split or explicitly accept the review/rollback/bisect risk, and update the MR source branch. |
+
+### 12.1 Adversarial verification of the M8 fixes (2026-08-25)
+
+Before delivery, six independent adversarial reviewers attacked the staged M8
+diff (one per finding plus a repo-wide residual sweep and a holistic diff
+review). F1, F2, F4 and F5 survived refutation; the sweep and the F3 attack
+found and reproduced three further defects, all fixed in the same wave:
+
+- **`well.n_segments` AttributeError** (`darts/models/conditions.py`): the
+  existing-coupling enumeration crashed `init()` for any model combining a
+  declared-stencil condition with an ordinary EPM well — the C++ `n_segments`
+  member is not exposed to Python. The EPM segment-connection count now
+  replicates `conn_mesh::add_wells` (max perforation segment + 1), with a
+  hook + EPM regression test.
+- **Perforation-index asserts after the mutations they guard**: struct
+  validated `well_index/well_indexD >= 0` after append-and-attach (a negative
+  thermal index with a law left an ATTACHED law behind and blocked retry);
+  unstruct validated after the depth update. Both hoisted before any
+  mutation; negative-index + retry tests per family, and the previously
+  vacuous rollback assertion was replaced with the retry property it exists
+  for.
+- **Radial reservoirs' `cell_index=` keyword** (pre-existing): both default
+  `set_wells()` implementations called `add_perforation` with a parameter no
+  signature has; renamed to `res_cell_idx`.
+
+The sweep also established the boundaries of F1's fix and recorded the
+remaining REGION-0 assumptions as open items (pre-existing, none introduced or
+touched by this branch):
+
+- **Phase-rate families are structurally region-blind**: the physics builds
+  exactly one well-control rate-operator table (on `regions[0]`), so
+  `phase_*_rates` and Darcy `advective_heat_rates` cannot be evaluated per
+  region (reproduced: a two-region Darcy producer's phase-sum is off by the
+  region density factor while the fixed component families are correct).
+  Disposition: documented limitation + `UserWarning` on foreign-region Darcy
+  endpoints; making them region-aware needs per-region well-control tables — a
+  physics-layer decision.
+- `THMCModel.set_op_list` hard-codes `[acc_flux_itor[0], acc_flux_w_itor]`,
+  ignoring `physics.regions` — a multi-region mech model would assemble
+  region-1 blocks with the WELL table (wrong residuals, not just output).
+- PH-state initialization converts temperature to enthalpy for every block
+  with `property_containers[0]` (`physics.py` depth-table and array paths), and
+  the hydrostatic initializer builds all its property lambdas from
+  `property_containers[0]` — multi-region models are initialized with
+  region-0 fluid properties everywhere.
+- The heat half of the two-region export test cannot discriminate the region
+  of the enthalpy FACTORS (a pure density scaling cancels in `h = rho_h/rho_m`);
+  an independent reconstruction verified they are region-aware, and the test
+  pins the full heat wiring including the per-slot dead states.
+- Ref-regen nit: commit `1c98f9db`'s message overstates "bit-identical" — the
+  retained columns of 12 of the 14 re-baselined refs drift by up to ~1e-12
+  against the old refs (run-to-run state noise at regeneration time), within
+  every comparison tolerance.

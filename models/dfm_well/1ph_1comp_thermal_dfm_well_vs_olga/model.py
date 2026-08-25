@@ -48,9 +48,10 @@ class Model(CICDModel):
             * ``'ipr_engine'`` — the base model with the linear IPR assembled
               ENGINE-SIDE as a perforation flow law
               (``add_perforation(flow_law=LinearIPR(...))``) instead of by the
-              per-Newton Python condition item. Not a CI case: analytic
+              per-Newton Python condition item. A CI case with its OWN
+              references (``run_test_suite2.py`` registers it): the analytic
               derivatives change the iteration path, so it does not reproduce
-              the reference bit-for-bit; it exists for the M5 A/B comparison.
+              the Python-hook references bit-for-bit.
         :type formulation: str or None
         """
         # Call base class constructor
