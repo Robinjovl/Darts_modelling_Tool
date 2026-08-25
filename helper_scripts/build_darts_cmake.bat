@@ -4,6 +4,7 @@ setlocal enabledelayedexpansion
 REM Read input arguments ---------------------------------------------
 set clean_mode=false
 set testing=false
+set install_test_extra=false
 set wheel=false
 set bos_solvers_artifact=false
 set bos_solvers_dir=""
@@ -22,7 +23,7 @@ set option=%1
 shift
 if "%option%"=="-h" goto :help_info
 if "%option%"=="-c" set clean_mode=true & goto parse_args
-if "%option%"=="-t" set testing=true & goto parse_args
+if "%option%"=="-t" set testing=true & set install_test_extra=true & goto parse_args
 if "%option%"=="-w" set wheel=true & goto parse_args
 if "%option%"=="-m" set MT=true & goto parse_args
 if "%option%"=="-G" set GPU=true & goto parse_args
@@ -67,6 +68,7 @@ echo    fetch bos_solvers_artifact = %bos_solvers_artifact%
 echo    config = %config%
 echo    gpu = %GPU%
 echo    testing = %testing%
+echo    install test dependencies = %install_test_extra%
 echo    generate python wheel = %wheel%
 echo    Multi thread = %MT%
 echo    Phreeqc support = %phreeqc%
@@ -98,14 +100,22 @@ if %skip_req%==false (
   cd thirdparty
 
   echo - Install requirements: START
-  mkdir build
+  if not exist build mkdir build
 
   rem -- Install Hypre
+  if not exist hypre\src\cmbuild mkdir hypre\src\cmbuild
   cd hypre\src\cmbuild
   rem For debugging: -DHYPRE_ENABLE_PRINT
-  cmake -D HYPRE_BUILD_TESTS=ON ^
-        -D HYPRE_BUILD_EXAMPLES=ON ^
-        -D HYPRE_WITH_MPI=OFF ^
+  rem Tests/examples are never run, only the library is used, so don't build
+  rem them. Building them also made parallel MSBuild race on the per-directory
+  rem "re-run cmake if generate.stamp is stale" custom rule across the ~30 test
+  rem projects ("Cannot restore timestamp ... Access is denied" -> MSB8066).
+  rem CMAKE_SUPPRESS_REGENERATION drops ZERO_CHECK and those stamp-check rules
+  rem entirely; safe for a one-shot CI configure.
+  cmake -D HYPRE_BUILD_TESTS=OFF ^
+        -D HYPRE_BUILD_EXAMPLES=OFF ^
+        -D HYPRE_ENABLE_MPI=OFF ^
+        -D CMAKE_SUPPRESS_REGENERATION=ON ^
         -D CMAKE_INSTALL_PREFIX=..\..\..\install .. > ..\..\..\..\make_hypre.log || goto :error
   msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\..\make_hypre.log || goto :error
   cd ..\..\..\
@@ -189,11 +199,36 @@ if %wheel%==true (
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
   rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
-  python -m pip install --upgrade build > make_wheel.log || goto :error
-  python -m build --wheel >> make_wheel.log || goto :error
+  rem The C++ extensions are already compiled and installed by cmake above, so
+  rem building the wheel is pure Python packaging. Build it with PEP 517 build
+  rem isolation DISABLED (--no-isolation): the isolated build spawns a nested
+  rem "pip --python <venv>" that, on the conda Windows CI runner, loses conda's
+  rem DLL directory from PATH -> ctypes fails to load libffi -> pip's vendored
+  rem platformdirs falls back to reading a HKCU registry key the service account
+  rem lacks -> FileNotFoundError [WinError 2]. The build backend (setuptools>=70,
+  rem wheel) is installed here in the active environment so the non-isolated
+  rem build can find it.
+  python -m pip install --upgrade build setuptools wheel > make_wheel.log || goto :error
+  python -m build --wheel --no-isolation >> make_wheel.log || goto :error
   echo -- Python wheel generated!
 )
-python -m pip install . >> make_wheel.log
+
+set "pkg_extras="
+if %install_test_extra%==true set "pkg_extras=[test]"
+if %wheel%==true (
+  rem Install open-DARTS FROM the wheel just built. This avoids rebuilding the
+  rem project from source (so no isolated-pip / platformdirs crash), while normal
+  rem build isolation stays enabled for dependency resolution, so any dependency
+  rem that must build from an sdist gets its own build backend as usual.
+  for %%f in (dist\*.whl) do set "wheel_file=%%f"
+  python -m pip install "!wheel_file!!pkg_extras!" >> make_wheel.log
+) else (
+  rem No wheel was built (e.g. a local run without -w): install from the source
+  rem tree with build isolation disabled, for the same platformdirs reason above.
+  rem setuptools>=70 and wheel must already be present in the active environment.
+  python -m pip install --upgrade setuptools wheel >> make_wheel.log
+  python -m pip install --no-build-isolation ".!pkg_extras!" >> make_wheel.log
+)
 
 if %phreeqc%==true (
   call :ensure_reaktoro_conda || goto :error
@@ -261,7 +296,7 @@ echo    Script to install opendarts on Windows.
 echo USAGE:
 echo    -h : displays this help menu.
 echo    -c : cleans up build to prepare a new fresh build. Default: don't clean
-echo    -t : Enable testing: ctest of solvers. Default: don't test
+echo    -t : Enable testing: ctest of solvers and install open-darts[test]. Default: don't test
 echo    -w : Enable generation of python wheel. Default: false
 echo    -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true
 echo    -r : Skip building thirdparty libraries (if you have them already compiled). Default: false
@@ -306,8 +341,8 @@ goto :reaktoro_install
 for /f %%v in ('python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"') do set "py_version=%%v"
 echo Warning: Reaktoro on conda-forge requires Python ^>=3.10 and ^<3.13, but the current environment has Python !py_version!.
 echo.
-echo To install Reaktoro, create a compatible conda environment (e.g., Python 3.12):
-echo   conda create -n darts-rkt python=3.12 -y
+echo To install Reaktoro, create a compatible conda environment (e.g., Python 3.11):
+echo   conda create -n darts-rkt python=3.11 -y
 echo   conda activate darts-rkt
 echo.
 echo Then re-run this script with the -p flag.

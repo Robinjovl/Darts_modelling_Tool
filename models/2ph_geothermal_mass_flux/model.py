@@ -1,10 +1,11 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector, ms_well
+from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -24,7 +25,8 @@ class Model(CICDModel):
         self.wells_mode = mode
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1, tol_newton=1e-3, tol_linear=1e-6)
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1, tol_linear=1e-6)
 
         # add outflux to the middle cell
         self.inflow_cells = np.array([self.reservoir.nx // 2])
@@ -72,10 +74,11 @@ class Model(CICDModel):
 
         # create physics
         thermal = True
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=0, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
-                                     min_t=273.15 + 20, max_t=273.15 + 200, extrapolation_flag=True)
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
+                                     axes_step=[2.5, 0.4511],  # p [bar], T [K]
+                                     axes_origin=[0.0, 273.15 + 20],
+                                     epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return

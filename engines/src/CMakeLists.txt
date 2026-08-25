@@ -318,8 +318,6 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../include/
 # First the source files (private headers should also go here)
 set(OD_ENGINES_ENGINES_SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_base.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_cpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_nl_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/logging.cpp
 )
@@ -328,8 +326,6 @@ set(OD_ENGINES_ENGINES_SRC_FILES
 # Then the public headers
 set(OD_ENGINES_ENGINES_PUBLIC_HEADER_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_base.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_cpu.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_nl_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_cpu.hpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_super_cpu.tpp
@@ -350,8 +346,6 @@ if (CUDA)
 
   target_sources(engines_engines PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/engine_base_gpu.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nc_cg_gpu.cu
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine_nce_g_gpu.cu
   )
 endif()
 

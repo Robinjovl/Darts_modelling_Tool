@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.physics.super.physics import Compositional
+from darts.physics.base.physics import PhysicsBase
 from darts.pipes.define_pipe_geometry import PipeGeometry
 
 
@@ -125,17 +125,17 @@ class RampUpRate:
                     assert isinstance(inj_fluid_props["temperature"], float), (
                         "Specified temperature must be a float!"
                     )
-                    assert inj_fluid_props["temperature"] > 273.15, (
+                    assert inj_fluid_props["temperature"] > 200.0, (
                         "Specified temperature must be in Kelvin!"
                     )
 
                 if "phase_name" in inj_fluid_props:
                     ph_name = inj_fluid_props["phase_name"]
                     assert isinstance(ph_name, str), (
-                        "Specified phase_name is not a string!"
+                        "The specified phase is not a string!"
                     )
                     assert ph_name in pc.phases_name[: pc.np_fl], (
-                        "Specified phase_name is not in the list of mobile phase names in physics!"
+                        f'The specified phase "{ph_name}" is not in the list of mobile phases defined in the physics!'
                     )
 
                 if "molar_enthalpy" in inj_fluid_props:
@@ -179,7 +179,7 @@ class RampUpRate:
             assert inj_fluid_props is None, (
                 "For outflow, inj_fluid_props must not be specified!"
             )
-            assert physics.state_spec == Compositional.StateSpecification.PH, (
+            assert physics.state_spec == PhysicsBase.StateSpecification.PH, (
                 "Thermal production only work with the PH formulation for multiphase flow accurately!"
             )
 

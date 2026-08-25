@@ -4,32 +4,31 @@ Engines
 .. automodule:: darts.engines
    :members: conn_mesh, engine_base, sim_params, ms_well, timer_node, pm_discretizer,
      engine_super_cpu1_1_t, engine_super_cpu2_1, engine_super_mp_cpu2_1, engine_super_elastic_cpu1_2,
-     multilinear_adaptive_cpu_interpolator_i_d_1_1, multilinear_adaptive_cpu_interpolator_l_d_1_1,
      operator_set_evaluator_iface, operator_set_gradient_evaluator_iface, property_evaluator_iface
    :show-inheritance:
 
 Physics
 #######
 
-.. autoclass:: darts.physics.physics_base.PhysicsBase
+.. autoclass:: darts.physics.base.physics.PhysicsBase
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
 
-Geothermal
-***********
+Chemistry
+**********
 
-.. autoclass:: darts.physics.geothermal.physics.Geothermal
+.. autoclass:: darts.physics.chemistry.physics.ElementBasedReactiveFlow
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
 
-Super
-******
+Poromechanics
+**************
 
-.. autoclass:: darts.physics.super.physics.Compositional
+.. autoclass:: darts.physics.mech.poroelasticity.Poroelasticity
    :members:
    :undoc-members:
    :show-inheritance:
@@ -38,7 +37,7 @@ Super
 Properties
 ***********
 
-.. automodule:: darts.physics.super.property_container
+.. automodule:: darts.physics.base.property_container
    :members:
    :undoc-members:
    :show-inheritance:
@@ -110,7 +109,7 @@ Kinetics Properties
 Operators
 *********
 
-.. automodule:: darts.physics.super.operator_evaluator
+.. automodule:: darts.physics.base.operator_evaluator
    :members:
    :undoc-members:
    :show-inheritance:

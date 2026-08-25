@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 # this is the name of the package: name that will appear if one `pip list` or `pip install open-darts`
 name = "open-darts"
 # This version has to be incremented manually for every new release.
-version = "1.5.0"
+version = "1.5.1"
 authors = [
     {name = "Denis Voskov", email = "D.V.Voskov@tudelft.nl"}
 ]
@@ -19,9 +19,9 @@ readme = "README.md"
 keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal energy production"]
 requires-python = ">=3.10"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
-
 dependencies = ['numba', 'scipy', 'pandas', 'meshio', 'gmsh<=4.13', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib',
-    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash>=0.12.1', 'phreeqpy']
+    'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash==0.13.0', 'phreeqpy']
+
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE.md"]
 
@@ -44,6 +44,8 @@ documentation = "https://open-darts.readthedocs.io/en/docs"
 docs = ["myst-parser", "sphinx_rtd_theme", "sphinx", "sphinx-tabs", "sphinx_inline_tabs", "sphinxcontrib-matlabdomain", "sphinxcontrib-bibtex", "linkify-it-py", "sphinx-copybutton"]
 # code linting tools:
 dev = ["ruff", "pre-commit"]
+# running the test suite (pytest):
+test = ["pytest"]
 # linear solver packages using python interface:
 solvers = ["pypardiso"]
 # 3D vizualization
@@ -69,7 +71,7 @@ darts = ['*.pyd', '*.so', '*.dll', 'CHANGELOG.md', 'build_info.txt', 'libstdc++.
 # --- Ruff configuration ---
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [

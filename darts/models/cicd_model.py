@@ -228,14 +228,20 @@ class CICDModel(DartsModel):
         perf_data['reservoir blocks'] = self.reservoir.mesh.n_res_blocks
         perf_data['total blocks'] = self.reservoir.mesh.n_blocks
         perf_data['variables'] = self.physics.n_vars
-        perf_data['OBL resolution'] = self.physics.n_axes_points
+        # OBL grid is fully defined by (axes_origin, axes_step); cache extends past freely.
+        perf_data['OBL axes_step'] = list(self.physics.axes_step)
+        perf_data['OBL axes_origin'] = list(self.physics.axes_origin)
         perf_data['operators'] = self.physics.n_ops
-        perf_data['timesteps'] = self.physics.engine.stat.n_timesteps_total
-        perf_data['wasted timesteps'] = self.physics.engine.stat.n_timesteps_wasted
-        perf_data['newton iterations'] = self.physics.engine.stat.n_newton_total
-        perf_data['wasted newton iterations'] = self.physics.engine.stat.n_newton_wasted
-        perf_data['linear iterations'] = self.physics.engine.stat.n_linear_total
-        perf_data['wasted linear iterations'] = self.physics.engine.stat.n_linear_wasted
+        perf_data['timesteps'] = self.nonlinear_solver.stats.n_timesteps_total
+        perf_data['wasted timesteps'] = self.nonlinear_solver.stats.n_timesteps_wasted
+        perf_data['newton iterations'] = self.nonlinear_solver.stats.n_newton_total
+        perf_data['wasted newton iterations'] = (
+            self.nonlinear_solver.stats.n_newton_wasted
+        )
+        perf_data['linear iterations'] = self.nonlinear_solver.stats.n_linear_total
+        perf_data['wasted linear iterations'] = (
+            self.nonlinear_solver.stats.n_linear_wasted
+        )
 
         sim = self.timer.node['simulation']
         jac = sim.node['jacobian assembly']

@@ -6,12 +6,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import MaxNLocator
 
-try:
-    from darts.engines import copy_data_to_device
-except ImportError:
-    pass
-from darts.input.input_data import linear_solver_types
 from darts.models.darts_model import DartsModel
+from darts.nonlinear_solvers import NewtonSolver
+
+
+class _LivePlotNewtonSolver(NewtonSolver):
+    """NewtonSolver driving live plot updates on every nonlinear iteration."""
+
+    def on_iteration(self, iteration: int, dt: float, t: float):
+        cfg = self.model.live_plot_config
+        if (
+            cfg.enable_solver_props
+            or cfg.enable_ph_diagram
+            or cfg.enable_well_res_profiles
+        ) and cfg.every_newton_iter:
+            self.model.update_live_plots(t, iteration, dt)
 
 
 @dataclass
@@ -21,6 +30,12 @@ class LivePlotConfig:
 
     # Flag to enable live plotting of the PH diagram
     enable_ph_diagram: bool = False
+    # Pressure bounds of the PH diagram
+    p_bounds: tuple = (None, None)
+    # Enthalpy bounds of the PH diagram
+    h_bounds: tuple = (None, None)
+    # Resolution of each property axis
+    n_points: int = 200
     # Index of the block which will be tracked on the PH diagram
     tracked_block_idx: int = 0
 
@@ -195,21 +210,12 @@ class DartsModelWithLivePlots(DartsModel):
 
             fig, axes = plt.subplots(figsize=(10, 6), constrained_layout=True)
 
-            p_idx = self.physics.vars.index("pressure")
-            h_idx = self.physics.vars.index("enthalpy")
-
-            # Get the bounds of the OBL domain
-            p_bounds = (
-                self.physics.PT_axes_min[p_idx],
-                self.physics.PT_axes_max[p_idx],
-            )
-            h_bounds = (self.physics.axes_min[h_idx], self.physics.axes_max[h_idx])
+            # Bounds of the PH diagram
+            p_bounds = self.live_plot_config.p_bounds
+            h_bounds = self.live_plot_config.h_bounds
 
             # Resolution of the PH diagram
-            n_p, n_h = (
-                self.physics.n_axes_points[p_idx],
-                self.physics.n_axes_points[h_idx],
-            )
+            n_p = n_h = self.live_plot_config.n_points
 
             p_range = np.linspace(p_bounds[0], p_bounds[1], n_p)
             h_range = np.linspace(h_bounds[0], h_bounds[1], n_h)
@@ -700,160 +706,24 @@ class DartsModelWithLivePlots(DartsModel):
 
     def run_timestep(self, dt: float, t: float, verbose: bool = True):
         """
-        Method to solve Newton loop for specified timestep
+        Solve the nonlinear loop for the specified timestep with live plotting.
 
-        :param dt: Timestep size [days]
-        :type dt: float
-        :param t: Current time [days]
-        :type t: float
-        :param verbose: Switch for verbose, default is True
-        :type verbose: bool
+        Uses the standard nonlinear solver (see :mod:`darts.nonlinear_solvers`)
+        with a per-iteration hook driving the live plot updates.
         """
-        assert dt > 0, "Time step size must be a positive value!"
+        solver = self.nonlinear_solver
+        if not isinstance(solver, _LivePlotNewtonSolver):
+            # swap in a live-plot solver built from the same spec, bound to self
+            solver = _LivePlotNewtonSolver(solver.spec, model=self)
+            self.nonlinear_solver = solver
+        converged = solver.solve_timestep(dt, t, verbose)
 
-        max_newt = self.data_ts.newton_max_iter
-        max_residual = np.zeros(max_newt + 1)
-        self.physics.engine.n_linear_last_dt = 0
-        self.timer.node["simulation"].start()
-
-        residual_history = []
-        for i in range(max_newt + 1):
-            # Update well phase velocities and derivatives if DFM wells are used
-            if self.has_dfm_well:
-                self.update_dfm_well_vels_and_ders(dt, t, i)
-
-            # assemble Jacobian and residual of reservoir and well blocks
-            self.physics.engine.assemble_linear_system(dt)
-
-            # apply RHS flux
-            self.apply_rhs_flux(dt, t)
-
-            if self.has_dfm_well:
-                self.apply_dfm_well_lateral_heat_flux(dt, t)
-
-            if self.platform == "gpu":
-                copy_data_to_device(
-                    self.physics.engine.RHS, self.physics.engine.get_RHS_d()
-                )
-
-            if not self.has_dfm_well:
-                self.physics.engine.newton_residual_last_dt = (
-                    self.physics.engine.calc_newton_residual()
-                )  # calc norm of residual
-            elif self.has_dfm_well:
-                # Method is either 1 or 2
-                self.physics.engine.newton_residual_last_dt = (
-                    self.physics.engine.calc_coupled_well_reservoir_residual(
-                        self.data_ts.coupled_well_res_norm_method
-                    )
-                )
-
-            max_residual[i] = self.physics.engine.newton_residual_last_dt
-            counter = 0
-            for j in range(i):
-                denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
-                if (
-                    abs(max_residual[i] - max_residual[j]) / denom
-                    < self.data_ts.newton_tol_stationary
-                ):
-                    counter += 1
-            if counter > 2:
-                if verbose:
-                    print("Stationary point detected!")
-                break
-
-            self.physics.engine.well_residual_last_dt = (
-                self.physics.engine.calc_well_residual()
-            )
-            residual_history.append(
-                (
-                    self.physics.engine.newton_residual_last_dt,  # matrix residual
-                    self.physics.engine.well_residual_last_dt,  # well residual
-                    1.0,
-                )
-            )  # Newton update coefficient
-
-            self.physics.engine.n_newton_last_dt = i
-            #  check tolerance if it converges
-            if (
-                self.physics.engine.newton_residual_last_dt < self.data_ts.newton_tol
-                and self.physics.engine.well_residual_last_dt
-                < self.data_ts.newton_tol * self.data_ts.newton_tol_wel_mult
-            ) or self.physics.engine.n_newton_last_dt == max_newt:
-                if i > 0:  # min_i_newton
-                    break
-
-            # line search
-            if (
-                self.data_ts.line_search
-                and i > 0
-                and residual_history[-1][0] > 0.9 * residual_history[-2][0]
-            ):
-                coef = np.array([0.0, 1.0])
-                history = np.array([residual_history[-2], residual_history[-1]])
-                residual_history[-1] = self.line_search(
-                    dt, t, coef, history, verbose, iter_counter=i
-                )
-                max_residual[i] = residual_history[-1][0]
-
-                # check stationary point after line search
-                counter = 0
-                for j in range(i):
-                    denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
-                    if (
-                        abs(max_residual[i] - max_residual[j]) / denom
-                        < self.data_ts.newton_tol_stationary
-                    ):
-                        counter += 1
-                if counter > 2:
-                    if verbose:
-                        print("Stationary point detected!")
-                    break
-            else:
-                if isinstance(self.data_ts.linear_type, linear_solver_types):
-                    # solvers via Python interface
-                    if self.data_ts.linear_type in [
-                        linear_solver_types.CPU_PETSC_CPR,
-                        linear_solver_types.CPU_PETSC_FS,
-                    ]:
-                        self.petsc_solve_linear_equation()
-                    elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                        self.pardiso_solve_linear_equation()
-                    else:
-                        raise Exception(
-                            "Unknown linear solver type", self.data_ts.linear_type
-                        )
-                else:
-                    # compile-tyme C++ linear solvers
-                    self.physics.engine.solve_linear_equation()
-                self.timer.node["newton update"].start()
-                self.physics.engine.apply_newton_update(dt)
-                self.timer.node["newton update"].stop()
-
-            """ Start live plotting for every Newton-Raphson iteration """
-            if (
-                self.live_plot_config.enable_solver_props
-                or self.live_plot_config.enable_ph_diagram
-                or self.live_plot_config.enable_well_res_profiles
-            ) and self.live_plot_config.every_newton_iter:
-                self.update_live_plots(t, i, dt)
-            """ End live plotting for every Newton-Raphson iteration """
-
-        # End of newton loop
-        converged = self.physics.engine.post_newtonloop(dt, t)
-
-        self.time.append(t)
-        self.n_newton_iters.append(self.physics.engine.n_newton_last_dt)
-        self.time_step_size.append(dt)
-
-        """ Start live plotting for every time step """
+        """ Live plotting for every time step """
         if (
             self.live_plot_config.enable_solver_props
             or self.live_plot_config.enable_ph_diagram
             or self.live_plot_config.enable_well_res_profiles
         ) and not self.live_plot_config.every_newton_iter:
-            self.update_live_plots(t, i, dt)
-        """ End live plotting for every time step """
+            self.update_live_plots(t, solver.status.n_newton, dt)
 
-        self.timer.node["simulation"].stop()
         return converged

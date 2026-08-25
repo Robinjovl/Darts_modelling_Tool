@@ -24,9 +24,9 @@ namespace pm
 	enum CriticalStress { TERZAGHI, BIOT };
 	enum NormalCondition { PENALIZED, ZERO_GAP_CHANGE };
 
-	struct RSF_props 
-	{ 
-		value_t a, b, vel0, Dc; 
+	struct RSF_props
+	{
+		value_t a, b, vel0, Dc;
 		std::vector<value_t> theta, theta_n;
 		std::vector<value_t> mu_rate, mu_state;
 		value_t min_vel;
@@ -91,8 +91,12 @@ namespace pm
 		std::vector<value_t> getFrictionCoef(const index_t i, const value_t dt, Matrix slip_vel, const Matrix& slip);
 		std::vector<value_t> getStabilizedFrictionCoef(const index_t i, const value_t dt, Matrix slip_vel, const Matrix& slip);
 	public:
-		uint8_t N_VARS, U_VAR, P_VAR, N_VARS_SQ;
-		uint8_t NT, U_VAR_T, P_VAR_T, NT_SQ;
+		// N_VARS_SQ / NT_SQ widened to uint16_t: at NC=30 thermal + ND=3, N_VARS=34
+		// so N_VARS² = 1156 truncates mod 256 if stored in uint8_t.
+		uint8_t N_VARS, U_VAR, P_VAR;
+		uint16_t N_VARS_SQ;
+		uint8_t NT, U_VAR_T, P_VAR_T;
+		uint16_t NT_SQ;
 		std::vector<index_t> cell_ids;
 		std::vector<ContactState> states, states_n;
 		std::vector<Matrix> S, Sinv, S_fault;
@@ -156,9 +160,9 @@ namespace pm
 																													const std::vector<value_t>& Xn_ref, const std::vector<value_t>& fluxes_ref_n, const std::vector<value_t>& fluxes_biot_ref_n);
 		int solve_explicit_scheme(std::vector<value_t>& RHS, std::vector<value_t>& dX);
 
-		
+
 		void set_state(const ContactState& state);
-		
+
 		int apply_direction_chop(const std::vector<value_t>& X, const std::vector<value_t>& Xn, std::vector<value_t>& dX);
 	};
 };

@@ -12,15 +12,13 @@ from set_case import set_input_data
 
 from dataclasses import dataclass
 from darts.engines import well_control_iface
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.eos_physics import EoSPhysics
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-from dartsflash.libflash import NegativeFlash, FlashParams, InitialGuess
-from dartsflash.libflash import CubicEoS, AQEoS
-from dartsflash.components import CompData
 
 from scipy.special import erf
 
@@ -69,27 +67,31 @@ class ModelCCS(Model_CPG):
         self.ini = value_vector([1 - self.zero])
 
         # Fluid components, ions and solid
+        from dartsflash.libflash import NegativeFlash
+        from dartsflash.components import CompData
+        from dartsflash.mixtures import DARTSFlash, Mixture
         comp_data = CompData(self.components, setprops=True)
         nc, ni = comp_data.nc, comp_data.ni
         # len(components)
-        flash_params = FlashParams(comp_data)
-        flash_params.add_eos("PR", CubicEoS(comp_data, CubicEoS.PR))
-        flash_params.add_eos("AQ", AQEoS(comp_data, {AQEoS.CompType.water: AQEoS.Jager2003,
-                                                     AQEoS.CompType.solute: AQEoS.Ziabakhsh2012,
-                                                     AQEoS.CompType.ion: AQEoS.Jager2003
-                                                     }))
-        pr = flash_params.eos_params["PR"].eos
-        aq = flash_params.eos_params["AQ"].eos
-        flash_params.eos_order = ["PR", "AQ"]
         phases = ["gas", "wat"]
 
-        state_spec = Compositional.StateSpecification.P
+        state_spec = PhysicsBase.StateSpecification.P
 
-        self.physics = Compositional(self.components, phases, timer=self.timer, n_points=self.idata.obl.n_points,
-                                     min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
-                                     min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
-                                     state_spec=state_spec, cache=False)
+        nz = len(self.components) - 1
+        ax_step = [self.idata.obl.p_step] + [self.idata.obl.z_step] * nz
+        ax_origin = [self.idata.obl.p_origin] + [self.idata.obl.z_origin] * nz
+        self.physics = EoSPhysics(self.components, phases, timer=self.timer,
+                                  axes_step=ax_step, axes_origin=ax_origin,
+                                  epsilon_z=self.idata.obl.epsilon_z,
+                                  state_spec=state_spec, cache=False)
         #self.physics.n_axes_points[0] = 1001  # sets OBL points for pressure
+
+        mixture = Mixture(comp_data)
+        mixture.set_vl_eos(vl_eos_name="PR", hybrid_aq_eos_name="Aq")
+        mixture.set_aq_eos(aq_eos_name="Aq")
+        mixture.init_flash(flash_type=DARTSFlash.FlashType.NegativeFlash,
+                           eos_order=["PR", "Aq"], nf_initial_guess=[NegativeFlash.Ki.Henry_VA])
+        self.physics.set_mixture(mixture)
 
         self.physics.dispersivity = {}
 
@@ -99,15 +101,15 @@ class ModelCCS(Model_CPG):
                                                min_z=self.zero, temperature=350)
 
         # property_container.flash_ev = ConstantK(nc=2, ki=[0.001, 100])
-        property_container.flash_ev = NegativeFlash(flash_params, ["PR", "AQ"], [InitialGuess.Henry_VA])
-        property_container.density_ev = dict([('gas', EoSDensity(eos=pr, Mw=comp_data.Mw)),
+        property_container.flash_ev = self.physics.get_flash_ev()
+        property_container.density_ev = dict([('gas', EoSDensity(eos=mixture.eos["PR"])),
                                               ('wat', Garcia2001(self.components)), ])
         property_container.viscosity_ev = dict([('gas', Fenghour1998()),
                                                 ('wat', Islam2012(self.components)), ])
         property_container.diffusion_ev = dict([('gas', ConstFunc(np.ones(nc) * diff_g)),
                                                 ('wat', ConstFunc(np.ones(nc) * diff_w))])
-        property_container.enthalpy_ev = dict([('gas', EoSEnthalpy(eos=pr)),
-                                               ('wat', EoSEnthalpy(eos=aq)), ])
+        property_container.enthalpy_ev = dict([('gas', self.physics.get_enthalpy_ev_from_flash(phase_idx=0)),
+                                               ('wat', self.physics.get_enthalpy_ev_from_flash(phase_idx=1)), ])
         property_container.conductivity_ev = dict([('gas', ConstFunc(8.4)),
                                                    ('wat', ConstFunc(170.)), ])
         property_container.rel_perm_ev = dict([('gas', ModBrooksCorey(corey_params, 'gas')),
@@ -253,14 +255,14 @@ class ModelCCS(Model_CPG):
                         wdata.add_prd_rate_control(time=(2*y+1)*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE,
                                                    phase_name='gas', bhp_constraint=70)  # kmol/day | bars
 
-        self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-13
-        self.idata.obl.min_p = 0.
-        self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = 10.
-        self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = self.idata.obl.zero
-        self.idata.obl.max_z = 1 - self.idata.obl.zero
+        self.idata.obl.epsilon_z = self.idata.obl.zero
+        self.idata.obl.p_step = 2.5
+        self.idata.obl.p_origin = 0.0
+        self.idata.obl.z_step = 2.5e-3
+        self.idata.obl.z_origin = self.idata.obl.zero
+        self.idata.obl.t_step = 0.25
+        self.idata.obl.t_origin = 10.0
 
 
 class ModBrooksCorey:

@@ -2,13 +2,15 @@ import numpy as np
 from darts.models.darts_model import DartsModel
 from darts.engines import ms_well
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.eos_physics import EoSPhysics
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+from darts.nonlinear_solvers import NewtonSolver
 
 
 class Model(DartsModel):
@@ -74,14 +76,12 @@ class Model(DartsModel):
         self.swc = 0.25
 
         zero = 1e-12
-        self.set_physics(zero, n_points=1001, temperature=None, ph=False, vl_phases=False)
+        self.set_physics(zero, temperature=None, ph=False, vl_phases=False)
         self.inj_stream = [0.001] if self.components[0] == "H2O" else [0.999]
 
-        self.set_sim_params(first_ts=1e-7, mult_ts=2, max_ts=20., tol_newton=1e-6, tol_linear=1e-6, it_newton=8,
-                            it_linear=50, runtime=1,
-                            # newton_type=self.params.newton_global_chop,  # Type of newton method (related to chopping strategy?)
-                            # newton_params=value_vector([0.2]),  # Probably chop-criteria(?)
-                            )
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-6, max_iterations=8)
+        self.set_sim_params(first_ts=1e-7, mult_ts=2, max_ts=20., tol_linear=1e-6,
+                            it_linear=50, runtime=1)
         # self.params.nonlinear_norm_type = self.params.L1
         # self.params.linear_type = self.params.cpu_superlu
 
@@ -101,14 +101,14 @@ class Model(DartsModel):
 
         return
 
-    def set_physics(self,  zero, n_points, temperature: float = None, ph: bool = False, vl_phases: bool = False):
+    def set_physics(self, zero, temperature: float = None, ph: bool = False, vl_phases: bool = False):
         """Physical properties"""
         self.zero = zero
         epsilon = zero/10
 
-        from dartsflash.libflash import EoS
+        from dartsflash.libflash import EoSParams, EoS
         from dartsflash.components import CompData
-        from dartsflash.mixtures import DARTSFlash, VLAq
+        from dartsflash.mixtures import DARTSFlash, Mixture
         # Fluid components, ions and solid
         components = ["H2O", "CO2"]
         self.components = components
@@ -116,27 +116,48 @@ class Model(DartsModel):
         comp_data = CompData(components, setprops=True)
         nc = len(components)
 
-        """ Define flash """
-        flash_ev = VLAq(comp_data, hybrid=True)
-        flash_ev.set_vl_eos("PR", root_order=[EoS.MAX, EoS.MIN] if vl_phases else [EoS.STABLE],
-                            trial_comps=[i for i in range(nc)],
-                            stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
-                            )
-        flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
+        """ Define state specification and initialize Physics object """
+        if temperature is None:  # if None, then thermal=True
+            state_spec = PhysicsBase.StateSpecification.PH if ph else PhysicsBase.StateSpecification.PT
+        else:
+            state_spec = PhysicsBase.StateSpecification.P
 
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash,
+        # [p, z_1, ..., z_{nc-1}, T?]
+        nz = len(components) - 1
+        ax_step = [0.399] + [1e-3] * nz
+        ax_origin = [1.0] + [epsilon] * nz
+        if state_spec >= PhysicsBase.StateSpecification.PT:
+            ax_step.append(0.1)
+            ax_origin.append(273.15)
+        self.physics = EoSPhysics(components, phases, self.timer,
+                                  axes_step=ax_step, axes_origin=ax_origin,
+                                  epsilon_z=epsilon, state_spec=state_spec, cache=False,
+                                  extrapolation_flag=True)
+
+        """ Define flash """
+        mixture = Mixture(comp_data)
+        mixture.set_vl_eos(vl_eos_name="VL", hybrid_aq_eos_name="Aq",
+                           root_order=[EoS.MAX, EoS.MIN] if vl_phases else [EoS.STABLE],
+                           trial_comps=[EoSParams.Yi.Wilson, 1],
+                           stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
+                           )
+        mixture.set_aq_eos(aq_eos_name="Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
+
+        mixture.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash,
                             eos_order=["Aq", "VL"],
                             t_min=270., t_max=500., t_init=300.,
                             # pxflash_switch_ttol=1e-3, near_zero_px=1e-2,
                             )
+        self.physics.set_mixture(mixture)
 
         """ properties correlations """
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
                                                temperature=temperature, eps_z=epsilon)
+        self.physics.add_property_region(property_container)
 
-        property_container.flash_ev = flash_ev
-        property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["VL"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
-                                              ('L', EoSDensity(eos=flash_ev.eos["VL"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN)),
+        property_container.flash_ev = self.physics.get_flash_ev()
+        property_container.density_ev = dict([('V', EoSDensity(eos=mixture.eos["VL"], root_flag=EoS.MAX if vl_phases else EoS.STABLE)),
+                                              ('L', EoSDensity(eos=mixture.eos["VL"], root_flag=EoS.MIN)),
                                               ('Aq', Garcia2001(components, ions=None, combined_ions=None)), ])
         property_container.viscosity_ev = dict([('V', Fenghour1998()),
                                                 ('L', Fenghour1998()),
@@ -146,9 +167,12 @@ class Model(DartsModel):
                                                 ('L', ConstFunc(np.ones(nc) * diff)),
                                                 ('Aq', ConstFunc(np.ones(nc) * diff * 1e-3))])
 
-        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MAX)),
-                                               ('L', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MIN)),
-                                               ('Aq', EoSEnthalpy(eos=flash_ev.eos["Aq"])), ])
+        # property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=mixture.eos["VL"], root_flag=EoS.MAX if vl_phases else EoS.STABLE)),
+        #                                        ('L', EoSEnthalpy(eos=mixture.eos["VL"], root_flag=EoS.MIN)),
+        #                                        ('Aq', EoSEnthalpy(eos=mixture.eos["Aq"])), ])
+        property_container.enthalpy_ev = dict([('V', self.physics.get_enthalpy_ev_from_flash(phase_idx=1)),
+                                               ('L', self.physics.get_enthalpy_ev_from_flash(phase_idx=2)),
+                                               ('Aq', self.physics.get_enthalpy_ev_from_flash(phase_idx=0)), ])
 
         property_container.conductivity_ev = dict([('V', ConstFunc(10.)),
                                                    ('L', ConstFunc(10.)),
@@ -166,22 +190,11 @@ class Model(DartsModel):
                                            'rho_g': lambda: property_container.dens[phases.index("V")],
                                            }
 
-        """ Define state specification and initialize Physics object """
-        if temperature is None:  # if None, then thermal=True
-            state_spec = Compositional.StateSpecification.PH if ph else Compositional.StateSpecification.PT
-        else:
-            state_spec = Compositional.StateSpecification.P
-
-        self.physics = Compositional(components, phases, self.timer, n_points, min_p=1, max_p=400, min_z=0., max_z=1.,
-                                     epsilon_z=epsilon, min_t=273.15, max_t=373.15, state_spec=state_spec, cache=False,
-                                     extrapolation_flag=True)
-        self.physics.add_property_region(property_container)
-
         return
 
     def set_initial_conditions(self):
         if 1:
-            from darts.physics.super.initialize import Initialize
+            from darts.physics.base.initialize import Initialize
             init = Initialize(physics=self.physics)
 
             # Solve boundary state
