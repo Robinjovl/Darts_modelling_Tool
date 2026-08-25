@@ -103,7 +103,17 @@ namespace opendarts
           else
           {
             const char *v = std::getenv("DARTS_AMGX_REUSE");
-            reuse_max = v ? atoi(v) : 2;
+            // Default OFF: with "structure_reuse_levels" in the config, this
+            // AMGX build does NOT truly rebuild the hierarchy on a full
+            // AMGX_matrix_upload_all -- once the reused hierarchy degrades,
+            // the periodic "rebuild" never recovers and GMRES saturates its
+            // iteration cap with UNCONVERGED solves that Newton fails-open on
+            // (observed on GeoRising/Brugge GPU: residuals up to 1.7e0 accepted,
+            // LI x5). The degradation guard below is also blind at saturation
+            // (li_baseline records the cap itself). Reuse stays available as an
+            // explicit opt-in (DARTS_AMGX_REUSE=N / reuse_max_override) for
+            // models where it is verified to hold up (e.g. SPE10 benchmarking).
+            reuse_max = v ? atoi(v) : 0;
             if (reuse_max < 0)
               reuse_max = 0;
           }

@@ -185,10 +185,8 @@ class Model(CICDModel):
         return pc
 
     def set_solver(self):
-        # Time-stepping and Newton tuning.
+        # Time-stepping.
         self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60 )
-        self.nonlinear_solver.spec.chop.mode = 'local'  # chopping strategy
-        self.nonlinear_solver.spec.chop.factor = 0.2         # chop criterion
 
         # Linear solver: this is a Geothermal DFM (discrete fracture matrix) model.
         # The default FGMRES+CPR (and MGR) stall on its wide, strongly-coupled
@@ -207,6 +205,12 @@ class Model(CICDModel):
         else:
             self.linear_solver = SuperLUSolverSpec()
         super().set_solver()  # platform default when no spec was picked above
+        # Newton tuning -- MUST come after super().set_solver(): the base call is what
+        # materializes the default NewtonSolver (dereferencing nonlinear_solver.spec
+        # before it crashed every CI job with 'NoneType' object has no attribute 'spec').
+        self.nonlinear_solver.spec.tolerance = 1e-4  # historic tol_newton (dropped in a merge resolution)
+        self.nonlinear_solver.spec.chop.mode = 'local'  # chopping strategy
+        self.nonlinear_solver.spec.chop.factor = 0.2    # chop criterion
         self.linear_solver.spec.tolerance = 1e-5
 
     def print_range(self, time, part='cells'):
