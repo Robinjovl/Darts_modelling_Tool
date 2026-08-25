@@ -58,10 +58,15 @@
 # BOS-solvers twin (formerly the unsuffixed build-windows). See MR280_MASTER_PLAN.md §F.
 build-windows:
     extends: .build-windows
+    # Individual rules are anchored so the -BOS twin below can reuse them verbatim
+    # (single source of truth) while prepending its RUN_BOS_JOBS gate.
     rules: &python_version_rules
-        - if: '$PY_VER == $DEFAULT_PY_VER && ($CI_COMMIT_REF_PROTECTED == "true" || $CI_PIPELINE_SOURCE == "merge_request_event" || $TEST_CUSTOM_BRANCH == "1")'
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL_PYTHONS == "1"
+        - &rule_default_py_ver
+          if: '$PY_VER == $DEFAULT_PY_VER && ($CI_COMMIT_REF_PROTECTED == "true" || $CI_PIPELINE_SOURCE == "merge_request_event" || $TEST_CUSTOM_BRANCH == "1")'
+        - &rule_main_or_release_tag
+          if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - &rule_all_pythons
+          if: $TEST_ALL_PYTHONS == "1"
     variables:
         ODLS: ''         # build with open-darts linear solvers
     parallel:
@@ -74,7 +79,13 @@ build-windows:
 # Proprietary BOS-solvers build (ENABLE_BOS_SOLVERS=ON via the `-a` build-script flag).
 build-windows-BOS:
     extends: .build-windows
-    rules: *python_version_rules
+    # Gated by RUN_BOS_JOBS (see .gitlab-ci.yml): skipped unless it is "1".
+    rules:
+        - if: $RUN_BOS_JOBS != "1"
+          when: never
+        - *rule_default_py_ver
+        - *rule_main_or_release_tag
+        - *rule_all_pythons
     variables:
         ODLS: '-a'       # proprietary BOS linear solvers (ENABLE_BOS_SOLVERS=ON)
     parallel:
