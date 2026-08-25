@@ -87,8 +87,8 @@ def generate_3d_fault_mesh(
     RIGHTBOUNDARY = 992
     FRONTBOUNDARY = 993
     BACKBOUNDARY = 994
-    BOTTOMBOUNDARY = 995
-    TOPBOUNDARY = 996
+    TOPBOUNDARY = 995
+    BOTTOMBOUNDARY = 996
 
     # ---- Coordinate transforms ----
     def z_new(z_old): return 2800.0 - z_old
@@ -402,20 +402,20 @@ def generate_3d_fault_mesh(
     x_min = x_new(-W / 2); x_max = x_new(W / 2)
     y_min = y_new(-H / 2); y_max = y_new(H / 2)
 
-    # Top box (shallower): z_old from 400 to 800
-    z_top0 = z_new(400.0)
-    z_top1 = 5000.
-    #z_top1 = z_new(800.0)
+    # The central fault geometry spans z=2400..3200 m. Extend it to the
+    # ground surface with a non-overlapping shallow overburden box.
+    z_top0 = 0.0
+    z_top1 = z_new(400.0)       # 2400 m
     zmin_top = min(z_top0, z_top1); zmax_top = max(z_top0, z_top1)
     top_box = geo.addBox(
         x_min, y_min, zmin_top,
         x_max - x_min, y_max - y_min, zmax_top - zmin_top
     )
 
-    # Bottom box (deeper): z_old from -800 to -400
-    z_bot0 = z_new(-400.0)
-    z_bot1 = 0.
-    #z_bot1 = z_new(-800.0)
+    # Extend from the bottom of the central geometry to 5 km depth with a
+    # non-overlapping underburden box.
+    z_bot0 = z_new(-400.0)      # 3200 m
+    z_bot1 = 5000.0
     zmin_bot = min(z_bot0, z_bot1); zmax_bot = max(z_bot0, z_bot1)
     bottom_box = geo.addBox(
         x_min, y_min, zmin_bot,
@@ -546,50 +546,47 @@ def generate_3d_fault_mesh(
             elif c_fault_right < scalar < c_right:
                 material_by_volume[volume] = DAMAGEZONE_RIGHT
 
-    # ======================================================
-    # Solid, visible wells (reservoir inclusions -- no holes)
-    # ======================================================
-    # Coordinates are [X, Y, Z1, Z2] and are supplied by main.py. Fragmenting
-    # the cylinders into the host creates conformal cylindrical interfaces
-    # without subtracting any material. The cylinder descendants retain the
-    # RES material tag and are therefore part of the reservoir physical volume.
-    volumes_before_wells = geo.getEntities(3)
-    well_solids = [
-        (
-            3,
-            geo.addCylinder(
-                coords[0],
-                coords[1],
-                min(coords[2], coords[3]),
-                0.0,
-                0.0,
-                abs(coords[3] - coords[2]),
-                well_cylinder_radius,
-            ),
-        )
-        for coords in well_coords
-    ]
-    for _, volume in well_solids:
-        material_by_volume[volume] = RES
+    # Enable conformal well-cylinder geometry and local mesh refinement.
+    # Set this to False to generate the lighter mesh without well refinement.
+    enable_well_mesh_refinement = True
+    if enable_well_mesh_refinement:
+        volumes_before_wells = geo.getEntities(3)
+        well_solids = [
+            (
+                3,
+                geo.addCylinder(
+                    coords[0],
+                    coords[1],
+                    min(coords[2], coords[3]),
+                    0.0,
+                    0.0,
+                    abs(coords[3] - coords[2]),
+                    well_cylinder_radius,
+                ),
+            )
+            for coords in well_coords
+        ]
+        for _, volume in well_solids:
+            material_by_volume[volume] = RES
 
-    gmsh.model.occ.synchronize()
-    well_fragment_inputs = volumes_before_wells + well_solids
-    _, well_fragment_map = geo.fragment(
-        volumes_before_wells,
-        well_solids,
-        removeObject=True,
-        removeTool=True,
-    )
-    gmsh.model.occ.synchronize()
-    material_by_volume = propagate_boolean_materials(
-        well_fragment_inputs, well_fragment_map, material_by_volume
-    )
-    well_volumes = sorted({
-        tag
-        for descendants in well_fragment_map[-len(well_solids):]
-        for dim, tag in descendants
-        if dim == 3
-    })
+        gmsh.model.occ.synchronize()
+        well_fragment_inputs = volumes_before_wells + well_solids
+        _, well_fragment_map = geo.fragment(
+            volumes_before_wells,
+            well_solids,
+            removeObject=True,
+            removeTool=True,
+        )
+        gmsh.model.occ.synchronize()
+        material_by_volume = propagate_boolean_materials(
+            well_fragment_inputs, well_fragment_map, material_by_volume
+        )
+        well_volumes = sorted({
+            tag
+            for descendants in well_fragment_map[-len(well_solids):]
+            for dim, tag in descendants
+            if dim == 3
+        })
 
     # OCC can retain an inverse (negative-mass) solid when the two reservoir
     # contacts are exactly aligned. It represents the exterior complement,
@@ -658,8 +655,8 @@ def generate_3d_fault_mesh(
         FRONTBOUNDARY: [], BACKBOUNDARY: [],
         BOTTOMBOUNDARY: [], TOPBOUNDARY: [],
     }
-    z_domain_top = zmin_top #z_new(800.0)
-    z_domain_bottom = zmin_bot #z_new(-800.0)
+    z_domain_top = zmin_top
+    z_domain_bottom = zmax_bot
     bbox_tol = 1.0e-5
 
     for _, surface in gmsh.model.getEntities(2):
@@ -688,38 +685,37 @@ def generate_3d_fault_mesh(
                 2, surfaces, tag=physical_tag, name=boundary_names[physical_tag]
             )
 
-    # Smoothly refine the reservoir mesh around the conformal well surfaces.
-    # This field changes only element sizes; it does not define well material.
-    well_surfaces = sorted({
-        surface
-        for dim, surface in gmsh.model.getBoundary(
-            [(3, volume) for volume in well_volumes],
-            combined=False,
-            oriented=False,
+    if enable_well_mesh_refinement:
+        well_surfaces = sorted({
+            surface
+            for dim, surface in gmsh.model.getBoundary(
+                [(3, volume) for volume in well_volumes],
+                combined=False,
+                oriented=False,
+            )
+            if dim == 2
+        })
+        well_distance = gmsh.model.mesh.field.add("Distance")
+        gmsh.model.mesh.field.setNumbers(
+            well_distance, "SurfacesList", well_surfaces
         )
-        if dim == 2
-    })
-    well_distance = gmsh.model.mesh.field.add("Distance")
-    gmsh.model.mesh.field.setNumbers(
-        well_distance, "SurfacesList", well_surfaces
-    )
-    gmsh.model.mesh.field.setNumber(well_distance, "Sampling", 100)
+        gmsh.model.mesh.field.setNumber(well_distance, "Sampling", 100)
 
-    well_threshold = gmsh.model.mesh.field.add("Threshold")
-    gmsh.model.mesh.field.setNumber(
-        well_threshold, "InField", well_distance
-    )
-    gmsh.model.mesh.field.setNumber(
-        well_threshold, "SizeMin", well_mesh_size
-    )
-    gmsh.model.mesh.field.setNumber(well_threshold, "SizeMax", lc)
-    gmsh.model.mesh.field.setNumber(
-        well_threshold, "DistMin", well_cylinder_radius
-    )
-    gmsh.model.mesh.field.setNumber(
-        well_threshold, "DistMax", well_transition_radius
-    )
-    gmsh.model.mesh.field.setAsBackgroundMesh(well_threshold)
+        well_threshold = gmsh.model.mesh.field.add("Threshold")
+        gmsh.model.mesh.field.setNumber(
+            well_threshold, "InField", well_distance
+        )
+        gmsh.model.mesh.field.setNumber(
+            well_threshold, "SizeMin", well_mesh_size
+        )
+        gmsh.model.mesh.field.setNumber(well_threshold, "SizeMax", lc)
+        gmsh.model.mesh.field.setNumber(
+            well_threshold, "DistMin", well_cylinder_radius
+        )
+        gmsh.model.mesh.field.setNumber(
+            well_threshold, "DistMax", well_transition_radius
+        )
+        gmsh.model.mesh.field.setAsBackgroundMesh(well_threshold)
 
     # ======================================================
     # Final meshing setup

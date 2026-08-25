@@ -25,6 +25,9 @@ def input_data_case_5(physics_type='single_phase_thermal'):
     # mesh: three Gmsh physical tags (1=overburden, 2=reservoir, 3=underburden, 4=damage zone left, 
     # 5=damage zone right 99991=fault)
     idata.other.matrix_tags = (1, 2, 3, 4, 5, 99991)
+    # Wells must connect to reservoir rock only, never to a confining layer
+    # when their requested endpoint lies exactly on a material interface.
+    idata.other.well_perforation_tags = (1,)
 
     # case_2 and case_3 inherit this, so all three cases share one mesh
     idata.other.mesh_dir = 'case_5'

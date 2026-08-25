@@ -162,13 +162,32 @@ class Model(THMCModel):
 
         step_z_perf = 1 # [m] should be smaller that cell dz
 
+        # Restrict nearest-cell matching to explicitly allowed
+        # physical tags so a tiny centroid-distance difference cannot put a
+        # perforation into overburden or underburden.
+        perforation_tags = getattr(self.idata.other, 'well_perforation_tags', None)
+        if perforation_tags is None:
+            candidate_ids = np.arange(self.reservoir.n_matrix, dtype=int)
+        else:
+            matrix_tags = np.asarray(self.reservoir.tags[:self.reservoir.n_matrix])
+            candidate_ids = np.flatnonzero(np.isin(matrix_tags, perforation_tags))
+            if candidate_ids.size == 0:
+                raise ValueError(
+                    f'No matrix cells found with well perforation tags {perforation_tags}'
+                )
+
         for i, coord in enumerate(well_coords): # process each well
             # find mesh cells which
             z1, z2 = coord[2], coord[3]
             z_points = np.arange(z1, z2, step_z_perf)
             ids = set()
             for z in z_points: # find a cell with the closest center
-                cell = ((centroids_3d[:, 0] - coord[0]) ** 2 + (centroids_3d[:, 1] - coord[1]) ** 2 + (centroids_3d[:, 2] - z) ** 2).argmin()
+                distances_sq = (
+                    (centroids_3d[candidate_ids, 0] - coord[0]) ** 2
+                    + (centroids_3d[candidate_ids, 1] - coord[1]) ** 2
+                    + (centroids_3d[candidate_ids, 2] - z) ** 2
+                )
+                cell = candidate_ids[distances_sq.argmin()]
                 ids.add(int(cell))
             ids_1 = list(ids)
 
@@ -206,7 +225,6 @@ class Model(THMCModel):
                 self.reservoir.add_perforation(self.reservoir.wells[-1].name, res_cell_idx=cell_id,
                                                well_index=well_index, well_indexD=0., ms_epm=True, verbose=True)
                 print('well perf added to the cell', cell_id, 'with a center=', centroids_3d[cell_id], 'for the requested point=', centroids_3d[cell_id,:])
-
 
     def set_boundary_conditions(self): # for initial mechanical equilibrium initialization, wells are switched off
         for i, w in enumerate(self.reservoir.wells):

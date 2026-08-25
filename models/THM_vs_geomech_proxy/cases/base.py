@@ -37,6 +37,7 @@ def input_data_base(thermal=True):
     idata.other.cell_shift = 0.0           # [m] lateral offset to align well with a cell centre
     idata.other.delta_temp_inj = 40.0     # [K] injected fluid temperature delta vs. initial reservoir T
     idata.other.well_rate_m3_day = 2000.0  # [m3/day] volumetric rate (thermal / rate-control mode)
+    idata.other.well_perforation_tags = None #None means all matrix cells are eligible.
     idata.other.bhp_delta_p = 10.0         # [bar] BHP offset from initial pressure (isothermal / BHP-control mode)
 
     # --- mesh tags ---
