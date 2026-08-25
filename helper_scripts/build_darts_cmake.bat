@@ -130,7 +130,7 @@ if %skip_req%==false (
   cd thirdparty
 
   echo - Install requirements: START
-  mkdir build
+  if not exist build mkdir build
 
   rem -- Install Hypre with MGR support (enabled by default)
   if not exist hypre\build mkdir hypre\build
