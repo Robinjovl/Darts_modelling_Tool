@@ -1508,8 +1508,13 @@ class PhysicsBase:
             itor.set_hypercube_cap(int(hypercube_cap))
 
         if self.cache:
-            # create unique signature for interpolator
-            itor_cache_signature = f"{type(evaluator).__name__}_{mode}_{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
+            # ParallelEvaluator is a transport wrapper shared by several semantically
+            # different evaluators.  Key the cache by the wrapped evaluator type so,
+            # for example, ReservoirOperators and PropertyOperators cannot collide.
+            # This also preserves cache compatibility between serial and parallel runs.
+            cache_evaluator = getattr(evaluator, '_serial_evaluator', evaluator)
+            evaluator_cache_name = type(cache_evaluator).__name__
+            itor_cache_signature = f"{evaluator_cache_name}_{mode}_{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
             # geenral itor has a different point_data format
             if general:
                 itor_cache_signature += "_general_"
