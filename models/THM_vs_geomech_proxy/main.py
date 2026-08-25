@@ -4,6 +4,7 @@ import numpy as np
 import os
 import shutil
 import time
+from datetime import datetime
 from darts.engines import redirect_darts_output, timer_node
 from plot_vtk import plot_vtk_pyvista
 
@@ -14,6 +15,116 @@ def is_struct_like_case(case):
     # and must not take the mesh-generation path (which reads idata.other.nx/ny/nz).
     parts = os.path.basename(case).split('_')
     return len(parts) >= 3 and all(p.isdigit() for p in parts[-3:])
+
+
+def plot_results(model, time_data_dict, out_dir):
+    """Plot well data for thermal/isothermal and single/doublet cases."""
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    time_data = pd.DataFrame.from_dict(time_data_dict)
+    if time_data.empty or 'time' not in time_data:
+        print('Skipping well plots: no well time data are available')
+        return []
+
+    # The first stored row belongs to the long-time geomechanical
+    # equilibrium solve (typically time=1e8 days).
+    time_data = time_data.iloc[1:].reset_index(drop=True)
+    if time_data.empty:
+        print('Skipping well plots: no transient well time data are available')
+        return []
+    time_data['Time (years)'] = time_data['time'] / 365.25
+
+    os.makedirs(out_dir, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d')
+    saved_plots = []
+
+    def save_plot(plot_name):
+        filename = f'well_time_data_{plot_name}_{timestamp}.png'
+        filepath = os.path.join(out_dir, filename)
+        plt.tight_layout()
+        plt.savefig(filepath, dpi=200)
+        plt.close()
+        saved_plots.append(filepath)
+
+    plt.rc('font', size=12)
+    well_names = [well.name for well in model.reservoir.wells]
+    production_wells = [name for name in well_names if name.upper().startswith('PRD')]
+
+    bhp_keys = [
+        (well_name, f'well_{well_name}_BHP') for well_name in well_names
+        if f'well_{well_name}_BHP' in time_data
+    ]
+    if bhp_keys:
+        _, ax = plt.subplots()
+        for well_name, key in bhp_keys:
+            ax.plot(time_data['Time (years)'], time_data[key], label=well_name)
+        ax.set(xlabel='Years', ylabel='BHP [bar]', title='Well BHP')
+        ax.set_xlim(left=1.0)
+        ax.grid(True, linestyle='--', alpha=0.3)
+        ax.legend()
+        save_plot('well_bhp')
+
+    # Temperature is available only for thermal physics.
+    bht_keys = [
+        (well_name, f'well_{well_name}_BHT') for well_name in well_names
+        if f'well_{well_name}_BHT' in time_data
+    ]
+    if model.thermal and bht_keys:
+        _, ax = plt.subplots()
+        for well_name, key in bht_keys:
+            ax.plot(time_data['Time (years)'], time_data[key], label=well_name)
+        ax.set(xlabel='Years', ylabel='BHT [K]', title='Well Temperature')
+        ax.set_xlim(left=1.0)
+        ax.grid(True, linestyle='--', alpha=0.3)
+        ax.legend()
+        save_plot('well_temperature')
+
+    # Plot wellhead water-rate magnitude for all available wells together.
+    rate_suffix = '_volumetric_rate_wat_at_wh'
+    rate_keys = [
+        (well_name, f'well_{well_name}{rate_suffix}') for well_name in well_names
+        if f'well_{well_name}{rate_suffix}' in time_data
+    ]
+    if rate_keys:
+        _, ax = plt.subplots()
+        for well_name, key in rate_keys:
+            ax.plot(
+                time_data['Time (years)'], time_data[key].abs(), label=well_name
+            )
+        ax.set(xlabel='Years', ylabel='Water rate magnitude [m3/day]',
+               title='Well Water Rate')
+        ax.set_xlim(left=1.0)
+        ax.grid(True, linestyle='--', alpha=0.3)
+        ax.legend()
+        save_plot('well_water_rate')
+
+    # Cumulative extracted energy is meaningful only for a thermal case with
+    # at least one production well. Advective heat rate is stored in kJ/day;
+    # integration over days and 1e-12 convert it to PJ.
+    if model.thermal and production_wells:
+        heat_suffix = '_advective_heat_rate_wat_at_wh'
+        heat_keys = [
+            f'well_{name}{heat_suffix}' for name in production_wells
+            if f'well_{name}{heat_suffix}' in time_data
+        ]
+        if heat_keys:
+            energy_data = pd.DataFrame({
+                'Time (years)': time_data['Time (years)']
+            })
+            heat_rate = time_data[heat_keys].sum(axis=1).abs().to_numpy()
+            times = time_data['time'].to_numpy()
+            dt = np.diff(times, prepend=times[0])
+            energy_data['energy'] = np.cumsum(heat_rate * dt) * 1.e-12
+            ax = energy_data.plot(x='Time (years)', y='energy', legend=False)
+            ax.set(xlabel='Years', ylabel='Extracted energy [PJ]',
+                   title='Cumulative Extracted Energy')
+            ax.set_xlim(left=1.0)
+            ax.grid(True, linestyle='--', alpha=0.3)
+            save_plot('extracted_energy')
+
+    print('Well time-data plots:', *saved_plots, sep='\n  ')
+    return saved_plots
 
 
 def run_python(m, days=0, restart_dt=0, init_step = False,
@@ -220,11 +331,15 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     print('Timers:')
     m.print_timers()
     #m.print_stat()
-    m.output.store_well_time_data(save_output_files=True)
+    time_data_dict = m.output.store_well_time_data(save_output_files=True)
+    plot_results(
+        model=m,
+        time_data_dict=time_data_dict,
+        out_dir=os.path.join(m.output_directory, 'well_time_data_plots'),
+    )
     print('Output folder:', m.output_directory, 'Timesteps:', ith_step, 't=', m.physics.engine.t, 'days')
     print_allocated_memory()
 
-    #time_data_dict = m.output.store_well_time_data(save_output_files=True)
     #m.output.plot_well_time_data(phase_volumetric_rates=True)
 
     for tstep_to_plot in plot_vtk_timesteps:
