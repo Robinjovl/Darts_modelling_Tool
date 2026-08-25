@@ -229,7 +229,11 @@ class Output:
         self.precision_map = {"d": np.float64, "s": np.float32}
 
         self.thermal = self.physics.state_spec >= self.physics.StateSpecification.PT
-        self.properties = list(self.physics.property_containers[0].output_props.keys())
+        self.properties = list(
+            self.physics.property_containers[
+                self.physics.regions[0]
+            ].output_props.keys()
+        )
         if len(self.properties) < self.physics.n_ops:
             self.n_ops = self.physics.n_ops
         else:
@@ -375,7 +379,11 @@ class Output:
         self.n_ops = n_ops
 
         # Update the properties list
-        self.properties = list(self.physics.property_containers[0].output_props.keys())
+        self.properties = list(
+            self.physics.property_containers[
+                self.physics.regions[0]
+            ].output_props.keys()
+        )
 
         return
 
@@ -2244,7 +2252,7 @@ class Output:
         :param rate_type: Type of the well rate
         :type rate_type: str
         """
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
         total_perf_idx = 0
         for well in self.reservoir.wells:
             for perf_idx in range(len(well.perforations)):
@@ -2285,7 +2293,7 @@ class Output:
         :param rate_type: Type of the well rate
         :type rate_type: str
         """
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
         total_perf_idx = 0
         for well in self.reservoir.wells:
             tag = f"well_{well.name}"
@@ -2339,7 +2347,7 @@ class Output:
         :param rate_type: Type of the well rate
         :type rate_type: str
         """
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
         for well_idx, well in enumerate(self.reservoir.wells):
             tag = f"well_{well.name}"
             if rate_type.startswith("phase_"):
@@ -2373,7 +2381,7 @@ class Output:
         cell_id = h5_well_data["dynamic"]["cell_id"]
         variable_names = h5_well_data["dynamic"]["variable_names"]
         X = h5_well_data["dynamic"]["X"]
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
 
         for well in self.reservoir.wells:
             BHP = np.zeros(nt)
@@ -2407,7 +2415,7 @@ class Output:
         Super engine operators expose explicit gravity and capillary-pressure
         operators.
         """
-        pc = physics.property_containers[0]
+        pc = physics.property_containers[physics.regions[0]]
 
         if hasattr(reservoir_operator, "GRAV_OP"):
             grav_start = reservoir_operator.GRAV_OP
@@ -2475,8 +2483,8 @@ class Output:
 
         physics = self.physics
 
-        pc = physics.property_containers[0]
-        ne = physics.reservoir_operators[0].ne
+        pc = physics.property_containers[physics.regions[0]]
+        ne = physics.reservoir_operators[physics.regions[0]].ne
 
         p_idx = h5_well_data["dynamic"]["variable_names"].index("pressure")
         if thermal:
@@ -2501,7 +2509,7 @@ class Output:
         n_well_ctrl_ops = getattr(
             physics, "n_well_ctrl_itor_ops", physics.well_ctrl_operators.n_ops
         )
-        n_reservoir_ops = physics.reservoir_operators[0].n_ops
+        n_reservoir_ops = physics.reservoir_operators[physics.regions[0]].n_ops
         n_vars = physics.n_vars
         # The reservoir / well-control interpolators consume the full OBL state
         # [primary | history] (n_state axes), but the well H5 stores only the primary
@@ -2538,17 +2546,65 @@ class Output:
             )
             return np.asarray(values).reshape(batch_size, n_ops)
 
-        reservoir_ops_m = evaluate_ops(
-            states_m_2d, n_reservoir_ops, physics.acc_flux_itor[0]
-        )
-        reservoir_ops_p = evaluate_ops(
-            states_p_2d, n_reservoir_ops, physics.acc_flux_itor[0]
-        )
+        # Reservoir-operator rows are evaluated per BLOCK OPERATOR SLOT, not
+        # with one hard-coded region (finding F1): the engine assembles every
+        # block with the interpolator ``mesh.op_num`` maps it to in the model's
+        # ``op_list`` — the very list handed to ``engine.init()`` and to this
+        # object — which ``DartsModel.set_op_list()`` lays out as
+        # ``[acc_flux_itor[regions[0]], ..., acc_flux_itor[regions[-1]],
+        # acc_flux_w_itor]``. The well-operator table shares the
+        # ``OperatorsSuper`` layout and, for the region-``regions[0]`` property
+        # container it is built on, holds the same FLUX/GRAV/SAT/LAMBDA/ENTH/
+        # TEMP values as the reservoir table, so single-region exports are
+        # unchanged. Evaluating everything with region ``regions[0]``
+        # mis-reports any connection whose endpoint block lies in another
+        # operator region.
+        if self.op_list is not None:
+            slot_itors = list(self.op_list)
+        else:
+            slot_itors = [physics.acc_flux_itor[r] for r in physics.regions] + [
+                physics.acc_flux_w_itor
+            ]
+        op_num = np.asarray(self.op_num)
+        slots_m = op_num[np.asarray(block_m)[conn_idxs]].astype(int)
+        slots_p = op_num[np.asarray(block_p)[conn_idxs]].astype(int)
+        for endpoint, slots in (("block_m", slots_m), ("block_p", slots_p)):
+            if np.any((slots < 0) | (slots >= len(slot_itors))):
+                raise NotImplementedError(
+                    f"calc_rates_at_conns: {endpoint} carries operator slots "
+                    f"{sorted(set(slots.tolist()))}, outside the model's "
+                    f"operator list of {len(slot_itors)} interpolator(s); "
+                    "rate export cannot resolve blocks mapped past the "
+                    "operator list."
+                )
+
+        def evaluate_reservoir_ops(states_2d, slots):
+            """One reservoir/well operator row per batch row, each evaluated
+            with the interpolator of its block's own operator slot."""
+            out = np.empty((batch_size, n_reservoir_ops))
+            for slot in np.unique(slots):
+                ks = np.nonzero(slots == slot)[0]
+                rows = (time_idx * n_conns + ks[None, :]).ravel()
+                sub = states_2d[rows]
+                n_sub = sub.shape[0]
+                values = value_vector(np.zeros(n_sub * n_reservoir_ops))
+                dvalues = value_vector(np.zeros((n_sub * n_reservoir_ops) * n_state))
+                slot_itors[slot].evaluate_with_derivatives(
+                    value_vector(sub.ravel()),
+                    index_vector(np.arange(n_sub).astype(np.int32)),
+                    values,
+                    dvalues,
+                )
+                out[rows] = np.asarray(values).reshape(n_sub, n_reservoir_ops)
+            return out
+
+        reservoir_ops_m = evaluate_reservoir_ops(states_m_2d, slots_m)
+        reservoir_ops_p = evaluate_reservoir_ops(states_p_2d, slots_p)
 
         p = h5_well_data["dynamic"]["X"][:, :, p_idx]
         dp = p[:, cell_p] - p[:, cell_m]
 
-        reservoir_operator = physics.reservoir_operators[0]
+        reservoir_operator = physics.reservoir_operators[physics.regions[0]]
         grav_m, _ = self.get_gravity_and_capillary_pressure_ops(
             physics, reservoir_operator, reservoir_ops_m
         )
@@ -2570,6 +2626,35 @@ class Output:
             "phase_volumetric_rates",
             "advective_heat_rates",
         ]:
+            # KNOWN LIMITATION (2026-08-25 adversarial verification of the F1
+            # fix): the phase-rate families read the well-control rate
+            # operators, of which the physics builds exactly ONE table -- on
+            # the ``regions[0]`` property container (physics.py builds a
+            # single ``WellCtrlOperators``) -- so unlike the component
+            # families above they cannot be evaluated per operator region.
+            # A reservoir endpoint outside ``regions[0]`` therefore exports
+            # phase rates with regions[0] fluid properties (matching the
+            # legacy C++ reporting); warn instead of staying silent.
+            # law-carrying connections are exempt: the law branch below
+            # overwrites their rows with region-aware arithmetic
+            darcy = np.array(
+                [flow_laws is None or flow_laws[k] is None for k in range(n_conns)],
+                dtype=bool,
+            )
+            foreign = sorted(
+                set(slots_m[darcy & (slots_m > 0) & (slots_m < len(slot_itors) - 1)])
+                | set(slots_p[darcy & (slots_p > 0) & (slots_p < len(slot_itors) - 1)])
+            )
+            if foreign:
+                warnings.warn(
+                    f"{rate_type} export: connection endpoints in operator "
+                    f"region slot(s) {foreign} are evaluated with the single "
+                    "well-control rate-operator table (built on the first "
+                    "region's property container) -- phase-rate families are "
+                    "not region-aware; the component_molar/component_mass "
+                    "families and native flow-law rates are.",
+                    stacklevel=2,
+                )
             well_ops_m = evaluate_ops(
                 states_m_2d, n_well_ctrl_ops, physics.well_ctrl_itor
             )
@@ -2750,7 +2835,9 @@ class Output:
         # Engine-side perforation flow laws (finding R1). A law-carrying
         # perforation has WI == 0 by construction, so the Darcy product above
         # is identically zero for it; overwrite its rates with the law flux,
-        # mirroring the engine assembly arithmetic exactly (the shared C++
+        # mirroring the engine assembly arithmetic exactly — including the
+        # operator REGION of the upstream block, since the endpoint rows above
+        # are evaluated per operator slot (finding F1) — (the shared C++
         # source of truth is perforation_law_rates() in ms_well.cpp, pinned
         # against this mirror by tests/pipes/test_native_ipr_rates.py):
         #
@@ -2790,12 +2877,8 @@ class Output:
             grav_start = reservoir_operator.GRAV_OP
 
             if rate_type == "advective_heat_rates":
-                reservoir_ops_m_dead = evaluate_ops(
-                    states_m_dead, n_reservoir_ops, physics.acc_flux_itor[0]
-                )
-                reservoir_ops_p_dead = evaluate_ops(
-                    states_p_dead, n_reservoir_ops, physics.acc_flux_itor[0]
-                )
+                reservoir_ops_m_dead = evaluate_reservoir_ops(states_m_dead, slots_m)
+                reservoir_ops_p_dead = evaluate_reservoir_ops(states_p_dead, slots_p)
 
             def law_mixture(ops_up):
                 """(sat, flux, per-phase molar density, per-phase mass density,
@@ -3030,7 +3113,7 @@ class Output:
         :param perf_idx: Index of the perforation. This index starts from zero and the order depends on the order at which perforations are added to the wellbore using the add_perforation method.
         :type perf_idx: int
         """
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
         keys = []
         tag = f"well_{well_name}_perf_{perf_idx}_"
         rate_type = rtype.split("_")[1]
@@ -3062,7 +3145,7 @@ class Output:
         :param well_name: Name of the well
         :type well_name: str
         """
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
         keys = []
         base = f"well_{well_name}_"
         rate_type = rtype.split("_")[1]

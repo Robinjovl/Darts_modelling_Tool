@@ -916,11 +916,18 @@ class ConditionSet:
                 block = head + 1 + i_w
                 existing.add((min(block, i_r), max(block, i_r)))
                 perforated_segments.add(i_w + 1)
-            n_segment_conns = (
-                int(well.num_segments) - 1
-                if well.ms_type == ms_well.MS_Type.DFM
-                else int(well.n_segments)
-            )
+            # The EPM segment-connection count replicates conn_mesh::add_wells
+            # exactly: max(i_w) + 1 over the perforations (0 without any).
+            # ms_well.num_segments stays 0 for EPM wells and the C++ n_segments
+            # member is not exposed to Python -- reading well.n_segments here
+            # crashed init() for ANY model combining a declared-stencil
+            # condition with an ordinary (EPM) well.
+            if well.ms_type == ms_well.MS_Type.DFM:
+                n_segment_conns = int(well.num_segments) - 1
+            else:
+                n_segment_conns = (
+                    max((int(p[0]) for p in well.perforations), default=-1) + 1
+                )
             for segment in range(n_segment_conns):
                 existing.add((head + segment, head + segment + 1))
             if getattr(well, "with_lateral_heat_transfer", False):

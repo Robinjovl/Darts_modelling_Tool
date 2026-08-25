@@ -585,6 +585,79 @@ class LinearDFMWellIPRHook(ConditionItem):
             jac.add_block(resolved["off_res_well"], jac_well[n_vars:, :] * dt)
             jac.add_block(resolved["diag_res"], jac_res[n_vars:, :] * dt)
 
+    def connection_rates(self) -> list:
+        """The law flux of every connection at the CURRENT engine state.
+
+        The supported per-connection diagnostic for this hook: a
+        condition-interface coupling has no ``well.perforations`` entry, so
+        ``Output.store_well_time_data()`` exports no ``*_perf_*`` columns for
+        it (the columns the retired zero-well-index dummy perforation used to
+        emit were identically ``0.0`` -- the Darcy export is
+        ``operators * WI * dp`` with ``WI == 0``). Call this after any
+        converged timestep to sample the actual coupling flux; the arithmetic
+        and the region-aware upstream property resolution are exactly the ones
+        the residual assembly uses.
+
+        :returns: one dict per connection with ``well_name``,
+            ``well_block_index`` / ``res_block_index`` (global block indices),
+            ``total_rate`` (in the law's own basis, positive = into the
+            reservoir), ``component_molar_rates`` [kmol/day] (positive = into
+            the reservoir, the perforation-export sign convention) and, for
+            thermal physics, ``energy_rate`` [kJ/day].
+        :raises RuntimeError: when the hook is not bound to an initialized
+            model yet.
+        """
+        if self.model is None or not hasattr(self.model.physics, "engine"):
+            raise RuntimeError(
+                "connection_rates() reads the engine state: register the hook "
+                "on model.conditions and call model.init() first"
+            )
+        physics = self.model.physics
+        n_vars = int(physics.n_vars)
+        nc = int(physics.nc)
+        X = np.asarray(physics.engine.X)
+        resolved = self._resolved_connections
+        if resolved is None:
+            # no CSR positions are needed for reporting, so resolve the pairs
+            # and the per-side property containers engine-free
+            resolved = tuple(
+                {
+                    **pair,
+                    "well_pc": property_container_for_block(
+                        self.model, pair["well_block_idx"]
+                    ),
+                    "res_pc": property_container_for_block(
+                        self.model, pair["res_block_idx"]
+                    ),
+                }
+                for pair in self._resolve_pairs()
+            )
+        rates = []
+        for r in resolved:
+            wb_idx = r["well_block_idx"]
+            rb_idx = r["res_block_idx"]
+            well_state = X[wb_idx * n_vars : (wb_idx + 1) * n_vars].copy()
+            res_state = X[rb_idx * n_vars : (rb_idx + 1) * n_vars].copy()
+            flux = self._evaluate_connection_flux(
+                resolved=r, well_state=well_state, res_state=res_state
+            )
+            spec = r["spec"]
+            entry = {
+                "well_name": spec.well_name,
+                "well_block_index": wb_idx,
+                "res_block_index": rb_idx,
+                "total_rate": float(
+                    spec.ipr_intercept
+                    + spec.pi
+                    * (well_state[0] - res_state[0] - spec.ipr_pressure_offset)
+                ),
+                "component_molar_rates": flux["well_residual"][:nc].copy(),
+            }
+            if physics.thermal:
+                entry["energy_rate"] = float(flux["well_residual"][nc])
+            rates.append(entry)
+        return rates
+
     def _resolve_pairs(self) -> tuple[dict, ...]:
         """Resolve every connection to its ``(well_block, res_block)`` pair.
 
