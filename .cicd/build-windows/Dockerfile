@@ -4,7 +4,15 @@ FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
 SHELL ["cmd", "/S", "/C"]
 
-# Step 1: Install Visual Studio Build Tools with C++ workload
+# [TIMER] markers below print a timestamp before each expensive step, so a
+# slow or hung build can be attributed from the job log (steps run in order,
+# so consecutive markers bracket each step). They call powershell rather than
+# echoing %TIME% because cmd expands %TIME% once when it parses a whole &&
+# chain - every marker in a step would print the same value. Cached steps do
+# not re-run, so their markers will not reappear.
+
+RUN powershell -NoProfile -Command "Write-Host ('[TIMER] 01-vs-buildtools ' + (Get-Date -Format o))"
+# Step 1: Install Visual Studio Build Tools with C++ workload.
 RUN curl -SL --output vs_buildtools.exe https://aka.ms/vs/17/release/vs_buildtools.exe `
     && start /w vs_buildtools.exe --quiet --wait --norestart --nocache `
        --installPath "C:\BuildTools" `
@@ -20,26 +28,31 @@ RUN curl -SL --output vs_buildtools.exe https://aka.ms/vs/17/release/vs_buildtoo
        --includeRecommended `
     && del /q vs_buildtools.exe
 
+RUN powershell -NoProfile -Command "Write-Host ('[TIMER] 02-windows-sdk ' + (Get-Date -Format o))"
 # Step 2: Install Windows SDK (ensures rc.exe and mt.exe are available)
 RUN curl.exe -SL --output winsdksetup.exe "https://go.microsoft.com/fwlink/?linkid=2272610" `
     && start /w winsdksetup.exe /features OptionId.DesktopCPPx64 /quiet /norestart `
     && del /q winsdksetup.exe
 
+RUN powershell -NoProfile -Command "Write-Host ('[TIMER] 03-cmake ' + (Get-Date -Format o))"
 # Step 3: Install CMake 3.29.3
 RUN curl -SL --output cmake.zip https://github.com/Kitware/CMake/releases/download/v3.29.3/cmake-3.29.3-windows-x86_64.zip `
     && powershell -Command "Expand-Archive -Path cmake.zip -DestinationPath C:\cmake" `
     && del /q cmake.zip
 
+RUN powershell -NoProfile -Command "Write-Host ('[TIMER] 04-miniforge ' + (Get-Date -Format o))"
 # Step 4: Install Miniforge (conda-forge)
 RUN curl -SL --output miniforge.exe https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Windows-x86_64.exe `
     && start /w miniforge.exe /S /D=C:\conda `
     && del /q miniforge.exe
 
+RUN powershell -NoProfile -Command "Write-Host ('[TIMER] 05-git ' + (Get-Date -Format o))"
 # Step 5: Install Git
 RUN curl -SL --output git-installer.exe https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/Git-2.45.2-64-bit.exe `
     && start /w git-installer.exe /VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /DIR="C:\Git" `
     && del /q git-installer.exe
 
+RUN powershell -NoProfile -Command "Write-Host ('[TIMER] 06-sdk-path ' + (Get-Date -Format o))"
 # Step 6: Add Windows SDK tools (rc.exe, mt.exe) to PATH
 RUN powershell -Command `
     "$rcPath = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits' -Recurse -Filter 'rc.exe' | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).DirectoryName; `
@@ -52,12 +65,14 @@ RUN setx /M PATH "C:\cmake\cmake-3.29.3-windows-x86_64\bin;%PATH%"
 RUN setx /M PATH "C:\Git\cmd;%PATH%"
 RUN setx /M PATH "C:\conda;C:\conda\Scripts;C:\conda\Library\bin;%PATH%"
 
+RUN powershell -NoProfile -Command "Write-Host ('[TIMER] 08-conda-env ' + (Get-Date -Format o))"
 # Step 8: Create conda environment for the gmsh build.
 # Build-time only: gmsh's Python API is a pure-Python ctypes wrapper around gmsh.dll (the wheel is tagged py2.py3-none),
 # so this version does NOT constrain which Python the CI matrix runs against.
 ARG PY_VER=3.11
 RUN C:\conda\Scripts\conda.exe create -n darts python=%PY_VER% --yes
 
+RUN powershell -NoProfile -Command "Write-Host ('[TIMER] 09a-gmsh-clone ' + (Get-Date -Format o))"
 # Step 9: Compile and install gmsh without graphical dependencies (DENABLE_FLTK=0)
 ARG GMSH_REF=29461e8d64551661c57aca54bef830c1ed0e7218
 
@@ -65,6 +80,7 @@ RUN git clone https://gitlab.onelab.info/gmsh/gmsh.git C:\src\gmsh `
     && cd C:\src\gmsh `
     && git checkout %GMSH_REF%
 
+RUN powershell -NoProfile -Command "Write-Host ('[TIMER] 09b-gmsh-compile ' + (Get-Date -Format o))"
 RUN call "C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat" `
     && call C:\conda\Scripts\activate.bat darts `
     && mkdir C:\src\gmsh\build `
@@ -99,6 +115,8 @@ RUN call "C:\BuildTools\VC\Auxiliary\Build\vcvars64.bat" `
     && del C:\Windows\Temp\smoke.msh
 
 # Note: install open-darts using: pip install . --ignore-installed gmsh
+
+RUN powershell -NoProfile -Command "Write-Host ('[TIMER] 99-image-complete ' + (Get-Date -Format o))"
 
 # Set up the MSVC developer environment on entry
 ENTRYPOINT ["cmd", "/k", "C:\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat", "&&"]
