@@ -1684,7 +1684,7 @@ std::vector<value_t> engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev(
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 std::vector<value_t> engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev_L2()
 {
-	std::vector<value_t> dev_by_balance(THERMAL + NC + 2, 0.0); // mass + momentum + energy
+	std::vector<value_t> dev_by_balance(4, 0.0); // [0] mass, [1] momentum, [2] energy, [3] gap
 	std::vector<value_t> dev(n_vars, 0);
 	std::vector<value_t> norm(n_vars, 0);
 	value_t gap_dev = 0.0, norm_gap = 0.0;
