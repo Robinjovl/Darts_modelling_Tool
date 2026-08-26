@@ -903,80 +903,19 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         self.nonlinear_solver.bind(self)
 
     def run_simple(self, physics, data_ts, days, restart_dt=0.0):
+        """Removed. Use :meth:`run` after configuring the model normally.
+
+        ``run_simple()`` re-assigned ``self.physics`` / ``self.data_ts`` from its
+        arguments, which a run method must not do. Configure the model (physics,
+        ``data_ts``, ``set_solver()``) and call ``run(days)`` instead.
+
+        .. deprecated::
+            Scheduled for deletion after one deprecation cycle.
         """
-        Run simulation for specified time. Optional argument to specify dt to restart simulation with.
-
-        :param physics:
-        :param data_ts:
-        :param days: Time increment [days]
-        :type days: float
-        :param restart_dt: Restart value for timestep size [days, optional]
-        :type restart_dt: float
-        """
-        self.physics = physics
-        self.data_ts = data_ts
-        # bind the model's nonlinear solver (its spec is the single config source)
-        self.set_solver()
-        self.nonlinear_solver.bind(self)
-
-        days = days if days is not None else self.runtime
-        assert days > 0, "Time must be a positive value!"
-
-        verbose = False
-
-        # get current engine time
-        t = self.physics.engine.t
-        stop_time = t + days
-
-        # same logic as in engine.run
-        if fabs(t) < 1e-15:
-            dt = self.data_ts.dt_first
-        elif restart_dt > 0.0:
-            dt = restart_dt
-        else:
-            dt = min(self.prev_dt * self.data_ts.dt_mult, self.data_ts.dt_max)
-        self.prev_dt = dt
-
-        ts = 0
-
-        while t < stop_time:
-            converged = self.run_timestep(dt, t, verbose)
-
-            if converged:
-                t += dt
-                ts += 1
-                self.after_converged_timestep()
-                if verbose:
-                    print(
-                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.nonlinear_solver.status.n_newton:d}\tLI={self.nonlinear_solver.status.n_linear:d}"
-                    )
-
-                dt = min(dt * self.data_ts.dt_mult, self.data_ts.dt_max)
-
-                # if the current dt almost covers the rest time amount needed to reach the stop_time, add the rest
-                # to not allow the next time step be smaller than min_ts
-                if np.fabs(t + dt - stop_time) < self.data_ts.dt_min:
-                    dt = stop_time - t
-
-                if t + dt > stop_time:
-                    dt = stop_time - t
-                else:
-                    self.prev_dt = dt
-
-            else:
-                dt /= self.data_ts.dt_mult
-                if verbose:
-                    print(f"Cut timestep to {dt:2.10f}")
-                if dt < self.data_ts.dt_min:
-                    break
-
-        # update current engine time
-        self.physics.engine.t = stop_time
-
-        if verbose:
-            print(
-                f"TS = {self.nonlinear_solver.stats.n_timesteps_total:d}({self.nonlinear_solver.stats.n_timesteps_wasted:d}), NI = {self.nonlinear_solver.stats.n_newton_total:d}({self.nonlinear_solver.stats.n_newton_wasted:d}), LI = {self.nonlinear_solver.stats.n_linear_total:d}({self.nonlinear_solver.stats.n_linear_wasted:d})"
-            )
+        raise NotImplementedError(
+            "DartsModel.run_simple() was removed: it re-wired the model from its "
+            "arguments. Configure the model and call run(days) instead."
+        )
 
     def run(
         self,
@@ -1231,6 +1170,20 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         self.timer.node["simulation"].node["dfm_well_velocity_calculation"].stop()
 
     def apply_dfm_well_lateral_heat_flux(self, dt, t):
+        """
+        Add the lateral (well-to-formation) heat exchange of DFM wells to the RHS
+
+        For every DFM well carrying a ``lateral_heat_rate_eval``, evaluate the
+        heat rate from the current segment temperatures and subtract its
+        contribution over the timestep from the energy equations of the well
+        segments. Segment temperatures come straight from the state for a PT
+        formulation, or from the property container for a PH one.
+
+        :param dt: Time step size [day]
+        :type dt: float
+        :param t: Simulation time [day]
+        :type t: float
+        """
         for well in self.reservoir.wells:
             if (
                 well.ms_type == ms_well.MS_Type.DFM
@@ -1282,21 +1235,34 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
 
     def do_after_step(self):
         """
-        can be overrided by an user to be executed in the 'run_simulation()'
+        Hook for per-report-step actions (e.g. reporting, saving); override in a
+        model and call it from the script's reporting loop.
         """
         pass
 
     def run_simulation(self):
-        time = 0.0
-        for ith_step, dt in enumerate(self.idata.sim.time_steps):
-            self.set_well_controls_idata(time=time)
-            ret = self.run(dt)
-            if ret != 0:
-                print("run() failed for the step=", ith_step, "dt=", dt)
-                return 1
-            self.do_after_step()
-            time += dt
-        return 0
+        """Removed. Drive the reporting loop from the model script.
+
+        This was an idata-specific loop (``for dt in idata.sim.time_steps:``
+        calling :meth:`set_well_controls_idata`, :meth:`run` and
+        :meth:`do_after_step`), not generic model API. Write it explicitly in the
+        script instead::
+
+            time = 0.0
+            for dt in m.idata.sim.time_steps:
+                m.set_well_controls_idata(time=time)
+                if m.run(dt) != 0:
+                    break
+                m.do_after_step()
+                time += dt
+
+        .. deprecated::
+            Scheduled for deletion after one deprecation cycle.
+        """
+        raise NotImplementedError(
+            "DartsModel.run_simulation() was removed: drive the reporting loop "
+            "from the model script (see the docstring for the equivalent code)."
+        )
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         """
