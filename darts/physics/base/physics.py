@@ -120,7 +120,7 @@ class PhysicsBase:
     # darts.tools.obl_cache.OblCacheCodec — a stateless codec this class composes once and
     # delegates every file read/write to. PhysicsBase keeps only the orchestration: the
     # write_cache loop over created_itors, the dirty-point trackers, SIGINT/SIGTERM + __del__
-    # flushing, cache-path resolution, and the static-interpolator pickle cache.
+    # flushing, cache-path resolution, and the interpolator pickle cache.
     _cache_codec = OblCacheCodec()
 
     @total_ordering
@@ -134,13 +134,6 @@ class PhysicsBase:
             if self.__class__ is other.__class__:
                 return self.value < other.value
             return NotImplemented
-
-    # Dense per-axis grid size for the rarely-used *static* interpolator mode, whose
-    # vector storage requires a finite point count. Adaptive mode is unbounded
-    # (origin + step only) and ignores this entirely — it is NOT an advisory window
-    # (the old ADVISORY_N_AXES_POINTS, whose 1024^n_dims product caused the GPU 2^70
-    # overflow, is gone now that the ctors take (axes_origin, axes_step) natively).
-    STATIC_GRID_N_POINTS = 1024
 
     def __init__(
         self,
@@ -476,7 +469,6 @@ class PhysicsBase:
         discr_type: str = 'tpfa',
         platform: str = 'cpu',
         itor_type: str = 'multilinear',
-        itor_mode: str = 'adaptive',
         itor_precision: str = 'd',
         verbose: bool = False,
         is_barycentric: bool = False,
@@ -495,8 +487,6 @@ class PhysicsBase:
         :type platform: str
         :param itor_type: Type of interpolation method, 'multilinear' (default) or 'linear'
         :type itor_type: str
-        :param itor_mode: Mode of interpolation, 'adaptive' (default) or 'static'
-        :type itor_mode: str
         :param itor_precision: Precision of interpolation, 'd' (default) - double precision or 's' - single precision
         :type itor_precision: str
         :param verbose: Set verbose level
@@ -548,7 +538,6 @@ class PhysicsBase:
         self.set_interpolators(
             platform,
             itor_type,
-            itor_mode,
             itor_precision,
             is_barycentric,
             parallel_evaluation=parallel_evaluation,
@@ -672,7 +661,6 @@ class PhysicsBase:
         self,
         platform='cpu',
         itor_type='multilinear',
-        itor_mode='adaptive',
         itor_precision='d',
         is_barycentric: bool = False,
         parallel_evaluation: bool = False,
@@ -690,8 +678,6 @@ class PhysicsBase:
         :type platform: str
         :param itor_type: Type of interpolation method, 'multilinear' (default) or 'linear'
         :type itor_type: str
-        :param itor_mode: Mode of interpolation, 'adaptive' (default) or 'static'
-        :type itor_mode: str
         :param itor_precision: Precision of interpolation, 'd' (default) - double precision or 's' - single precision
         :type itor_precision: str
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
@@ -735,7 +721,6 @@ class PhysicsBase:
                 axes_origin=operator_axes_origin,
                 platform=platform,
                 algorithm=itor_type,
-                mode=itor_mode,
                 precision=itor_precision,
                 timer_name=f'reservoir {region:d} interpolation',
                 region=str(region),
@@ -749,7 +734,6 @@ class PhysicsBase:
                 axes_origin=operator_axes_origin,
                 platform=platform,
                 algorithm=itor_type,
-                mode=itor_mode,
                 precision=itor_precision,
                 timer_name=f'property {region:d} interpolation',
                 region=str(region),
@@ -764,7 +748,6 @@ class PhysicsBase:
             timer_name='well interpolation',
             platform=platform,
             algorithm=itor_type,
-            mode=itor_mode,
             precision=itor_precision,
             region='-1',
             is_barycentric=is_barycentric,
@@ -778,7 +761,6 @@ class PhysicsBase:
             timer_name='well controls interpolation',
             platform=platform,
             algorithm=itor_type,
-            mode=itor_mode,
             precision=itor_precision,
             is_barycentric=is_barycentric,
         )
@@ -796,7 +778,6 @@ class PhysicsBase:
             timer_name='well initialization',
             platform=platform,
             algorithm=itor_type,
-            mode=itor_mode,
             precision=itor_precision,
             is_barycentric=is_barycentric,
         )
@@ -1364,7 +1345,6 @@ class PhysicsBase:
         axes_step: list[float] = None,
         axes_origin: list[float] = None,
         algorithm: str = 'multilinear',
-        mode: str = 'adaptive',
         platform: str = 'cpu',
         precision: str = 'd',
         region: str = '',
@@ -1377,10 +1357,8 @@ class PhysicsBase:
         Defaults to ``self.axes_step`` / ``self.axes_origin`` from PhysicsBase and,
         when history fields are configured, appends one ``HistoryField`` axis per
         history variable. These axes are passed straight to the C++ interpolator
-        constructor, which takes ``(axes_origin, axes_step)`` natively. Adaptive grids
-        are unbounded (cells are enumerated on demand via signed multi-index keys);
-        only the ``static`` mode adds a finite per-axis point count
-        (:attr:`STATIC_GRID_N_POINTS`) for its dense storage.
+        constructor, which takes ``(axes_origin, axes_step)`` natively. The grid is
+        unbounded: cells are enumerated on demand via signed multi-index keys.
 
         When point-data caching is enabled (``self.cache``), the cache file name is
         derived from the evaluator's class name among other shape parameters; a
@@ -1393,7 +1371,6 @@ class PhysicsBase:
         :param axes_step: Per-axis cell size (defaults to self.axes_step).
         :param axes_origin: Per-axis grid origin (defaults to self.axes_origin).
         :param algorithm: 'multilinear' (default) or 'linear'.
-        :param mode: 'adaptive' (default) or 'static'.
         :param platform: 'cpu' (default) or 'gpu'.
         :param precision: 'd' (default) or 's'.
         :param region: Per-region tag used to disambiguate cache file names.
@@ -1430,44 +1407,27 @@ class PhysicsBase:
             if not (-float("inf") < o < float("inf")):
                 raise ValueError(f"axes_origin[{i}]={o!r} must be finite")
 
-        # The C++ interpolator ctors take (axes_origin, axes_step) natively. Adaptive
-        # grids are unbounded (origin + step only); static grids additionally need a
-        # finite per-axis point count for their dense storage.
+        # The C++ interpolator ctors take (axes_origin, axes_step) natively; the grid
+        # is unbounded (origin + step only), cells are enumerated on demand.
         n_dims = len(axes_step)
         axes_origin_vec = value_vector(axes_origin)
         axes_step_vec = value_vector(axes_step)
 
         # Build the constructor argument tuple (everything after `evaluator`) once, then
         # reuse it across the 32-bit / 64-bit / higher-n_ops / general fallbacks.
-        if mode == 'static':
-            # Static (dense) storage needs a bounded grid. STATIC_GRID_N_POINTS sets the
-            # per-axis extent for this rarely-used mode; adaptive mode ignores it.
-            axes_n_points_vec = index_vector(
-                [PhysicsBase.STATIC_GRID_N_POINTS] * n_dims
-            )
-            if algorithm == 'linear':
-                ctor_args = (
-                    axes_origin_vec,
-                    axes_step_vec,
-                    axes_n_points_vec,
-                    is_barycentric,
-                )
-            else:
-                ctor_args = (axes_origin_vec, axes_step_vec, axes_n_points_vec)
-        else:  # adaptive (unbounded)
-            if algorithm == 'linear':
-                ctor_args = (axes_origin_vec, axes_step_vec, is_barycentric)
-            else:
-                ctor_args = (axes_origin_vec, axes_step_vec)
+        if algorithm == 'linear':
+            ctor_args = (axes_origin_vec, axes_step_vec, is_barycentric)
+        else:
+            ctor_args = (axes_origin_vec, axes_step_vec)
 
         # Exposed interpolator names carry no index-type letter any more (the index-type
         # template parameter was dropped from the adaptive classes — storage is keyed on
         # a multi-index, so the index type is not part of the class identity):
-        #   {algorithm}_{mode}_{platform}_interpolator_{precision}_{n_dims}_{n_ops}
+        #   {algorithm}_adaptive_{platform}_interpolator_{precision}_{n_dims}_{n_ops}
         # Older prebuilt libraries still export the legacy _i_ (uint32) / _l_ (uint64)
         # suffixed names, so those are tried as fallbacks for py/lib version skew
         # (e.g. an editable install with a stale compiled module).
-        itor_base = f"{algorithm}_{mode}_{platform}_interpolator"
+        itor_base = f"{algorithm}_adaptive_{platform}_interpolator"
         name_variants = ['', 'i_', 'l_']  # current letterless first, then legacy
         itor_names = [
             f"{itor_base}_{v}{precision}_{n_dims:d}_{n_ops:d}" for v in name_variants
@@ -1538,7 +1498,7 @@ class PhysicsBase:
         # format or the persisted supporting-point cache (only point_data is saved).
         # 0/absent = unbounded (legacy behaviour). Read from the physics attribute so it
         # applies uniformly to every physics that goes through create_interpolator, and
-        # hasattr-guarded so interpolators without the method (linear/static) are unaffected.
+        # hasattr-guarded so interpolators without the method (e.g. linear) are unaffected.
         hypercube_cap = getattr(self, 'hypercube_cap', 0)
         if hypercube_cap and hasattr(itor, 'set_hypercube_cap'):
             itor.set_hypercube_cap(int(hypercube_cap))
@@ -1552,7 +1512,10 @@ class PhysicsBase:
             # same-shape targets (e.g. ConversionOperators vs ThermalVarOperator)
             # onto one cache file.
             signature_evaluator = getattr(evaluator, "_serial_evaluator", evaluator)
-            itor_cache_signature = f"{type(signature_evaluator).__name__}_{mode}_{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
+            # NOTE: the literal "adaptive" keeps the signature (and therefore the
+            # cache file names) byte-identical to the pre-removal scheme, where the
+            # only reachable mode was adaptive -- existing OBL caches stay valid.
+            itor_cache_signature = f"{type(signature_evaluator).__name__}_adaptive_{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
             # geenral itor has a different point_data format
             if general:
                 itor_cache_signature += "_general_"
@@ -1602,7 +1565,7 @@ class PhysicsBase:
                 if loaded_point_data is not None:
                     # The canonical cache format is the tuple-keyed multi-index export
                     # (point_data_full). Adaptive interpolators are unbounded and expose
-                    # only this view; static interpolators expose the legacy integer-keyed
+                    # only this view; older builds expose the legacy integer-keyed
                     # point_data. Pick whichever the loaded file + interpolator support.
                     if not loaded_point_data:
                         # Empty cache (e.g. a previous run flushed before any points were
@@ -1644,24 +1607,18 @@ class PhysicsBase:
                         elif hasattr(itor, 'point_data') and not hasattr(
                             itor, 'point_data_full'
                         ):
-                            # Static interpolator path: legacy integer-key tracker.
+                            # Legacy integer-key tracker (older interpolator builds).
                             self._flushed_point_keys[id(itor)] = set(
                                 loaded_point_data.keys()
                             )
                 else:
                     print("Cached point data is invalid, ignoring.")
-            if mode == 'adaptive':
-                # for adaptive itors, delay obl data save moment, because
-                # during simulations new points will be evaluated.
-                # on model destruction (or interpreter exit), itor point data will be written to disk
-                self.created_itors.append((itor, itor_cache_filename))
+            # delay the obl data save moment, because during simulations new points
+            # will be evaluated; on model destruction (or interpreter exit) the
+            # itor point data will be written to disk
+            self.created_itors.append((itor, itor_cache_filename))
 
         itor.init()
-        # for static itors, save the cache immediately after init, if it has not been already loaded
-        # otherwise, there is no point to save the same data over and over
-        if self.cache and mode == 'static' and not cache_loaded:
-            print("Writing point data for ", type(itor).__name__)
-            self._atomic_pickle_dump(itor.point_data, itor_cache_filename)
 
         self.create_itor_timers(itor, timer_name)
         return itor, signature_n_ops
@@ -1723,7 +1680,7 @@ class PhysicsBase:
             if self._last_flushed_sizes.get(itor_id, -1) == cur_size:
                 continue
             # The cache is a C++-built mmap arena; an interpolator without that API
-            # (static itors, an older .so) is not cacheable here -> skip, no fallback.
+            # (an older .so) is not cacheable here -> skip, no fallback.
             if not hasattr(itor, 'build_arena_file'):
                 self._last_flushed_sizes[itor_id] = cur_size
                 continue
@@ -1921,7 +1878,7 @@ class PhysicsBase:
     # methods are the entry points the rest of PhysicsBase + offline tooling call.
     # ------------------------------------------------------------------
     def _atomic_pickle_dump(self, *args, **kwargs):
-        """Atomically write a static-interpolator point_data pickle (see OblCacheCodec)."""
+        """Atomically write an interpolator point_data pickle (see OblCacheCodec)."""
         return self._cache_codec._atomic_pickle_dump(*args, **kwargs)
 
     def _load_cache(self, itor, pkl_path):
@@ -1981,7 +1938,7 @@ class PhysicsBase:
             itor = self.acc_flux_itor[0]
             # Unbounded grid: hypercubes are identified by signed multi-index keys
             # (tuples of ints), not a single packed integer. Skip if the interpolator
-            # does not expose them (e.g. static/GPU variants).
+            # does not expose them (e.g. GPU variants).
             if not hasattr(itor, "get_hypercube_keys"):
                 return
             all_idxs = set(itor.get_hypercube_keys())

@@ -8,13 +8,10 @@
 #include <cstring>
 #include <vector>
 
-#include "multilinear_static_cpu_interpolator.hpp"
 #include "multilinear_adaptive_cpu_interpolator.hpp"
 
-#include "linear_static_cpu_interpolator.hpp"
 #include "linear_adaptive_cpu_interpolator.hpp"
 #ifdef WITH_GPU
-#include "multilinear_static_gpu_interpolator.hpp"
 #include "multilinear_adaptive_gpu_interpolator.hpp"
 #endif //WITH_GPU
 
@@ -570,25 +567,6 @@ struct interpolator_exposer
              "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
-      else if constexpr (std::is_same_v<interpolator_class, linear_static_cpu_interpolator<N_DIMS, N_OPS>>)
-      {
-        py::class_<interpolator_class,
-          operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
-          .def(py::init<operator_set_evaluator_iface*, std::vector<value_t> &, std::vector<value_t> &, std::vector<index_t> &, bool>(), py::keep_alive<1, 2>()) /* (evaluator, axes_origin, axes_step, axes_points, is_barycentric) */
-          .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
-            "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
-          .def("init_timer_node", &interpolator_class::init_timer_node,
-            "Initialize timer", "timer_node"_a)
-          .def("init", &interpolator_class::init, "Initialize interpolator")
-          .def("write_to_file", &interpolator_class::write_to_file, "Write interpolator data to file")
-          .def("evaluate", &interpolator_class::evaluate,
-            "Evaluate operators", "state"_a, "values"_a)
-          // linear_static_cpu_interpolator stores point_data as std::vector<double>
-          // (dense supporting-point payload) and has no dirty_point_data tracker;
-          // the append-only delta hooks therefore do not apply to this branch.
-          .def_readwrite("point_data", &interpolator_class::point_data)
-          .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
-      }
 #ifdef WITH_GPU
       else if constexpr (std::is_same_v<interpolator_class, multilinear_adaptive_gpu_interpolator<f_t, N_DIMS, N_OPS>>)
       {
@@ -809,16 +787,10 @@ struct interpolator_exposer
     // carries no index-type template parameter (int32-native vertex enumeration).
     expose_class<double, linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
 #endif
-    //expose_class<double, linear_static_cpu_interpolator<N_DIMS, N_OPS>>(m, "linear_static_cpu_interpolator");
-    // we expose static versions only when needed
     //#ifdef WITH_GPU
-    //expose_class<double, multilinear_static_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_static_cpu_interpolator");
 //#endif
-// we expose static GPU versions only when GPU build is active
 #ifdef WITH_GPU
 
-    //expose_class<double, multilinear_static_gpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_static_gpu_interpolator");
-    //expose_class<float, multilinear_static_gpu_interpolator<uint32_t, float, N_DIMS, N_OPS>>(m, "multilinear_static_gpu_interpolator");
 
     expose_class<double, multilinear_adaptive_gpu_interpolator<double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_gpu_interpolator");
 

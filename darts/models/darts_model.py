@@ -303,7 +303,6 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         platform: str = "cpu",
         restart: bool = False,
         verbose: int | None = None,
-        itor_mode: str = "adaptive",
         itor_type: str = "multilinear",
         is_barycentric: bool = False,
         n_solid: int = None,
@@ -328,8 +327,6 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         :param verbose: Verbosity level (``int``; ``bool`` accepted for backward
             compatibility). Defaults to ``None``, meaning inherit :attr:`self.verbose`.
         :type verbose: int
-        :param itor_mode: specifies either 'static' or 'adaptive' interpolator
-        :type itor_mode: str
         :param itor_type: specifies either 'linear' or 'multilinear' interpolator
         :type itor_type: str
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
@@ -386,7 +383,6 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
             discr_type=discr_type,
             platform=platform,
             verbose=bool(verbose),
-            itor_mode=itor_mode,
             itor_type=itor_type,
             is_barycentric=is_barycentric,
             n_solid=n_solid,

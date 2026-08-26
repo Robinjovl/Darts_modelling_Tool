@@ -17,7 +17,7 @@ from darts.physics.base.initialize import Initialize
 
 class Model(DartsModel):
     def __init__(self, obl_points, reservoir_type, nx: int = None, components: list = [], itor_type: str = 'multilinear',
-                 itor_mode: str = 'adaptive', is_barycentric: bool = False):
+                 is_barycentric: bool = False):
         # Call base class constructor
         super().__init__()
 
@@ -27,7 +27,6 @@ class Model(DartsModel):
         self.reservoir_type = reservoir_type
         self.components = components
         self.itor_type = itor_type
-        self.itor_mode = itor_mode
         self.is_barycentric = is_barycentric
         self.well_controls = {'INJ': 'rate', 'PRD': 'pressure'}
 
@@ -319,7 +318,7 @@ class Model(DartsModel):
         else:
             # run initialization over depth with specified GOC, pure liquid above, pure vapour under
             from darts.physics.base.initialize import Initialize
-            init = Initialize(physics=self.physics, algorithm=self.itor_type, mode=self.itor_mode,
+            init = Initialize(physics=self.physics, algorithm=self.itor_type,
                               is_barycentric=self.is_barycentric)
 
             # top boundary: calculate phase equilibrium for given uniform composition

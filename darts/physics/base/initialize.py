@@ -10,7 +10,6 @@ class Initialize:
         self,
         physics,
         algorithm: str = 'multilinear',
-        mode: str = 'adaptive',
         is_barycentric: bool = False,
         aq_idx: int = None,
         h2o_idx: int = None,
@@ -20,7 +19,6 @@ class Initialize:
 
         :param physics: Physics object
         :param algorithm: Type of interpolation (multilinear/linear), default is multilinear
-        :param mode: Interpolation mode (static/adaptive), default is adaptive
         :param is_barycentric: Bool for barycentric interpolation, default is False
         :param aq_idx: Index of Aq phase
         :param h2o_idx: Index of H2O-component
@@ -132,7 +130,6 @@ class Initialize:
             axes_origin=thermal_origin,
             timer_name='initialization itor',
             algorithm=algorithm,
-            mode=mode,
             is_barycentric=is_barycentric,
             include_history=False,
         )
