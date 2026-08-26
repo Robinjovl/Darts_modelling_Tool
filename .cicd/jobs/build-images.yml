@@ -119,19 +119,24 @@ windows-image-builder:
   script:
     # --- content-hash check (mirrors docker-image-builder above) ---
     - |
-      # Stop on the first error: a silently skipped hash input would produce a
-      # stable tag that no longer tracks image content, so the registry check
-      # below would keep matching a stale image and never rebuild.
-      $ErrorActionPreference = 'Stop'
       $files = $env:DOCKER_HASH_FILES.Split(';') | Where-Object { $_ -ne '' } | ForEach-Object { $_.Trim() }
       Write-Host "Files included in content hash: $($files -join ' ')"
       $bytes = New-Object System.Collections.Generic.List[byte]
       foreach ($f in $files) {
-        # Resolve to an absolute path: .NET methods resolve relative paths against
-        # [Environment]::CurrentDirectory, which PowerShell does not keep in sync
-        # with $PWD, so ReadAllBytes would look under the runner's start directory.
-        $full = (Resolve-Path -LiteralPath $f).Path
-        $bytes.AddRange([System.IO.File]::ReadAllBytes($full))
+        # throw, not $ErrorActionPreference: GitLab concatenates every script
+        # block into one PowerShell script, so setting the preference here would
+        # also turn the deliberate 'docker manifest inspect' miss below into a
+        # fatal error. A silently skipped input would yield a tag that no longer
+        # tracks image content, so this must still fail loudly.
+        try {
+          # Resolve to an absolute path: .NET methods resolve relative paths against
+          # [Environment]::CurrentDirectory, which PowerShell does not keep in sync
+          # with $PWD, so ReadAllBytes would look under the runner's start directory.
+          $full = (Resolve-Path -LiteralPath $f -ErrorAction Stop).Path
+          $bytes.AddRange([System.IO.File]::ReadAllBytes($full))
+        } catch {
+          throw "Hash input unreadable: $f - $($_.Exception.Message)"
+        }
       }
       # Build args affect image content too, so hash them alongside the files.
       $bytes.AddRange([System.Text.Encoding]::UTF8.GetBytes("PY_VER=$env:GMSH_PY_VER"))
