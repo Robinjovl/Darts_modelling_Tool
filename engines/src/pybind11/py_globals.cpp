@@ -108,7 +108,6 @@ void pybind_globals(py::module &m)
     .def_readwrite("linear_params", &sim_params::linear_params)
     .def_readwrite("enable_permporo", &sim_params::enable_permporo)
     .def_readwrite("sim_eps", &sim_params::sim_eps)
-    .def_readwrite("global_actnum", &sim_params::global_actnum)
     .def_readwrite("assembly_kernel", &sim_params::assembly_kernel)
     .def_readwrite("schur_elim_count", &sim_params::schur_elim_count,
         "K = number of cell-local (diagonal-block-only) equation/unknown pairs the GPU "

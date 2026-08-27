@@ -151,9 +151,6 @@ public:
 
   std::vector<value_t> linear_params;
 
-  // for NF solver (proprietary linsolv_adgprs_nf path)
-  std::vector<int> global_actnum;
-
 
   index_t finalize_mpi;         // flag to run MPI_Finalize in relevant solvers (required for multiple model run)
 

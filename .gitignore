@@ -29,6 +29,9 @@ models/__pycache__/
 
 # building info
 darts/build_info.txt
+# copied into the package by the wheel build (pyproject package-data); the
+# authoritative CHANGELOG.md is the one in the repository root
+darts/CHANGELOG.md
 
 # simulation results
 results_*/**
