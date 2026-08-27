@@ -122,7 +122,7 @@ class Model(CICDModel):
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=16)
         self.linear_solver.spec.tolerance = 1e-3
         self.linear_solver.spec.max_iterations = 20
-        self.data_ts.eta[-1] = 0.05
+        self.ts_control.eta[-1] = 0.05
 
     def setup_case(
         self,

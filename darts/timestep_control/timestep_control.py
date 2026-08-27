@@ -3,7 +3,7 @@ import warnings
 import numpy as np
 
 
-class DataTS:
+class TimestepControl:
     """Timestep-control parameters.
 
     Holds ONLY the timestep controls (``dt_first``/``dt_min``/``dt_mult``/
@@ -40,7 +40,7 @@ class DataTS:
         # minimal allowed timestep [days] = the divergence-abort floor. NOTE: a
         # known discrepancy remains -- set_sim_params(min_ts=) defaults to 1e-15,
         # so a model configured through set_sim_params (without an explicit min_ts)
-        # floors lower than one that constructs DataTS directly. This value is left
+        # floors lower than one that constructs TimestepControl directly. This value is left
         # at 1e-12 deliberately (behaviour-preserving); the *effective* value is now
         # surfaced by DartsModel.print_config(). Unifying the two paths is a follow-up
         # that requires re-baselining the models that ride the abort floor.
@@ -61,17 +61,17 @@ class DataTS:
         """Raise ``ValueError`` on an obviously-invalid timestepping configuration
         (mirror of ``NonlinearSolverSpec.validate()``); called at ``init()``."""
         if self.dt_first <= 0:
-            raise ValueError(f"data_ts.dt_first must be > 0, got {self.dt_first}")
+            raise ValueError(f"ts_control.dt_first must be > 0, got {self.dt_first}")
         if self.dt_min <= 0:
-            raise ValueError(f"data_ts.dt_min must be > 0, got {self.dt_min}")
+            raise ValueError(f"ts_control.dt_min must be > 0, got {self.dt_min}")
         if self.dt_max < self.dt_min:
             raise ValueError(
-                f"data_ts.dt_max ({self.dt_max}) must be >= dt_min ({self.dt_min})"
+                f"ts_control.dt_max ({self.dt_max}) must be >= dt_min ({self.dt_min})"
             )
         if self.dt_mult < 1.0:
-            raise ValueError(f"data_ts.dt_mult must be >= 1, got {self.dt_mult}")
+            raise ValueError(f"ts_control.dt_mult must be >= 1, got {self.dt_mult}")
         if self.runtime <= 0:
-            raise ValueError(f"data_ts.runtime must be > 0, got {self.runtime}")
+            raise ValueError(f"ts_control.runtime must be > 0, got {self.runtime}")
 
     def to_dict(self):
         """Serializable snapshot (mirror of ``NonlinearSolverSpec.to_dict()``)."""
@@ -101,7 +101,7 @@ class DataTS:
     ):
         """
         Deprecated: set the timestep controls on this structure (installing it as
-        ``model.data_ts``) and, for one deprecation cycle, migrate removed
+        ``model.ts_control``) and, for one deprecation cycle, migrate removed
         nonlinear/linear solver keyword arguments onto ``model``'s solvers.
 
         The nonlinear solver parameters are NOT set here anymore — specify them
@@ -133,13 +133,13 @@ class DataTS:
         are accepted on the same terms as the nonlinear ones above.
 
         .. deprecated::
-            Set timestep controls on ``model.data_ts``, the nonlinear solver on
+            Set timestep controls on ``model.ts_control``, the nonlinear solver on
             ``model.nonlinear_solver`` and the linear solver on
             ``model.linear_solver.spec`` instead.
         """
         warnings.warn(
             "set_sim_params() is deprecated; set timestep controls on "
-            "DartsModel.data_ts and specify DartsModel.nonlinear_solver in set_solver()",
+            "DartsModel.ts_control and specify DartsModel.nonlinear_solver in set_solver()",
             DeprecationWarning,
             stacklevel=3,  # blame the set_solver() override, not the LinearSolver delegator
         )
@@ -162,5 +162,5 @@ class DataTS:
         self.dt_max = max_ts if max_ts is not None else self.dt_max
         self.dt_mult = mult_ts if mult_ts is not None else self.dt_mult
         self.runtime = runtime
-        model.data_ts = self
+        model.ts_control = self
         return self

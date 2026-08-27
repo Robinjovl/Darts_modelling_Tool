@@ -5,7 +5,7 @@ against a recording ``FakeEngine`` (see conftest.py) — no full simulation. The
 lock in the behaviours fixed in MR327 review: residual hooks, pre/update/post
 ordering, line-search accepted status, linear-solver failure return codes and
 statistics, OBL-bounds wiring, fallback subclass preservation, spec validation,
-DataTS->sim_params propagation, the legacy set_sim_params shim, and NaN/Inf
+TimestepControl->sim_params propagation, the legacy set_sim_params shim, and NaN/Inf
 rejection.
 
 ``darts.engines`` is required only for the canonical enum constants that
@@ -218,7 +218,7 @@ def test_sync_to_engine_uses_canonical_enum_ints(make_newton):
 # ------------------------------------------- F1 linear-spec -> sim_params (!280)
 def test_linear_spec_settings_reach_params():
     """After !280 the linear settings are owned by ``linear_solver.spec`` (they
-    were transitional ``data_ts.linear_*`` attributes before) and are mirrored
+    were transitional ``ts_control.linear_*`` attributes before) and are mirrored
     into sim_params by ``LinearSolver._sync_solver_to_sim_params``."""
     import types
 

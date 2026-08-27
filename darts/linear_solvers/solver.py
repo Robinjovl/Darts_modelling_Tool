@@ -37,7 +37,7 @@ nonlinear side). Scope:
 * the linear-solve entry points used by the nonlinear loop
   (``_solve_linear_equation``, ``get_linear_system``);
 * the deprecated ``set_sim_params`` shim, a thin delegator to
-  :meth:`darts.timestep_control.DataTS.set_sim_params` (kept here under its
+  :meth:`darts.timestep_control.TimestepControl.set_sim_params` (kept here under its
   historic name for the ~40 example models still calling it), and the
   one-deprecation-cycle mapping of removed nonlinear/linear keyword arguments onto
   the solver specs (``_migrate_legacy_solver_kwargs``, invoked from there) --
@@ -268,7 +268,7 @@ class LinearSolver:
         :class:`LinearSolverSpec` (``self.spec``, or the platform default for models
         that only configure time-stepping) is built and injected, so ``engine.init``
         adopts it and bypasses its own factory. No-op in proprietary / GPU builds and
-        when no ``data_ts`` exists -- there the engine factory / ``params.linear_type``
+        when no ``ts_control`` exists -- there the engine factory / ``params.linear_type``
         selects the solver.
         """
         model = self.model
@@ -330,9 +330,9 @@ class LinearSolver:
         if not isinstance(spec, LinearSolverSpec):
             # No solver assigned at all (self.spec is None -- reset() ran without
             # set_solver(), e.g. a THMC subclass override). Apply the platform default
-            # when this model uses the registry path, i.e. it has a data_ts -- matching
+            # when this model uses the registry path, i.e. it has a ts_control -- matching
             # the former _apply_linear_solver_spec, which defaulted to FGMRES + CPR/AMG.
-            # Mechanics / THMC models without data_ts leave the engine factory / ls_params
+            # Mechanics / THMC models without ts_control leave the engine factory / ls_params
             # in charge.
             if getattr(model, "linear_solver_from_engine_factory", False):
                 return
@@ -764,7 +764,7 @@ class LinearSolver:
         nonlinear driver stays backend-agnostic (!327 contract).
 
         Two solver kinds are dispatched here (!280 spec-driven routing, which
-        replaced the former ``data_ts.linear_type`` enum dispatch):
+        replaced the former ``ts_control.linear_type`` enum dispatch):
 
         * a Python-resident solver built from a
           :class:`~darts.linear_solvers.specs.PythonLinearSolverSpec` (PETSc /
@@ -794,12 +794,12 @@ class LinearSolver:
         **legacy,
     ):
         """Deprecated: thin backward-compatible delegator to
-        :meth:`~darts.timestep_control.DataTS.set_sim_params` (kept here under
+        :meth:`~darts.timestep_control.TimestepControl.set_sim_params` (kept here under
         its historic name since ~40 example models call
         ``model.linear_solver.set_sim_params(...)``); see that method for the
         full docstring and the legacy-kwarg migration it performs via
         :meth:`_migrate_legacy_solver_kwargs`."""
-        return self.model.data_ts.set_sim_params(
+        return self.model.ts_control.set_sim_params(
             self.model, first_ts, mult_ts, min_ts, max_ts, runtime, **legacy
         )
 
@@ -881,7 +881,7 @@ class LinearSolver:
         """No-op retained for compatibility: nothing is mirrored into ``sim_params``
         any more.
 
-        * timestep controls live on ``data_ts`` and are read directly by ``run()``;
+        * timestep controls live on ``ts_control`` and are read directly by ``run()``;
         * nonlinear settings are synced into the engine by the nonlinear solver
           (``NonlinearSolverSpec.sync_to_engine``, !327);
         * linear settings are mirrored by :meth:`_sync_solver_to_sim_params` from

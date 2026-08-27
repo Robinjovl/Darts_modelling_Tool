@@ -23,10 +23,10 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
         runtime = days
     else:
-        runtime = m.data_ts.runtime
+        runtime = m.ts_control.runtime
 
-    mult_dt = m.data_ts.dt_mult
-    max_dt = m.data_ts.dt_max
+    mult_dt = m.ts_control.dt_mult
+    max_dt = m.ts_control.dt_max
     m.e = m.physics.engine
 
     # get current engine time
@@ -34,11 +34,11 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
 
     # same logic as in engine.run
     if fabs(t) < 1e-15:
-        dt = m.data_ts.dt_first
+        dt = m.ts_control.dt_first
     elif restart_dt > 0:
         dt = restart_dt
     else:
-        dt = m.data_ts.dt_max
+        dt = m.ts_control.dt_max
 
     # evaluate end time
     runtime += t
@@ -103,8 +103,8 @@ def run_single_resolution(timestep, n_steps, mesh_file, discretizer='pm_discreti
     time = 0
     for ith_step, dt in enumerate(t):
         time += dt
-        m.data_ts.dt_first = dt
-        m.data_ts.dt_max = dt
+        m.ts_control.dt_first = dt
+        m.ts_control.dt_max = dt
         run_python(m, dt)
 
         # m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)

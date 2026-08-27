@@ -58,10 +58,10 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
         runtime = days
     else:
-        runtime = m.data_ts.runtime
+        runtime = m.ts_control.runtime
 
-    mult_dt = m.data_ts.dt_mult
-    max_dt = m.data_ts.dt_max
+    mult_dt = m.ts_control.dt_mult
+    max_dt = m.ts_control.dt_max
     m.e = m.physics.engine
 
     # get current engine time
@@ -69,11 +69,11 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
 
     # same logic as in engine.run
     if fabs(t) < 1e-15:
-        dt = m.data_ts.dt_first
+        dt = m.ts_control.dt_first
     elif restart_dt > 0:
         dt = restart_dt
     else:
-        dt = m.data_ts.dt_max
+        dt = m.ts_control.dt_max
 
     # evaluate end time
     runtime += t
@@ -162,8 +162,8 @@ def test(case='mandel', discr_name='mech_discretizer', mesh='rect', overwrite='0
 
     for ith_step, dt in enumerate(t):
         time += dt
-        m.data_ts.dt_first = dt
-        m.data_ts.dt_max = dt
+        m.ts_control.dt_first = dt
+        m.ts_control.dt_max = dt
         run_python(m, dt)
 
         # write a vtk snapshot
@@ -295,8 +295,8 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', con
     time = 0.0
     for ith_step, dt in enumerate(t):
         time += dt
-        m.data_ts.dt_first = dt
-        m.data_ts.dt_max = dt
+        m.ts_control.dt_first = dt
+        m.ts_control.dt_max = dt
         run_python(m, dt)
 
         X = np.array(m.physics.engine.X, copy=False)
@@ -483,7 +483,7 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     # set equilibrium (including boundary conditions)
     # m.reservoir.set_equilibrium()
     # m.physics.engine.find_equilibrium = True
-    # m.data_ts.dt_first = 1
+    # m.ts_control.dt_first = 1
     # run_python(m, 1.0)
     # m.reinit_reference(output_directory)
     # m.physics.engine.find_equilibrium = False
@@ -494,8 +494,8 @@ def run(case='mandel', discretizer='mech_discretizer', mesh='rect'):
     time = 0.0
     for ith_step, dt in enumerate(m.idata.sim.time_steps):
         time += dt
-        m.data_ts.dt_first = dt
-        m.data_ts.dt_max = dt
+        m.ts_control.dt_first = dt
+        m.ts_control.dt_max = dt
         run_python(m, dt)
         m.reservoir.write_to_vtk(m.output_directory, ith_step + 1, m.physics.engine)
 

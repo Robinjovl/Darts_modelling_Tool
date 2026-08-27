@@ -39,11 +39,11 @@ class Model(THMCModel):
         # sim_params.linear_type. FS-CPR is a PRECONDITIONER (single application),
         # not an outer Krylov loop -- wrap it in GMRES to mirror the proprietary
         # path (bos_gmres + bos_fs_cpr).
-        from darts.timestep_control import DataTS
+        from darts.timestep_control import TimestepControl
         from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
-        if not hasattr(self, 'data_ts') or self.data_ts is None:
-            self.data_ts = DataTS(self.physics.n_vars)
+        if not hasattr(self, 'ts_control') or self.ts_control is None:
+            self.ts_control = TimestepControl(self.physics.n_vars)
         mesh = self.reservoir.mesh
         n_blocks = mesh.n_blocks
         n_res_blks = mesh.n_res_blocks
@@ -82,9 +82,9 @@ class Model(THMCModel):
         )
         super().set_solver()
 
-        self.data_ts.dt_first = 0.0001
-        self.data_ts.dt_mult = 2
-        self.data_ts.dt_max = 5
+        self.ts_control.dt_first = 0.0001
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 5
         self.nonlinear_solver.spec.tolerance = 1e-6
         self.params.tolerance_linear = 1e-8
         self.nonlinear_solver.spec.max_iterations = 20

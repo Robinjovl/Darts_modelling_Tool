@@ -46,7 +46,7 @@ Design (specified in ``set_solver()``, the same hook as the linear solver of MR2
   driver cuts the timestep (``NonlinearSolver.solve_timestep``).
 
 - Timestep control (dt_first/dt_min/dt_mult/dt_max/eta) lives in the model's
-  ``data_ts`` structure and is consumed by ``DartsModel.run()``.
+  ``ts_control`` structure and is consumed by ``DartsModel.run()``.
 
 The C++ engine keeps only the computationally intensive kernels (assembly,
 linear solve, residual norms and the cell-looping dX corrections); all control

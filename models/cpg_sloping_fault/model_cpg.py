@@ -20,7 +20,7 @@ class Model_CPG(CICDModel):
 
     def set_solver(self):
         # Linear-solver settings live on self.linear_solver (the LinearSolverSpec), not in
-        # data_ts. The case files (case_*.py) may set idata.sim.linear_tol / linear_max_iter.
+        # ts_control. The case files (case_*.py) may set idata.sim.linear_tol / linear_max_iter.
         super().set_solver()  # platform default nonlinear + linear solvers
         sim = self.idata.sim
         if getattr(sim, 'newton_tolerance', None) is not None:

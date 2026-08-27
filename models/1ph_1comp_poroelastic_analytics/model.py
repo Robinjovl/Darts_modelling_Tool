@@ -17,8 +17,8 @@ class Model(THMCModel):
         super().__init__()
 
     def set_solver(self):
-        # data_ts is used only for linear solver params for PETSc
-        self.data_ts = self.idata.sim.DataTS  # this needed as mech models have their own run_python implementation
+        # ts_control is used only for linear solver params for PETSc
+        self.ts_control = self.idata.sim.TimestepControl  # this needed as mech models have their own run_python implementation
 
         # Open-source FS-CPR by default for BOTH discretizers -- inject the spec;
         # the engine bypasses sim_params.linear_type. FS-CPR is a PRECONDITIONER
@@ -285,8 +285,8 @@ class Model(THMCModel):
         #   from darts.linear_solvers import PETScSolverSpec, PardisoSolverSpec
         #   self.linear_solver.spec = PETScSolverSpec(variant="fs")
         #   self.linear_solver.spec = PardisoSolverSpec()
-        from darts.timestep_control import DataTS
-        self.idata.sim.DataTS = DataTS(n_vars=0)
+        from darts.timestep_control import TimestepControl
+        self.idata.sim.TimestepControl = TimestepControl(n_vars=0)
 
         self.idata.obl.zero = 1e-9
         self.idata.obl.epsilon_z = 1e-10

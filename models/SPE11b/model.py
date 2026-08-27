@@ -113,7 +113,7 @@ class Model(DartsModel):
             from darts.linear_solvers import LinearSolver
             self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365  )
-        # self.data_ts.eta = np.ones(self.physics.n_vars)
+        # self.ts_control.eta = np.ones(self.physics.n_vars)
 
         """ Define reservoir """
         self.set_reservoir()
@@ -886,9 +886,9 @@ class Model(DartsModel):
         converged = self.physics.engine.post_newtonloop(dt, t, converged)
         solver.stats.update(converged, status)
 
-        self.data_ts.time.append(t)
+        self.ts_control.time.append(t)
         solver.n_newton_iters.append(status.n_newton)
-        self.data_ts.time_step_size.append(dt)
+        self.ts_control.time_step_size.append(dt)
 
         self.timer.node["simulation"].stop()
 

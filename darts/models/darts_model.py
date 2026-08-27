@@ -23,7 +23,7 @@ from darts.models.output import Output
 from darts.nonlinear_solvers import ChopSpec, NewtonSolver, Norm, OBLBoundsSpec
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
-from darts.timestep_control import DataTS
+from darts.timestep_control import TimestepControl
 
 
 class DartsModel:
@@ -47,7 +47,7 @@ class DartsModel:
     #: :class:`~darts.linear_solvers.LinearSolverSpec` -- the mechanics / THMC
     #: path. :meth:`_apply_solver` then leaves the engine in charge *unless* the
     #: model explicitly chose a spec. (Before !327 this was discriminated by
-    #: ``data_ts is None``; ``data_ts`` now always exists as a plain member, so
+    #: ``ts_control is None``; ``ts_control`` now always exists as a plain member, so
     #: the intent is stated explicitly here.)
     linear_solver_from_engine_factory = False
 
@@ -149,13 +149,13 @@ class DartsModel:
         # .nonlinear_solver.spec (retrievable for tracing/serialization).
         self.nonlinear_solver = None
 
-        # Timestep-control structure (see darts.timestep_control.DataTS): a plain
+        # Timestep-control structure (see darts.timestep_control.TimestepControl): a plain
         # settings holder, unlike the two solvers above it has no bind/build step,
         # so it's just a regular member -- constructed here with n_vars=0 and
         # resized to the physics' actual n_vars by init() (physics doesn't exist
         # yet at this point). Read/write directly,
-        # e.g. self.data_ts.dt_first = ..., self.data_ts.runtime = ....
-        self.data_ts = DataTS()
+        # e.g. self.ts_control.dt_first = ..., self.ts_control.runtime = ....
+        self.ts_control = TimestepControl()
 
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
@@ -306,15 +306,15 @@ class DartsModel:
         self.set_boundary_conditions()
         self.set_well_controls()
 
-        # Materialize the solvers (and default specs/data_ts if the model did
+        # Materialize the solvers (and default specs/ts_control if the model did
         # not configure them) before the engine is initialized.
         self.set_solver()
-        # data_ts may have been constructed pre-init with n_vars=0: size eta now
-        if len(self.data_ts.eta) < self.physics.n_vars:
-            self.data_ts.eta = 1e20 * np.ones(self.physics.n_vars)
+        # ts_control may have been constructed pre-init with n_vars=0: size eta now
+        if len(self.ts_control.eta) < self.physics.n_vars:
+            self.ts_control.eta = 1e20 * np.ones(self.physics.n_vars)
         # fail loudly on an obviously-broken timestepping config, matching the
         # per-timestep spec.validate() the Newton loop already does
-        self.data_ts.validate()
+        self.ts_control.validate()
         # bind the (possibly detached) solver to this model
         self.nonlinear_solver.bind(self)
 
@@ -330,7 +330,7 @@ class DartsModel:
             self.reset()
             init_timer.node["engine init"].stop()
             self.initialize_history_fields()
-        self.data_ts.print()
+        self.ts_control.print()
         self.linear_solver._warn_if_direct_solver_oversized()
 
         init_timer.stop()
@@ -766,12 +766,12 @@ class DartsModel:
 
     def print_config(self):
         """Print the effective solver configuration in one place — timestepping
-        (``data_ts``) + nonlinear (``nonlinear_solver.spec``) + linear
+        (``ts_control``) + nonlinear (``nonlinear_solver.spec``) + linear
         (``linear_solver.spec``) — using the same ``to_dict()`` serialization each
         family exposes. Available after ``set_solver()`` / ``init()``."""
         print("=== Effective configuration ===")
-        print("Timestepping (data_ts):")
-        for k, v in self.data_ts.to_dict().items():
+        print("Timestepping (ts_control):")
+        for k, v in self.ts_control.to_dict().items():
             print(f"\t{k} = {v}")
         ns = getattr(self, "nonlinear_solver", None)
         ns_spec = getattr(ns, "spec", None) if ns is not None else None
@@ -786,12 +786,12 @@ class DartsModel:
             for k, v in ls_spec.to_dict().items():
                 print(f"\t{k} = {v}")
 
-    def run_simple(self, physics, data_ts, days, restart_dt=0.0):
+    def run_simple(self, physics, ts_control, days, restart_dt=0.0):
         """Removed. Use :meth:`run` after configuring the model normally.
 
-        ``run_simple()`` re-assigned ``self.physics`` / ``self.data_ts`` from its
+        ``run_simple()`` re-assigned ``self.physics`` / ``self.ts_control`` from its
         arguments, which a run method must not do. Configure the model (physics,
-        ``data_ts``, ``set_solver()``) and call ``run(days)`` instead.
+        ``ts_control``, ``set_solver()``) and call ``run(days)`` instead.
 
         .. deprecated::
             Scheduled for deletion after one deprecation cycle.
@@ -838,10 +838,10 @@ class DartsModel:
             "self.output does not exist, please call m.set_output() after m.init()"
         )
 
-        days = days if days is not None else self.data_ts.runtime
+        days = days if days is not None else self.ts_control.runtime
         assert days > 0, "Time must be a positive value!"
 
-        data_ts = self.data_ts
+        ts_control = self.ts_control
 
         if save_well_data_after_run:
             if not hasattr(self, "_well_output_configured"):
@@ -862,11 +862,11 @@ class DartsModel:
 
         # same logic as in engine.run
         if fabs(t) < 1e-15 or not hasattr(self, "prev_dt"):
-            dt = min(data_ts.dt_first, days)
+            dt = min(ts_control.dt_first, days)
         elif restart_dt > 0.0:
             dt = restart_dt
         else:
-            dt = min(self.prev_dt * data_ts.dt_mult, days, data_ts.dt_max)
+            dt = min(self.prev_dt * ts_control.dt_mult, days, ts_control.dt_max)
 
         self.prev_dt = dt
 
@@ -874,11 +874,11 @@ class DartsModel:
         nb = self.reservoir.mesh.n_res_blocks
         max_dx = np.zeros(nc)
 
-        if np.fabs(data_ts.dt_mult - 1) < 1e-10:
+        if np.fabs(ts_control.dt_mult - 1) < 1e-10:
             omega = 0.0
         else:
             # inversion assuming mult = (1 + omega) / omega
-            omega = 1 / (data_ts.dt_mult - 1)
+            omega = 1 / (ts_control.dt_mult - 1)
 
         ts_counter = 0
 
@@ -902,11 +902,11 @@ class DartsModel:
                 self.after_converged_timestep()
 
                 x = np.array(self.physics.engine.X, copy=False)[: nb * nc]
-                dt_mult_new = data_ts.dt_mult
+                dt_mult_new = ts_control.dt_mult
                 for i in range(nc):
                     max_dx[i] = np.max(abs(xn[i::nc] - x[i::nc]))
-                    mult = ((1 + omega) * data_ts.eta[i]) / (
-                        max_dx[i] + omega * data_ts.eta[i]
+                    mult = ((1 + omega) * ts_control.eta[i]) / (
+                        max_dx[i] + omega * ts_control.eta[i]
                     )
                     if mult < dt_mult_new:
                         dt_mult_new = mult
@@ -917,9 +917,9 @@ class DartsModel:
                         f"#{ts_counter:d}\tT={t:3g}\tDT={dt:2g}\tNI={self.nonlinear_solver.status.n_newton:d}\tLI={self.nonlinear_solver.status.n_linear:d}\tDT_MULT={dt_mult_new:3.3g}\tdX={max_dx_str}"
                     )
 
-                dt = min(dt * dt_mult_new, data_ts.dt_max)
+                dt = min(dt * dt_mult_new, ts_control.dt_max)
 
-                if np.fabs(t + dt - stop_time) < data_ts.dt_min:
+                if np.fabs(t + dt - stop_time) < ts_control.dt_min:
                     dt = stop_time - t
 
                 if t + dt > stop_time:
@@ -948,14 +948,14 @@ class DartsModel:
                     self.output.well_cfl.append(self.physics.engine.CFL_max)
 
             else:
-                dt /= data_ts.dt_mult
+                dt /= ts_control.dt_mult
                 if verbose:
                     print(f"Cut timestep to {dt:2.10f}")
-                if dt <= data_ts.dt_min:
+                if dt <= ts_control.dt_min:
                     overhead.stop()  # keep the bracket balanced before the assert aborts
-                assert dt > data_ts.dt_min, (
+                assert dt > ts_control.dt_min, (
                     "Stop simulation. Reason: reached min. timestep "
-                    + str(data_ts.dt_min)
+                    + str(ts_control.dt_min)
                     + " dt="
                     + str(dt)
                 )

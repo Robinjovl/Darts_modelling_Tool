@@ -18,10 +18,10 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
         runtime = days
     else:
-        runtime = m.data_ts.runtime
+        runtime = m.ts_control.runtime
 
-    mult_dt = m.data_ts.dt_mult
-    max_dt = m.data_ts.dt_max
+    mult_dt = m.ts_control.dt_mult
+    max_dt = m.ts_control.dt_max
     m.e = m.physics.engine
 
     # get current engine time
@@ -107,7 +107,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
         #         m.ith_step - m.ith_step_ready_for_reinjection > 500:
         #     m.physics.engine.momentum_inertia = 0.0
         #     dt = 0.001
-        #     m.data_ts.dt_max = max_dt = 0.005
+        #     m.ts_control.dt_max = max_dt = 0.005
         #     m.enable_dynamic_mode = False
         #     m.reservoir.wells[0].control = m.physics.new_rate_prod(0.0)
         #     #X = np.array(m.physics.engine.X, copy = False)
@@ -164,7 +164,7 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     # m.physics.engine.t_dim = 1.0
     # m.physics.engine.m_dim = 1.0
 
-    m.data_ts.dt_first = 1.0
+    m.ts_control.dt_first = 1.0
     run_python(m, 1.0, init_step=True)
     m.reinit(zero_conduction=True)
     m.physics.engine.dt1 = 0.0
@@ -184,8 +184,8 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     time = 0
     for ith_step, dt in enumerate(t):
         time += dt
-        m.data_ts.dt_max = dt
-        m.data_ts.dt_mult = 10.0
+        m.ts_control.dt_max = dt
+        m.ts_control.dt_mult = 10.0
         run_python(m, dt)
         ith_step += 1
 

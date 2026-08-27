@@ -159,14 +159,14 @@ class FakeModel:
         self.physics.engine = engine
         self.physics.n_vars = n_vars
 
-        class _DataTS:
+        class _TimestepControl:
             linear_type = None
 
             def __init__(self):
                 self.time = []
                 self.time_step_size = []
 
-        self.data_ts = _DataTS()
+        self.ts_control = _TimestepControl()
 
         class _LinearSolver:
             def _solve_linear_equation(inner_self):

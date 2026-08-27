@@ -36,7 +36,7 @@ class Model(CICDModel):
         self.set_physics()
 
         # NOTE: set_sim_params stays in __init__ (not moved to set_solver): set_wells()
-        # builds RampUpRate from self.data_ts.dt_first and runs during init() before
+        # builds RampUpRate from self.ts_control.dt_first and runs during init() before
         # reset()/set_solver(). dfm_well is the documented set_solver exception.
         if self.linear_solver is None:
             from darts.linear_solvers import LinearSolver
@@ -186,7 +186,7 @@ class Model(CICDModel):
         inj_phase_comp = np.array([1 - self.zero, self.zero])
         inj_fluid_props = {"composition": inj_phase_comp}
 
-        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx,
+        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.ts_control.dt_first, inj_segment_idx,
                                   inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
                                   verbose=verbose)
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
