@@ -209,8 +209,19 @@ class Model(THMCModel):
             if ls1.linear_type == sim_params.cpu_gmres_fs_cpr:
                 self.physics.engine.update_uu_jacobian()
 
-            # different solver for dynamic simulation
-            if self.enable_dynamic_mode:
+            # different solver for dynamic simulation -- works with BOS-solvers build only.
+            # There, main.py switches the engine-side solver at rupture
+            # (active_linear_solver_id = 1). The open-source build reaches the same
+            # dynamic-stage settings by reconfiguring the injected GMRES+FS-CPR stack in
+            # place (main.py: update_solver(tolerance=1e-12, max_iterations=500)) and never
+            # selects ls_params[1], so it must not append this entry: engine_pm_cpu keeps
+            # the cpu_gmres_ilu0 case behind #ifndef OPENDARTS_LINEAR_SOLVERS, so the entry
+            # would match no case, nothing would be appended to the engine's linear_solvers
+            # and engine.init() -- which indexes that by the ls_params index --
+            # would read past its end. There is currently no standalone open-source ILU(0)
+            # to name here either: the in-tree block ILU(0) is reachable only as the CPR
+            # stage-2 smoother, not as a registry solver.
+            if self.enable_dynamic_mode and not self.open_source_solvers_available():
                 ls2 = linear_solver_params()
                 ls2.linear_type = sim_params.cpu_gmres_ilu0
                 ls2.tolerance_linear = 1.e-12
