@@ -68,18 +68,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
 
     # ---- run simulation
-    # Reporting loop over idata.sim.time_steps (was DartsModel.run_simulation(),
-    # removed as non-generic model API -- drive it from the script instead).
-    ret = 0
-    time = 0.0
-    for ith_step, dt in enumerate(m.idata.sim.time_steps):
-        m.set_well_controls_idata(time=time)
-        if m.run(dt) != 0:
-            print("run() failed for the step=", ith_step, "dt=", dt)
-            ret = 1
-            break
-        m.do_after_step()
-        time += dt
+    ret = m.run_simulation()
 
     if ret != 0:
         exit(1)
