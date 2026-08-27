@@ -180,13 +180,19 @@ class Model(THMCModel):
             u_var=engine.U_VAR,
             nc=engine.N_VARS - 3,
         )
-        # 1e-5 / 50 is what this model has always effectively run with: until !280 the
-        # engine overwrote a spec's tolerance/max_iterations at init() with sim_params
-        # (defaults 1e-5 / 50), so the spec's numbers were decorative. The spec is
-        # authoritative now, so state the values this model has really been running -- keeping
-        # behaviour unchanged. FS-CPR does not reach 1e-8 on these systems anyway: asking for it
-        # only burns the iteration budget (on SPE10_mech 22 of 48 solves exhaust the 200-iter cap).
-        self.linear_solver = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-5, max_iterations=50, restart=50)
+        # 1e-10 / 500, not the sim_params defaults (1e-5 / 50). Until !280 this model
+        # ran a *direct* solve (ls_params[0] = cpu_superlu), and ref/*/solution_fault1.vtu
+        # was generated with it; main.py compares the fault data at rtol 1e-6 / atol 1e-8.
+        # The slip-weakening case amplifies the linear residual: mu depends on the slip g,
+        # so the momentum-residual floor propagates straight into mu and f_local. At
+        # 1e-5 / 50 GMRES+FS-CPR leaves ||ru|| ~ 4e-9 (vs ~2e-14 for the direct solve),
+        # which moves mu by ~1.3e-6 and f_local by ~5e-4 -- over the comparison tolerance.
+        # At 1e-10 / 500 the Newton path matches the direct solve exactly (NI = 5, same
+        # residuals to ~10 digits) and every fault field is within isclose(1e-6, 1e-8) of
+        # it, at ~20% more wall time. The static case is insensitive (constant mu) and
+        # passes either way. main.py tightens this further (1e-12 / 500) for the dynamic
+        # rupture stage via update_solver().
+        self.linear_solver = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-10, max_iterations=500, restart=50)
         self.solver_phase = 'static'  # main.py flips to 'dynamic' at rupture
 
         # Idempotent: ls_params is appended once even though set_solver() runs on every reset().
