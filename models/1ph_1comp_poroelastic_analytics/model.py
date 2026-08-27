@@ -6,7 +6,7 @@ from darts.engines import sim_params
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
 from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus, bound_cond
-from darts.input.input_data import InputData, linear_solver_types
+from darts.input.input_data import InputData
 
 
 class Model(THMCModel):
@@ -16,21 +16,73 @@ class Model(THMCModel):
         self.discretizer_name = discretizer
         super().__init__()
 
-    def set_solver_params(self):
-        super().set_solver_params()
-
-        if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-            linear_type = sim_params.cpu_gmres_fs_cpr
-        else:
-            linear_type = sim_params.cpu_superlu
-
-        if self.discretizer_name == 'mech_discretizer':
-            self.params.linear_type = linear_type
-        elif self.discretizer_name == 'pm_discretizer':
-            self.physics.engine.ls_params[-1].linear_type = linear_type
+    def set_solver(self):
+        super().set_solver()
 
         # data_ts is used only for linear solver params for PETSc
         self.data_ts = self.idata.sim.DataTS  # this needed as mech models have their own run_python implementation
+
+        # Open-source FS-CPR by default for BOTH discretizers -- inject the spec;
+        # the engine bypasses sim_params.linear_type. FS-CPR is a PRECONDITIONER
+        # (single application), not an outer Krylov loop -- wrap it in GMRES to
+        # mirror the proprietary path (bos_gmres + bos_fs_cpr).
+        #
+        # The two mechanics engines lay their Jacobian block out differently, and
+        # the FS-CPR must be told which block is pressure and which is
+        # displacement or it splits the wrong subsystem and never converges
+        # (displacement residual plateaus, linear cap exhausts every Newton step,
+        # dt collapses to ~0 -> the whole job hangs). engine_super_elastic_cpu
+        # (mech_discretizer) uses the spec's default convention (P_VAR=0, Z_VAR=1,
+        # U_VAR=NE); engine_pm_cpu (pm_discretizer) puts displacement first
+        # (U_VAR=0), pressure at ND=3, and carries no composition variable
+        # (Z_VAR=255 sentinel). Read the layout off the engine so this stays
+        # correct if the conventions change.
+        from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        engine = self.physics.engine
+        mesh = self.reservoir.mesh
+        n_blocks = mesh.n_blocks
+        n_res_blks = mesh.n_res_blocks
+        n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
+        n_fracs_mesh = getattr(self.reservoir, 'n_fracs', 0)
+        # Match proprietary engine_pm_cpu.cpp:136 convention:
+        #   n_res  = n_matrix + n_fracs  (matrix + fracture cells treated as "reservoir")
+        #   n_fracs= 0   (zero gap-DOF rows -- FS_UPG not yet supported)
+        #   n_wells= n_blocks - n_res_blocks
+        fs_cpr_kwargs = dict(
+            force_amg_asymmetric=True,
+            n_res=n_matrix + n_fracs_mesh,
+            n_fracs=0,
+            n_wells=n_blocks - n_res_blks,
+        )
+        if self.discretizer_name == 'pm_discretizer':
+            # ND = 3 (3D mechanics); for the isothermal poroelastic cases the
+            # flow subsystem is a single pressure equation (NE = N_VARS - ND = 1
+            # = NC). Thermoporoelasticity (bai) is gated off upstream.
+            fs_cpr_kwargs.update(
+                p_var=engine.P_VAR,
+                z_var=engine.Z_VAR,
+                u_var=engine.U_VAR,
+                nc=engine.N_VARS - 3,
+            )
+        fs_cpr = FSCPRSolverSpec(**fs_cpr_kwargs)
+        # Single solver declaration. The FS-CPR spec drives _apply_solver on the
+        # open-source CPU build. On the proprietary build _apply_solver applies
+        # proprietary_linear_type (bos_fs_cpr) to params.linear_type (mech engine),
+        # while the pm engine keeps its ls_params[-1] = cpu_gmres_fs_cpr stage.
+        self.linear_solver = GMRESSolverSpec(
+            prec=fs_cpr,
+            # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
+            # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()
+            # with sim_params (defaults 1e-5 / 50, globals.h:117), so the spec's numbers were
+            # decorative. The spec is authoritative now, so state the values the model has
+            # really been running -- keeping behaviour unchanged. FS-CPR does not reach 1e-8 on
+            # these systems anyway: asking for it only burns the iteration budget (on SPE10_mech
+            # 22 of 48 solves exhaust the 200-iteration cap; 99 vs 41 linear iters per Newton).
+            tolerance=1e-5,
+            max_iterations=50,
+            restart=50,
+            proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
+        )
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
@@ -235,14 +287,12 @@ class Model(THMCModel):
             max_dt = 30  # timestep length, days
             self.idata.sim.time_steps = np.logspace(-3, np.log10(max_dt), nt)
 
-        # optional: use PETSc linear solver
+        # optional: use PETSc / Pardiso linear solver (set in set_solver())
+        #   from darts.linear_solvers import PETScSolverSpec, PardisoSolverSpec
+        #   self.linear_solver = PETScSolverSpec(variant="fs")
+        #   self.linear_solver = PardisoSolverSpec()
         from darts.models.darts_model import DataTS
         self.idata.sim.DataTS = DataTS(n_vars=0)
-        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_FS
-        #self.idata.sim.DataTS.linear_print_level = 0
-
-        # optional: use PARDISO linear solver
-        #self.idata.sim.DataTS.linear_type = linear_solver_types.CPU_PARDISO
 
         self.idata.obl.zero = 1e-9
         self.idata.obl.epsilon_z = 1e-10

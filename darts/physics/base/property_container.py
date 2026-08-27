@@ -26,7 +26,6 @@ class PropertyContainer:
         np_sol: int = 0,
         eps_z: float = 1e-11,
         rock_comp: float = 1e-6,
-        rate_ann_mat=None,
         temperature: float = None,
         n_history: int = 0,
     ):
@@ -47,8 +46,6 @@ class PropertyContainer:
         :type eps_z: float
         :param rock_comp: Rock compressibility, default is 1e-6
         :type rock_comp: float
-        :param rate_ann_mat: Rate annihilation matrix, optional
-        :type rate_ann_mat: numpy.ndarray, optional
         :param temperature: Constant temperature for isothermal simulation, default is None (thermal)
         :type temperature: float, optional
         :param n_history: Number of OBL history variables (e.g. ``sg_max``) appended to the state
@@ -65,11 +62,6 @@ class PropertyContainer:
         self.ns = nc_sol
         self.nc_fl = self.nc - nc_sol
         self.np_fl = self.nph - np_sol
-
-        self.rate_ann_mat = (
-            rate_ann_mat if rate_ann_mat is not None else np.eye(len(components_name))
-        )
-        self.nelem = self.rate_ann_mat.shape[0]
 
         self.Mw = Mw
         self.eps_z = eps_z
@@ -287,9 +279,9 @@ class PropertyContainer:
         vol = [self.nu[j] / self.dens_m[j] for j in ph]
         try:
             self.sat[ph] = vol / np.sum(vol)
-        except: 
+        except:
             print('failed flash')
-            print(pressure, state_spec_2, zc)
+            print(ph, vol)
 
         return
 
@@ -391,7 +383,7 @@ class PropertyContainer:
         """
         # Composition vector and pressure from state:
         pressure, state_spec_2, zc = self.get_state(state)
-        
+
         # print(pressure, state_spec_2, zc)
 
         self.clean_arrays()

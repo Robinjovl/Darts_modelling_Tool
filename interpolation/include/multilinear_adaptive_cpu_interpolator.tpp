@@ -67,9 +67,12 @@ multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::get_point_data(co
   for (int op = 0; op < N_OPS; op++)
   {
     new_point[op] = this->new_operator_values[op];
-    if (std::isnan(this->new_operator_values[op]))
+    // isfinite (not just isnan): an inf operator (e.g. mobility kr/mu with an
+    // underflowed viscosity) poisons every hypercube touching this point just
+    // like a nan does -- inf * 0-weight = nan in the interpolated value/derivative.
+    if (!std::isfinite(this->new_operator_values[op]))
     {
-      printf("OBL generation warning: nan operator detected! Operator %d for point (", op);
+      printf("OBL generation warning: non-finite operator detected! Operator %d for point (", op);
       for (int a = 0; a < N_DIMS; a++)
       {
         printf("%lf, ", this->new_point_coords[a]);
@@ -228,9 +231,11 @@ void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::materialize_
       {
         double val = batch_values[i * N_OPS + op];
         new_point[op] = val;
-        if (std::isnan(val))
+        // isfinite (not just isnan): an inf operator poisons every hypercube
+        // touching this point just like a nan does (inf * 0-weight = nan).
+        if (!std::isfinite(val))
         {
-          printf("OBL generation warning: nan operator detected! Operator %d for point (", op);
+          printf("OBL generation warning: non-finite operator detected! Operator %d for point (", op);
           for (int a = 0; a < N_DIMS; a++)
           {
             printf("%lf, ", batch_coords[i * N_DIMS + a]);

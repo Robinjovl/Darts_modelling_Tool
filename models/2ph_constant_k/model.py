@@ -37,15 +37,8 @@ class Model(DartsModel):
         self.set_reservoir()
         self.set_physics()
 
-        if len(self.components) > 14:
-            max_ts_mult = 1.
-        else:
-            max_ts_mult = 5.
-        max_ts = min(4., max_ts_mult * 1000 / self.nx)
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10, chop=ChopSpec(mode='local'))
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=max_ts, runtime=1000, tol_linear=1e-3,
-                            it_linear=50)
-        # self.params.linear_type = sim_params.cpu_superlu
+        # Time-stepping / Newton / linear-solver configuration moved to set_solver()
+        # (called from DartsModel.reset() before engine.init).
 
         self.timer.node["initialization"].stop()
 
@@ -55,6 +48,19 @@ class Model(DartsModel):
 
         self.inj_composition = self.inj_comp[:self.physics.nc-1]
         self.physics.components = self.components
+
+    def set_solver(self):
+        if len(self.components) > 14:
+            max_ts_mult = 1.
+        else:
+            max_ts_mult = 5.
+        max_ts = min(4., max_ts_mult * 1000 / self.nx)
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=max_ts, runtime=1000  )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10, chop=ChopSpec(mode='local'))
+        self.linear_solver.spec.tolerance = 1e-3
+        self.linear_solver.spec.max_iterations = 50
+        # self.params.linear_type = sim_params.cpu_superlu
 
     def set_reservoir(self):
         if self.reservoir_type == '1D':

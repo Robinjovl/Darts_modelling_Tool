@@ -1,7 +1,28 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
-from darts.engines import well_control_iface, ms_well
-from darts.nonlinear_solvers import NewtonSolver, ChopSpec
+from darts.engines import sim_params, well_control_iface, ms_well
+from darts.nonlinear_solvers import ChopSpec, NewtonSolver
+from darts import linear_solvers
+from darts.linear_solvers import (
+    BCSRCPRSpec,
+    BILU0Spec,
+    LocalCorrectionSpec,
+    MGRLevelSpec,
+    MGRSolverSpec,
+    PressureAMGSpec,
+)
+from darts.linear_solvers.enums import (
+    BCSRCPRReduction,
+    CoarseGrid,
+    CompositeMode,
+    FRelaxation,
+    GlobalSmoother,
+    Interpolation,
+    LocalFallback,
+    LocalPreconditioner,
+    Restriction,
+    VariableRole,
+)
 import numpy as np
 
 from darts.physics.base.physics import PhysicsBase
@@ -22,10 +43,9 @@ class Model(CICDModel):
 
         self.set_reservoir()
         self.set_physics()
-
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10, chop=ChopSpec(mode='local'))
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_linear=1e-3,
-                            it_linear=50)
+        # Time-stepping and linear-solver configuration live in set_solver(),
+        # which the base reset() calls before engine.init (see the unified
+        # self.linear_solver = <LinearSolverSpec> API).
 
         self.timer.node["initialization"].stop()
 
@@ -74,7 +94,7 @@ class Model(CICDModel):
                                      axes_step=[p_step, z_step, z_step],
                                      axes_origin=[1.0, epsilon, epsilon],
                                      epsilon_z=epsilon,
-                                     cache = True, 
+                                     cache = True,
                                      extrapolation_flag=True)
         # property_container.output_props = {
         #     "sat0": lambda: property_container.sat[0],
@@ -86,6 +106,125 @@ class Model(CICDModel):
         self.physics.add_property_region(property_container)
 
         return
+
+    def set_solver(self):
+        # Single per-model home for time-stepping / Newton + linear-solver config
+        # (the unified set_solver() pattern). Called by the base reset() before
+        # engine.init, so these settings feed engine.init().
+        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        # NOTE: 1e-3 / 20 (not the historic 1e-2 / 10) -- tightened on this branch by
+        # commit 34b55809a 'Fix passing parameters from Python'; the nonlinear
+        # refactoring (!327) carried the older values into the NewtonSolver form,
+        # so the merge restores ours. verify_mgr_spec.py compares against these.
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=20, chop=ChopSpec(mode='local'))
+        self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
+
+        # MGR (BCSR-CPR) via the single unified spec API (self.linear_solver = MGRSolverSpec).
+        # The base DartsModel._apply_solver hook builds + injects it before engine.init
+        # on the open-source CPU build. On the proprietary build the spec is not built;
+        # _apply_solver instead applies proprietary_linear_type (cpu_gmres_cpr_amg) to
+        # params.linear_type, so this is the only place the solver is declared and it
+        # stays build-safe everywhere. Verified bit-for-bit against the former raw MGR
+        # build: TS=1009 / NI=2234 / LI=4188 (see verify_mgr_spec.py).
+
+        # block_size = 1 (pressure) + (n_components - 1) fractions
+        block_size = self.physics.n_vars
+        mesh = getattr(self.reservoir, "mesh", None)
+        reservoir_blocks = mesh.n_res_blocks if mesh is not None else 0
+
+        reservoir_roles = [VariableRole.PRESSURE] + [VariableRole.COMPOSITION] * (
+            block_size - 1
+        )
+        well_roles = [VariableRole.WELL_PRESSURE] + [VariableRole.WELL_SECONDARY] * (
+            block_size - 1
+        )
+
+        self.linear_solver = MGRSolverSpec(
+            tolerance=1e-4,
+            max_iterations=50,
+            log_level=self.params.linear_print_level,
+            proprietary_linear_type=sim_params.cpu_gmres_cpr_amg,
+            kdim=150,
+            use_mgr=True,
+            use_flex_gmres=True,
+            use_physics_scaling=True,
+            composite_mode=CompositeMode.MGR_THEN_LOCAL,
+            local_solver=LocalPreconditioner.BLOCK_ILU0,
+            bilu0=BILU0Spec(
+                pivot_shift=1e-12,
+                fallback_strategy=LocalFallback.IDENTITY,
+                fallback_diagonal_tolerance=1e-4,
+                fallback_shifted_max=1e-4,
+                fallback_shifted_growth=100.0,
+            ),
+            local_correction=LocalCorrectionSpec(
+                alpha=1.0,
+                adaptive_fallback_threshold=-1.0,
+                adaptive_alpha=0.0,
+                adaptive_fallback_threshold_high=-1.0,
+                adaptive_alpha_high=0.0,
+                quality_enabled=False,
+                quality_min_alpha=0.0,
+            ),
+            pressure_amg=PressureAMGSpec(
+                coarsen_type=6,
+                interp_type=6,
+                relax_type=6,
+                agg_num_levels=1,
+                agg_interp_type=6,
+                agg_pmax_elmts=20,
+                relax_order=1,
+                strong_threshold=0.5,
+                trunc_factor=-1.0,
+                pmax_elmts=-1,
+                max_levels=0,
+                solve_max_iter=1,
+                solve_tolerance=0.0,
+            ),
+            bcsr_cpr=BCSRCPRSpec(
+                # True-IMPES pressure-equation reduction (== sim_params.mgrCprReductionTrueIMPES).
+                reduction_type=BCSRCPRReduction.TRUE_IMPES,
+                pressure_variable=0,
+                weight_max=1e6,
+                reuse_amg_hierarchy=True,
+                amg_rebuild_interval=0,
+                adaptive_amg_rebuild=True,
+                adaptive_li_threshold=15,
+                adaptive_li_growth_factor=1.5,
+                adaptive_min_reuse_setups=1,
+                adaptive_max_reuse_setups=2,
+                adaptive_pressure_overshoot_threshold=-1.0,
+                adaptive_final_proxy_threshold=-1.0,
+                adaptive_fallback_threshold=-1.0,
+                diagnostics=True,
+                diagnostic_apply_interval=100,
+                diagnostic_matrix_interval=0,
+                pressure_correction_alpha=1.0,
+                pressure_correction_guard_threshold=10.0,
+                pressure_correction_guard_min_alpha=0.05,
+            ),
+            reservoir_variable_roles=reservoir_roles,
+            well_variable_roles=well_roles,
+            pressure_level=MGRLevelSpec(
+                frelax_type=FRelaxation.NONE,
+                frelax_iters=0,
+                interp_type=Interpolation.INJECTION,
+                restrict_type=Restriction.BLOCK_COL_LUMPED,
+                coarse_method=CoarseGrid.GALERKIN,
+                smoother_type=GlobalSmoother.HYPRE_ILU,
+                smoother_iters=1,
+            ),
+            n_reservoir_blocks=int(reservoir_blocks),
+            enable_well_level=False,
+            enable_composition_level=False,
+        )
+        self.solver_label = "mgr (bcsr-cpr)"
+        return
+
+    # The MGRSolverSpec above is built and injected by the base
+    # DartsModel._apply_solver() hook (called from reset(), before engine.init).
+    # self.solver_label names it in the engine log.
 
     def set_initial_conditions(self):
         input_distribution = {self.physics.vars[0]: 50,

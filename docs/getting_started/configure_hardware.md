@@ -2,7 +2,7 @@
 
 ## Multi-thread with openMP
 
-To set the number of threads (CPU cores) to be used, you must have had compiled open-darts with the multi-thread option. Also, `open-darts/solvers` do not support multi-thread with openMP yet.
+To set the number of threads (CPU cores) to be used, you must have had compiled open-darts with the multi-thread option. Also, `open-darts/linear_solvers` do not support multi-thread with openMP yet.
 
 Then add to your python script:
 

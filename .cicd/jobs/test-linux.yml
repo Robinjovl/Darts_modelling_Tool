@@ -56,14 +56,22 @@
       when: always
       expire_in: 1 week
 
+# Single Linux CPU test job: the in-tree open-source solvers (formerly
+# "test-linux-ODLS"; the proprietary `-a` twin was dropped after the solver
+# migration study -- see MR280_MASTER_PLAN.md §F).
 test-linux:
     extends: .test-linux
+    # Individual rules are anchored so the -BOS twin below can reuse them verbatim
+    # (single source of truth) while prepending its RUN_BOS_JOBS gate.
     rules: &python_version_rules
-        - if: '$PY_VER == $DEFAULT_PY_VER && ($CI_COMMIT_REF_PROTECTED == "true" || $CI_PIPELINE_SOURCE == "merge_request_event" || $TEST_CUSTOM_BRANCH == "1")'
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL_PYTHONS == "1"
+        - &rule_default_py_ver
+          if: '$PY_VER == $DEFAULT_PY_VER && ($CI_COMMIT_REF_PROTECTED == "true" || $CI_PIPELINE_SOURCE == "merge_request_event" || $TEST_CUSTOM_BRANCH == "1")'
+        - &rule_main_or_release_tag
+          if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - &rule_all_pythons
+          if: $TEST_ALL_PYTHONS == "1"
     variables:
-        ODLS: '-a'
+        ODLS: ''              # test with open-darts linear solvers
     needs:
         - job: build-linux
           parallel:
@@ -76,13 +84,20 @@ test-linux:
             - PY_VER: '3.12'
             - PY_VER: '3.13'
 
-test-linux-ODLS:
+# Proprietary BOS-solvers test twin (consumes the build-linux-BOS wheels).
+test-linux-BOS:
     extends: .test-linux
-    rules: *python_version_rules
+    # Gated by RUN_BOS_JOBS (see .gitlab-ci.yml): skipped unless it is "1".
+    rules:
+        - if: $RUN_BOS_JOBS != "1"
+          when: never
+        - *rule_default_py_ver
+        - *rule_main_or_release_tag
+        - *rule_all_pythons
     variables:
-        ODLS: ''              # test with open-darts linear solvers
+        ODLS: '-a'           # proprietary BOS linear solvers
     needs:
-        - job: build-linux-ODLS
+        - job: build-linux-BOS
           parallel:
               matrix:
                   - PY_VER: ['$[[ matrix.PY_VER ]]']

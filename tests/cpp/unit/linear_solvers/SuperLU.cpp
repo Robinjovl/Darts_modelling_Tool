@@ -4,7 +4,7 @@
 
 #include "slu_ddefs.h"
 
-#include "openDARTS/config/version.hpp"
+#include "version.hpp"
 #include "test_common.hpp"
 
 int test_SuperLU(std::string &output_filename, std::string &reference_filename);

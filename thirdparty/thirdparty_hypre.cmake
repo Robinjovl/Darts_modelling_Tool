@@ -22,6 +22,13 @@ message(STATUS "         Input path: ${HYPRE_DIR}")
 file(REAL_PATH "${HYPRE_DIR}" HYPRE_DIR BASE_DIRECTORY "${CMAKE_BINARY_DIR}")
 message(STATUS "         Absolute path: ${HYPRE_DIR}")
 
+# A HYPRE built with HYPRE_ENABLE_OPENMP=ON (the HYPRE_OPENMP=1 build option)
+# exports a link dependency on the OpenMP::OpenMP_C imported target, so that
+# target must exist before HYPRE is imported. Harmless for a sequential HYPRE
+# (the target is simply unused). Not REQUIRED, so a sequential build on a
+# toolchain without OpenMP still configures.
+find_package(OpenMP)
+
 # Find Hypre
 find_package(HYPRE REQUIRED CONFIG)
 if (TARGET HYPRE::HYPRE)
@@ -32,7 +39,17 @@ endif (TARGET HYPRE::HYPRE)
 
 # Some user feedback info
 get_target_property(HYPRE_INCLUDE_DIRS HYPRE::HYPRE INTERFACE_INCLUDE_DIRECTORIES)
-get_target_property(HYPRE_LIBRARY_PATH HYPRE::HYPRE IMPORTED_LOCATION_RELEASE)
+set(HYPRE_LIBRARY_PATH "")
+string(TOUPPER "${CMAKE_BUILD_TYPE}" HYPRE_BUILD_TYPE_UPPER)
+if(HYPRE_BUILD_TYPE_UPPER)
+  get_target_property(HYPRE_LIBRARY_PATH HYPRE::HYPRE "IMPORTED_LOCATION_${HYPRE_BUILD_TYPE_UPPER}")
+endif()
+if(NOT HYPRE_LIBRARY_PATH)
+  get_target_property(HYPRE_LIBRARY_PATH HYPRE::HYPRE IMPORTED_LOCATION)
+endif()
+if(NOT HYPRE_LIBRARY_PATH)
+  get_target_property(HYPRE_LIBRARY_PATH HYPRE::HYPRE IMPORTED_LOCATION_RELEASE)
+endif()
 message(STATUS "      Include directories: ${HYPRE_INCLUDE_DIRS}")
 message(STATUS "      Library path       : ${HYPRE_LIBRARY_PATH}")
 

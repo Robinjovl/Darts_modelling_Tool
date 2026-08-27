@@ -27,9 +27,14 @@ class Model(CICDModel):
         self.set_physics()
         self.set_reservoir(mesh_file)
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
-        self.set_sim_params(first_ts=1e-4, mult_ts=2, max_ts=5, tol_linear=1e-6)
+        # solver/time-stepping config moved to set_solver() (called at top of reset())
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=1e-4, mult_ts=2, max_ts=5 )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
+        self.linear_solver.spec.tolerance = 1e-6
 
     def init(self, platform='cpu'):
         DartsModel.init(self, discr_type=self.discr_type, platform=platform)

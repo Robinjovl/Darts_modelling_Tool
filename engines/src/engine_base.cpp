@@ -15,8 +15,8 @@
 
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/linsolv_iface.hpp"
+#include "csr_matrix.hpp"
+#include "linsolv_iface.hpp"
 #else
 #include "csr_matrix.h"
 #include "linsolv_iface.h"
@@ -39,6 +39,12 @@ int engine_base::print_header()
 {
 	std::cout << "Engine: \t" << engine_name << "\n";
 #ifdef _OPENMP
+	// Every CPU engine calls print_header() at init, before assembling. The
+	// Jacobian's row_thread_starts partition is sized for omp_get_max_threads()
+	// (see solvers/include/omp_partition.hpp); disable dynamic teams so every
+	// assembly / NUMA first-touch parallel region runs with exactly that many
+	// threads -- a smaller team would leave the tail block rows unassembled.
+	omp_set_dynamic(0);
 	std::cout << "OpenMP threads: \t" << omp_get_max_threads() << std::endl;
 #endif
 	//  std::cout << "\tResolution: \t" << acc_flux_op_set->axis_points[0] << std::endl;
@@ -150,6 +156,117 @@ int engine_base::init_jacobian_structure(csr_matrix_base *jacobian)
 	return 0;
 }
 
+// Extracted from engine_base::init_base<N_VARS> (the block ran under
+// opt_history_matching) so engine_base_gpu::init_base can reuse it: the
+// adjoint backward driver and all its matrices are host-resident on both
+// engine families. Uses only runtime members (n_vars, mesh, wells).
+void engine_base::init_adjoint_base()
+{
+	n_interfaces = mesh->n_conns / 2;
+
+	// prepare dg_dx_n_temp
+	init_adjoint_structure(dg_dx_n_temp);
+
+	// here we remove wells.size() transmissibility between well head and well body (i.e. well_transmissibility)
+	// because there is no need to optimize well_transmissibility, which is usually a large value of 100000
+	std::vector<int> Temp_1(n_interfaces - wells.size(), 0);
+	col_dT_du = Temp_1;
+
+
+	// initialization of linear solver
+	if (!linear_solver_ad)
+	{
+#if !defined(OPENDARTS_LINEAR_SOLVERS) && 0
+		// so far these preconditioner and the linear solver can't be applied to adjoint for some reason
+		// (kept disabled; the proprietary BOS solvers are unavailable in the open-source build)
+		linear_solver_ad = new linsolv_bos_gmres<1>;
+		linear_solver_ad->set_prec(new linsolv_bos_bilu0<1>);
+#else
+		linear_solver_ad = new linsolv_superlu<1>;
+#endif
+		linear_solver_ad_owned = true;
+		linear_solver_ad_uses_jacobian_transpose = false;
+	}
+	linear_solver_ad->init_timer_nodes(&timer->node["linear solver for adjoint method - setup"], &timer->node["linear solver for adjoint method - solve"]);
+
+	well_head_idx_collection.clear();
+	for (ms_well* w : wells)
+	{
+		well_head_idx_collection.push_back(w->well_head_idx);
+	}
+
+	// Guard the object allocation (create once) but re-init() unconditionally
+	// below, mirroring the dg_dx_n_temp / linear_solver_ad idiom: a repeated
+	// engine init() (now reachable on the GPU engine too) must not leak the
+	// previous matrices, while ->init() still resizes correctly if the mesh
+	// changed.
+	if (!dg_dx_T)
+	{
+		dg_dx_T = new csr_matrix<1>;
+		dg_dx_T->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+	}
+
+	if (!dg_dx_n)
+	{
+		dg_dx_n = new csr_matrix<1>;
+		dg_dx_n->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+	}
+
+	//dg_dT = new csr_matrix<1>;
+	//dg_dT->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+
+	if (!dg_dT_general)
+	{
+		dg_dT_general = new csr_matrix<1>;
+		dg_dT_general->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+	}
+
+	(static_cast<csr_matrix<1>*>(dg_dx_T))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, (mesh->n_conns + mesh->n_blocks) * n_vars * n_vars);
+	(static_cast<csr_matrix<1>*>(dg_dx_n))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, (mesh->n_conns + mesh->n_blocks) * n_vars * n_vars);
+	//(static_cast<csr_matrix<1>*>(dg_dT))->init(mesh->n_blocks * n_vars, n_interfaces - wells.size(), 1, ((mesh->n_blocks) * 2 - 2 * wells.size()) * n_vars);
+	(static_cast<csr_matrix<1>*>(dg_dT_general))->init(mesh->n_blocks * n_vars, n_interfaces, 1, (mesh->n_conns) * n_vars);
+	//init_adjoint_structure(dg_dT);
+	init_adjoint_structure(dg_dT_general);
+
+
+	if (!dT_du)
+	{
+		dT_du = new csr_matrix<1>;
+		dT_du->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+	}
+
+	//(static_cast<csr_matrix<1>*>(dT_du))->init(n_interfaces - wells.size(), n_control_vars, 1, n_interfaces - wells.size());
+	(static_cast<csr_matrix<1>*>(dT_du))->init(n_interfaces - wells.size(), n_interfaces - wells.size(), 1, n_interfaces - wells.size());
+
+}
+
+// Extracted from engine_base::init_base<N_VARS> for the same reason as
+// init_adjoint_base(): the customized-operator arrays are consumed by host
+// code (post_newtonloop, the adjoint driver) on the GPU engines too.
+void engine_base::init_customized_operator_base()
+{
+	time_data_report_customized.clear();
+	time_data_customized.clear();
+
+	// WARNING: this variable shadows a member variable of a different type
+	index_t n_ops = 1;  // here '1' is to distinguish the size of the customized operator with the ordinary operator
+
+	op_vals_arr_customized.resize(n_ops * mesh->n_blocks);   // [1 * n_blocks] array of values of operators
+	op_ders_arr_customized.resize(n_ops * n_vars * mesh->n_blocks);   // [1 * N_VARS * n_blocks] array of dedrivatives of operators
+
+	// create a block list for the customized operator
+	customize_block_idxs.resize(acc_flux_op_set_list.size());
+	for (auto op_region : customize_op_num)
+	{
+		customize_block_idxs[op_region].clear();
+	}
+
+	index_t idx = 0;
+	for (auto op_region : customize_op_num)
+	{
+		customize_block_idxs[op_region].emplace_back(idx++);
+	}
+}
 
 
 int
@@ -271,8 +388,6 @@ engine_base::init_adjoint_structure(csr_matrix_base* init_adjoint)
 //		numa_set(&cols, 0, start, end);
 //	}
 //#endif
-
-
 
 	// 2. Write cols_ind
 	j = 0, k = 0;
@@ -434,8 +549,6 @@ engine_base::init_adjoint_structure(csr_matrix_base* init_adjoint)
 	//_ASSERT(_CrtCheckMemory());
 	return 0;
 }
-
-
 
 
 
@@ -613,8 +726,6 @@ engine_base::calc_adjoint_gradient_dirac_all()
 	//gradient = Temp_2;
 
 
-
-
 	std::vector<value_t> gradient(n_interfaces - well_head_idx_collection.size(), 0);
 	// the last timestep--------------------------------------------------------------------------------------------------------
 	// See eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
@@ -663,21 +774,37 @@ engine_base::calc_adjoint_gradient_dirac_all()
 	// assemble dg_dx_n, dg_dT, dj_dx, while dg_dx_n is a dummy matrix here. Because there is no dg_dx_n in eq.(19), Tian et al. 2015  https://doi.org/10.1016/j.petrol.2021.109911
 	adjoint_gradient_assembly(dt, X, dg_dx_n, RHS);
 
-
-
-
-	linear_solver_ad->init(dg_dx_T, params->max_i_linear, params->tolerance_linear);
+#ifdef OPENDARTS_LINEAR_SOLVERS
+	csr_matrix_base *adjoint_matrix = linear_solver_ad_uses_jacobian_transpose ? Jacobian : dg_dx_T;
+	const bool setup_adjoint_solver =
+		!linear_solver_ad_uses_jacobian_transpose ||
+		linear_solver_ad->requires_setup_for_transposed_solve();
+#else
+	// Proprietary linsolv_iface (engines/lib/darts_linear_solvers) predates
+	// the transposed-solve API -- no requires_setup_for_transposed_solve(),
+	// no solve_transposed(). Always run the classic path: build dg_dx_T,
+	// re-setup every step, dispatch through plain solve().
+	csr_matrix_base *adjoint_matrix = dg_dx_T;
+	const bool setup_adjoint_solver = true;
+#endif
+	linear_solver_ad->init(adjoint_matrix, params->max_i_linear, params->tolerance_linear);
 
 	// solve lambda and adjoint gradient at the last time step
-    timer->node["linear solver for adjoint method - setup"].start();
-	linear_solver_ad->setup(dg_dx_T);
-    timer->node["linear solver for adjoint method - setup"].stop();
+	if (setup_adjoint_solver)
+	{
+	    timer->node["linear solver for adjoint method - setup"].start();
+		linear_solver_ad->setup(adjoint_matrix);
+	    timer->node["linear solver for adjoint method - setup"].stop();
+	}
 
     timer->node["linear solver for adjoint method - solve"].start();
-	linear_solver_ad->solve(&Temp_dj_dx[0], &lambda_temp[0]);
+#ifdef OPENDARTS_LINEAR_SOLVERS
+	if (linear_solver_ad_uses_jacobian_transpose)
+		linear_solver_ad->solve_transposed(&Temp_dj_dx[0], &lambda_temp[0]);
+	else
+#endif
+		linear_solver_ad->solve(&Temp_dj_dx[0], &lambda_temp[0]);
     timer->node["linear solver for adjoint method - solve"].stop();
-
-
 
 	lambda_n = lambda_temp;
 
@@ -692,8 +819,6 @@ engine_base::calc_adjoint_gradient_dirac_all()
 	std::transform(gradient.begin(), gradient.end(), temp_1.begin(), gradient.begin(), std::plus<double>());
 	std::transform(gradient.begin(), gradient.end(), Temp_dj_du.begin(), gradient.begin(), std::plus<double>());
 	temp_1.resize(n_interfaces);
-
-
 
 
 	// the rest of timesteps-----------------------------------------------------------------------------------------------------------
@@ -746,8 +871,6 @@ engine_base::calc_adjoint_gradient_dirac_all()
 		// assemble dg_dx_n, dg_dT, dj_dx
 		adjoint_gradient_assembly(dt, X, dg_dx_n, RHS);
 
-
-
 		Temp_4 = zeros_4;
 		(static_cast<csr_matrix<1>*>(dg_dx_n))->matrix_vector_product_t(&lambda_n[0], &Temp_4[0]);
 
@@ -755,18 +878,27 @@ engine_base::calc_adjoint_gradient_dirac_all()
 		std::transform(Temp_dj_dx.begin(), Temp_dj_dx.end(), Temp_4.begin(), Temp_dj_dx.begin(), std::minus<double>());
 
         timer->node["linear solver for adjoint method - setup"].start();
-		linear_solver_ad->setup(dg_dx_T);
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		adjoint_matrix = linear_solver_ad_uses_jacobian_transpose ? Jacobian : dg_dx_T;
+#else
+		adjoint_matrix = dg_dx_T;
+#endif
+		if (setup_adjoint_solver)
+		{
+			linear_solver_ad->setup(adjoint_matrix);
+		}
         timer->node["linear solver for adjoint method - setup"].stop();
 
         timer->node["linear solver for adjoint method - solve"].start();
-		linear_solver_ad->solve(&Temp_dj_dx[0], &lambda_temp[0]);
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		if (linear_solver_ad_uses_jacobian_transpose)
+			linear_solver_ad->solve_transposed(&Temp_dj_dx[0], &lambda_temp[0]);
+		else
+#endif
+			linear_solver_ad->solve(&Temp_dj_dx[0], &lambda_temp[0]);
         timer->node["linear solver for adjoint method - solve"].stop();
 
-
-
 		lambda_n = lambda_temp;
-
-
 
 		temp_1 = Zeros_1;
 		(static_cast<csr_matrix<1>*>(dg_dT_general))->matrix_vector_product_t(&lambda_temp[0], &temp_1[0]);
@@ -789,15 +921,11 @@ engine_base::calc_adjoint_gradient_dirac_all()
 
 	std::transform(derivatives.begin(), derivatives.end(), gradient_u.begin(), derivatives.begin(), std::plus<double>());
 
-
-
 	deriv_old = derivatives;
 
 	return 0;
 
 };
-
-
 
 
 int
@@ -865,8 +993,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 		}
 	}
 
-
-
 	std::vector<value_t> bhp_BHP;
 
 	if (objfun_BHP)
@@ -882,8 +1008,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 		}
 	}
 
-
-
 	std::vector<value_t> wt_WT;
 
 	if (objfun_well_tempr)
@@ -898,8 +1022,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			ww++;
 		}
 	}
-
-
 
 	std::vector<value_t> tempr_TEMPR;
 	if (objfun_temperature)
@@ -961,8 +1083,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 	}
 
 
-
-
 	std::vector<value_t> sub1(n_vars * mesh->n_blocks, 0);
 	std::vector<value_t> sub2(n_interfaces, 0);
 
@@ -971,8 +1091,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 
 	Temp_dj_dx = sub1;
 	Temp_dj_du = sub2;
-
-
 
     if (objfun_prod_phase_rate)
     {
@@ -1021,8 +1139,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
             w->well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, well_ctrl_ops, well_ctrl_ops_derivs);
 
 
-
-
             //uint8_t c = component_index[0];
             double ders_term, vals_term;
             for (uint8_t v = 0; v < n_vars; v++)
@@ -1046,8 +1162,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
                     }
                     p_idx++;
                 }
-
-
 
                 // corresponding to ms_well::check_constraints
 				if (w->control.get_well_control_type() == well_control_iface::BHP)  // BHP control
@@ -1075,8 +1189,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
             ww++;
         }
     }
-
-
 
 
 
@@ -1128,8 +1240,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			w->well_ctrl_etor_ad->evaluate_with_derivatives(state, block_idx, well_ctrl_ops, well_ctrl_ops_derivs);
 
 
-
-
 			//uint8_t c = component_index[0];
 			double ders_term, vals_term;
 			for (uint8_t v = 0; v < n_vars; v++)
@@ -1178,8 +1288,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
         }
 	}
 
-
-
 	if (objfun_BHP)
 	{
         index_t upstream_idx;
@@ -1225,8 +1333,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 	}
 
 
-
-
 	if (objfun_well_tempr)
 	{
         index_t upstream_idx;
@@ -1248,8 +1354,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 				upstream_idx = w->well_head_idx; // injector
 			else
 				upstream_idx = w->well_body_idx; // producer
-
-
 
 
 			if (w->thermal)  // for thermal super_engine_cpu and super_engine_mp_cpu
@@ -1299,8 +1403,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 	}
 
 
-
-
 	if (objfun_temperature)
 	{
 		// evaluate the customized operators and their derivatives
@@ -1322,8 +1424,6 @@ engine_base::prepare_dj_dx(vec_3d q, vec_3d q_inj,
 			}
 		}
 	}
-
-
 
 	if (objfun_customized_op)
 	{
@@ -1979,19 +2079,6 @@ void engine_base::correct_obl_axes()
 		apply_obl_axis_local_correction(X, dX);
 }
 
-void engine_base::correct_obl_axes(const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max)
-{
-	if (axis_min.size() != (size_t)n_vars || axis_max.size() != (size_t)n_vars)
-	{
-		std::cout << "OBL axis correction skipped: axis bounds size mismatch (expected " << (int)n_vars << " values per axis)" << std::endl;
-		return;
-	}
-	for (auto &region_bounds : op_axis_min)
-		region_bounds = axis_min;
-	for (auto &region_bounds : op_axis_max)
-		region_bounds = axis_max;
-	apply_obl_axis_local_correction(X, dX);
-}
 
 void engine_base::correct_thermal()
 {
@@ -2949,6 +3036,21 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 		std::cout << "Local chop applied in " << n_corrected << " block(s)" << std::endl;
 }
 
+void engine_base::correct_obl_axes(const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max)
+{
+	if (axis_min.size() != (size_t)n_vars || axis_max.size() != (size_t)n_vars)
+	{
+		std::cout << "OBL axis correction skipped: axis bounds size mismatch (expected " << (int)n_vars
+				  << " values per axis)" << std::endl;
+		return;
+	}
+	for (auto &region_bounds : op_axis_min)
+		region_bounds = axis_min;
+	for (auto &region_bounds : op_axis_max)
+		region_bounds = axis_max;
+	apply_obl_axis_local_correction(X, dX);
+}
+
 void engine_base::apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX)
 {
 	double max_ratio = 0;
@@ -3178,6 +3280,10 @@ int engine_base::post_newtonloop(value_t deltat, value_t time, index_t converged
 	}
 	else //convergence reached
 	{
+		// GPU engines mirror the accepted device state back to the host here
+		// (no-op on CPU). Statistics accounting, the convergence verdict and
+		// print_timestep moved to the Python nonlinear solver (!327).
+		sync_host_data_for_accepted_step();
 		time_data["time"].push_back(time + deltat);
 
 		for (ms_well *w : wells)
@@ -3205,10 +3311,9 @@ int engine_base::post_newtonloop(value_t deltat, value_t time, index_t converged
 		}
 
 		Xn = X;
-		op_vals_arr_n = op_vals_arr;
+		if (keep_host_op_vals_n_mirror)
+			op_vals_arr_n = op_vals_arr;
 		t = time + deltat;
-
-
 
 		// adjoint method
 		if (opt_history_matching)
@@ -3224,8 +3329,6 @@ int engine_base::post_newtonloop(value_t deltat, value_t time, index_t converged
 			}
 			//Jacobian->write_matrix_to_file("jac_forward_simulation.csr");
 			//write_vector_to_file("rhs_forward_simulation.rhs", RHS);
-
-
 
 			//char buff[100];
 			//snprintf(buff, sizeof(buff), "Jacobian_fw_%d.txt", X_t.size()-1);
@@ -3253,8 +3356,6 @@ int engine_base::post_newtonloop(value_t deltat, value_t time, index_t converged
 
 			time_data_customized.push_back(op_vals_arr_customized);
 		}
-
-
 
 	}
 	return converged;

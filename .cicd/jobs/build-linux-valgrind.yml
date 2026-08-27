@@ -16,7 +16,10 @@ build-linux-valgrind:
         - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-linux
     variables:
-        ODLS: '-a'
+        # Open-source in-tree solvers (the proprietary `-a` variant was
+        # dropped with the ODLS/non-ODLS job consolidation) -- valgrind now
+        # instruments the solver stack that actually ships.
+        ODLS: ''
         PY_VER: "$DEFAULT_PY_VER"
     script:
         - echo ">>> Starting debug build (valgrind instrumentation) <<<"

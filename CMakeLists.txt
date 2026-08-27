@@ -1,13 +1,28 @@
 cmake_minimum_required (VERSION 3.26)
-project (openDARTS LANGUAGES CXX VERSION 0.2)
+# C is enabled (in addition to CXX) so find_package(OpenMP) provides the
+# OpenMP::OpenMP_C imported target that an OpenMP-enabled HYPRE (a C library,
+# built with HYPRE_OPENMP=1) links against. No first-party C sources are
+# compiled; this only makes the C toolchain + OpenMP_C component available.
+project (openDARTS LANGUAGES C CXX VERSION 0.2)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Configure runtime path for finding dynamic libraries
-set(CMAKE_INSTALL_RPATH $ORIGIN)  # shared libraries will be searched in darts folder
+# Configure runtime path for finding dynamic libraries.
+# $ORIGIN         -- a module resolves siblings in its own directory.
+# $ORIGIN/linear_solvers -- the compiled solvers live in the darts/linear_solvers/ subpackage,
+#                    and so do the shared libs bundled next to them (libcudss.so.0,
+#                    libopendarts_linear_solvers.so). A darts/ top-level extension such as
+#                    engines links the solvers statically and thereby inherits a
+#                    direct NEEDED on the *shared* libcudss.so.0 (cuDSS is linked
+#                    PUBLIC); engines sits in darts/, so plain $ORIGIN cannot reach
+#                    darts/linear_solvers/. Adding $ORIGIN/linear_solvers lets it (WITH_CUDSS GPU
+#                    builds otherwise fail at `import darts.engines` with
+#                    "libcudss.so.0: cannot open shared object file"). Harmless for
+#                    non-GPU builds (the extra entry just points at darts/linear_solvers/).
+set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/linear_solvers")
 set(CMAKE_MACOSX_RPATH 1)
 
 # Set DARTS installation folder
@@ -79,6 +94,40 @@ message(STATUS "  git refspec: ${GITREFSPEC}")
 message(STATUS "  git hash: ${GIT_SHA1}")
 message(STATUS "  git dirtiness: ${GIT_DIRTY}")
 
+# Proprietary BOS solvers linkage -----------------------------------------------
+# ENABLE_BOS_SOLVERS is the single switch between the in-tree open-source
+# solver stack (OFF, default -- darts.solvers registry, FGMRES+CPR CPU
+# default) and the proprietary darts-linear-solvers (`bos`) stack (ON --
+# requires BOS_SOLVERS_DIR pointing at its lib/include tree; the C++ default
+# CPU solver then comes from the engine factory: CPU_GMRES_CPR_AMG for flow
+# engines, CPU_GMRES_FS_CPR for mechanics engines). Every CMake guard that
+# used to test `DEFINED BOS_SOLVERS_DIR` now tests this option, so the
+# OPENDARTS_LINEAR_SOLVERS compile macro tracks exactly NOT ENABLE_BOS_SOLVERS.
+option(ENABLE_BOS_SOLVERS "Link the proprietary BOS solvers instead of the in-tree open-source stack" OFF)
+add_feature_info(ENABLE_BOS_SOLVERS ENABLE_BOS_SOLVERS "Link the proprietary BOS solvers")
+# Back-compat: an explicit BOS_SOLVERS_DIR used to be the switch; keep old
+# invocations working by implying ENABLE_BOS_SOLVERS=ON -- but only ONCE per
+# build directory. Previously the shim re-fired on every configure, so an
+# explicit -D ENABLE_BOS_SOLVERS=OFF could never win while BOS_SOLVERS_DIR
+# remained in the cache.
+if(DEFINED BOS_SOLVERS_DIR AND NOT ENABLE_BOS_SOLVERS)
+  if(NOT DEFINED _BOS_SHIM_APPLIED)
+    message(STATUS "  BOS_SOLVERS_DIR given -> ENABLE_BOS_SOLVERS=ON (back-compat)")
+    set(ENABLE_BOS_SOLVERS ON)
+    set(ENABLE_BOS_SOLVERS ON CACHE BOOL
+        "Link the proprietary BOS solvers instead of the in-tree open-source stack" FORCE)
+  else()
+    message(STATUS
+        "  BOS_SOLVERS_DIR is cached but ENABLE_BOS_SOLVERS=OFF -- building the "
+        "open-source stack (pass -D ENABLE_BOS_SOLVERS=ON to link BOS).")
+  endif()
+endif()
+set(_BOS_SHIM_APPLIED ON CACHE INTERNAL "back-compat BOS shim evaluated")
+if(ENABLE_BOS_SOLVERS AND NOT DEFINED BOS_SOLVERS_DIR)
+  message(FATAL_ERROR "ENABLE_BOS_SOLVERS=ON requires -D BOS_SOLVERS_DIR=<path to darts-linear-solvers>")
+endif()
+# --------------------------------------------------------------------------------
+
 # Check the build type:
 #   ST: single threaded (Default)
 #   MT: multi threaded
@@ -94,11 +143,16 @@ endif()
 if(${OPENDARTS_CONFIG} STREQUAL "ST")
   set(OPENDARTS_CONFIG "ST")
 elseif(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
-  if(NOT DEFINED BOS_SOLVERS_DIR)
-    message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} requires bos_solvers, please use -D BOS_SOLVERS_DIR = <path_to_bos_solvers> to specify the location of the library.")
-  endif()
+  # MT and GPU both build against the in-tree open-source solvers by default.
+  # The in-tree block_csr_matrix now provides a real multi-threaded row
+  # partition (see linear_solvers/include/omp_partition.hpp), so an MT build no longer
+  # depends on the proprietary multi-threaded bos_solvers. Pass
+  # -D BOS_SOLVERS_DIR=<path> to link the proprietary bos_solvers instead.
   if (GPU_CONFIG)
     set(CUDA 1)
+  endif()
+  if(NOT ENABLE_BOS_SOLVERS)
+    message(STATUS "  openDARTS ${OPENDARTS_CONFIG} build using the in-tree open-source solvers (no BOS_SOLVERS_DIR)")
   endif()
 else()
   message(FATAL_ERROR "openDARTS ${OPENDARTS_CONFIG} is an invalid configuration use: ST, MT or GPU.")
@@ -108,7 +162,7 @@ message(STATUS "  Building openDARTS ${OPENDARTS_CONFIG}")
 
 # Determine the type of compiler we have and set compiler flags and other compiler
 # specific flags
-if(DEFINED BOS_SOLVERS_DIR)
+if(ENABLE_BOS_SOLVERS)
   add_compile_definitions(WITH_HYPRE)
 endif()
 
@@ -158,8 +212,14 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   # Linker flags
   set(opendarts_cxx_linker_flags "")
 
-  if(${OPENDARTS_CONFIG} STREQUAL "MT")
-    list(APPEND opendarts_cxx_compiler_flags "-fopenmp")
+  if(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
+    # Host-side OpenMP for both the MT and the GPU build. The GPU build's
+    # host code (engine assembly partition, in-tree GMRES kernels, HYPRE
+    # consumers) is the same OpenMP code the MT build runs; GPU TUs compiled
+    # by nvcc need the flag forwarded to the host compiler -- raw -fopenmp is
+    # not an nvcc option, so pass the -Xcompiler form for CUDA sources.
+    list(APPEND opendarts_cxx_compiler_flags "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-fopenmp>")
+    list(APPEND opendarts_cxx_compiler_flags "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp>")
     list(APPEND opendarts_cxx_linker_flags "-fopenmp")
   endif()
 
@@ -182,8 +242,10 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   #                    we deactivate compact unwinding warnings.
   set(opendarts_cxx_linker_flags "-Wl,-no_compact_unwind")
 
-  if(${OPENDARTS_CONFIG} STREQUAL "MT")
-    list(APPEND opendarts_cxx_compiler_flags "-fopenmp")
+  if(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
+    # Same MT-or-GPU OpenMP policy as the GNU block above.
+    list(APPEND opendarts_cxx_compiler_flags "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-fopenmp>")
+    list(APPEND opendarts_cxx_compiler_flags "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp>")
     list(APPEND opendarts_cxx_linker_flags "-fopenmp")
   endif()
 
@@ -194,6 +256,23 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   # Compiler specific helper variables (currently not needed)
 
 endif()
+
+# macOS linker hygiene ---------------------------------------------------------
+# The Xcode 15+ "ld_prime" linker warns about libraries appearing more than once
+# on a link line ("ignoring duplicate libraries"). open-DARTS work item #52
+# suggested forcing the classic linker with -ld_classic, but that flag is now
+# DEPRECATED on Xcode 16+ (it warns and is slated for removal), so we do NOT
+# force it. The portable fix is to suppress the duplicate-library warning via the
+# CMake LINKER: prefix (-> -Wl,/-Xlinker as appropriate), gated to Apple only.
+# (Collapsing SuperLU+cblas into the single superlu::superlu target already
+# removes the main duplicate-archive source.) If an older-Xcode escape hatch is
+# ever needed, add an opt-in cache var rather than defaulting -ld_classic on.
+# NOTE: untestable from the Linux/RHEL dev box -- correct-by-construction; must
+# be validated on a macOS (Apple Silicon) runner.
+if(APPLE)
+  add_link_options("LINKER:-no_warn_duplicate_libraries")
+endif()
+# ------------------------------------------------------------------------------
 
 set(opendarts_cxx_warning_suppression_flags "")
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -223,6 +302,25 @@ option(ENABLE_TESTING "Build and copy testing stuff" OFF)  # by default tests ar
 add_feature_info(ENABLE_TESTING ENABLE_TESTING "Build and copy testing stuff")  # add option as feature for pretty display
 option(ONLY_SOLVERS "Build only solvers" OFF) # by default all project is built
 add_feature_info(ONLY_SOLVERS ONLY_SOLVERS "Build only solvers")
+# AMGX is the production GPU preconditioner: the default GPU linear solver is
+# GPU_GMRES_CPR_AMGX_ILU (engine_base_gpu.h), so a GPU build WITHOUT AMGX
+# silently degrades to the far slower BiCGStab+cuSPARSE-ILU(0) fallback. AMGX is
+# therefore ON by default for GPU builds. It is compiled from the thirdparty/AMGX
+# submodule (open-source, statically linked -- no runtime .so is shipped); the
+# GPU build scripts init the submodule automatically. It IS a heavy compile, so
+# it can be disabled explicitly with -D WITH_AMGX=OFF (or --no-amgx to the GPU
+# build script) for a fast CUDA-toolkit-only build that forgoes the AMGX solver.
+option(WITH_AMGX "Build the AMGX GPU solver (thirdparty/AMGX submodule; ON by default for GPU builds)" ON)
+add_feature_info(WITH_AMGX WITH_AMGX "Build the AMGX GPU solver")
+# cuDSS (NVIDIA sparse direct solver) is a PREBUILT dependency (no source
+# build, unlike AMGX). ON by default -- it is only consumed inside the GPU
+# (CUDA) branch, so this is effectively "on for GPU builds, ignored on CPU".
+# The library is located by thirdparty/thirdparty_cudss.cmake (pip wheel
+# nvidia-cudss-cu13, CUDSS_ROOT, or a CMake config package); if it is not
+# found the GPU stack is built WITHOUT cuDSS (warning, not error), so a
+# cuDSS-less GPU machine still builds. Disable explicitly with -D WITH_CUDSS=OFF.
+option(WITH_CUDSS "Build the cuDSS GPU direct solver (prebuilt NVIDIA library)" ON)
+add_feature_info(WITH_CUDSS WITH_CUDSS "Build the cuDSS GPU direct solver")
 
 # Interpolator compile profile -------------------------------------------------
 # Controls which (i_t, algorithm) interpolator variants are stamped per
@@ -306,14 +404,14 @@ if(NOT ONLY_SOLVERS)
 endif()
 
 #   thirdparty/SuperLU ---------------------------------------------------------
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   include(thirdparty/thirdparty_superlu.cmake)
 endif()
 
 include(thirdparty/thirdparty_hypre.cmake)
 
 #   thirdparty/bos_solvers ------------------------------------------------------
-if(BOS_SOLVERS_DIR)
+if(ENABLE_BOS_SOLVERS)
   include(thirdparty/thirdparty_bos_solvers.cmake)
 endif()
 
@@ -371,12 +469,75 @@ if(CUDA)
            AND EXISTS "${_cccl_system_header}"
            AND EXISTS "${_cccl_override_header}")
             message(STATUS "Applying CCCL workaround for CUDA ${CUDAToolkit_VERSION} block_load_to_shared.cuh ambiguity")
-            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -I${_cccl_override_dir}")
+            # Use CMake's include-directory machinery instead of appending a
+            # raw ``-I`` token to CMAKE_CUDA_FLAGS. The latter is split by the
+            # shell when the checkout path contains spaces, causing nvcc to
+            # interpret the path fragments as additional input files.
+            include_directories(
+              BEFORE
+                "$<$<COMPILE_LANGUAGE:CUDA>:${_cccl_override_dir}>"
+            )
         endif()
         unset(_cccl_override_dir)
         unset(_cccl_override_header)
         unset(_cccl_system_header)
         add_compile_definitions(WITH_GPU)
+
+        # AMGX GPU solver -- ON by default (it backs the default GPU solver
+        # GPU_GMRES_CPR_AMGX_ILU). The GPU build scripts init the thirdparty/AMGX
+        # submodule automatically; a direct CMake configure without it fails
+        # loudly here (rather than silently degrading the default GPU solver).
+        if(WITH_AMGX)
+            set(_amgx_dir "${CMAKE_SOURCE_DIR}/thirdparty/AMGX")
+            if(NOT EXISTS "${_amgx_dir}/CMakeLists.txt")
+                message(FATAL_ERROR "WITH_AMGX is ON (default for GPU builds) but the AMGX "
+                    "submodule is missing. Init it with:\n"
+                    "    git submodule update --init --recursive thirdparty/AMGX\n"
+                    "or, to build the GPU stack WITHOUT the AMGX solver (slower default GPU "
+                    "solver), pass -D WITH_AMGX=OFF (or --no-amgx to build_install_darts_gpu.sh).")
+            endif()
+            message(STATUS "Building AMGX GPU solver support from ${_amgx_dir}")
+            # AMGX is an MPI-optional library; openDARTS does not use its MPI path.
+            set(AMGX_NO_RPATH ON CACHE BOOL "" FORCE)
+            # AMGX targets C++17. Its own CMakeLists forces that only for
+            # CUDA >= 13.1 (where Thrust/CCCL require it); under older
+            # toolkits (e.g. the CUDA 12.6 tahiti CI runner) it inherits this
+            # project's C++20, and GCC >= 11 then floods the build log with
+            # the on-by-default -Wdeprecated-enum-enum-conversion warning
+            # from AMGX's AMGX_Mode enum arithmetic -- megabytes of output,
+            # enough to overflow GitLab's 4 MB job-log limit and hide
+            # everything after it. add_subdirectory snapshots the calling
+            # scope, so pin the standard for the AMGX subtree only and
+            # restore ours afterwards. The extra nvcc flag silences the
+            # per-TU "sm_70 support will be removed" notice on Volta CI.
+            set(_od_saved_cxx_standard "${CMAKE_CXX_STANDARD}")
+            set(_od_saved_cuda_standard "${CMAKE_CUDA_STANDARD}")
+            set(_od_saved_cuda_flags "${CMAKE_CUDA_FLAGS}")
+            set(CMAKE_CXX_STANDARD 17)
+            set(CMAKE_CUDA_STANDARD 17)
+            set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Wno-deprecated-gpu-targets")
+            add_subdirectory(thirdparty/AMGX)
+            set(CMAKE_CXX_STANDARD "${_od_saved_cxx_standard}")
+            set(CMAKE_CUDA_STANDARD "${_od_saved_cuda_standard}")
+            set(CMAKE_CUDA_FLAGS "${_od_saved_cuda_flags}")
+            unset(_od_saved_cxx_standard)
+            unset(_od_saved_cuda_standard)
+            unset(_od_saved_cuda_flags)
+            add_compile_definitions(WITH_AMGX)
+            unset(_amgx_dir)
+        endif()
+
+        # cuDSS GPU direct solver (prebuilt library -- imported target, no source
+        # build). ON by default for GPU builds; thirdparty/thirdparty_cudss.cmake
+        # sets WITH_CUDSS=OFF (FORCE) with a warning if the prebuilt library is not
+        # found, so a cuDSS-less GPU build still succeeds. Re-check WITH_CUDSS after
+        # the include before defining the compile macro / pulling in the source.
+        if(WITH_CUDSS)
+            include(thirdparty/thirdparty_cudss.cmake)
+        endif()
+        if(WITH_CUDSS)
+            add_compile_definitions(WITH_CUDSS)
+        endif()
     else()
         message(FATAL_ERROR "CUDA requested but not found!")
     endif()
@@ -402,12 +563,35 @@ target_link_options(opendarts_compiler_flags
   INTERFACE
     ${opendarts_cxx_linker_flags}
 )
+
+# In a CUDA build WITH_GPU is defined globally, so headers guarded by it
+# (e.g. timer_node.hpp -> <cuda_runtime.h>) are pulled into ordinary
+# host-compiled translation units too. Put the CUDA toolkit headers on the
+# include path of every target so those includes resolve under g++ as well
+# as nvcc. (The cudart link itself is provided where the symbols are used.)
+if(CUDA)
+  target_include_directories(opendarts_compiler_flags INTERFACE ${CUDAToolkit_INCLUDE_DIRS})
+
+  # CMake obtains cudadevrt/cudart_static from nvcc's implicit link line. With
+  # a toolkit installed below a path containing spaces, CUDA 13.2's verbose
+  # output can leave CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES truncated at the
+  # first space. Add the already-discovered runtime directory explicitly so
+  # ordinary C++ link steps can resolve those implicit ``-l`` entries.
+  if(CUDAToolkit_LIBRARY_DIR)
+    target_link_directories(
+      opendarts_compiler_flags
+      BEFORE
+      INTERFACE
+        "${CUDAToolkit_LIBRARY_DIR}"
+    )
+  endif()
+endif()
 # ------------------------------------------------------------------------------
 
 
 # openDARTS Linear solvers -----------------------------------------------------
-if(NOT DEFINED BOS_SOLVERS_DIR)
-  add_subdirectory(solvers)
+if(NOT ENABLE_BOS_SOLVERS)
+  add_subdirectory(linear_solvers)
 endif()
 # ------------------------------------------------------------------------------
 

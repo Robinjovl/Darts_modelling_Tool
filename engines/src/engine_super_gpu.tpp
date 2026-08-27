@@ -10,6 +10,7 @@
 #include <assert.h>
 
 #include "engine_super_gpu.hpp"
+#include "engine_super_adjoint.hpp"
 
 
 /**
@@ -591,7 +592,10 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
 
     // [3] Additional diffusion code here:   (phi_p * S_p) * (rho_p * D_cp * Delta_x_cp)  or (phi_p * S_p) * (kappa_p * Delta_T)
     // Only if block connection is between reservoir and reservoir cells!
-    if (i < n_res_blocks && j < n_res_blocks)
+    // Every term below multiplies tranD[conn_idx], so a zero diffusive
+    // transmissibility contributes exact zeros -- skip the ~40% of loop load
+    // requests this block otherwise costs on diffusion-free models.
+    if (i < n_res_blocks && j < n_res_blocks && tranD[conn_idx] != 0)
     {
       // Add diffusion term to the residual:
       for (uint8_t p = 0; p < NP; p++)
@@ -707,12 +711,185 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
   }
 };
 
+/**
+ * @brief Device port of the host adjoint assembly (super_engine_adjoint.hpp,
+ *        super_engine_adjoint_assembly_host_loops).
+ *
+ * One thread per grid block row i. Each thread fills, for its block:
+ *   - the DIAGONAL block of dg/dx^n (= dg_dx_n_temp) with the accumulation +
+ *     kinetics derivatives (all off-diagonal blocks are left zero, so the
+ *     caller must cudaMemset the whole dg_dx_n values buffer to 0 first);
+ *   - the scalar values of dg/dT (= dg_dT_general) for its connections
+ *     (the caller must cudaMemset that buffer to 0 first; the kernel
+ *     accumulates with -=).
+ *
+ * The write layout, the connection ordering (temp_num = rank of a connection's
+ * one-way / interface index among the block's connections), the upwinding, the
+ * GRAD operator indexing (c*NP+p -- deliberately as in the host adjoint, NOT
+ * the forward kernel's p*NE+c), and the term/accumulation ORDER (convective
+ * p,c -> diffusion c,p -> rock conduction) are reproduced exactly so the
+ * result matches the host reference. No atomics are needed: every thread
+ * writes a disjoint region of both output buffers.
+ *
+ * THERMAL caveat (pre-existing, shared with the host reference): for THERMAL
+ * models the energy-equation (c == NC) rows of BOTH dg/dx^n and dg/dT here
+ * reproduce the host adjoint (super_engine_adjoint_assembly_host_loops)
+ * verbatim, which omits several energy terms the forward Jacobian carries
+ * (rock- and potential-energy accumulation derivatives on the dg/dx^n
+ * diagonal; the potential-energy convective flux and the fickian-enthalpy
+ * advection on dg/dT). This is a limitation of the host adjoint reference, not
+ * of the port -- device and host agree bit-for-modulo-FMA. Completing the
+ * thermal adjoint must be done in the host reference and this kernel together
+ * (so device == host is preserved); see docs/GPU_ADJOINT_CPRA_PLAN.md.
+ */
+template <uint8_t NC, uint8_t NP, uint8_t NE, uint8_t N_VARS, uint8_t P_VAR, uint8_t N_OPS,
+          uint8_t ACC_OP, uint8_t FLUX_OP, uint8_t DENS_OP, uint8_t UPSAT_OP, uint8_t GRAD_OP, uint8_t KIN_OP,
+          uint8_t GRAV_OP, uint8_t PC_OP, uint8_t MULT_OP, uint8_t LAMBDA_OP, uint8_t TEMP_OP, bool THERMAL>
+__global__ void
+adjoint_gradient_assembly_kernel(const unsigned int n_blocks, const unsigned int n_res_blocks,
+                                 const bool enable_permporo, value_t phase_existence_tolerance, value_t dt,
+                                 value_t *X, index_t *rows, index_t *cols, index_t *diag_ind,
+                                 index_t *conn_index_to_one_way,
+                                 value_t *op_vals_arr, value_t *op_ders_arr,
+                                 value_t *tran, value_t *tranD, value_t *poro, value_t *rock_cond,
+                                 value_t *PV, value_t *RV, value_t *grav_coef, value_t *kin_fac,
+                                 value_t *Jac_n, value_t *value_dg_dT)
+{
+  const int N_VARS_SQ = N_VARS * N_VARS;
+  const index_t i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i > n_blocks - 1)
+    return;
+
+  // [1] diagonal block of dg/dx^n (accumulation + kinetics derivatives).
+  // Off-diagonal blocks are left at their memset-0 value by the caller.
+  index_t diag_idx = N_VARS_SQ * diag_ind[i];
+  for (uint8_t c = 0; c < NE; c++)
+  {
+    for (uint8_t v = 0; v < N_VARS; v++)
+    {
+      value_t val = -(PV[i] * op_ders_arr[(i * N_OPS + ACC_OP + c) * N_VARS + v]); // der of accumulation term
+      if (i < n_res_blocks)
+        val -= (PV[i] + RV[i]) * dt * op_ders_arr[(i * N_OPS + KIN_OP + c) * N_VARS + v] * kin_fac[i]; // derivative kinetics
+      Jac_n[diag_idx + c * N_VARS + v] = val;
+    }
+  }
+
+  index_t csr_idx_start = rows[i];
+  index_t csr_idx_end = rows[i + 1];
+  // Number of off-diagonal (connection) entries of block i, and the running
+  // per-block base offsets. conn_idx_base = number of off-diagonal entries in
+  // blocks 0..i-1 = rows[i] - i; count is the same measured in dg/dT rows.
+  index_t conn_idx_base = csr_idx_start - i;
+  index_t N_element = csr_idx_end - csr_idx_start - 1;
+  index_t count = N_VARS * conn_idx_base;
+
+  index_t conn_idx = conn_idx_base;
+  for (index_t csr_idx = csr_idx_start; csr_idx < csr_idx_end; csr_idx++)
+  {
+    index_t j = cols[csr_idx];
+    if (i == j)
+      continue; // diagonal: no connection; conn_idx not advanced
+
+    // temp_num: rank of this connection's one-way index among block i's
+    // connections (how many have a smaller one-way index) -- reproduces the
+    // host's temp_num sort without storing the per-block index list.
+    index_t my_ow = conn_index_to_one_way[conn_idx];
+    index_t temp_num = 0;
+    for (index_t m = 0; m < N_element; m++)
+      if (conn_index_to_one_way[conn_idx_base + m] < my_ow)
+        temp_num++;
+
+    value_t trans_mult = 1;
+    if (enable_permporo && i < n_res_blocks && j < n_res_blocks)
+    {
+      value_t mult_i = op_vals_arr[i * N_OPS + MULT_OP];
+      value_t mult_j = op_vals_arr[j * N_OPS + MULT_OP];
+      trans_mult = 2 * mult_i * mult_j / (mult_i + mult_j);
+    }
+
+    value_t p_diff = X[j * N_VARS + P_VAR] - X[i * N_VARS + P_VAR];
+
+    // [2] convective dg/dT (upwinding on phase_p_diff sign; p outer, c inner)
+    for (uint8_t p = 0; p < NP; p++)
+    {
+      value_t avg_density = (op_vals_arr[i * N_OPS + GRAV_OP + p] + op_vals_arr[j * N_OPS + GRAV_OP + p]) / 2;
+      value_t phase_p_diff = p_diff + avg_density * grav_coef[conn_idx] - op_vals_arr[j * N_OPS + PC_OP + p] + op_vals_arr[i * N_OPS + PC_OP + p];
+
+      if (phase_p_diff < 0)
+      {
+        for (uint8_t c = 0; c < NE; c++)
+        {
+          value_t value_g_u = phase_p_diff * trans_mult * dt * op_vals_arr[i * N_OPS + LAMBDA_OP + p] * op_vals_arr[i * N_OPS + FLUX_OP + p * NE + c];
+          value_dg_dT[count + c * N_element + temp_num] -= value_g_u;
+        }
+      }
+      else
+      {
+        for (uint8_t c = 0; c < NE; c++)
+        {
+          value_t value_g_u = phase_p_diff * trans_mult * dt * op_vals_arr[j * N_OPS + LAMBDA_OP + p] * op_vals_arr[j * N_OPS + FLUX_OP + p * NE + c];
+          value_dg_dT[count + c * N_element + temp_num] -= value_g_u;
+        }
+      }
+    }
+
+    // [3] diffusion dg/dT (reservoir-reservoir only; c outer, p inner; c*NP+p)
+    if (i < n_res_blocks && j < n_res_blocks)
+    {
+      for (uint8_t c = 0; c < NE; c++)
+      {
+        for (uint8_t p = 0; p < NP; p++)
+        {
+          value_t grad_con = op_vals_arr[j * N_OPS + GRAD_OP + c * NP + p] - op_vals_arr[i * N_OPS + GRAD_OP + c * NP + p];
+
+          value_t ppm = (op_vals_arr[i * N_OPS + UPSAT_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p] > phase_existence_tolerance) ? 1.0 : 0.0;
+
+          value_t value_g_u;
+          if (c < NC) // mass
+            value_g_u = grad_con * dt * ppm * (poro[i] * op_vals_arr[i * N_OPS + DENS_OP + p] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+                                               poro[j] * op_vals_arr[j * N_OPS + DENS_OP + p] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+          else // energy
+            value_g_u = grad_con * dt * ppm * (poro[i] * op_vals_arr[i * N_OPS + UPSAT_OP + p] +
+                                               poro[j] * op_vals_arr[j * N_OPS + UPSAT_OP + p]) / 2;
+
+          value_dg_dT[count + c * N_element + temp_num] -= value_g_u;
+        }
+      }
+    }
+
+    // [4] rock conduction dg/dT (energy equation c = NC)
+    if (THERMAL)
+    {
+      value_t t_diff = op_vals_arr[j * N_OPS + TEMP_OP] - op_vals_arr[i * N_OPS + TEMP_OP];
+      value_t value_g_u = dt * t_diff * ((1 - poro[i]) * rock_cond[i] + (1 - poro[j]) * rock_cond[j]) / 2;
+      value_dg_dT[count + NC * N_element + temp_num] -= value_g_u;
+    }
+
+    conn_idx++;
+  }
+  (void)tran;   // parity with the host signature; dg/dT drops the tran factor
+  (void)tranD;  // (derivative w.r.t. the connection transmissibility)
+}
+
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
                                             std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
                                             operator_set_gradient_evaluator_iface* thermal_var_etor_,
                                             sim_params *params_, timer_node *timer_)
 {
+  // prepare dg_dx_n_temp for the adjoint method (mirrors engine_super_cpu::init;
+  // must exist before init_base runs init_adjoint_base under opt_history_matching)
+  if (opt_history_matching)
+  {
+    if (!dg_dx_n_temp)
+    {
+      dg_dx_n_temp = new csr_matrix<N_VARS>;
+      dg_dx_n_temp->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+    }
+
+    (static_cast<csr_matrix<N_VARS> *>(dg_dx_n_temp))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
+  }
+
   engine_base_gpu::init_base<N_VARS>(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 
   allocate_device_data(RV, &RV_d);
@@ -733,6 +910,19 @@ int engine_super_gpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
   copy_data_to_device(mesh->grav_coef, mesh_grav_coef_d);
   copy_data_to_device(mesh->cell_spe, mesh_cell_spe_d);
 
+  // Device-side adjoint assembly buffers + the connection->one-way index map
+  // (the only extra structure the adjoint kernel needs beyond the forward
+  // kernel's inputs). Allocated only for history-matching / gradient runs.
+  if (opt_history_matching)
+  {
+    const index_t n_blk = mesh->n_blocks;
+    const index_t n_cns = mesh->n_conns;
+    allocate_device_data(&dg_dx_n_temp_values_d, (n_cns + n_blk) * N_VARS * N_VARS);
+    allocate_device_data(&dg_dT_general_values_d, n_cns * N_VARS);
+    allocate_device_data(mesh->conn_index_to_one_way, &conn_index_to_one_way_d);
+    copy_data_to_device(mesh->conn_index_to_one_way, conn_index_to_one_way_d);
+  }
+
   return 0;
 }
 
@@ -740,14 +930,14 @@ template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
 {
   timer->node["jacobian assembly"].node["kernel"].start_gpu();
-  //cudaMemset(jacobian->values_d, 0, jacobian->rows_ptr[mesh->n_blocks] * N_VARS_SQ * sizeof(double));
+  //cudaMemset(jac_values_d(), 0, jac_rows_ptr()[mesh->n_blocks] * N_VARS_SQ * sizeof(double));
 
   assemble_jacobian_array_kernel<NC, NP, NE, N_VARS, P_VAR, T_VAR, N_OPS, ACC_OP, FLUX_OP, DENS_OP, UPSAT_OP, GRAD_OP, KIN_OP,
                                  GRAV_OP, PC_OP, MULT_OP, LAMBDA_OP, SAT_OP, ENTH_OP, TEMP_OP, PRES_OP, THERMAL>
       KERNEL_1D(mesh->n_blocks, N_VARS * N_VARS, 64)(mesh->n_blocks, mesh->n_res_blocks, params->enable_permporo,
                                                      params->phase_existence_tolerance,
                                                      dt, X_d, RHS_d,
-                                                     jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
+                                                     jac_rows_ptr_d(), jac_cols_ind_d(), jac_values_d(), jac_diag_ind_d(),
                                                      op_vals_arr_d, op_vals_arr_n_d, op_ders_arr_d,
                                                      mesh_tran_d, mesh_tranD_d, mesh_hcap_d, mesh_rcond_d, mesh_poro_d,
                                                      PV_d, RV_d, mesh_grav_coef_d, mesh_kin_factor_d, mesh_cell_spe_d);
@@ -762,8 +952,8 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 
     reconstruct_velocities<NC, NP, NE, N_VARS, P_VAR, N_OPS, FLUX_OP, GRAV_OP, PC_OP, MULT_OP, LAMBDA_OP>
         KERNEL_1D(mesh->n_res_blocks, 1, 64)(mesh->n_res_blocks, params->enable_permporo,
-                                        X_d, op_vals_arr_d, mesh_op_num_d, jacobian->rows_ptr_d,
-                                        jacobian->cols_ind_d, mesh_tran_d, mesh_grav_coef_d,
+                                        X_d, op_vals_arr_d, mesh_op_num_d, jac_rows_ptr_d(),
+                                        jac_cols_ind_d(), mesh_tran_d, mesh_grav_coef_d,
                                         mesh_velocity_appr_d, mesh_velocity_offset_d, darcy_velocities_d, molar_weights_d,
                                         dt);
     copy_data_to_host(darcy_velocities, darcy_velocities_d);
@@ -772,7 +962,7 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     {
       assemble_dispersion<NC, NP, NE, N_VARS, N_OPS, FLUX_OP, GRAD_OP, ENTH_OP, THERMAL>
         KERNEL_1D(mesh->n_res_blocks, NC * N_VARS, 64)(mesh->n_res_blocks, X_d, RHS_d, op_vals_arr_d,
-                                                    op_ders_arr_d, jacobian->rows_ptr_d, jacobian->cols_ind_d, jacobian->values_d, jacobian->diag_ind_d,
+                                                    op_ders_arr_d, jac_rows_ptr_d(), jac_cols_ind_d(), jac_values_d(), jac_diag_ind_d(),
                                                     mesh_tranD_d, darcy_velocities_d, dispersivity_d, mesh_op_num_d, dt);
     }
   }
@@ -787,18 +977,17 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     i_w++;
   }
   copy_data_to_device(jac_wells, jac_wells_d);
-  copy_data_to_device(RHS, RHS_wells_d);
 
   i_w = 0;
   for (ms_well *w : wells)
   {
-    copy_data_within_device(RHS_d + N_VARS * w->well_head_idx, RHS_wells_d + N_VARS * w->well_head_idx, N_VARS);
-    copy_data_within_device(jacobian->values_d + jacobian->rows_ptr[w->well_head_idx] * N_VARS * N_VARS, jac_wells_d + 2 * N_VARS * N_VARS * i_w, 2 * N_VARS * N_VARS);
+    copy_data_to_device(&RHS[N_VARS * w->well_head_idx], RHS_d + N_VARS * w->well_head_idx, N_VARS);
+    copy_data_within_device(jac_values_d() + jac_rows_ptr()[w->well_head_idx] * N_VARS * N_VARS, jac_wells_d + 2 * N_VARS * N_VARS * i_w, 2 * N_VARS * N_VARS);
     i_w++;
   }
   timer->node["jacobian assembly"].node["wells"].stop_gpu();
 
-  // copy_data_to_host(jacobian->values, jacobian->values_d, N_VARS * N_VARS * jacobian->rows_ptr[mesh->n_blocks]);
+  // copy_data_to_host(jac_values(), jac_values_d(), N_VARS * N_VARS * jac_rows_ptr()[mesh->n_blocks]);
   // jacobian->write_matrix_to_file("jac_nc_dar_gpu.csr");
   //exit(0);
 
@@ -809,5 +998,97 @@ int engine_super_gpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_gpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
 {
-	return 0;
+  // The backward driver (engine_base::calc_adjoint_gradient_dirac_all) runs on
+  // the host: it re-evaluates the operators on the HOST for the historical
+  // state X (op_vals_arr / op_ders_arr) and then calls the virtual
+  // assemble_jacobian_array, which on this engine launches the device kernel
+  // against the DEVICE buffers -- still holding the final forward-run state.
+  // Re-anchor the device state to X, redo the device assembly, and mirror the
+  // Jacobian values back to the host, where the adjoint matrices and the
+  // adjoint linear solver operate.
+  copy_data_to_device(X, X_d);
+  copy_data_to_device(op_vals_arr, op_vals_arr_d);
+  copy_data_to_device(op_ders_arr, op_ders_arr_d);
+
+  assemble_jacobian_array(dt, X, jacobian, RHS);
+
+  copy_data_to_host(jac_values(), jac_values_d(), N_VARS_SQ * jac_rows_ptr()[mesh->n_blocks]);
+
+  if (!adjoint_assembly_on_gpu)
+  {
+    // Host path (reference): dg_dx_n / dg_dT / (optionally dg_dx_T) are
+    // assembled on the host from the host operator arrays -- shared verbatim
+    // with engine_super_cpu. Kept for comparison / fallback; selectable from
+    // Python via engine.adjoint_assembly_on_gpu. Timed under the same node as
+    // the device path so the two can be compared directly.
+    timer->node["adjoint jacobian assembly host loops"].start();
+    super_engine_adjoint_assembly_host_loops(*this, dt, X);
+    timer->node["adjoint jacobian assembly host loops"].stop();
+    return super_engine_adjoint_finalize(*this);
+  }
+
+  // Device path: assemble the block dg/dx^n and the scalar dg/dT on the GPU
+  // (adjoint_gradient_assembly_kernel), mirror the value arrays back to their
+  // host csr_matrix counterparts, and run the shared host finalize (well-head
+  // handling + scalar expansion) -- the driver's downstream reductions and the
+  // adjoint solver are unchanged.
+  const index_t n_blk = mesh->n_blocks;
+  const index_t n_cns = mesh->n_conns;
+
+  timer->node["adjoint jacobian assembly"].start_gpu();
+  cudaMemset(dg_dx_n_temp_values_d, 0, (n_cns + n_blk) * N_VARS_SQ * sizeof(value_t));
+  cudaMemset(dg_dT_general_values_d, 0, n_cns * N_VARS * sizeof(value_t));
+
+  adjoint_gradient_assembly_kernel<NC, NP, NE, N_VARS, P_VAR, N_OPS, ACC_OP, FLUX_OP, DENS_OP, UPSAT_OP, GRAD_OP,
+                                   KIN_OP, GRAV_OP, PC_OP, MULT_OP, LAMBDA_OP, TEMP_OP, THERMAL>
+      KERNEL_1D(n_blk, 1, 64)(n_blk, mesh->n_res_blocks, params->enable_permporo,
+                              params->phase_existence_tolerance, dt,
+                              X_d, jac_rows_ptr_d(), jac_cols_ind_d(), jac_diag_ind_d(),
+                              conn_index_to_one_way_d,
+                              op_vals_arr_d, op_ders_arr_d,
+                              mesh_tran_d, mesh_tranD_d, mesh_poro_d, mesh_rcond_d,
+                              PV_d, RV_d, mesh_grav_coef_d, mesh_kin_factor_d,
+                              dg_dx_n_temp_values_d, dg_dT_general_values_d);
+  timer->node["adjoint jacobian assembly"].stop_gpu();
+
+  copy_data_to_host(dg_dx_n_temp->get_values(), dg_dx_n_temp_values_d, (n_cns + n_blk) * N_VARS_SQ);
+  copy_data_to_host(dg_dT_general->get_values(), dg_dT_general_values_d, n_cns * N_VARS);
+
+  return super_engine_adjoint_finalize(*this);
+};
+
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+int engine_super_gpu<NC, NP, THERMAL>::set_adjoint_solver_cpra_gpu(int restart)
+{
+#if defined(OPENDARTS_LINEAR_SOLVERS) && defined(OPENDARTS_GPU_HAS_AMGX)
+  if constexpr (N_VARS > 1)
+  {
+    // Mirrors the forward GPU AMGX-CPR wiring (engine_base_gpu::init_base),
+    // plus the transposed entry points: a SECOND AMGX instance for the
+    // transposed pressure system (AMGX has no transpose-solve API) and the
+    // transposed cuSPARSE ILU(0) application on the shared factors.
+    auto *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+    cpr->p_solver_setup_gpu = 1;
+    cpr->p_solver_solve_gpu = 1;
+    cpr->p_solver_requires_diag_first = 0;
+    cpr->set_p_system_prec(new linsolv_amgx<1>(0));
+    cpr->set_p_system_prec_t(new linsolv_amgx<1>(0));
+    cpr->set_prec(new linsolv_cusparse_ilu<N_VARS>());
+
+    auto gmres = std::make_shared<linsolv_gmres_gpu<N_VARS>>();
+    gmres->set_restart(restart);
+    gmres->set_prec(cpr); // owned by the GMRES
+
+    set_adjoint_linear_solver(gmres, /*use_jacobian_transpose=*/true);
+    return 0;
+  }
+  else
+  {
+    (void)restart;
+    return -1; // CPR needs a pressure/secondary split
+  }
+#else
+  (void)restart;
+  return -1; // AMGX not built into this configuration
+#endif
 };

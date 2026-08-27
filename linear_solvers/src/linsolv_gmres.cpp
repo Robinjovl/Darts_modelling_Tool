@@ -1,0 +1,526 @@
+//*************************************************************************
+//    Copyright (c) 2026
+//    Delft University of Technology, the Netherlands
+//
+//    This file is part of the open Delft Advanced Research Terra Simulator
+//    (open-DARTS). It is distributed under the Apache License.
+// *************************************************************************
+
+// Open-source restarted GMRES with right preconditioning.
+// See linsolv_gmres.hpp for the design rationale; algorithm follows the
+// proven layout of the reference default gmres_solver2.
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <iostream>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+#include "linsolv_gmres.hpp"
+#include "linsolv_cpr.hpp"
+#include "solver_configs.hpp"
+
+namespace opendarts
+{
+  namespace linear_solvers
+  {
+    using opendarts::config::index_t;
+    using opendarts::config::mat_float;
+
+    namespace
+    {
+      // Block-CSR sparse mat-vec: r += A * v.
+      // The matrix is consumed through csr_matrix_base accessors so this
+      // works for both csr_matrix<N> and the unified block_csr_matrix.
+      template <uint8_t N>
+      inline void block_csr_spmv_add(csr_matrix_base *A,
+          const mat_float *v,
+          mat_float *r)
+      {
+        const index_t *rows = A->get_rows_ptr();
+        const index_t *cols = A->get_cols_ind();
+        const mat_float *vals = A->get_values();
+        const index_t n_block_rows = A->n_rows;
+        constexpr int Ni = static_cast<int>(N);
+        const std::size_t b2 = static_cast<std::size_t>(Ni) * Ni;
+        // Parallel over block rows: thread for row i writes only its own output
+        // block ri = r + i*Ni, so the decomposition is write-disjoint and
+        // race-free. Deterministic across thread counts -- the per-output
+        // accumulation order (over jb, w) is unchanged by the row split.
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+        for (index_t i = 0; i < n_block_rows; ++i)
+        {
+          mat_float *ri = r + static_cast<std::size_t>(i) * Ni;
+          for (index_t jb = rows[i]; jb < rows[i + 1]; ++jb)
+          {
+            const mat_float *blk = vals + static_cast<std::size_t>(jb) * b2;
+            const mat_float *vj = v + static_cast<std::size_t>(cols[jb]) * Ni;
+            for (int e = 0; e < Ni; ++e)
+            {
+              mat_float acc = 0;
+              for (int w = 0; w < Ni; ++w)
+                acc += blk[e * Ni + w] * vj[w];
+              ri[e] += acc;
+            }
+          }
+        }
+      }
+
+      // Block-CSR transpose mat-vec: r += A^T * v.
+      // Walking the rows of A scatters each block contribution to A^T's rows.
+      // Intentionally left serial: the destination rj = r + cols[jb]*Ni is the
+      // *column* of A, so different source rows i can write the same rj -- a
+      // parallel split over i would race. This path is only used by the adjoint
+      // (solve_transposed); parallelising it would need atomics or graph
+      // colouring and is deferred.
+      template <uint8_t N>
+      inline void block_csr_spmv_t_add(csr_matrix_base *A,
+          const mat_float *v,
+          mat_float *r)
+      {
+        const index_t *rows = A->get_rows_ptr();
+        const index_t *cols = A->get_cols_ind();
+        const mat_float *vals = A->get_values();
+        const index_t n_block_rows = A->n_rows;
+        constexpr int Ni = static_cast<int>(N);
+        const std::size_t b2 = static_cast<std::size_t>(Ni) * Ni;
+        for (index_t i = 0; i < n_block_rows; ++i)
+        {
+          const mat_float *vi = v + static_cast<std::size_t>(i) * Ni;
+          for (index_t jb = rows[i]; jb < rows[i + 1]; ++jb)
+          {
+            const mat_float *blk = vals + static_cast<std::size_t>(jb) * b2;
+            mat_float *rj = r + static_cast<std::size_t>(cols[jb]) * Ni;
+            for (int w = 0; w < Ni; ++w)
+            {
+              mat_float acc = 0;
+              for (int e = 0; e < Ni; ++e)
+                acc += blk[e * Ni + w] * vi[e];
+              rj[w] += acc;
+            }
+          }
+        }
+      }
+
+      // r = alpha * A * u + beta * v  (matches default mv_calc_lin_comb<N>).
+      // When transpose=true, A^T is used in place of A.
+      template <uint8_t N>
+      inline void block_csr_lin_comb(csr_matrix_base *A,
+          mat_float alpha,
+          mat_float beta,
+          const mat_float *u,
+          const mat_float *v,
+          mat_float *r,
+          std::size_t n_scalar,
+          bool transpose = false)
+      {
+        const mat_float eps = 1.0e-12;
+        const std::ptrdiff_t nn = static_cast<std::ptrdiff_t>(n_scalar);
+        if (std::fabs(beta) > eps)
+        {
+          mat_float d = beta;
+          if (std::fabs(alpha) > eps)
+            d /= alpha;
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+          for (std::ptrdiff_t i = 0; i < nn; ++i)
+            r[i] = v[i] * d;
+        }
+        else
+        {
+          std::memset(r, 0, n_scalar * sizeof(mat_float));
+        }
+        if (std::fabs(alpha) > eps)
+        {
+          if (transpose)
+            block_csr_spmv_t_add<N>(A, u, r);
+          else
+            block_csr_spmv_add<N>(A, u, r);
+          if (alpha != 1.0)
+          {
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+            for (std::ptrdiff_t i = 0; i < nn; ++i)
+              r[i] *= alpha;
+          }
+        }
+      }
+
+      // Deterministic parallel inner product.
+      //
+      // A bare `#pragma omp parallel for reduction(+:s)` combines the per-thread
+      // partial sums in nondeterministic completion order; since FP addition is
+      // not associative, its result is not reproducible run-to-run -- two runs
+      // with the same thread count can differ at the ULP level, which then
+      // amplifies through the Krylov iteration. Instead each thread sums its
+      // static chunk into a private slot and the slots are combined in fixed
+      // thread-index order: the result is reproducible at a fixed thread count.
+      // (Across *different* thread counts the summation is grouped differently,
+      // so the value still differs from the serial result at the ULP level --
+      // that is inherent to any parallel reduction and stays within the solver
+      // tolerance; the iteration still converges.) The signed std::ptrdiff_t
+      // loop counter is required by MSVC's OpenMP 2.0 (the Windows /openmp build).
+      inline mat_float dot(const mat_float *a, const mat_float *b, std::size_t n)
+      {
+        const std::ptrdiff_t nn = static_cast<std::ptrdiff_t>(n);
+#ifdef _OPENMP
+        constexpr int max_slots = 256;
+        const int nt = omp_get_max_threads();
+        if (nt > 1 && nt <= max_slots)
+        {
+          mat_float partial[max_slots];
+          for (int t = 0; t < nt; ++t)
+            partial[t] = 0.0;
+#pragma omp parallel num_threads(nt)
+          {
+            mat_float local = 0.0;
+#pragma omp for schedule(static) nowait
+            for (std::ptrdiff_t i = 0; i < nn; ++i)
+              local += a[i] * b[i];
+            partial[omp_get_thread_num()] = local;
+          }
+          mat_float s = 0.0;
+          for (int t = 0; t < nt; ++t) // fixed-order combine -> reproducible
+            s += partial[t];
+          return s;
+        }
+#endif
+        mat_float s = 0;
+        for (std::ptrdiff_t i = 0; i < nn; ++i)
+          s += a[i] * b[i];
+        return s;
+      }
+
+      inline void axpy(mat_float *y, mat_float a, const mat_float *x, std::size_t n)
+      {
+        const std::ptrdiff_t nn = static_cast<std::ptrdiff_t>(n);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+        for (std::ptrdiff_t i = 0; i < nn; ++i)
+          y[i] += a * x[i];
+      }
+
+      inline void scale(mat_float *y, mat_float a, std::size_t n)
+      {
+        const std::ptrdiff_t nn = static_cast<std::ptrdiff_t>(n);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+        for (std::ptrdiff_t i = 0; i < nn; ++i)
+          y[i] *= a;
+      }
+    } // namespace
+
+    template <uint8_t N_BLOCK_SIZE>
+    linsolv_gmres<N_BLOCK_SIZE>::linsolv_gmres()
+      : A_(nullptr), prec_(nullptr), max_iters_(50), tolerance_(1.0e-5),
+        restart_m_(30), n_iters_(0), final_resid_(0.0)
+    {
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    linsolv_gmres<N_BLOCK_SIZE>::~linsolv_gmres()
+    {
+      // The preconditioner is supplied externally; do not own it.
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_gmres<N_BLOCK_SIZE>::set_prec(linsolv_iface *prec_input)
+    {
+      prec_ = prec_input;
+      return 0;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_gmres<N_BLOCK_SIZE>::init(csr_matrix_base *A,
+        int max_iters,
+        mat_float tolerance)
+    {
+      A_ = A;
+      max_iters_ = max_iters;
+      tolerance_ = tolerance;
+      n_iters_ = 0;
+      final_resid_ = 0.0;
+      if (prec_)
+        prec_->init(A, max_iters, tolerance);
+      return 0;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_gmres<N_BLOCK_SIZE>::reconfigure(const solver_config &config)
+    {
+      if (const auto *cfg = dynamic_cast<const gmres_solver_config *>(&config))
+      {
+        // All hot: restart resizes the (lazily grown) workspace at the next
+        // solve; tolerance / max_iterations are read per solve. Note the
+        // engine's set_linear_solver()/init() overrides the latter two from
+        // params -- callers changing them mid-run should also sync params
+        // (darts_model.update_solver does).
+        restart_m_ = cfg->restart;
+        max_iters_ = cfg->max_iterations;
+        tolerance_ = cfg->tolerance;
+        return 0;
+      }
+      // Not a GMRES config: give the attached preconditioner a chance (e.g.
+      // a CPRSolverConfig aimed at the inner stage of GMRES+CPR).
+      if (prec_ != nullptr)
+        return prec_->reconfigure(config);
+      return 1;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_gmres<N_BLOCK_SIZE>::setup(csr_matrix_base *A_input)
+    {
+      A_ = A_input;
+      if (prec_)
+      {
+        // Forward the engine's timer nodes so the preconditioner can hang
+        // its own sub-timers ("CPR AMG setup", "CPR BILU0", ...) under
+        // "linear solver setup"/"linear solver solve". Idempotent; a
+        // preconditioner that doesn't time itself ignores them.
+        if ((this->timer_setup || this->timer_solve)
+            && prec_->timer_setup == nullptr && prec_->timer_solve == nullptr)
+          prec_->init_timer_nodes(this->timer_setup, this->timer_solve);
+        return prec_->setup(A_input);
+      }
+      return 0;
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_gmres<N_BLOCK_SIZE>::solve(mat_float *rhs, mat_float *sol)
+    {
+      return solve_impl(rhs, sol, /*transpose=*/false);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_gmres<N_BLOCK_SIZE>::solve_transposed(mat_float *rhs, mat_float *sol)
+    {
+      return solve_impl(rhs, sol, /*transpose=*/true);
+    }
+
+    template <uint8_t N_BLOCK_SIZE>
+    int linsolv_gmres<N_BLOCK_SIZE>::solve_impl(mat_float *rhs, mat_float *sol, bool transpose)
+    {
+      if (!A_)
+        return -1;
+      const int N = static_cast<int>(N_BLOCK_SIZE);
+      const index_t n_block_rows = A_->n_rows;
+      const std::size_t n = static_cast<std::size_t>(n_block_rows) * N;
+      // restart < 2 makes the Arnoldi loop body unreachable (i starts at 1),
+      // which previously spun the outer loop forever and back-solved rs[-1].
+      const int m = restart_m_ < 2 ? 2 : restart_m_;
+      const int max_iter = max_iters_;
+      const mat_float tol_in = static_cast<mat_float>(tolerance_);
+      const mat_float epsmac = 1.0e-16;
+
+      // Workspace layout (single contiguous block):
+      //   w[n], p[(m+1) * n], r[n], s[m], c[m], rs[m+1], hh[(m+2)*(m+1)]
+      // Required total: n*(m+3) + 2m + (m+1) + (m+2)*(m+1)
+      //              = n*(m+3) + (m+2)*(m+1) + 3m + 1.
+      const std::size_t nw = n * (m + 3) + (m + 2) * (m + 1) + 3 * m + 1;
+      if (wksp_.size() < nw)
+        wksp_.assign(nw, 0.0);
+
+      mat_float *w = wksp_.data();
+      mat_float *p = w + n;
+      mat_float *r_buf = p + static_cast<std::size_t>(m + 1) * n;
+      mat_float *s = r_buf + n;
+      mat_float *c = s + m;
+      mat_float *rs = c + m;
+      mat_float *hh = rs + (m + 1);
+
+      // sol = 0; p_0 = rhs - A * sol = rhs. Copy directly instead of paying
+      // a full SpMV against the just-zeroed guess (one SpMV per solve).
+      std::memset(sol, 0, n * sizeof(mat_float));
+      std::memcpy(p, rhs, n * sizeof(mat_float));
+
+      const mat_float b_norm = std::sqrt(dot(rhs, rhs, n));
+      mat_float r_norm = std::sqrt(dot(p, p, n));
+
+      mat_float tol_scaled, den_norm;
+      if (b_norm > epsmac)
+      {
+        tol_scaled = tol_in * b_norm;
+        den_norm = b_norm;
+      }
+      else
+      {
+        tol_scaled = tol_in * r_norm;
+        den_norm = r_norm;
+      }
+
+      int iter = 0;
+      int i = 0;
+      // Whether at least one Arnoldi step ran. `iter` alone cannot tell: the
+      // inner loop's convergence break fires before its `++iter`, so a solve
+      // that converged in a single step also ends with iter == 0.
+      bool did_arnoldi = false;
+      while (iter < max_iter)
+      {
+        rs[0] = r_norm;
+        if (r_norm < epsmac || r_norm <= tol_scaled)
+          break;
+
+        mat_float t = 1.0 / r_norm;
+        scale(p, t, n);
+
+        for (i = 1; i < m && iter < max_iter; ++i, ++iter)
+        {
+          did_arnoldi = true;
+          mat_float *cur_p_i = p + static_cast<std::size_t>(i) * n;
+          // r_buf = M^{-1} p_{i-1}; if no prec, r_buf = p_{i-1}.
+          if (prec_)
+          {
+            const int prec_rc = transpose
+                ? prec_->solve_transposed(
+                    p + static_cast<std::size_t>(i - 1) * n, r_buf)
+                : prec_->solve(
+                    p + static_cast<std::size_t>(i - 1) * n, r_buf);
+            if (prec_rc)
+              return -3;
+          }
+          else
+          {
+            std::memcpy(r_buf, p + static_cast<std::size_t>(i - 1) * n,
+                n * sizeof(mat_float));
+          }
+
+          // p_i = (A or A^T) * r_buf  (block CSR SpMV, zero-out then accumulate).
+          std::memset(cur_p_i, 0, n * sizeof(mat_float));
+          if (transpose)
+            block_csr_spmv_t_add<N_BLOCK_SIZE>(A_, r_buf, cur_p_i);
+          else
+            block_csr_spmv_add<N_BLOCK_SIZE>(A_, r_buf, cur_p_i);
+
+          // Modified Gram-Schmidt: orthogonalise p_i against p_0..p_{i-1}.
+          mat_float *cur_h = hh + static_cast<std::size_t>(i - 1) * (m + 1);
+          for (int j = 0; j < i; ++j)
+          {
+            mat_float *cur_p_j = p + static_cast<std::size_t>(j) * n;
+            cur_h[j] = dot(cur_p_j, cur_p_i, n);
+            axpy(cur_p_i, -cur_h[j], cur_p_j, n);
+          }
+          t = std::sqrt(dot(cur_p_i, cur_p_i, n));
+          cur_h[i] = t;
+          if (t > epsmac)
+            scale(cur_p_i, 1.0 / t, n);
+
+          // Apply the previous Givens rotations to the new Hessenberg column.
+          for (int j = 1; j < i; ++j)
+          {
+            t = cur_h[j - 1];
+            cur_h[j - 1] = c[j - 1] * t + s[j - 1] * cur_h[j];
+            cur_h[j] = -s[j - 1] * t + c[j - 1] * cur_h[j];
+          }
+          mat_float gamma = std::sqrt(cur_h[i - 1] * cur_h[i - 1]
+              + cur_h[i] * cur_h[i]);
+          if (gamma < epsmac)
+            gamma = epsmac;
+          c[i - 1] = cur_h[i - 1] / gamma;
+          s[i - 1] = cur_h[i] / gamma;
+          rs[i] = -s[i - 1] * rs[i - 1];
+          rs[i - 1] = c[i - 1] * rs[i - 1];
+
+          cur_h[i - 1] = c[i - 1] * cur_h[i - 1] + s[i - 1] * cur_h[i];
+          r_norm = std::fabs(rs[i]);
+          if (r_norm <= tol_scaled)
+            break;  // i = number of completed Arnoldi steps; do not over-increment.
+        }
+        if (i == m || iter == max_iter)
+          i = i - 1;
+
+        // Back-solve the upper-triangular Hessenberg system.
+        rs[i - 1] = rs[i - 1] / hh[(i - 1) + static_cast<std::size_t>(i - 1) * (m + 1)];
+        for (int k = i - 2; k >= 0; --k)
+        {
+          mat_float t2 = rs[k];
+          for (int j = k + 1; j < i; ++j)
+            t2 -= hh[k + static_cast<std::size_t>(j) * (m + 1)] * rs[j];
+          rs[k] = t2 / hh[k + static_cast<std::size_t>(k) * (m + 1)];
+        }
+
+        // w = sum_{j=0..i-1} rs[j] * p_j
+        std::memcpy(w, p, n * sizeof(mat_float));
+        scale(w, rs[0], n);
+        for (int j = 1; j < i; ++j)
+          axpy(w, rs[j], p + static_cast<std::size_t>(j) * n, n);
+
+        // Apply the preconditioner once more to the linear combination.
+        if (prec_)
+        {
+          const int prec_rc = transpose
+              ? prec_->solve_transposed(w, r_buf)
+              : prec_->solve(w, r_buf);
+          if (prec_rc)
+            return -5;
+        }
+        else
+        {
+          std::memcpy(r_buf, w, n * sizeof(mat_float));
+        }
+        axpy(sol, 1.0, r_buf, n);
+
+        // If predicted convergence reached, verify on the actual residual.
+        if (r_norm <= tol_scaled)
+        {
+          block_csr_lin_comb<N_BLOCK_SIZE>(A_, -1.0, 1.0, sol, rhs, r_buf, n, transpose);
+          r_norm = std::sqrt(dot(r_buf, r_buf, n));
+          if (r_norm <= tol_scaled)
+            break;
+          // Otherwise restart with the actual residual.
+          std::memcpy(p, r_buf, n * sizeof(mat_float));
+          i = 0;
+          ++iter;
+          continue;
+        }
+
+        // Otherwise compute the residual vector for the next restart cycle.
+        for (int j = i; j > 0; --j)
+        {
+          rs[j - 1] = -s[j - 1] * rs[j];
+          rs[j] = c[j - 1] * rs[j];
+        }
+        if (i)
+          scale(p, rs[0], n);
+        for (int j = 1; j < i + 1; ++j)
+          axpy(p, rs[j], p + static_cast<std::size_t>(j) * n, n);
+      }
+
+      // iter + 1 is the legacy default counting convention (the references and the
+      // engine's n_linear totals are calibrated to it; a single-step converged
+      // solve reports 1 with iter still 0). Report 0 only when the entry
+      // residual already met the tolerance and no Arnoldi step ran at all.
+      n_iters_ = did_arnoldi ? (iter + 1) : 0;
+      final_resid_ = (den_norm > 1.0e-12) ? (r_norm / den_norm) : r_norm;
+      last_converged_ = (r_norm <= tol_scaled);
+      // A non-finite residual means the update is garbage (NaN/Inf out of the
+      // preconditioner or the matrix); report a hard failure so the engine
+      // cuts the timestep instead of applying it. Plain non-convergence at
+      // max_iters keeps the legacy 0 return (default parity) -- it is visible
+      // through stats().converged for diagnostics and adaptive policies.
+      if (!std::isfinite(r_norm))
+        return -4;
+      // Feed the iteration count back to the preconditioner so its
+      // hierarchy-reuse / adaptive-rebuild policy (opt-in via
+      // cpr_solver_config) can decide whether the next setup() may skip the
+      // BoomerAMG/ILU rebuild. Virtual on the base interface -- a no-op for
+      // preconditioners without a reuse policy.
+      if (prec_ != nullptr)
+        prec_->set_last_outer_iters(n_iters_);
+      return 0;
+    }
+
+    // Explicit template instantiations — generated by CMake's
+    // od_emit_template_instantiations(); see solvers/src/CMakeLists.txt.
+    // Edit the block-size range there, not here.
+#include "linsolv_gmres_instantiations.inc"
+  } // namespace linear_solvers
+} // namespace opendarts

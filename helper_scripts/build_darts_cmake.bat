@@ -10,7 +10,7 @@ set bos_solvers_artifact=false
 set bos_solvers_dir=""
 set iter_solvers=false
 set MT=true
-set GPU=%false
+set GPU=false
 set skip_req=false
 set config=Release
 set NT=8
@@ -50,15 +50,18 @@ if not %config%==Release if not %config%==Debug if not %config%==RelWithDebInfo 
   exit /b 1
 )
 
-REM ODLS version does not support OpenMP yet
+REM The in-tree open-source build now supports OpenMP: the engines assemble the
+REM block_csr_matrix Jacobian in parallel over a real multi-threaded row partition
+REM (linear_solvers\include\omp_partition.hpp), the interpolators evaluate in parallel,
+REM and the in-tree GMRES Krylov kernels (solvers\src\linsolv_gmres.cpp) run in
+REM parallel. The HYPRE preconditioner stages (CPR/MGR) still run sequentially.
+REM GPU builds default to the in-tree open-source solvers darts.linear_solvers,
+REM including the GPU wrappers; pass -b ^<path^> to build against bos_solvers.
 if %iter_solvers%==false (
   if %GPU%==true (
-    echo Error: GPU build requires GPU bos solvers. Specify the path with -b.
-    exit 1
-  )
-  if %MT%==true (
-    echo Warning: ODLS version does not support OpenMP yet. Switched to the sequentional build.
-    set MT=false
+    echo openDARTS GPU build using the in-tree open-source solvers ^(no bos_solvers^).
+  ) else if %MT%==true (
+    echo openDARTS multi-threaded ^(OpenMP^) build using the in-tree open-source solvers ^(no bos_solvers^).
   )
 )
 
@@ -72,26 +75,53 @@ echo    install test dependencies = %install_test_extra%
 echo    generate python wheel = %wheel%
 echo    Multi thread = %MT%
 echo    Phreeqc support = %phreeqc%
+echo    MGR support = enabled (default)
 echo - Report configuration of this script: DONE!
 REM ----------------------------------------------------------------
 
-del darts\*.pyd 2> NUL
-rmdir /s /q dist 2> NUL
+REM Remove previously built Python extension modules and shared libraries.
+REM Build artifacts live both directly under darts\ and in subpackages such as
+REM darts\linear_solvers\ (the compiled linear_solvers module linear_solvers.pyd and the shared
+REM library opendarts_linear_solvers.dll); a flat darts\*.pyd glob misses the latter,
+REM leaving a stale library that shadows the fresh build, so clean recursively.
+REM On Windows the Python modules are .pyd and the shared libraries are .dll
+REM (opendarts_linear_solvers.dll, IPhreeqc.dll, ...), all re-installed by CMake.
+del /s /q darts\*.pyd 2>NUL
+del /s /q darts\*.dll 2>NUL
+rmdir /s /q dist 2>NUL
 
 if %clean_mode%==true (
-  echo - Cleaning up
-  rmdir /s /q build 2> NUL
+  echo - Cleaning up ^(darts build + thirdparty HYPRE; -c forces a complete rebuild^)
+  rmdir /s /q build 2>NUL
+  rmdir /s /q thirdparty\hypre\src\cmbuild 2>NUL
+  rmdir /s /q thirdparty\install 2>NUL
   REM goto :eof
+)
+
+REM Reuse an existing thirdparty build when one is present: if HYPRE is already
+REM installed and this is not a clean (-c) rebuild, skip rebuilding requirements.
+REM -a (CI bos artifact) and -p (IPhreeqc) still run the full requirements step.
+set hypre_built=false
+if exist thirdparty\install\lib\HYPRE.lib set hypre_built=true
+if exist thirdparty\install\lib64\HYPRE.lib set hypre_built=true
+if exist thirdparty\install\lib\libHYPRE.a set hypre_built=true
+if exist thirdparty\install\lib64\libHYPRE.a set hypre_built=true
+if %skip_req%==false if %clean_mode%==false if %bos_solvers_artifact%==false if %phreeqc%==false if %hypre_built%==true (
+  echo - Reusing existing thirdparty build ^(HYPRE found^); use -c for a fresh rebuild.
+  set skip_req=true
 )
 
 if %skip_req%==false (
   echo - Update submodules: START
+
   rmdir /s /q thirdparty\eigen thirdparty\pybind11 thirdparty\MshIO thirdparty\hypre
   git submodule sync --recursive
   git submodule update --init --recursive -- ^
              thirdparty\pybind11 ^
              thirdparty\MshIO ^
-             thirdparty\hypre || goto :error
+             thirdparty\hypre ^
+             thirdparty\superlu || goto :error
+
   if %phreeqc%==true (
     git submodule update --init --recursive thirdparty\iphreeqc || goto :error
   )
@@ -102,28 +132,61 @@ if %skip_req%==false (
   echo - Install requirements: START
   if not exist build mkdir build
 
-  rem -- Install Hypre
-  if not exist hypre\src\cmbuild mkdir hypre\src\cmbuild
-  cd hypre\src\cmbuild
+  rem -- Install Hypre with MGR support (enabled by default)
+  if not exist hypre\build mkdir hypre\build
+  cd hypre\build
   rem For debugging: -DHYPRE_ENABLE_PRINT
+  rem Building with MGR support by default (MGR is always built in HYPRE)
   rem Tests/examples are never run, only the library is used, so don't build
   rem them. Building them also made parallel MSBuild race on the per-directory
   rem "re-run cmake if generate.stamp is stale" custom rule across the ~30 test
   rem projects ("Cannot restore timestamp ... Access is denied" -> MSB8066).
   rem CMAKE_SUPPRESS_REGENERATION drops ZERO_CHECK and those stamp-check rules
   rem entirely; safe for a one-shot CI configure.
-  cmake -D HYPRE_BUILD_TESTS=OFF ^
+  rem NOTE: this branch pins a newer HYPRE (thirdparty/hypre 341f9089) whose
+  rem CMake option is HYPRE_ENABLE_MPI (development's older pin used HYPRE_WITH_MPI).
+  rem Optionally build HYPRE with its own OpenMP threading (parallel BoomerAMG /
+  rem HYPRE_ILU smoothers + SpMV) via HYPRE_OPENMP=1. Opt-in for MT builds; it
+  rem changes solver numerics (HYPRE's hybrid smoothers go processor-local).
+  rem See SOLVER_REFACTORING_PLAN.md.
+  set hypre_omp_flag=
+  if /i "%HYPRE_OPENMP%"=="1" set hypre_omp_flag=-D HYPRE_ENABLE_OPENMP=ON
+  if /i "%HYPRE_OPENMP%"=="true" set hypre_omp_flag=-D HYPRE_ENABLE_OPENMP=ON
+  if /i "%HYPRE_OPENMP%"=="on" set hypre_omp_flag=-D HYPRE_ENABLE_OPENMP=ON
+  if defined hypre_omp_flag echo -- HYPRE OpenMP enabled ^(HYPRE_ENABLE_OPENMP=ON^)
+  cmake -D HYPRE_TIMING=OFF ^
+        -D HYPRE_BUILD_TESTS=OFF ^
         -D HYPRE_BUILD_EXAMPLES=OFF ^
         -D HYPRE_ENABLE_MPI=OFF ^
         -D CMAKE_SUPPRESS_REGENERATION=ON ^
-        -D CMAKE_INSTALL_PREFIX=..\..\..\install .. > ..\..\..\..\make_hypre.log || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\..\make_hypre.log || goto :error
-  cd ..\..\..\
-
+        %hypre_omp_flag% ^
+        -D CMAKE_INSTALL_PREFIX=..\..\install ^
+        -D HYPRE_SEQUENTIAL=ON ../src > ..\..\..\make_hypre.log || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\make_hypre.log || goto :error
+  cd ..\..\
+  rem -- Install SuperLU (pinned git submodule thirdparty\superlu, built with its
+  rem own CMake + MSVC generator into thirdparty\install, mirroring HYPRE). Double
+  rem precision only + internal reference CBLAS keeps it self-contained; replaces
+  rem the old bespoke superlu.sln / SuperLU.vcxproj msbuild step.
   echo -- Install SuperLU
-  cd SuperLU_5.2.1
-  msbuild superlu.sln /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% > ..\..\make_superlu.log || goto :error
-  cd ..\..
+  if not exist build\superlu mkdir build\superlu
+  cd build\superlu
+  cmake -D enable_single=OFF ^
+        -D enable_complex=OFF ^
+        -D enable_complex16=OFF ^
+        -D enable_double=ON ^
+        -D enable_internal_blaslib=ON ^
+        -D enable_blaslib=ON ^
+        -D enable_fortran=OFF ^
+        -D enable_tests=OFF ^
+        -D enable_examples=OFF ^
+        -D XSDK_INDEX_SIZE=32 ^
+        -D BUILD_SHARED_LIBS=OFF ^
+        -D CMAKE_POSITION_INDEPENDENT_CODE=ON ^
+        -D CMAKE_INSTALL_PREFIX=..\..\install ^
+        ..\..\superlu > ..\..\..\make_superlu.log || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% >> ..\..\..\make_superlu.log || goto :error
+  cd ..\..\..
 
   if %phreeqc%==true (
     echo -- Install IPhreeqc: START
@@ -167,7 +230,9 @@ if %phreeqc%==true (
   echo Phreeqc support: DISABLED
 )
 if not %bos_solvers_dir%=="" (
-  set cmake_options=%cmake_options% -D BOS_SOLVERS_DIR=%bos_solvers_dir%
+  rem ENABLE_BOS_SOLVERS is the CMake switch (default OFF = in-tree
+  rem open-source solvers); BOS_SOLVERS_DIR carries the library location.
+  set cmake_options=%cmake_options% -D ENABLE_BOS_SOLVERS=ON -D BOS_SOLVERS_DIR=%bos_solvers_dir%
 )
 if defined OD_CMAKE_ARGS (
   set cmake_options=%cmake_options% %OD_CMAKE_ARGS%
@@ -195,10 +260,14 @@ python darts\print_build_info.py
 if %wheel%==true (
   echo -- build darts.whl for windows started
   copy CHANGELOG.md darts
-  rem copy VS redist libraries
-  rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\msvcp140.dll .\darts
-  rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.CRT\vcruntime140.dll .\darts
-  rem copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
+  rem Copy VS redist libraries into the wheel. The OpenMP runtime vcomp140.dll is
+  rem REQUIRED now that the default build is /openmp (MT) -- without it the
+  rem compiled extensions fail to load on machines lacking the VC++ redistributable.
+  rem Uncomment and point %%VCToolsRedistDir%% at your VS install (cmd syntax, not
+  rem PowerShell $env:). Left commented because the redist path is environment-specific.
+  rem copy "%%VCToolsRedistDir%%\x64\Microsoft.VC143.CRT\msvcp140.dll" .\darts
+  rem copy "%%VCToolsRedistDir%%\x64\Microsoft.VC143.CRT\vcruntime140.dll" .\darts
+  rem copy "%%VCToolsRedistDir%%\x64\Microsoft.VC143.OpenMP\vcomp140.dll" .\darts
   rem The C++ extensions are already compiled and installed by cmake above, so
   rem building the wheel is pure Python packaging. Build it with PEP 517 build
   rem isolation DISABLED (--no-isolation): the isolated build spawns a nested
@@ -291,20 +360,22 @@ exit /b 0
 
 REM Help info --------------------------------------------------------
 :help_info
-echo helper_scripts\build_darts_cmake.bat [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS]
-echo    Script to install opendarts on Windows.
+echo helper_scripts\build_darts_cmake.bat [-h] [-c] [-t] [-w] [-m] [-G] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-p]
+echo    Script to install opendarts on Windows with MGR support.
 echo USAGE:
-echo    -h : displays this help menu.
-echo    -c : cleans up build to prepare a new fresh build. Default: don't clean
-echo    -t : Enable testing: ctest of solvers and install open-darts[test]. Default: don't test
-echo    -w : Enable generation of python wheel. Default: false
-echo    -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true
-echo    -r : Skip building thirdparty libraries (if you have them already compiled). Default: false
-echo    -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false
-echo    -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).
-echo    -d MODE   : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo
-echo    -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4
-echo    -p : Enable Phreeqc + Reaktoro (requires Conda). Default: false
+echo    -h               : displays this help menu.
+echo    -c               : clean rebuild of everything, including thirdparty (HYPRE/SuperLU). Default: reuse existing thirdparty build if present
+echo    -t               : Enable testing: ctest of solvers and install open-darts[test]. Default: don't test
+echo    -w               : Enable generation of python wheel. Default: false
+echo    -m               : Enable Multi-thread MT (OpenMP) build. Engines, interpolators and the in-tree GMRES kernels run in parallel; HYPRE preconditioners (CPR/MGR) are sequential. Default: true
+echo    -G               : Enable GPU build. Uses the in-tree open-source solvers unless -b is given. Default: false
+echo    -r               : Skip building thirdparty libraries (if you have them already compiled). Default: false
+echo    -a               : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false
+echo    -b SPATH         : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled).
+echo    -d MODE          : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo
+echo    -j N             : Set number of threads (N) for compilation. Default: 8. Example: -j 4
+echo    -p               : Enable Phreeqc + Reaktoro (requires Conda). Default: false
+echo    HYPRE_OPENMP env : Build HYPRE with OpenMP (parallel BoomerAMG/ILU in CPR/MGR). Opt-in, for MT builds; changes solver numerics. Default: false. Requires -c to (re)build HYPRE.
 goto :eof
 REM ----------------------------------------------------------------
 

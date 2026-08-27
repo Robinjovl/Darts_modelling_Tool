@@ -154,11 +154,8 @@ class Model(CICDModel):
         # initialize wormhole propagation ratio
         self.reservoir.wh_propagation_ratio = 0.0
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
-                                           chop=ChopSpec(mode='local', factor=0.2))
-        # self.nonlinear_solver.spec.norm = Norm.LINF
-        # self.data_ts.linear_type = sim_params.cpu_superlu
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_linear=1e-6, it_linear=200)
+        # Time-stepping / Newton / linear-solver config (see DartsModel.set_solver,
+        # called from reset()).
         self.runtime = 1
         # default timestep control thresholds (overridable by callers)
         self.ni_dt_increase_cutoff = 5
@@ -178,6 +175,59 @@ class Model(CICDModel):
         self._n_diluted_newton_iters = 0
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
+            chop=ChopSpec(mode='local', factor=0.2))
+        self.nonlinear_solver.spec.chop.mode = 'local'
+        # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
+        self.nonlinear_solver.spec.chop.factor = 0.2
+        # GPU -> AMGX-CPR; CPU -> FGMRES + CPR/AMG
+        tolerance = 1e-6
+        max_iterations = 500
+        # Exact local (block-Schur) elimination of the mineral-balance equations
+        # is ON BY DEFAULT for every mineral present (they are the cell-local /
+        # diagonal-block-only equations here).
+        K = self.n_solid
+        n_vars = getattr(self.physics, 'n_vars', None)
+        elim = K > 0 and (n_vars is None or n_vars - K >= 2)
+        elim_rows = list(range(K))
+        elim_cols = list(range(1, K + 1))
+        if getattr(self, 'platform', 'cpu') == 'gpu':
+            from darts.linear_solvers import AMGXCPRSolverSpec
+            if elim:
+                # NOTE: local elimination is incompatible with AMGX adaptive
+                # hierarchy reuse (the reduced pressure COEFFICIENTS change every
+                # Newton/timestep as condensation folds in the evolving local-
+                # equation dynamics; a reused hierarchy goes stale -> AMGX setup
+                # fails -> wasted Newton -> dt cut; measured on the 60k core:
+                # reuse on made elimination +12% overall with 210 wasted Newtons,
+                # reuse off -40% with none). The engine chain builder disables
+                # reuse for the elimination chain's OWN AMGX instances (per-
+                # instance ctor override) -- no process-global environment
+                # mutation, other AMGX instances keep the default adaptive reuse.
+                self.linear_solver = AMGXCPRSolverSpec(
+                    max_iterations=max_iterations, tolerance=tolerance,
+                    schur_elim_count=K, schur_elim_rows=elim_rows,
+                    schur_elim_cols=elim_cols)
+            else:
+                self.linear_solver = AMGXCPRSolverSpec(
+                    max_iterations=max_iterations, tolerance=tolerance)
+        else:
+            from darts.linear_solvers import CPRSolverSpec, GMRESSolverSpec
+            spec = GMRESSolverSpec(restart=50, prec=CPRSolverSpec())
+            spec.tolerance = tolerance
+            spec.max_iterations = max_iterations
+            if elim:
+                from darts.linear_solvers import SchurEliminationSpec
+                wrap = SchurEliminationSpec(inner=spec, elim_rows=elim_rows,
+                                            elim_cols=elim_cols)
+                wrap.tolerance = tolerance
+                wrap.max_iterations = max_iterations
+                spec = wrap
+            self.linear_solver = spec
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,
@@ -465,7 +515,7 @@ class Model(CICDModel):
                                                 permx=perm, permy=perm, permz=perm, poro=1, depth=1)
                 self.inj_cells = self.domain_cells[0] * np.arange(self.domain_cells[1])
             else:
-                self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0,
+                self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0, cache=True,
                                                 mesh_file=mesh_filename, poro=1)
                 self.reservoir.physical_tags['matrix'] = [99991]
                 self.reservoir.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
@@ -512,7 +562,7 @@ class Model(CICDModel):
         elif self.domain == '3D':
             depth = 1
             mesh_file = mesh_filename
-            self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0,
+            self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0, cache=True,
                                                mesh_file=mesh_file, poro=1)
             self.reservoir.physical_tags['matrix'] = [99991]
             self.reservoir.physical_tags['boundary'] = [991, 992, 993]
@@ -631,7 +681,7 @@ class Model(CICDModel):
         if isinstance(self.reservoir, UnstructReservoir):
             for idx in self.prd_cells:
                 self.reservoir.add_perforation(well_name='P1', res_cell_idx=idx, ms_epm=False,
-                                               verbose=True, well_diameter=w_d, well_index=well_index,
+                                               verbose=False, well_diameter=w_d, well_index=well_index,
                                                well_indexD=well_index)
         elif isinstance(self.reservoir, StructReservoir):
             for idx in range(self.domain_cells[1]):
@@ -977,11 +1027,19 @@ class GasViscosity:
         return 0.0278
 
 class LiquidViscosity:
+    # IAPWS validity envelope: outside it the correlation's exp() underflows to
+    # exactly 0.0 (seen at rho ~ 2280 kg/m3 from extreme single-phase-aq flash
+    # results at unreachable OBL corners), and mu = 0 turns the mobility operator
+    # kr/mu into +inf, silently poisoning the OBL point cache and every hypercube
+    # (and hence Jacobian) that touches it. Clamp the density into the correlation
+    # range and floor the result so mobility stays finite.
+    RHO_MAX = 1200.0   # kg/m3, upper edge of the IAPWS viscosity correlation range
+    MU_MIN = 1e-3      # cP, positive floor (gas-like); only hit on degenerate inputs
     def __init__(self):
         pass
     def evaluate(self, density, temperature):
-        visc = _Viscosity(rho=density, T=temperature)
-        return visc * 1000
+        visc = _Viscosity(rho=min(density, self.RHO_MAX), T=temperature)
+        return max(visc * 1000, self.MU_MIN)
 
 class PermPoroRelationship:
     def __init__(self, exp):

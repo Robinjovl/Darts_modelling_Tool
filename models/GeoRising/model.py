@@ -47,12 +47,17 @@ class Model(CICDModel):
         self.set_input_data()
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=20,
-                                           chop=ChopSpec(mode='global', factor=1))
-        self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650, tol_linear=1e-6,
-                            it_linear=40)
+        # solver configuration moved to set_solver() (called by base reset())
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650  )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=20,
+            chop=ChopSpec(mode='global', factor=1))
+        self.linear_solver.spec.tolerance = 1e-6
+        self.linear_solver.spec.max_iterations = 40
 
     def set_reservoir(self):
         (nx, ny, nz) = (60, 60, 3)

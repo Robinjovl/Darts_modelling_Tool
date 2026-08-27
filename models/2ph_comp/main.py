@@ -48,12 +48,9 @@ if __name__ == '__main__':
 
     redirect_darts_output('run.log')
     n = Model()
-    # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
-    n.init(parallel_evaluation = True, n_workers = 12)
-    n.set_output(output_folder = 'par', 
-                 sol_filename = "use_cache_reservoir_solution.h5",
-                 well_filename = "use_cache_well_data.h5"
-                 )
+    n.init()
+    # n.physics.engine.print_linear_system = True
+    n.set_output()
 
 
     if True:

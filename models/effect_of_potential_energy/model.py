@@ -27,13 +27,20 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10)
-        self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5,
-                            tol_linear=1e-5, it_linear=50,
-                            runtime=50, # This runtime will be used when CI test is conducted without the main file
-                            )
+        # Solver configuration moved to set_solver() (called from DartsModel.reset()).
 
         self.timer.node["initialization"].stop()
+
+        return
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5,
+                            runtime=50, # This runtime will be used when CI test is conducted without the main file
+                            )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10)
+        self.linear_solver.spec.tolerance = 1e-5
+        self.linear_solver.spec.max_iterations = 50
 
         return
 

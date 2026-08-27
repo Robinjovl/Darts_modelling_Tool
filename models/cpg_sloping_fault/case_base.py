@@ -1,7 +1,7 @@
 import numpy as np
 import os
 
-from darts.input.input_data import InputData, linear_solver_types
+from darts.input.input_data import InputData
 from darts.models.darts_model import DataTS
 from darts.engines import sim_params
 
@@ -34,17 +34,15 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.DataTS.dt_first = 0.01
     idata.sim.DataTS.dt_mult = 2
     idata.sim.DataTS.dt_max = 92
-    idata.sim.DataTS.linear_tol = 1e-4
-    # Nonlinear (Newton) tolerance: set on idata (not DataTS); Model_CPG.set_solver()
-    # reads it and applies it to the nonlinear-solver spec.
+
     idata.sim.newton_tolerance = 1e-2
-    # use direct linear solver:
-    #idata.sim.DataTS.linear_type = sim_params.linear_solver_t.cpu_superlu
-    # optional: use PETSc linear solver
-    #idata.sim.DataTS.linear_type = linear_solver_types.CPU_PETSC_CPR
-    #idata.sim.DataTS.linear_print_level = 0
-    # optional: use PARDISO linear solver
-    #idata.sim.DataTS.linear_type = linear_solver_types.CPU_PARDISO
+    idata.sim.linear_tol = 1e-4
+    # optional: choose a non-default linear solver via the Spec interface,
+    # e.g. in the model's set_solver():
+    #   from darts.linear_solvers import SuperLUSolverSpec, PETScSolverSpec, PardisoSolverSpec
+    #   self.linear_solver = SuperLUSolverSpec()
+    #   self.linear_solver = PETScSolverSpec(variant="cpr")
+    #   self.linear_solver = PardisoSolverSpec()
 
     idata.generate_grid = 'generate' in case
     idata.geom = InputDataGeom()
