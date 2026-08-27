@@ -25,6 +25,9 @@ class Model_CPG(CICDModel):
         sim = self.idata.sim
         if getattr(sim, 'newton_tolerance', None) is not None:
             self.nonlinear_solver.spec.tolerance = sim.newton_tolerance
+        if self.linear_solver is None:
+            from darts.linear_solvers import LinearSolver
+            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.spec.tolerance = getattr(sim, 'linear_tol', self.linear_solver.spec.tolerance)
         self.linear_solver.spec.max_iterations = getattr(sim, 'linear_max_iter', self.linear_solver.spec.max_iterations)
 

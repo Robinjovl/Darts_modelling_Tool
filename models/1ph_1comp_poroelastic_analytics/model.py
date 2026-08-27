@@ -68,15 +68,15 @@ class Model(THMCModel):
             lin_tol, lin_max_it = 1e-10, 5000
         else:
             lin_tol, lin_max_it = 1e-5, 50
-        ls = LinearSolver(model=self)
-        ls.spec = GMRESSolverSpec(
+        self.linear_solver = LinearSolver(model=self)
+        self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
             tolerance=lin_tol,
             max_iterations=lin_max_it,
             restart=50,
             proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
         )
-        super().set_solver(linear_solver=ls)
+        super().set_solver()
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,

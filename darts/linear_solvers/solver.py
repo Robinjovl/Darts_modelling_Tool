@@ -74,7 +74,6 @@ try:
         SolverSwitchContext,
     )
     from darts.linear_solvers.specs import (
-        AMGXCPRSolverSpec,
         CPRSolverSpec,
         GMRESSolverSpec,
         PythonLinearSolverSpec,
@@ -231,78 +230,6 @@ class LinearSolver:
         (nothing assigned yet, or a raw-handle wrapper).
         """
         return self.spec if isinstance(self.spec, LinearSolverSpec) else None
-
-    def _materialize_default_spec(self):
-        """Materialize the explicit platform-default spec when the model has not
-        chosen one (called by :meth:`DartsModel.set_solver` when :attr:`spec` is
-        still ``None``). Every default field is stated explicitly -- mirroring the
-        nonlinear default (``NewtonSolver(...)`` in ``DartsModel.set_solver``) --
-        so the effective configuration of a model that does not override
-        ``set_solver()`` is readable here instead of hidden in the spec dataclass
-        defaults. Sets both :attr:`spec` and :attr:`_default_spec` (the identity
-        marker :meth:`_solver_is_default` compares against)."""
-        if getattr(self.model, "platform", "cpu") == "gpu":
-            # GPU default: GMRES + AMGX-CPR (AMGX on the pressure subsystem +
-            # ILU on the full system). A GPUSolverSpec builds no C++ solver: it
-            # names the params.linear_type enum (gpu_gmres_cpr_amgx_ilu) the GPU
-            # engine factory consumes. The AMG configuration lives in the engine
-            # factory / AMGX JSON, so the only Python knobs are the ones below.
-            spec = AMGXCPRSolverSpec(
-                tolerance=1e-5,  # linear residual tolerance
-                max_iterations=50,  # max Krylov iterations per solve
-                print_level=0,  # solver verbosity
-                proprietary_linear_type=None,  # enum for non-registry builds
-                schur_elim_count=0,  # cell-local equations to Schur-eliminate (0 = off)
-                schur_elim_rows=None,  # eliminated equation rows (len == count)
-                schur_elim_cols=None,  # eliminated unknown columns (len == count)
-            )
-        else:
-            # CPU default: FGMRES around the two-stage CPR preconditioner
-            # (HYPRE BoomerAMG on the pressure subsystem + ILU(0) on the full
-            # system). Unlike the GPU spec, CPR is built from Python through the
-            # solver registry, so every BoomerAMG knob is a settable field below.
-            spec = GMRESSolverSpec(
-                tolerance=1e-5,  # linear residual tolerance
-                max_iterations=50,  # max Krylov iterations per solve
-                print_level=0,  # solver verbosity
-                proprietary_linear_type=None,  # enum for non-registry builds
-                restart=50,  # FGMRES restart (Krylov subspace dimension)
-                prec=CPRSolverSpec(
-                    tolerance=1e-5,  # unused: CPR runs as a preconditioner
-                    max_iterations=50,  # unused: single application per solve
-                    print_level=0,  # preconditioner verbosity
-                    proprietary_linear_type=None,
-                    amg_max_iters=1,  # AMG V-cycles on the pressure stage
-                    ilu_fill_level=0,  # ILU(0) on the full system (stage 2)
-                    weight_scheme=1,  # 1 = True-IMPES pressure weights
-                    stage2_type=1,  # 1 = ILU second stage
-                    eager_adjoint=False,  # build the transpose stack up front
-                    # --- HYPRE BoomerAMG configuration of the pressure stage ---
-                    amg_coarsen_type=8,  # PMIS coarsening
-                    amg_interp_type=8,  # extended+i interpolation
-                    amg_relax_type=3,  # hybrid Gauss-Seidel smoother
-                    amg_relax_order=1,  # C/F relaxation ordering
-                    amg_num_sweeps=1,  # smoother sweeps per level
-                    amg_strong_threshold=0.75,  # strength-of-connection threshold
-                    amg_agg_num_levels=0,  # aggressive-coarsening levels
-                    amg_agg_interp_type=6,  # interpolation on aggressive levels
-                    amg_agg_pmax_elmts=20,  # max elements/row, aggressive levels
-                    amg_pmax_elmts=0,  # max elements/row (0 = unlimited)
-                    amg_trunc_factor=0.0,  # interpolation truncation factor
-                    amg_max_levels=-1,  # max levels (-1 = HYPRE default)
-                    amg_cycle_type=-1,  # cycle type (-1 = HYPRE default, V)
-                    amg_max_coarse_size=100,  # stop coarsening below this size
-                    amg_coarse_relax_type=9,  # Gaussian elimination on the coarsest level
-                    amg_relax_wt=-1.0,  # relaxation weight (-1 = HYPRE default)
-                    # --- hierarchy reuse across Newton iterations ---
-                    reuse_amg_hierarchy=False,  # reuse the AMG setup
-                    adaptive_amg_rebuild=False,  # rebuild when iterations degrade
-                    adaptive_iter_threshold=15,  # LI above which to rebuild
-                    adaptive_consecutive_bad=2,  # bad solves before rebuilding
-                ),
-            )
-        self.spec = spec
-        self._default_spec = spec
 
     def _warn_if_direct_solver_oversized(self):
         """Warn when a direct (SuperLU) solver is selected on a mesh too large for

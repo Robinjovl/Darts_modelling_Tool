@@ -34,6 +34,9 @@ class Model(CICDModel):
         return
 
     def set_solver(self):
+        if self.linear_solver is None:
+            from darts.linear_solvers import LinearSolver
+            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5,
                             runtime=50, # This runtime will be used when CI test is conducted without the main file
                             )

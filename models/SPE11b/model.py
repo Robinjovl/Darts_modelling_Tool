@@ -109,6 +109,9 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
+        if self.linear_solver is None:
+            from darts.linear_solvers import LinearSolver
+            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365  )
         # self.data_ts.eta = np.ones(self.physics.n_vars)
 
@@ -270,6 +273,9 @@ class Model(DartsModel):
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=12,
             chop=ChopSpec(mode='local', factor=0.01),
             norm=Norm.L2)  # Norm.LINF if you use m.set_rhs() for injection
+        if self.linear_solver is None:
+            from darts.linear_solvers import LinearSolver
+            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.spec.tolerance = 1e-4
         self.linear_solver.spec.max_iterations = 50
 

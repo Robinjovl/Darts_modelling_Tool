@@ -177,9 +177,10 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
+        from darts.linear_solvers import LinearSolver
+        self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
 
-        from darts.linear_solvers import LinearSolver
         # GPU -> AMGX-CPR; CPU -> FGMRES + CPR/AMG
         tolerance = 1e-6
         max_iterations = 500
@@ -191,10 +192,8 @@ class Model(CICDModel):
         elim = K > 0 and (n_vars is None or n_vars - K >= 2)
         elim_rows = list(range(K))
         elim_cols = list(range(1, K + 1))
-        # Built standalone (detached from the model) so the whole configuration is
-        # in hand before handing it to set_solver() -- no default spec is
-        # materialized and immediately discarded.
-        ls = LinearSolver(model=self)
+        # Configured directly on self.linear_solver (constructed above) -- no
+        # platform default is ever materialized and discarded.
         if getattr(self, 'platform', 'cpu') == 'gpu':
             from darts.linear_solvers import AMGXCPRSolverSpec
             if elim:
@@ -208,12 +207,12 @@ class Model(CICDModel):
                 # reuse for the elimination chain's OWN AMGX instances (per-
                 # instance ctor override) -- no process-global environment
                 # mutation, other AMGX instances keep the default adaptive reuse.
-                ls.spec = AMGXCPRSolverSpec(
+                self.linear_solver.spec = AMGXCPRSolverSpec(
                     max_iterations=max_iterations, tolerance=tolerance,
                     schur_elim_count=K, schur_elim_rows=elim_rows,
                     schur_elim_cols=elim_cols)
             else:
-                ls.spec = AMGXCPRSolverSpec(
+                self.linear_solver.spec = AMGXCPRSolverSpec(
                     max_iterations=max_iterations, tolerance=tolerance)
         else:
             from darts.linear_solvers import CPRSolverSpec, GMRESSolverSpec
@@ -227,9 +226,9 @@ class Model(CICDModel):
                 wrap.tolerance = tolerance
                 wrap.max_iterations = max_iterations
                 spec = wrap
-            ls.spec = spec
+            self.linear_solver.spec = spec
 
-        super().set_solver(linear_solver=ls)  # platform default nonlinear solver
+        super().set_solver()  # platform default nonlinear solver
         self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
             chop=ChopSpec(mode='local', factor=0.2))
         self.nonlinear_solver.spec.chop.mode = 'local'

@@ -26,6 +26,9 @@ class Model_therm(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
+        if self.linear_solver is None:
+            from darts.linear_solvers import LinearSolver
+            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=10, runtime=100  )
 
         self.timer.node["initialization"].stop()
@@ -35,6 +38,9 @@ class Model_therm(CICDModel):
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10,
             chop=ChopSpec(mode='local'))
+        if self.linear_solver is None:
+            from darts.linear_solvers import LinearSolver
+            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.spec.tolerance = 1e-3
         self.linear_solver.spec.max_iterations = 50
 

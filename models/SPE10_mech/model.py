@@ -63,10 +63,10 @@ class Model(THMCModel):
         # open-source CPU build; on the proprietary build _apply_solver applies
         # proprietary_linear_type (bos_fs_cpr) to params.linear_type. No model-level
         # params.linear_type needed -- its open-source value was the engine default
-        # (cpu_superlu) anyway. Built standalone (detached from the model) and handed
-        # to set_solver() below, so the platform default is never materialized.
-        ls = LinearSolver(model=self)
-        ls.spec = GMRESSolverSpec(
+        # (cpu_superlu) anyway. Constructed and configured here, before
+        # super().set_solver() below, so the platform default is never materialized.
+        self.linear_solver = LinearSolver(model=self)
+        self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
             # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
             # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()
@@ -80,7 +80,7 @@ class Model(THMCModel):
             restart=50,
             proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
         )
-        super().set_solver(linear_solver=ls)
+        super().set_solver()
 
         self.data_ts.dt_first = 0.0001
         self.data_ts.dt_mult = 2

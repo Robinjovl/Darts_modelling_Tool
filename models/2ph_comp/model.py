@@ -111,6 +111,7 @@ class Model(CICDModel):
         # Single per-model home for time-stepping / Newton + linear-solver config
         # (the unified set_solver() pattern). Called by the base reset() before
         # engine.init, so these settings feed engine.init().
+        self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
 
@@ -134,11 +135,9 @@ class Model(CICDModel):
             block_size - 1
         )
 
-        # Built standalone (detached from the model) so the whole configuration is
-        # in hand before handing it to set_solver() -- no default spec is
-        # materialized and immediately discarded.
-        ls = LinearSolver(model=self)
-        ls.spec = MGRSolverSpec(
+        # Configured directly on self.linear_solver (constructed above) -- no
+        # platform default is ever materialized and discarded.
+        self.linear_solver.spec = MGRSolverSpec(
             tolerance=1e-4,
             max_iterations=50,
             log_level=self.params.linear_print_level,
@@ -217,8 +216,8 @@ class Model(CICDModel):
             enable_well_level=False,
             enable_composition_level=False,
         )
-        ls.label = "mgr (bcsr-cpr)"
-        super().set_solver(linear_solver=ls)  # adopts ls; platform default nonlinear solver
+        self.linear_solver.label = "mgr (bcsr-cpr)"
+        super().set_solver()  # platform default nonlinear solver
         # NOTE: 1e-3 / 20 (not the historic 1e-2 / 10) -- tightened on this branch by
         # commit 34b55809a 'Fix passing parameters from Python'; the nonlinear
         # refactoring (!327) carried the older values into the NewtonSolver form,

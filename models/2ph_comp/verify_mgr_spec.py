@@ -45,6 +45,9 @@ class ModelSpec(Model):
     def set_solver(self):
         # Base Model.set_solver() now owns set_sim_params(); replicate it here since
         # this override does not call super().
+        if self.linear_solver is None:
+            from darts.linear_solvers import LinearSolver
+            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000)
         super().set_solver()  # platform default nonlinear + linear solvers
         # must mirror Model.set_solver()'s nonlinear settings exactly -- this

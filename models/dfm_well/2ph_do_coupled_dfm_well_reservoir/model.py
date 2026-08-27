@@ -28,6 +28,9 @@ class Model(CICDModel):
         self.zero = 1e-13
         self.set_physics()
 
+        if self.linear_solver is None:
+            from darts.linear_solvers import LinearSolver
+            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=0.2, runtime=300 )
 
         self.timer.node["initialization"].stop()
@@ -36,6 +39,9 @@ class Model(CICDModel):
         # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, coupled_well_res_norm_method=2)
+        if self.linear_solver is None:
+            from darts.linear_solvers import LinearSolver
+            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.spec.tolerance = 1e-6
 
     def set_initial_conditions(self):

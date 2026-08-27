@@ -53,10 +53,12 @@ def test_reconfigure_and_switch_without_jacobian_reallocation(model):
     from darts.linear_solvers import (
         CPRSolverSpec,
         GMRESSolverSpec,
+        LinearSolver,
         SuperLUSolverSpec,
     )
 
     m = model
+    m.linear_solver = LinearSolver(model=m)
     m.linear_solver.spec = GMRESSolverSpec(restart=40, prec=CPRSolverSpec())
     m.init()
     m.set_output(output_folder="test_solver_reconfigure_out")
@@ -112,11 +114,13 @@ def test_adaptive_policy_actions(model):
         AdaptiveSolverSpec,
         CPRSolverSpec,
         GMRESSolverSpec,
+        LinearSolver,
         SolverAction,
         SuperLUSolverSpec,
     )
 
     m = model
+    m.linear_solver = LinearSolver(model=m)
     seen = []
 
     def policy(ctx):

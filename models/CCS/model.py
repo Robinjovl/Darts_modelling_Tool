@@ -82,6 +82,9 @@ class Model(DartsModel):
         # Solver/time-stepping configuration moved to set_solver() (called from base reset()).
 
     def set_solver(self):
+        if self.linear_solver is None:
+            from darts.linear_solvers import LinearSolver
+            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=1e-7, mult_ts=2, max_ts=20.,   runtime=1,
                             #   # Type of newton method (related to chopping strategy?)
                             #   # Probably chop-criteria(?)

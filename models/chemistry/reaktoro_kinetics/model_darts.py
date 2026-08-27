@@ -126,17 +126,17 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
+        self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
         # SuperLU direct solve for this small, stiff chemistry system, declared solely
         # through self.linear_solver (replaces the params.linear_type = cpu_superlu carrier,
         # which the base FGMRES+CPR default had been shadowing). proprietary_linear_type
-        # carries the same enum for the proprietary build's engine factory. Built
-        # standalone (detached from the model) so the platform default is never
-        # materialized.
-        ls = LinearSolver(model=self)
-        ls.spec = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200,
+        # carries the same enum for the proprietary build's engine factory. Configured
+        # directly on self.linear_solver (constructed above) -- no platform default is
+        # ever materialized and discarded.
+        self.linear_solver.spec = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200,
                                     proprietary_linear_type=sim_params.cpu_superlu)
-        super().set_solver(linear_solver=ls)  # platform default nonlinear solver
+        super().set_solver()  # platform default nonlinear solver
         self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=15)
 
     def set_reservoir(self):
