@@ -150,9 +150,6 @@ class FakeModel:
         self.platform = "cpu"
         self.timer = _FakeTimer()
         self._linear_solver_rc_last = 0
-        self.time = []
-        self.n_newton_iters = []
-        self.time_step_size = []
         self.reservoir = _Reservoir()
 
         class _Physics:
@@ -164,6 +161,10 @@ class FakeModel:
 
         class _DataTS:
             linear_type = None
+
+            def __init__(self):
+                self.time = []
+                self.time_step_size = []
 
         self.data_ts = _DataTS()
 

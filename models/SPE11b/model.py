@@ -886,9 +886,9 @@ class Model(DartsModel):
         converged = self.physics.engine.post_newtonloop(dt, t, converged)
         solver.stats.update(converged, status)
 
-        self.time.append(t)
-        self.n_newton_iters.append(status.n_newton)
-        self.time_step_size.append(dt)
+        self.data_ts.time.append(t)
+        solver.n_newton_iters.append(status.n_newton)
+        self.data_ts.time_step_size.append(dt)
 
         self.timer.node["simulation"].stop()
 

@@ -752,9 +752,9 @@ class Model(CICDModel):
                 pass
             # Mirror the base method's per-step history bookkeeping for the failed step.
             try:
-                self.time.append(t)
-                self.n_newton_iters.append(self.nonlinear_solver.status.n_newton)
-                self.time_step_size.append(dt)
+                self.data_ts.time.append(t)
+                self.nonlinear_solver.n_newton_iters.append(self.nonlinear_solver.status.n_newton)
+                self.data_ts.time_step_size.append(dt)
             except Exception:
                 pass
             return 0  # converged = False -> run() else-branch cuts dt

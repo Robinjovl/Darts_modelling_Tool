@@ -280,9 +280,9 @@ class NewtonSolver(NonlinearSolver):
                 status.well_residual,
             )
 
-        model.time.append(t)
-        model.n_newton_iters.append(status.n_newton)
-        model.time_step_size.append(dt)
+        model.data_ts.time.append(t)
+        self.n_newton_iters.append(status.n_newton)
+        model.data_ts.time_step_size.append(dt)
 
         self.timer.node["simulation"].stop()
         return converged

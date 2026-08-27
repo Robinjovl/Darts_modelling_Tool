@@ -51,6 +51,12 @@ class DataTS:
             1000.0  # total runtime [days]; read by run() when days is not given
         )
 
+        # Per-timestep run history (not configuration -- excluded from _FIELDS /
+        # to_dict() / validate() / print()). Appended once per accepted timestep by
+        # NewtonSolver.run_timestep(); read back for post-run plotting/diagnostics.
+        self.time = []  # accepted timestep end times [days]
+        self.time_step_size = []  # accepted timestep sizes [days]
+
     def validate(self):
         """Raise ``ValueError`` on an obviously-invalid timestepping configuration
         (mirror of ``NonlinearSolverSpec.validate()``); called at ``init()``."""

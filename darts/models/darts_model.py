@@ -157,10 +157,6 @@ class DartsModel:
         # e.g. self.data_ts.dt_first = ..., self.data_ts.runtime = ....
         self.data_ts = DataTS()
 
-        self.time = []
-        self.n_newton_iters = []
-        self.time_step_size = []
-
         # Stop recording "initialization" time
         self.timer.node["initialization"].stop()
 

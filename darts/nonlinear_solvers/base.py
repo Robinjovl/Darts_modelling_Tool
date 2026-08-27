@@ -308,6 +308,9 @@ class NonlinearSolver:
         self.model = model
         self.status = NonlinearStatus()
         self.stats = SolverStats()
+        # per-timestep Newton-iteration-count history, one entry per accepted
+        # timestep (appended by run_timestep()); read back for post-run plotting/diagnostics
+        self.n_newton_iters = []
         # ordered dX-correction pipeline assembled from the spec by build_corrections()
         self._corrections = []
         # extra routines injected by a FallbackSpec retry (empty on the primary solver)
