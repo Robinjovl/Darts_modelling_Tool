@@ -1,4 +1,4 @@
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, ms_well
 from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
@@ -12,7 +12,7 @@ from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.black_oil import *
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()

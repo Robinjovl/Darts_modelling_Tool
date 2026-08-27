@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import ms_well
 from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
@@ -9,10 +9,10 @@ from darts.models.opt.opt_module_settings import OptModuleSettings
 from darts.input.input_data import InputData
 
 
-class Model(CICDModel, OptModuleSettings):
+class Model(DartsModel, OptModuleSettings):
     def __init__(self, T, report_step=120, perm=300, poro=0.2, iapws_physics=False):
         # call base class constructor
-        CICDModel.__init__(self)
+        DartsModel.__init__(self)
         OptModuleSettings.__init__(self)
 
         # measure time spend on reading/initialization
@@ -213,7 +213,7 @@ class Model(CICDModel, OptModuleSettings):
         for ts in time_step_arr:
             self.set_well_controls()
 
-            CICDModel.run(self, ts, verbose=export_to_vtk)
+            DartsModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()
             if export_to_vtk:
                 ith_step += 1

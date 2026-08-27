@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, value_vector, operator_set_evaluator_iface, ms_well
 import numpy as np
 from copy import deepcopy
@@ -40,7 +40,7 @@ def create_map(lx, ly, nx, ny):
 
 
 # Model class creation here!
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, grid_1D=True, res=1, custom_physics=False):
         # Call base class constructor
         super().__init__()

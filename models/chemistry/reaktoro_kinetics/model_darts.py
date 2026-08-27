@@ -3,7 +3,7 @@ import os
 import h5py
 import warnings
 from darts.models.output import Output
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, sim_params, well_control_iface, timer_node
 from darts.engines import copy_data_to_device
 from darts.physics.properties.density import DensityBasic
@@ -111,7 +111,7 @@ class MyOutput(Output):
         return timesteps, property_array
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, n_obl_mult: int = 9):
         super().__init__()
         self.n_obl_mult = n_obl_mult

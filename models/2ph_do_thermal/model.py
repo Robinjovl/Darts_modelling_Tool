@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, ms_well
 from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
@@ -12,7 +12,7 @@ from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # call base class constructor
         super().__init__()

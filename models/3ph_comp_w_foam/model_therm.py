@@ -1,6 +1,6 @@
 import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import sim_params
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
@@ -15,7 +15,7 @@ from darts.physics.properties.enthalpy import EnthalpyBasic
 
 import numpy as np
 
-class Model_therm(CICDModel):
+class Model_therm(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()

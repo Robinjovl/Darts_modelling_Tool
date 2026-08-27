@@ -1,4 +1,3 @@
-from darts.models.cicd_model import CICDModel
 from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, ms_well
 from darts.nonlinear_solvers import NewtonSolver
@@ -13,7 +12,7 @@ from darts.physics.properties.enthalpy import EnthalpyBasic
 
 from reservoir import UnstructReservoir
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, discr_type='mpfa', mesh_file='meshes/wedge.msh'):
         # call base class constructor
         super().__init__()
