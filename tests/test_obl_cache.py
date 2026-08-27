@@ -21,11 +21,9 @@ ND, NO = 8, 8
 def _itor_cls():
     import darts.interpolators as it
 
-    # Letterless naming (index-type template parameter dropped); legacy _l_ name
-    # kept as fallback for older compiled modules.
-    cls = getattr(it, f"multilinear_adaptive_cpu_interpolator_d_{ND}_{NO}", None)
-    if cls is None:
-        cls = getattr(it, f"multilinear_adaptive_cpu_interpolator_l_d_{ND}_{NO}", None)
+    # Exposed names carry neither the "adaptive" token (static interpolation is gone)
+    # nor an index-type letter (that template parameter was dropped).
+    cls = getattr(it, f"multilinear_cpu_interpolator_d_{ND}_{NO}", None)
     if cls is None or not hasattr(cls, "build_arena_file"):
         pytest.skip("arena-capable interpolator template not built")
     return cls
@@ -286,6 +284,91 @@ def test_cache_epochs_survive_compaction(tmp_path, monkeypatch):
     itor2 = _new_itor(cls, ev)
     p._load_cache(itor2, str(path))
     assert _pd(itor2) == _pd(itor)
+
+
+def _cache_physics(tmp_path):
+    """A PhysicsBase carrying just enough state to drive create_interpolator()."""
+    from darts.engines import timer_node
+
+    p = PhysicsBase.__new__(PhysicsBase)
+    p.axes_step = [1.0] * ND
+    p.axes_origin = [0.0] * ND
+    p.history_fields = []
+    p.cache = True
+    p.cache_dir = str(tmp_path)
+    p.created_itors = []
+    p._last_flushed_sizes = {}
+    p._flushed_point_keys = {}
+    p._cache_owner_pid = os.getpid()
+    p.timer = timer_node()
+    return p
+
+
+def _signature_name(evaluator, tmp_path, itor_token):
+    """Reproduce create_interpolator's cache file name for one identity token.
+
+    ``itor_token`` is ``'_'`` for the current signature and ``'_adaptive_'`` for the one
+    written by versions that still carried the token in the interpolator names.
+    """
+    import hashlib
+
+    signature = f"{type(evaluator).__name__}{itor_token}d_{ND:d}_{NO:d}_"
+    for _ in range(ND):
+        signature += f"_origin={0.0:e}_step={1.0:e}"
+    signature += "_fmtv2"
+    md5 = hashlib.md5(signature.encode()).hexdigest()
+    return os.path.join(str(tmp_path), "obl_point_data_" + md5 + ".pkl")
+
+
+def test_cache_filename_drops_adaptive_token(tmp_path):
+    """New caches are written under the simplified (no '_adaptive_') signature."""
+    _itor_cls()  # skip unless the (ND, NO) template is built
+    ev = _make_evaluator()
+    p = _cache_physics(tmp_path)
+    itor, _ = p.create_interpolator(ev, "test_itor", NO)
+
+    fname = p.created_itors[-1][1]
+    assert fname == _signature_name(ev, tmp_path, "_")
+    assert fname != _signature_name(ev, tmp_path, "_adaptive_")
+
+    _materialize(itor, np.random.default_rng(3), 150)
+    p.write_cache()
+    assert os.path.exists(fname)
+
+
+def test_legacy_cache_signature_is_recognized(tmp_path):
+    """A cache left by an older version keeps being used, in place, for this run."""
+    _itor_cls()  # skip unless the (ND, NO) template is built
+    ev = _make_evaluator()
+    rng = np.random.default_rng(4)
+
+    # Write a cache, then rename it to the file name the old '_adaptive_' signature
+    # would have hashed to -- i.e. a cache written before the token was dropped.
+    p = _cache_physics(tmp_path)
+    itor, _ = p.create_interpolator(ev, "test_itor", NO)
+    _materialize(itor, rng, 150)
+    p.write_cache()
+    expected = _pd(itor)
+    legacy_name = _signature_name(ev, tmp_path, "_adaptive_")
+    os.rename(p.created_itors[-1][1], legacy_name)
+
+    # A fresh run picks the legacy file up and keeps writing to it (not to a second
+    # file under the new name).
+    p2 = _cache_physics(tmp_path)
+    itor2, _ = p2.create_interpolator(ev, "test_itor", NO)
+    assert p2.created_itors[-1][1] == legacy_name
+    assert _pd(itor2) == expected
+    assert not os.path.exists(_signature_name(ev, tmp_path, "_"))
+
+    # With a cache under the current name present, that one wins.
+    p3 = _cache_physics(tmp_path)
+    itor3, _ = p3.create_interpolator(ev, "test_itor", NO)
+    _materialize(itor3, rng, 50)
+    p3.created_itors[-1] = (itor3, _signature_name(ev, tmp_path, "_"))
+    p3.write_cache()
+    p4 = _cache_physics(tmp_path)
+    p4.create_interpolator(ev, "test_itor", NO)
+    assert p4.created_itors[-1][1] == _signature_name(ev, tmp_path, "_")
 
 
 if __name__ == "__main__":

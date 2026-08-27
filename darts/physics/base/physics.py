@@ -1363,7 +1363,10 @@ class PhysicsBase:
         When point-data caching is enabled (``self.cache``), the cache file name is
         derived from the evaluator's class name among other shape parameters; a
         :class:`ParallelEvaluator` wrapper is unwrapped to its serial evaluator
-        first, so serial and parallel runs of identical physics share one cache.
+        first, so serial and parallel runs of identical physics share one cache. A
+        cache file left by a version whose signature still carried the ``adaptive``
+        token hashes to a different name; it is detected and kept in use, so no
+        existing cache is orphaned.
 
         :param evaluator: Operator-set evaluator used to materialize supporting points.
         :param timer_name: Name of the timer subnode for this interpolator.
@@ -1420,29 +1423,22 @@ class PhysicsBase:
         else:
             ctor_args = (axes_origin_vec, axes_step_vec)
 
-        # Exposed interpolator names carry no index-type letter any more (the index-type
-        # template parameter was dropped from the adaptive classes — storage is keyed on
-        # a multi-index, so the index type is not part of the class identity):
-        #   {algorithm}_adaptive_{platform}_interpolator_{precision}_{n_dims}_{n_ops}
-        # Older prebuilt libraries still export the legacy _i_ (uint32) / _l_ (uint64)
-        # suffixed names, so those are tried as fallbacks for py/lib version skew
-        # (e.g. an editable install with a stale compiled module).
-        itor_base = f"{algorithm}_adaptive_{platform}_interpolator"
-        name_variants = ['', 'i_', 'l_']  # current letterless first, then legacy
-        itor_names = [
-            f"{itor_base}_{v}{precision}_{n_dims:d}_{n_ops:d}" for v in name_variants
-        ]
+        # Exposed interpolator name pattern. It carries neither an index-type letter (the
+        # index-type template parameter was dropped -- storage is keyed on a multi-index,
+        # so the index type is not part of the class identity) nor an "adaptive" token
+        # (the static interpolators are gone, so it distinguishes nothing):
+        #   {algorithm}_{platform}_interpolator_{precision}_{n_dims}_{n_ops}
+        itor_base = f"{algorithm}_{platform}_interpolator"
+        itor_name = f"{itor_base}_{precision}_{n_dims:d}_{n_ops:d}"
         itor = None
         general = False
         cache_loaded = 0
         signature_n_ops = n_ops
-        err = None
-        for itor_name in itor_names:
-            try:
-                itor = eval(itor_name)(evaluator, *ctor_args)
-                break
-            except (ValueError, NameError) as e:
-                err = e
+        try:
+            itor = eval(itor_name)(evaluator, *ctor_args)
+            err = None
+        except (ValueError, NameError) as e:
+            err = e
         if itor is None:
             # Try to find a templatized interpolator with the same name pattern
             # but with the closest possible higher n_ops available in darts.interpolators.
@@ -1451,18 +1447,15 @@ class PhysicsBase:
                 import re
 
                 engines_module = importlib.import_module("darts.interpolators")
-                # Find candidates with higher n_ops under any naming scheme
+                # Find candidates with higher n_ops
                 candidates = []
-                for v in name_variants:
-                    pattern = (
-                        rf"^{re.escape(itor_base)}_{v}{precision}_{n_dims:d}_(\d+)$"
-                    )
-                    for attr_name in dir(engines_module):
-                        match = re.match(pattern, attr_name)
-                        if match:
-                            available_n_ops = int(match.group(1))
-                            if available_n_ops > n_ops:
-                                candidates.append((available_n_ops, attr_name))
+                pattern = rf"^{re.escape(itor_base)}_{precision}_{n_dims:d}_(\d+)$"
+                for attr_name in dir(engines_module):
+                    match = re.match(pattern, attr_name)
+                    if match:
+                        available_n_ops = int(match.group(1))
+                        if available_n_ops > n_ops:
+                            candidates.append((available_n_ops, attr_name))
 
                 if candidates:
                     # Sort candidates by n_ops in ascending order
@@ -1490,7 +1483,7 @@ class PhysicsBase:
                     f"If n_dims exceeds the compiled maximum, rebuild with a larger "
                     f"-DOPENDARTS_MAX_DIMS (must be >= n_dims). The interpolator "
                     f"family is selected by -DOPENDARTS_INTERPOLATOR_PROFILE "
-                    f"(MINIMAL omits the 'linear' templates). Tried: {itor_names}."
+                    f"(MINIMAL omits the 'linear' templates). Tried: {itor_name}."
                 ) from err
 
         # In-RAM cap on the derived hypercube cache (LRU on CPU; clear-on-overflow on
@@ -1512,30 +1505,46 @@ class PhysicsBase:
             # same-shape targets (e.g. ConversionOperators vs ThermalVarOperator)
             # onto one cache file.
             signature_evaluator = getattr(evaluator, "_serial_evaluator", evaluator)
-            # NOTE: the literal "adaptive" keeps the signature (and therefore the
-            # cache file names) byte-identical to the pre-removal scheme, where the
-            # only reachable mode was adaptive -- existing OBL caches stay valid.
-            itor_cache_signature = f"{type(signature_evaluator).__name__}_adaptive_{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
-            # geenral itor has a different point_data format
-            if general:
-                itor_cache_signature += "_general_"
-            # Cache identity is (axes_origin, axes_step) per axis — these define WHICH
-            # physical points the cache contains, which is what matters for cache reuse.
-            # Legacy bounded-window values are no longer part of adaptive-grid identity,
-            # so runs with identical (origin, step) tuples share a cache.
-            for dim in range(n_dims):
-                itor_cache_signature += (
-                    f"_origin={axes_origin[dim]:e}_step={axes_step[dim]:e}"
-                )
-            itor_cache_signature += "_fmtv2"
-            # compute signature hash to uniquely identify itor parameters and load correct cache
-            itor_cache_signature_hash = str(
-                hashlib.md5(itor_cache_signature.encode()).hexdigest()
-            )
-            itor_cache_filename = 'obl_point_data_' + itor_cache_signature_hash + '.pkl'
 
-            if hasattr(self, 'cache_dir'):
-                itor_cache_filename = os.path.join(self.cache_dir, itor_cache_filename)
+            def cache_filename(itor_token: str) -> str:
+                """Cache file name for one spelling of the interpolator identity token."""
+                itor_cache_signature = f"{type(signature_evaluator).__name__}{itor_token}{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
+                # geenral itor has a different point_data format
+                if general:
+                    itor_cache_signature += "_general_"
+                # Cache identity is (axes_origin, axes_step) per axis — these define WHICH
+                # physical points the cache contains, which is what matters for cache reuse.
+                # Legacy bounded-window values are no longer part of adaptive-grid identity,
+                # so runs with identical (origin, step) tuples share a cache.
+                for dim in range(n_dims):
+                    itor_cache_signature += (
+                        f"_origin={axes_origin[dim]:e}_step={axes_step[dim]:e}"
+                    )
+                itor_cache_signature += "_fmtv2"
+                # compute signature hash to uniquely identify itor parameters and load correct cache
+                itor_cache_signature_hash = str(
+                    hashlib.md5(itor_cache_signature.encode()).hexdigest()
+                )
+                name = 'obl_point_data_' + itor_cache_signature_hash + '.pkl'
+                if hasattr(self, 'cache_dir'):
+                    name = os.path.join(self.cache_dir, name)
+                return name
+
+            # Caches created from here on use the simplified identity token, mirroring the
+            # interpolator names (no "adaptive": static interpolation is gone). A cache
+            # written by an earlier version hashes its "_adaptive_" spelling to a different
+            # file name; when such a file is already there it simply stays the cache file
+            # for this run (read from and appended to in place), so no existing cache is
+            # orphaned and none is duplicated on disk.
+            itor_cache_filename = cache_filename('_')
+            if not os.path.exists(itor_cache_filename):
+                legacy_cache_filename = cache_filename('_adaptive_')
+                if os.path.exists(legacy_cache_filename):
+                    print(
+                        "Using OBL cache written under the legacy signature:",
+                        legacy_cache_filename,
+                    )
+                    itor_cache_filename = legacy_cache_filename
             # Fast path: a numpy-array snapshot (.keys.npy / .vals.npy) next to the
             # pickle restores the whole cache with one bulk read + a single C++ copy,
             # skipping pickle's per-point object graph and the dict round-trip. Used
