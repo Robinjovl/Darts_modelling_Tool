@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -194,9 +195,21 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	  }
 #endif
 	  default:
-		break;
+		// Do not fall through silently: an unserviceable entry would leave
+		// linear_solvers shorter than ls_params, and the init loop below indexes
+		// the bank by the ls_params position -- an out-of-bounds read, or worse a
+		// silent mis-pairing of solver and settings.
+		throw std::runtime_error(
+			"engine_pm_cpu: linear solver type " +
+			std::to_string(static_cast<int>(param.linear_type)) +
+			" is not available in this build; use sim_params::CPU_SUPERLU or inject "
+			"a solver from Python via set_linear_solver().");
 	}
   }
+  if (linear_solvers.size() != ls_params.size())
+	throw std::runtime_error(
+		"engine_pm_cpu: built " + std::to_string(linear_solvers.size()) +
+		" linear solvers for " + std::to_string(ls_params.size()) + " ls_params entries");
 
   n_vars = get_n_vars();
   n_ops = get_n_ops();
@@ -1664,8 +1677,13 @@ int engine_pm_cpu::solve_linear_equation()
 	// DartsModel.update_solver (live reconfigure / re-injection).
 	if (linear_solver_external && active_linear_solver_id == 0)
 	  linear_solver = linear_solver_external.get();
-	else
+	else if (active_linear_solver_id >= 0 &&
+	         static_cast<size_t>(active_linear_solver_id) < linear_solvers.size())
 	  linear_solver = linear_solvers[active_linear_solver_id];
+	else
+	  throw std::runtime_error(
+		  "engine_pm_cpu: active_linear_solver_id=" + std::to_string(active_linear_solver_id) +
+		  " is out of range (" + std::to_string(linear_solvers.size()) + " solvers built)");
 
 	/*if (1) //changed this to write jacobian to file!
 	{

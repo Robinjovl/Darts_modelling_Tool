@@ -155,6 +155,22 @@ namespace opendarts
     {
       A_matrix = A_input;
 
+      // Re-init (engine.init() re-run, adjoint gradient loop): release the
+      // previous cuDSS objects and device buffers first. Every handle below is
+      // overwritten unconditionally, so without this the earlier set -- including
+      // the numeric factorization held by data_ -- is orphaned, and A_cudss_
+      // (created only when null) would keep the old dimensions.
+      if (A_cudss_) { cudssMatrixDestroy(A_cudss_); A_cudss_ = nullptr; }
+      if (b_cudss_) { cudssMatrixDestroy(b_cudss_); b_cudss_ = nullptr; }
+      if (x_cudss_) { cudssMatrixDestroy(x_cudss_); x_cudss_ = nullptr; }
+      if (data_ && handle_) { cudssDataDestroy(handle_, data_); }
+      data_ = nullptr;
+      if (config_) { cudssConfigDestroy(config_); config_ = nullptr; }
+      if (handle_) { cudssDestroy(handle_); handle_ = nullptr; }
+      if (d_B) { cudaFree(d_B); d_B = nullptr; }
+      if (d_X) { cudaFree(d_X); d_X = nullptr; }
+      analyzed_ = false;
+
       // Mirror the matrix on the device and build the scalar-CSR view cuDSS
       // consumes (same dispatch as linsolv_cusolv).
       if (auto *A_typed = dynamic_cast<opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *>(A_input))

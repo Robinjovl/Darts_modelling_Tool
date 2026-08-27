@@ -132,6 +132,22 @@ namespace opendarts
       const csr_expansion &scalar_csr(int block_size) const;
 
 #ifdef WITH_GPU
+      /** Marks the structure arrays host-dirty so the next
+          sync_structure_to_device() re-uploads unconditionally.
+
+          The engines fill the structure in place through the const_cast'ed
+          block_csr_matrix::get_rows_ptr()/get_cols_ind()/get_diag_ind(), which
+          route through the CONST dual_array::host_data() overload and therefore
+          cannot set host_modified_. Without this, any structure edit made after
+          the first upload is silently never propagated and the device keeps a
+          stale structure. */
+      void mark_structure_modified() noexcept
+      {
+        (void)row_ptr_.host_data(); // non-const overload -> host_modified_ = true
+        (void)col_ind_.host_data();
+        (void)diag_ind_.host_data();
+      }
+
       /** Mirrors the structure arrays (row_ptr, col_ind, diag_ind) to device. */
       void sync_structure_to_device() const;
 

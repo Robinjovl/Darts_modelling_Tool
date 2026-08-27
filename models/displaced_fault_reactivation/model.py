@@ -223,7 +223,11 @@ class Model(THMCModel):
             # stage-2 smoother, not as a registry solver.
             if self.enable_dynamic_mode and not self.open_source_solvers_available():
                 ls2 = linear_solver_params()
-                ls2.linear_type = sim_params.cpu_gmres_ilu0
+                # Same placeholder rule as ls1: cpu_gmres_ilu0 is compiled out of
+                # the open-source engine factory, which would now raise instead of
+                # silently desyncing ls_params from the solver bank.
+                ls2.linear_type = (sim_params.cpu_superlu if self.open_source_solvers_available()
+                                   else sim_params.cpu_gmres_ilu0)
                 ls2.tolerance_linear = 1.e-12
                 ls2.max_i_linear = 500
                 self.physics.engine.ls_params.append(ls2)

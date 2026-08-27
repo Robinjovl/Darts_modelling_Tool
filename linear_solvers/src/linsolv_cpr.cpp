@@ -1022,6 +1022,17 @@ namespace opendarts
             bilu0_ = std::make_unique<
                 opendarts::linear_solvers::cpr_block_ilu0<N_BLOCK_SIZE>>();
           bilu0_ready_ = (bilu0_->factor(A_input) == 0);
+          if (!bilu0_ready_)
+          {
+            // factor() returns -1 when a block row has no diagonal block. The
+            // solve dispatch would then match neither stage-2 branch and return
+            // the pressure correction alone as a valid result. Report failure so
+            // the Newton loop cuts the timestep instead.
+            std::cerr << "linsolv_cpr: block ILU(0) factorisation failed (a block row "
+                         "has no diagonal block); CPR cannot form its second stage"
+                      << std::endl;
+            return -1;
+          }
         }
         else
         {
@@ -1132,6 +1143,12 @@ namespace opendarts
           {
             cpr_scoped_timer t(cpr_sub_timer(this->timer_setup, "CPR BILU0 setup"));
             bilu0_ready_ = bilu0_ && (bilu0_->factor(A_input) == 0);
+            if (!bilu0_ready_)
+            {
+              std::cerr << "linsolv_cpr: block ILU(0) refactorisation failed; CPR "
+                           "cannot form its second stage" << std::endl;
+              return -1;
+            }
           }
           else
           {
@@ -1226,7 +1243,11 @@ namespace opendarts
       for (std::size_t k = 0; k < n_scalar; ++k)
         r_m[k] -= x_f[k];
 
-      // Apply the full-system smoother to r_m for x_f.
+      // Apply the full-system smoother to r_m for x_f. Stage 2 must be
+      // available: without it x_f stays zero and X would silently degrade to the
+      // pressure-only correction.
+      if (stage2_type_ == 1 ? !bilu0_ready_ : !ilu_setup_done_)
+        return -1;
       std::memset(x_f, 0, n_scalar * sizeof(mat_float));
       if (stage2_type_ == 1 && bilu0_ready_)
       {
