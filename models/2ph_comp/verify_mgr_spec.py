@@ -45,7 +45,7 @@ class ModelSpec(Model):
     def set_solver(self):
         # Base Model.set_solver() now owns set_sim_params(); replicate it here since
         # this override does not call super().
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000)
+        self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000)
         super().set_solver()  # platform default nonlinear + linear solvers
         # must mirror Model.set_solver()'s nonlinear settings exactly -- this
         # harness compares the raw MGR build against the spec build, so any
@@ -146,8 +146,8 @@ class ModelSpec(Model):
         # _apply_solver(stage="pre") builds and injects it BEFORE engine.init --
         # the migration target for 2ph_comp. (Phase 1 instead built the object and
         # injected it post-init; this checks the pre-init spec path is equivalent.)
-        self.linear_solver = self._solver_spec
-        self.solver_label = "mgr (bcsr-cpr, spec)"
+        self.linear_solver.spec = self._solver_spec
+        self.linear_solver.label = "mgr (bcsr-cpr, spec)"
 
 
 def run_and_collect(model_cls, log):

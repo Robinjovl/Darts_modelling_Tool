@@ -28,7 +28,7 @@ class Model(CICDModel):
         self.zero = 1e-13
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=0.2, runtime=300 )
+        self.linear_solver.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=0.2, runtime=300 )
 
         self.timer.node["initialization"].stop()
 

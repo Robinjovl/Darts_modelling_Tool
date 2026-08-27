@@ -26,7 +26,7 @@ for j, ts in enumerate(timesteps[:2]):
         data_dt.dt_max = max_ts[j]
         m.run(data_dt, ts)
     else:
-        # m.set_sim_params(max_ts=max_ts[j])
+        # m.linear_solver.set_sim_params(max_ts=max_ts[j])
         m.run(ts)
 
 """ Define output """

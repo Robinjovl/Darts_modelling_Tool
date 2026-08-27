@@ -109,7 +109,7 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365  )
+        self.linear_solver.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365  )
         # self.data_ts.eta = np.ones(self.physics.n_vars)
 
         """ Define reservoir """
@@ -858,7 +858,7 @@ class Model(DartsModel):
             # Unified spec-driven dispatch (!280): routes to the Python-resident
             # solver (PETSc / Pardiso spec) or the C++ engine solver and returns
             # the (rc, n_iters, residual) contract of !327.
-            r_code, n_lin, _ = self._solve_linear_equation()
+            r_code, n_lin, _ = self.linear_solver._solve_linear_equation()
             status.linear_solver_rc = r_code
             if r_code != 0:
                 # failed linear solve: do NOT apply a stale update; the

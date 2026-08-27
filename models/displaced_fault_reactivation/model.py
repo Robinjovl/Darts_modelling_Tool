@@ -153,7 +153,7 @@ class Model(THMCModel):
         # drives the open-source solve (engine_pm_cpu prefers the external
         # solver over its ls_params bank); ls_params remains the
         # proprietary-build / factory path. Mid-run changes (e.g. the dynamic
-        # rupture stage in main.py) go through model.update_solver().
+        # rupture stage in main.py) go through model.linear_solver.update_solver().
         from darts.models.darts_model import DataTS
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         if not hasattr(self, 'data_ts') or self.data_ts is None:
@@ -192,7 +192,7 @@ class Model(THMCModel):
         # it, at ~20% more wall time. The static case is insensitive (constant mu) and
         # passes either way. main.py tightens this further (1e-12 / 500) for the dynamic
         # rupture stage via update_solver().
-        self.linear_solver = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-10, max_iterations=500, restart=50)
+        self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-10, max_iterations=500, restart=50)
         self.solver_phase = 'static'  # main.py flips to 'dynamic' at rupture
 
         # Idempotent: ls_params is appended once even though set_solver() runs on every reset().
@@ -201,7 +201,7 @@ class Model(THMCModel):
             # Placeholder in the open-source build (the FS-CPR spec drives the solve,
             # and the neutralised cpu_gmres_fs_cpr factory path crashes there); real
             # selector (bos_fs_cpr) in the proprietary build.
-            ls1.linear_type = (sim_params.cpu_superlu if self.open_source_solvers_available()
+            ls1.linear_type = (sim_params.cpu_superlu if self.linear_solver.open_source_solvers_available()
                                else sim_params.cpu_gmres_fs_cpr)
             self.physics.engine.ls_params.append(ls1)
 

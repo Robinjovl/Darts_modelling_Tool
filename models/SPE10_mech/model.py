@@ -65,7 +65,7 @@ class Model(THMCModel):
         # proprietary_linear_type (bos_fs_cpr) to params.linear_type. No model-level
         # params.linear_type needed -- its open-source value was the engine default
         # (cpu_superlu) anyway.
-        self.linear_solver = GMRESSolverSpec(
+        self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
             # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
             # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()

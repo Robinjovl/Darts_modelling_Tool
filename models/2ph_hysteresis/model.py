@@ -110,7 +110,7 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(
+        self.linear_solver.set_sim_params(
             first_ts=1e-4,
             mult_ts=1.5,
             max_ts=1.0,

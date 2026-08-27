@@ -66,7 +66,6 @@ class Model(CICDModel, OptModuleSettings):
         self.set_reservoir(perm, poro)
         self.Peaceman_WI = Peaceman_WI
         self.set_physics()
-        self.linear_solver = None
         self.adjoint_solver = None
         self.adjoint_linear_tol = 1e-10
         self.adjoint_linear_max_iter = 300
@@ -322,14 +321,14 @@ class Model(CICDModel, OptModuleSettings):
             return
         # Single per-model home for time-stepping / Newton config (the unified
         # set_solver pattern); the base reset() calls this before engine.init.
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
+        self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-6, max_iterations=10,
             chop=ChopSpec(mode='local'))
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
-        # Forward MGR (BCSR-CPR) via the single unified spec API (self.linear_solver =
-        # MGRSolverSpec). The base DartsModel._apply_solver hook builds + injects it
-        # before engine.init on the open-source CPU build; the adjoint solver is
+        # Forward MGR (BCSR-CPR) via the single unified spec API
+        # (self.linear_solver.spec = MGRSolverSpec). The base LinearSolver._apply_solver
+        # hook builds + injects it before engine.init on the open-source CPU build; the adjoint solver is
         # injected separately by _attach_mgr_solvers_to_engine(). On the proprietary -a
         # build the spec is not built; _apply_solver applies proprietary_linear_type
         # (cpu_gmres_cpr_amg) to params.linear_type instead. Mirrors 2ph_comp's
@@ -344,7 +343,7 @@ class Model(CICDModel, OptModuleSettings):
             block_size - 1
         )
 
-        self.linear_solver = MGRSolverSpec(
+        self.linear_solver.spec = MGRSolverSpec(
             tolerance=1e-3,
             max_iterations=50,
             log_level=self.params.linear_print_level,
@@ -424,7 +423,7 @@ class Model(CICDModel, OptModuleSettings):
             enable_well_level=False,
             enable_composition_level=False,
         )
-        self.solver_label = "mgr (bcsr-cpr, forward)"
+        self.linear_solver.label = "mgr (bcsr-cpr, forward)"
 
     def set_adjoint_solver(self):
         if getattr(self, "adjoint_solver_mode", "mgr") in {"superlu", "cpra-gpu"}:
@@ -436,7 +435,7 @@ class Model(CICDModel, OptModuleSettings):
             return
         # MGR / CPRA adjoint solvers use the open-source-only registry; in the
         # proprietary -a build leave the adjoint solver unset (engine factory).
-        if not self.open_source_solvers_available():
+        if not self.linear_solver.open_source_solvers_available():
             self.adjoint_solver = None
             self._adjoint_solver_spec = None
             return
@@ -594,7 +593,7 @@ class Model(CICDModel, OptModuleSettings):
         if engine is None:
             return
 
-        # The forward solver (self.linear_solver = MGRSolverSpec) is built and injected by
+        # The forward solver (self.linear_solver.spec = MGRSolverSpec) is built and injected by
         # the base DartsModel._apply_solver hook from super().reset(). Its
         # n_reservoir_blocks is only FINAL after engine.init (the well/reservoir
         # partition is split there): mesh.n_res_blocks reads the total pre-init and

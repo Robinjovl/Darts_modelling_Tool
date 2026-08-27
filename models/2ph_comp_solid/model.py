@@ -30,7 +30,7 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000  )
+        self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000  )
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=10, chop=ChopSpec(mode='local'))
         self.nonlinear_solver.spec.stationary_point_tolerance = 1e-5

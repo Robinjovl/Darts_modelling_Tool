@@ -219,21 +219,19 @@ def test_sync_to_engine_uses_canonical_enum_ints(make_newton):
 def test_linear_spec_settings_reach_params():
     """After !280 the linear settings are owned by ``linear_solver.spec`` (they
     were transitional ``data_ts.linear_*`` attributes before) and are mirrored
-    into sim_params by ``_sync_solver_to_sim_params``."""
+    into sim_params by ``LinearSolver._sync_solver_to_sim_params``."""
+    import types
+
     from darts.engines import sim_params
     from darts.linear_solvers import GMRESSolverSpec, LinearSolver
-    from darts.models.darts_model import DartsModel
 
-    # a real (uninitialized) instance: the sync path uses DartsModel methods
-    # (_resolve_solver_spec / _solver_is_default), not just attributes
-    m = object.__new__(DartsModel)
-    m.params = sim_params()
+    # a minimal stand-in model: the sync path only reads model.params and
+    # model.linear_solver_from_engine_factory (via getattr)
+    m = types.SimpleNamespace(params=sim_params())
     m.linear_solver = LinearSolver(
-        GMRESSolverSpec(tolerance=7.5e-9, max_iterations=777)
+        GMRESSolverSpec(tolerance=7.5e-9, max_iterations=777), model=m
     )
-    m._default_solver_obj = None
-    m._adaptive_solver_index = 0
-    m._sync_solver_to_sim_params()
+    m.linear_solver._sync_solver_to_sim_params()
     assert m.params.tolerance_linear == 7.5e-9
     assert m.params.max_i_linear == 777
 
@@ -242,12 +240,12 @@ def test_linear_spec_settings_reach_params():
 def test_set_sim_params_legacy_kwargs_map_and_warn():
     import types
 
-    from darts.models.darts_model import DartsModel
+    from darts.linear_solvers import LinearSolver
 
     m = types.SimpleNamespace(nonlinear_solver=NewtonSolver(NewtonSpec()))
+    ls = LinearSolver(model=m)
     with pytest.warns(DeprecationWarning):
-        DartsModel._migrate_legacy_solver_kwargs(
-            m,
+        ls._migrate_legacy_solver_kwargs(
             {
                 "tol_newton": 1e-4,
                 "it_newton": 7,
@@ -264,7 +262,7 @@ def test_set_sim_params_legacy_kwargs_map_and_warn():
     assert s.coupled_well_res_norm_method == 2
     # a genuine typo still fails loudly
     with pytest.raises(TypeError):
-        DartsModel._migrate_legacy_solver_kwargs(m, {"bogus": 1})
+        ls._migrate_legacy_solver_kwargs({"bogus": 1})
 
 
 # --------------------------------------------- MechanicsNewtonSolver (F4 Tier2)

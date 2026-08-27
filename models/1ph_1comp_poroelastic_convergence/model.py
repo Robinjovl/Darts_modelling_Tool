@@ -59,7 +59,7 @@ class Model(THMCModel):
         # proprietary_linear_type (bos_fs_cpr) to params.linear_type -- but only for
         # mech_discretizer; pm_discretizer keeps its mechanics multi-stage backend
         # (engine.ls_params), so its spec carries no proprietary fallback (None).
-        self.linear_solver = GMRESSolverSpec(
+        self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
             # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
             # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()
@@ -76,7 +76,7 @@ class Model(THMCModel):
         )
         if self.discretizer_name == 'pm_discretizer':
             self.physics.engine.ls_params[-1].linear_type = (
-                sim_params.cpu_superlu if self.open_source_solvers_available()
+                sim_params.cpu_superlu if self.linear_solver.open_source_solvers_available()
                 else sim_params.cpu_gmres_fs_cpr)
 
     def set_reservoir(self):

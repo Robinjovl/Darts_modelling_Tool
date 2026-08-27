@@ -53,7 +53,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     m.init_reservoir(arrays=arrays)
 
     # time stepping and convergence parameters
-    m.set_sim_params_data_ts(data_ts=m.idata.sim.DataTS)
+    m.linear_solver.set_sim_params_data_ts(data_ts=m.idata.sim.DataTS)
 
     m.timer.node["initialization"].stop()
 

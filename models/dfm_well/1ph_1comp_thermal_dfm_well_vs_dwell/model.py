@@ -37,7 +37,7 @@ class Model(CICDModel):
         # NOTE: set_sim_params stays in __init__ (not moved to set_solver): set_wells()
         # builds RampUpRate from self.data_ts.dt_first and runs during init() before
         # reset()/set_solver(). dfm_well is the documented set_solver exception.
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60),
+        self.linear_solver.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60),
                             runtime=10 / 24 / 60,   # This runtime will be used when CI test is conducted without the main file
                             )
 

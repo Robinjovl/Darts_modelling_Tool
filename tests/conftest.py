@@ -167,13 +167,20 @@ class FakeModel:
 
         self.data_ts = _DataTS()
 
+        class _LinearSolver:
+            def _solve_linear_equation(inner_self):
+                engine = self.physics.engine
+                rc = engine.solve_linear_equation()
+                return (
+                    rc,
+                    engine.get_last_linear_iters(),
+                    engine.get_last_linear_residual(),
+                )
+
+        self.linear_solver = _LinearSolver()
+
     def apply_rhs_flux(self, dt, t):
         pass
-
-    def _solve_linear_equation(self):
-        engine = self.physics.engine
-        rc = engine.solve_linear_equation()
-        return rc, engine.get_last_linear_iters(), engine.get_last_linear_residual()
 
 
 @pytest.fixture

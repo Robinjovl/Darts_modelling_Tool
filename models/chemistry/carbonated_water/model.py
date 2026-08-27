@@ -177,7 +177,7 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
+        self.linear_solver.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
             chop=ChopSpec(mode='local', factor=0.2))
@@ -208,12 +208,12 @@ class Model(CICDModel):
                 # reuse for the elimination chain's OWN AMGX instances (per-
                 # instance ctor override) -- no process-global environment
                 # mutation, other AMGX instances keep the default adaptive reuse.
-                self.linear_solver = AMGXCPRSolverSpec(
+                self.linear_solver.spec = AMGXCPRSolverSpec(
                     max_iterations=max_iterations, tolerance=tolerance,
                     schur_elim_count=K, schur_elim_rows=elim_rows,
                     schur_elim_cols=elim_cols)
             else:
-                self.linear_solver = AMGXCPRSolverSpec(
+                self.linear_solver.spec = AMGXCPRSolverSpec(
                     max_iterations=max_iterations, tolerance=tolerance)
         else:
             from darts.linear_solvers import CPRSolverSpec, GMRESSolverSpec
@@ -227,7 +227,7 @@ class Model(CICDModel):
                 wrap.tolerance = tolerance
                 wrap.max_iterations = max_iterations
                 spec = wrap
-            self.linear_solver = spec
+            self.linear_solver.spec = spec
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,

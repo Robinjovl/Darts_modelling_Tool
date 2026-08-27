@@ -79,7 +79,7 @@ class Model(THMCModel):
         # authoritative now, so state the values this model has really been running -- keeping
         # behaviour unchanged. FS-CPR does not reach 1e-8 on these systems anyway: asking for it
         # only burns the iteration budget (on SPE10_mech 22 of 48 solves exhaust the 200-iter cap).
-        self.linear_solver = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-5, max_iterations=50, restart=50,
+        self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-5, max_iterations=50, restart=50,
                                       proprietary_linear_type=sim_params.cpu_gmres_fs_cpr)
         self.data_ts.dt_first = 0.0001
         self.data_ts.dt_mult = 2

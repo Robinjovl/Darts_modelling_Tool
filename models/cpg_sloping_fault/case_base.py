@@ -40,9 +40,9 @@ def input_data_base(idata: InputData, case: str):
     # optional: choose a non-default linear solver via the Spec interface,
     # e.g. in the model's set_solver():
     #   from darts.linear_solvers import SuperLUSolverSpec, PETScSolverSpec, PardisoSolverSpec
-    #   self.linear_solver = SuperLUSolverSpec()
-    #   self.linear_solver = PETScSolverSpec(variant="cpr")
-    #   self.linear_solver = PardisoSolverSpec()
+    #   self.linear_solver.spec = SuperLUSolverSpec()
+    #   self.linear_solver.spec = PETScSolverSpec(variant="cpr")
+    #   self.linear_solver.spec = PardisoSolverSpec()
 
     idata.generate_grid = 'generate' in case
     idata.geom = InputDataGeom()

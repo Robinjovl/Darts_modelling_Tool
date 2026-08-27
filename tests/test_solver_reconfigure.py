@@ -57,7 +57,7 @@ def test_reconfigure_and_switch_without_jacobian_reallocation(model):
     )
 
     m = model
-    m.linear_solver = GMRESSolverSpec(restart=40, prec=CPRSolverSpec())
+    m.linear_solver.spec = GMRESSolverSpec(restart=40, prec=CPRSolverSpec())
     m.init()
     m.set_output(output_folder="test_solver_reconfigure_out")
     m.run(20, verbose=False)
@@ -66,36 +66,43 @@ def test_reconfigure_and_switch_without_jacobian_reallocation(model):
     assert ptr0 != 0
 
     # --- hot updates: applied in place ---------------------------------
-    assert m.update_solver(restart=25) == "reconfigured"
-    assert m.update_solver(tolerance=1e-4, max_iterations=100) == "reconfigured"
-    assert m.update_solver(amg_max_iters=2) == "reconfigured"  # prec field
+    assert m.linear_solver.update_solver(restart=25) == "reconfigured"
+    assert (
+        m.linear_solver.update_solver(tolerance=1e-4, max_iterations=100)
+        == "reconfigured"
+    )
+    assert (
+        m.linear_solver.update_solver(amg_max_iters=2) == "reconfigured"
+    )  # prec field
     assert m.params.tolerance_linear == 1e-4
     assert m.params.max_i_linear == 100
     m.run(20, verbose=False)
     assert _jac_ptr(m.physics.engine) == ptr0
 
     # --- warm update: pressure-AMG profile, hierarchies rebuilt in place
-    assert m.update_solver(amg_strong_threshold=0.6) == "reconfigured"
+    assert m.linear_solver.update_solver(amg_strong_threshold=0.6) == "reconfigured"
     m.run(20, verbose=False)
     assert _jac_ptr(m.physics.engine) == ptr0
 
     # --- structural update: stage swap falls back to a rebuild ---------
-    assert m.update_solver(stage2_type=0) == "rebuilt"
+    assert m.linear_solver.update_solver(stage2_type=0) == "rebuilt"
     m.run(20, verbose=False)
     assert _jac_ptr(m.physics.engine) == ptr0
 
     # --- full spec switch -----------------------------------------------
-    assert m.update_solver(spec=SuperLUSolverSpec()) == "rebuilt"
+    assert m.linear_solver.update_solver(spec=SuperLUSolverSpec()) == "rebuilt"
     m.run(10, verbose=False)
     assert _jac_ptr(m.physics.engine) == ptr0
 
     # unknown fields are rejected loudly
     with pytest.raises(AttributeError):
-        m.update_solver(no_such_field=1)
+        m.linear_solver.update_solver(no_such_field=1)
 
     # spec stays authoritative for later rebuilds
-    m.update_solver(spec=GMRESSolverSpec(restart=33, prec=CPRSolverSpec()))
-    assert m._resolve_solver_spec().restart == 33
+    m.linear_solver.update_solver(
+        spec=GMRESSolverSpec(restart=33, prec=CPRSolverSpec())
+    )
+    assert m.linear_solver._resolve_solver_spec().restart == 33
 
     assert float(m.physics.engine.t) >= 70.0  # all segments converged
 
@@ -128,7 +135,7 @@ def test_adaptive_policy_actions(model):
             return SolverAction(index=1, updates={"tolerance": 1e-6})
         return ctx.current_index
 
-    m.linear_solver = AdaptiveSolverSpec(
+    m.linear_solver.spec = AdaptiveSolverSpec(
         candidates=[
             GMRESSolverSpec(restart=40, prec=CPRSolverSpec()),
             SuperLUSolverSpec(),
@@ -144,7 +151,9 @@ def test_adaptive_policy_actions(model):
 
     assert len(seen) >= 4
     assert seen[0][3] == "static"  # phase tag propagated
-    assert m._adaptive_solver_index == 1  # the SolverAction switch happened
+    assert (
+        m.linear_solver._adaptive_solver_index == 1
+    )  # the SolverAction switch happened
     assert m.params.tolerance_linear == 1e-6  # and its update applied
     assert _jac_ptr(m.physics.engine) == ptr0
     assert float(m.physics.engine.t) >= 60.0

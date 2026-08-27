@@ -45,7 +45,7 @@ class Model(CICDModel):
         self.set_physics()
         # Time-stepping and linear-solver configuration live in set_solver(),
         # which the base reset() calls before engine.init (see the unified
-        # self.linear_solver = <LinearSolverSpec> API).
+        # self.linear_solver.spec = <LinearSolverSpec> API).
 
         self.timer.node["initialization"].stop()
 
@@ -110,7 +110,7 @@ class Model(CICDModel):
         # Single per-model home for time-stepping / Newton + linear-solver config
         # (the unified set_solver() pattern). Called by the base reset() before
         # engine.init, so these settings feed engine.init().
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
+        self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
         super().set_solver()  # platform default nonlinear + linear solvers
         # NOTE: 1e-3 / 20 (not the historic 1e-2 / 10) -- tightened on this branch by
         # commit 34b55809a 'Fix passing parameters from Python'; the nonlinear
@@ -119,7 +119,7 @@ class Model(CICDModel):
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=20, chop=ChopSpec(mode='local'))
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
 
-        # MGR (BCSR-CPR) via the single unified spec API (self.linear_solver = MGRSolverSpec).
+        # MGR (BCSR-CPR) via the single unified spec API (self.linear_solver.spec = MGRSolverSpec).
         # The base DartsModel._apply_solver hook builds + injects it before engine.init
         # on the open-source CPU build. On the proprietary build the spec is not built;
         # _apply_solver instead applies proprietary_linear_type (cpu_gmres_cpr_amg) to
@@ -139,7 +139,7 @@ class Model(CICDModel):
             block_size - 1
         )
 
-        self.linear_solver = MGRSolverSpec(
+        self.linear_solver.spec = MGRSolverSpec(
             tolerance=1e-4,
             max_iterations=50,
             log_level=self.params.linear_print_level,
@@ -218,12 +218,12 @@ class Model(CICDModel):
             enable_well_level=False,
             enable_composition_level=False,
         )
-        self.solver_label = "mgr (bcsr-cpr)"
+        self.linear_solver.label = "mgr (bcsr-cpr)"
         return
 
     # The MGRSolverSpec above is built and injected by the base
-    # DartsModel._apply_solver() hook (called from reset(), before engine.init).
-    # self.solver_label names it in the engine log.
+    # LinearSolver._apply_solver() hook (called from reset(), before engine.init).
+    # self.linear_solver.label names it in the engine log.
 
     def set_initial_conditions(self):
         input_distribution = {self.physics.vars[0]: 50,

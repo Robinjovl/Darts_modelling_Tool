@@ -1,5 +1,4 @@
 import os
-import warnings
 from math import fabs
 
 import numpy as np
@@ -14,26 +13,11 @@ from darts.engines import (
 )
 from darts.engines import print_build_info as engines_pbi
 from darts.interpolators import op_vector
-from darts.models.legacy_config import LegacyConfigShims
+from darts.linear_solvers import LinearSolver
 from darts.models.output import Output
-from darts.models.solver_binding import LinearSolverBinding
 from darts.nonlinear_solvers import ChopSpec, NewtonSolver, Norm, OBLBoundsSpec
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
-
-# set_solver() (the user-facing override hook kept on this module, below) constructs
-# the platform-default linear solver explicitly. The open-source spec classes are
-# absent in proprietary (-a / -b) builds, so the import is guarded exactly like the
-# full block in darts.models.solver_binding (which owns the registry plumbing).
-try:
-    from darts.linear_solvers import LinearSolver
-    from darts.linear_solvers.specs import (
-        AMGXCPRSolverSpec,
-        CPRSolverSpec,
-        GMRESSolverSpec,
-    )
-except ImportError:  # proprietary build without the open-source solvers
-    LinearSolver = None
 
 
 class DataTS:
@@ -117,7 +101,7 @@ class DataTS:
             print("\t", k, "=", getattr(self, k))
 
 
-class DartsModel(LinearSolverBinding, LegacyConfigShims):
+class DartsModel:
     """
     This is a base class for creating a model in DARTS.
     A model is composed of a :class:`Reservoir` object and a :class:`Physics` object.
@@ -221,26 +205,16 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         # Create sim_params object to set simulation parameters
         self.params = sim_params()
 
-        # The single source of truth for the linear solver: a LinearSolverSpec
-        # (e.g. MGRSolverSpec / GMRESSolverSpec(prec=CPRSolverSpec()) / SuperLUSolverSpec
-        # / AdaptiveSolverSpec) set by set_solver(), which spells out the default explicitly.
-        # It owns ALL linear-solver settings -- solver + preconditioner choice,
-        # tolerance, max_iterations, print_level -- which _apply_solver() builds,
-        # injects and mirrors into sim_params before engine.init().
-        # The attribute is a normalizing property: it always HOLDS a runtime
-        # darts.linear_solvers.LinearSolver instance (mirror of
-        # DartsModel.nonlinear_solver holding a NewtonSolver, !327), while a model
-        # may ASSIGN the ergonomic forms -- a LinearSolverSpec (auto-wrapped), a
-        # LinearSolver instance, or a raw compiled handle (fine-control path).
-        self.linear_solver = None
-        # The spec object set_solver() materialised as the platform default (identity
-        # compared against self.linear_solver by _solver_is_default(), so that a model which
-        # calls super().set_solver() and then replaces self.linear_solver still counts as
-        # having *chosen* its solver).
-        self._default_solver_obj = None
-        self.solver_label = (
-            None  # optional short name for self.linear_solver (model-side, log)
-        )
+        # The single source of truth for the linear solver: a composed
+        # darts.linear_solvers.LinearSolver instance (mirror of nonlinear_solver
+        # holding a NewtonSolver, !327), created once and never reassigned -- it owns
+        # ALL linear-solver settings (self.linear_solver.spec: solver + preconditioner
+        # choice, tolerance, max_iterations, print_level) which its own _apply_solver()
+        # builds, injects and mirrors into sim_params before engine.init(), plus the
+        # solver-binding/orchestration and deprecated set_sim_params() methods (see
+        # darts/linear_solvers/solver.py). Tune it via self.linear_solver.spec.<field>
+        # = ..., or assign a fresh spec via self.linear_solver.spec = <LinearSolverSpec>.
+        self.linear_solver = LinearSolver(model=self)
 
         # Nonlinear solver instance (a NewtonSolver; see darts.nonlinear_solvers)
         # built from its declarative spec. Assigned lazily by set_solver() and
@@ -421,17 +395,7 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
             init_timer.node["engine init"].stop()
             self.initialize_history_fields()
         self.data_ts.print()
-        _solver_is_superlu = (
-            self.params.linear_type == sim_params.linear_solver_t.cpu_superlu
-            or type(self._resolve_solver_spec()).__name__ == "SuperLUSolverSpec"
-        )
-        if _solver_is_superlu and self.reservoir.mesh.n_res_blocks > 30000:
-            warnings.warn(
-                "The number of cells looks too big to use a direct linear solver: "
-                + str(self.reservoir.mesh.n_res_blocks)
-                + ' > 30000',
-                stacklevel=2,
-            )
+        self.linear_solver._warn_if_direct_solver_oversized()
 
         init_timer.stop()
 
@@ -453,7 +417,7 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         ``params.linear_type``.
         """
         self.set_solver()
-        self._apply_solver()
+        self.linear_solver._apply_solver()
         self.physics.engine.init(
             self.reservoir.mesh,
             ms_well_vector(self.reservoir.wells),
@@ -463,7 +427,7 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
             self.timer.node["simulation"],
         )
 
-    def set_solver(self):
+    def set_solver(self, linear_solver: LinearSolver = None):
         """Configure the model's solvers and time-stepping (override hook).
 
         This is the single per-model place to declare all time-stepping,
@@ -471,23 +435,25 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         :meth:`reset` (after the reservoir/mesh and engine object exist, before
         ``engine.init``), so it may freely:
 
-        * call ``self.set_sim_params(...)`` (time-stepping only);
+        * call ``self.linear_solver.set_sim_params(...)`` (time-stepping only);
         * set ``self.nonlinear_solver = <NonlinearSolver>`` (a
           :class:`~darts.nonlinear_solvers.NewtonSolver`, which accepts a
           ``NewtonSpec`` positionally or its keyword arguments);
-        * set ``self.linear_solver = <LinearSolverSpec>`` -- the **build-safe** way to
-          pick a solver (``SuperLUSolverSpec``, ``GMRESSolverSpec(prec=CPRSolverSpec())``,
-          ``MGRSolverSpec``, ``AdaptiveSolverSpec([...])``, ...). The assignment is
-          normalizing: the attribute stores a runtime
-          :class:`darts.linear_solvers.LinearSolver` instance wrapping the spec
-          (``linear_solver.spec``), mirroring ``nonlinear_solver`` holding a
-          ``NewtonSolver``. A ``LinearSolver`` instance is accepted directly too. In
-          proprietary / GPU builds no backend is built and the engine factory uses
-          ``params.linear_type``, so a spec is safe in any build;
-        * for fine control a model may still build a raw C++ solver object into
-          ``self.linear_solver`` (e.g. ``linear_solvers.create_mgr_solver_for_block_size(...)``),
-          valid only in the open-source build (guard with
-          :meth:`open_source_solvers_available`); ``self.solver_label`` names it in the log.
+        * set ``self.linear_solver.spec = <LinearSolverSpec>`` -- the **build-safe**
+          way to pick a solver (``SuperLUSolverSpec``,
+          ``GMRESSolverSpec(prec=CPRSolverSpec())``, ``MGRSolverSpec``,
+          ``AdaptiveSolverSpec([...])``, ...). ``self.linear_solver`` is a composed
+          :class:`darts.linear_solvers.LinearSolver` instance created once in
+          ``__init__`` (mirroring ``nonlinear_solver`` holding a ``NewtonSolver``);
+          normally only its :attr:`~darts.linear_solvers.LinearSolver.spec` is
+          (re)assigned. In proprietary / GPU builds no backend is built and the
+          engine factory uses ``params.linear_type``, so a spec is safe in any build;
+        * for fine control a model may still build a raw C++ solver object and assign
+          it directly to ``self.linear_solver.handle`` (e.g.
+          ``linear_solvers.create_mgr_solver_for_block_size(...)``), valid only in the
+          open-source build (guard with
+          :meth:`~darts.linear_solvers.LinearSolver.open_source_solvers_available`);
+          ``self.linear_solver.label`` names it in the log.
 
         The default implementation is idempotent and lazy: it keeps any solver a
         subclass already assigned and otherwise materializes the defaults below --
@@ -495,25 +461,42 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         configuration of a model that does not override it is readable here instead
         of being hidden in the spec dataclass defaults.
 
-        Override in a model either by replacing a solver -- both attributes hold a
-        runtime instance (``NewtonSolver`` / ``LinearSolver``); a linear spec is
-        auto-wrapped for convenience, so these two linear forms are equivalent::
+        :param linear_solver: optional, a fully detached
+            :class:`~darts.linear_solvers.LinearSolver` to adopt as
+            ``self.linear_solver`` wholesale -- the escape hatch for models that
+            configure a linear solver standalone before the model exists (e.g. the
+            deprecated ``tol_linear=``/``it_linear=`` kwargs of
+            ``set_sim_params()``, applied by calling ``.set_sim_params(...)`` on the
+            detached instance first). Bound to this model immediately; ``None``
+            (the default) keeps/materializes ``self.linear_solver`` as usual.
+
+        Override in a model either by replacing a solver::
 
             def set_solver(self):
                 super().set_solver()
                 self.nonlinear_solver = NewtonSolver(tolerance=1e-4,
                                                      chop=ChopSpec(mode='global'))
-                self.linear_solver = MGRSolverSpec(tolerance=1e-4)          # spec (auto-wrapped)
-                self.linear_solver = LinearSolver(MGRSolverSpec(tolerance=1e-4))  # explicit instance
+                self.linear_solver.spec = MGRSolverSpec(tolerance=1e-4)
 
         or by tuning the spec of the default::
 
             def set_solver(self):
-                self.set_sim_params(first_ts=..., max_ts=...)   # time-stepping
+                self.linear_solver.set_sim_params(first_ts=..., max_ts=...)  # time-stepping
                 super().set_solver()                            # default solvers
                 self.nonlinear_solver.spec.tolerance = 1e-4
                 self.linear_solver.spec.tolerance = 1e-6
+
+        or by handing in a standalone-configured solver::
+
+            def set_solver(self):
+                ls = LinearSolver(model=self)
+                ls.set_sim_params(first_ts=..., tol_linear=1e-6)  # legacy kwargs
+                super().set_solver(linear_solver=ls)
         """
+        if linear_solver is not None:
+            self.linear_solver = linear_solver
+            self.linear_solver.bind(self)
+
         # ------------------------------------------------------------ nonlinear
         if getattr(self, "nonlinear_solver", None) is None:
             # Default nonlinear solver, with every parameter stated explicitly.
@@ -540,84 +523,21 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
             # pre_routines / post_routines / fallbacks default to empty lists
 
         # --------------------------------------------------------------- linear
-        # Platform default with every parameter stated explicitly (mirrors the spec
-        # dataclass field defaults — keep the two in sync).
-        # _default_solver_obj marks this solver as unchosen, so _apply_solver()
-        # leaves the engine factory in charge for proprietary builds and models with
-        # linear_solver_from_engine_factory = True (mechanics / THMC).
-        if getattr(self, "linear_solver", None) is None and LinearSolver is not None:
-            if getattr(self, "platform", "cpu") == "gpu":
-                # GPU default: GMRES + AMGX-CPR (AMGX on the pressure subsystem +
-                # ILU on the full system). A GPUSolverSpec builds no C++ solver: it
-                # names the params.linear_type enum (gpu_gmres_cpr_amgx_ilu) the GPU
-                # engine factory consumes. The AMG configuration lives in the engine
-                # factory / AMGX JSON, so the only Python knobs are the ones below.
-                spec = AMGXCPRSolverSpec(
-                    tolerance=1e-5,  # linear residual tolerance
-                    max_iterations=50,  # max Krylov iterations per solve
-                    print_level=0,  # solver verbosity
-                    proprietary_linear_type=None,  # enum for non-registry builds
-                    schur_elim_count=0,  # cell-local equations to Schur-eliminate (0 = off)
-                    schur_elim_rows=None,  # eliminated equation rows (len == count)
-                    schur_elim_cols=None,  # eliminated unknown columns (len == count)
-                )
-            else:
-                # CPU default: FGMRES around the two-stage CPR preconditioner
-                # (HYPRE BoomerAMG on the pressure subsystem + ILU(0) on the full
-                # system). Unlike the GPU spec, CPR is built from Python through the
-                # solver registry, so every BoomerAMG knob is a settable field below.
-                spec = GMRESSolverSpec(
-                    tolerance=1e-5,  # linear residual tolerance
-                    max_iterations=50,  # max Krylov iterations per solve
-                    print_level=0,  # solver verbosity
-                    proprietary_linear_type=None,  # enum for non-registry builds
-                    restart=50,  # FGMRES restart (Krylov subspace dimension)
-                    prec=CPRSolverSpec(
-                        tolerance=1e-5,  # unused: CPR runs as a preconditioner
-                        max_iterations=50,  # unused: single application per solve
-                        print_level=0,  # preconditioner verbosity
-                        proprietary_linear_type=None,
-                        amg_max_iters=1,  # AMG V-cycles on the pressure stage
-                        ilu_fill_level=0,  # ILU(0) on the full system (stage 2)
-                        weight_scheme=1,  # 1 = True-IMPES pressure weights
-                        stage2_type=1,  # 1 = ILU second stage
-                        eager_adjoint=False,  # build the transpose stack up front
-                        # --- HYPRE BoomerAMG configuration of the pressure stage ---
-                        amg_coarsen_type=8,  # PMIS coarsening
-                        amg_interp_type=8,  # extended+i interpolation
-                        amg_relax_type=3,  # hybrid Gauss-Seidel smoother
-                        amg_relax_order=1,  # C/F relaxation ordering
-                        amg_num_sweeps=1,  # smoother sweeps per level
-                        amg_strong_threshold=0.75,  # strength-of-connection threshold
-                        amg_agg_num_levels=0,  # aggressive-coarsening levels
-                        amg_agg_interp_type=6,  # interpolation on aggressive levels
-                        amg_agg_pmax_elmts=20,  # max elements/row, aggressive levels
-                        amg_pmax_elmts=0,  # max elements/row (0 = unlimited)
-                        amg_trunc_factor=0.0,  # interpolation truncation factor
-                        amg_max_levels=-1,  # max levels (-1 = HYPRE default)
-                        amg_cycle_type=-1,  # cycle type (-1 = HYPRE default, V)
-                        amg_max_coarse_size=100,  # stop coarsening below this size
-                        amg_coarse_relax_type=9,  # Gaussian elimination on the coarsest level
-                        amg_relax_wt=-1.0,  # relaxation weight (-1 = HYPRE default)
-                        # --- hierarchy reuse across Newton iterations ---
-                        reuse_amg_hierarchy=False,  # reuse the AMG setup
-                        adaptive_amg_rebuild=False,  # rebuild when iterations degrade
-                        adaptive_iter_threshold=15,  # LI above which to rebuild
-                        adaptive_consecutive_bad=2,  # bad solves before rebuilding
-                    ),
-                )
-            # Assign the runtime LinearSolver instance, not the bare spec, to mirror
-            # the nonlinear default holding a NewtonSolver. (The setter would wrap a
-            # bare spec too; being explicit keeps the two families symmetric.)
-            self.linear_solver = LinearSolver(spec)
-            self._default_solver_obj = self.linear_solver
+        # Platform default (every field stated explicitly -- mirrors the spec
+        # dataclass field defaults, keep the two in sync) materialized by
+        # LinearSolver itself; _default_spec marks it as unchosen, so
+        # _apply_solver() leaves the engine factory in charge for proprietary
+        # builds and models with linear_solver_from_engine_factory = True
+        # (mechanics / THMC).
+        if self.linear_solver.spec is None:
+            self.linear_solver._materialize_default_spec()
 
         # Deprecated set_sim_params(tol_newton=/tol_linear=...) kwargs deferred from
         # before the solvers existed: apply them now that both specs are materialized.
         # Model tuning after super().set_solver() runs later and still wins.
         pending = self.__dict__.pop("_pending_legacy_solver_kwargs", None)
         if pending:
-            self._migrate_legacy_solver_kwargs(pending)
+            self.linear_solver._migrate_legacy_solver_kwargs(pending)
 
     def initialize_history_fields(self):
         """Seed ``engine.Xhistory`` with the per-field default value for every reservoir cell.
@@ -1004,7 +924,7 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
             xn = np.array(self.physics.engine.Xn, copy=True)[: nb * nc]
             overhead.stop()
             converged = self.run_timestep(dt, t, verbose)
-            self._maybe_switch_linear_solver(converged, dt=dt)
+            self.linear_solver._maybe_switch_linear_solver(converged, dt=dt)
 
             overhead.start()
             if converged:

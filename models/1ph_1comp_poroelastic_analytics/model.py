@@ -69,7 +69,7 @@ class Model(THMCModel):
             lin_tol, lin_max_it = 1e-10, 5000
         else:
             lin_tol, lin_max_it = 1e-5, 50
-        self.linear_solver = GMRESSolverSpec(
+        self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
             tolerance=lin_tol,
             max_iterations=lin_max_it,
@@ -282,8 +282,8 @@ class Model(THMCModel):
 
         # optional: use PETSc / Pardiso linear solver (set in set_solver())
         #   from darts.linear_solvers import PETScSolverSpec, PardisoSolverSpec
-        #   self.linear_solver = PETScSolverSpec(variant="fs")
-        #   self.linear_solver = PardisoSolverSpec()
+        #   self.linear_solver.spec = PETScSolverSpec(variant="fs")
+        #   self.linear_solver.spec = PardisoSolverSpec()
         from darts.models.darts_model import DataTS
         self.idata.sim.DataTS = DataTS(n_vars=0)
 

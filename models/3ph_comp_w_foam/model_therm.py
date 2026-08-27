@@ -26,7 +26,7 @@ class Model_therm(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=10, runtime=100  )
+        self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=10, runtime=100  )
 
         self.timer.node["initialization"].stop()
 

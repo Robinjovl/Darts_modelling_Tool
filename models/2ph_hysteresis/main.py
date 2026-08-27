@@ -92,7 +92,7 @@ def build_model(config: CaseConfig, platform: str = "cpu") -> Model:
         water_injection_rate=1.728,
     )
     model.nonlinear_solver = NewtonSolver(tolerance=config.tol_newton, max_iterations=config.it_newton)
-    model.set_sim_params(
+    model.linear_solver.set_sim_params(
         first_ts=config.first_ts,
         mult_ts=config.mult_ts,
         max_ts=config.max_ts,

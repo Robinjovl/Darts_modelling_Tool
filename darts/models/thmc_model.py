@@ -104,7 +104,7 @@ class THMCModel(DartsModel):
         # (the in-tree 'fs_cpr' registry solver is opt-in via FSCPRSolverSpec).
         mech_default = (
             sim_params.cpu_superlu
-            if self.open_source_solvers_available()
+            if self.linear_solver.open_source_solvers_available()
             else sim_params.cpu_gmres_fs_cpr
         )
         if self.discretizer_name == 'mech_discretizer':

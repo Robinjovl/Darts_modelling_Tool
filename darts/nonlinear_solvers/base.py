@@ -472,14 +472,15 @@ class NonlinearSolver:
         """Solve the linearized system via the model's backend-neutral dispatch
         funnel and account the result uniformly for every backend.
 
-        The backend selection lives in :meth:`DartsModel._solve_linear_equation`,
+        The backend selection lives in
+        :meth:`~darts.linear_solvers.LinearSolver._solve_linear_equation`,
         which returns ``(rc, n_iters, residual)`` — ``rc`` is ``0`` on success,
         ``1`` on setup failure, ``2`` on solve failure (Python PETSc/Pardiso
         report failure via this same code, so a divergent solve now aborts the
         Newton loop / triggers a fallback exactly like the C++ path). This split
         is the seam the linear-solver refactoring (MR280) later replaces
         wholesale, so the accounting stays backend-agnostic here."""
-        rc, n_iters, residual = self.model._solve_linear_equation()
+        rc, n_iters, residual = self.model.linear_solver._solve_linear_equation()
         if rc == 0:
             status = self.status
             status.n_linear += n_iters
