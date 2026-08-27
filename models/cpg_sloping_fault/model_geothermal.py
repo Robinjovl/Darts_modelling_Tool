@@ -5,6 +5,7 @@ from darts.engines import value_vector, well_control_iface
 
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.base.property_container import PropertyContainer
+from darts.physics.iapws_physics import IAPWSPhysics
 from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm, RockCompactionEvaluator
@@ -51,27 +52,39 @@ class ModelGeothermal(Model_CPG):
         zero = 1e-12
         comp_data = CompData(components=components, setprops=True)
 
+        # Single component (H2O) with state_spec=PT -> OBL axes are [pressure, temperature]
+        self.physics = IAPWSPhysics(
+            phases, self.timer,
+            state_spec=PhysicsBase.StateSpecification.PT,
+            axes_step=[p_step, t_step],
+            axes_origin=[p_origin, t_origin],
+            cache=cache,
+        )
+
+        mixture = IAPWS(iapws_ideal=True, ice_phase=False)
+        mixture.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
+        self.physics.set_mixture(mixture)
+
         pc = PropertyContainer(phases_name=phases, components_name=components,
                                Mw=comp_data.Mw, eps_z=zero)
+        self.physics.add_property_region(pc)
 
         pc.rock_compr_ev = RockCompactionEvaluator(pref=self.idata.rock.compressibility_ref_p,
                                                    compres=self.idata.rock.compressibility)
 
-        flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
-        pc.flash_ev = flash_ev
+        pc.flash_ev = self.physics.get_flash_ev()
 
         pc.density_ev = {
-            'V': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),
-            'L': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN),
+            'V': EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
+            'L': EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
         }
         pc.viscosity_ev = {
             'V': ConstFunc(0.01),                # cP, steam
             'L': MaoDuan2009(components),        # cP, liquid water (pressure/temperature-dependent)
         }
         pc.enthalpy_ev = {
-            'V': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
-            'L': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
+            'V': self.physics.get_enthalpy_ev_from_flash(phase_idx=0),
+            'L': self.physics.get_enthalpy_ev_from_flash(phase_idx=1),
         }
         pc.rel_perm_ev = {
             'V': PhaseRelPerm("gas", swc=0.0),
@@ -84,16 +97,6 @@ class ModelGeothermal(Model_CPG):
         # output_props exposes derived T (K) via the property interpolator
         pc.output_props = {'temperature': lambda: pc.temperature}
 
-        # Single component (H2O) with state_spec=PT -> OBL axes are [pressure, temperature]
-        self.physics = PhysicsBase(
-            components, phases, self.timer,
-            state_spec=PhysicsBase.StateSpecification.PT,
-            axes_step=[p_step, t_step],
-            axes_origin=[p_origin, t_origin],
-            epsilon_z=zero,
-            cache=cache,
-        )
-        self.physics.add_property_region(pc)
         return pc
 
     def set_initial_conditions(self):
