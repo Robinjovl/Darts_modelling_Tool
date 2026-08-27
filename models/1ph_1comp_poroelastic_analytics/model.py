@@ -65,21 +65,14 @@ class Model(THMCModel):
                 nc=engine.N_VARS - 3,
             )
         fs_cpr = FSCPRSolverSpec(**fs_cpr_kwargs)
-        # Single solver declaration. The FS-CPR spec drives _apply_solver on the
-        # open-source CPU build. On the proprietary build _apply_solver applies
-        # proprietary_linear_type (bos_fs_cpr) to params.linear_type (mech engine),
-        # while the pm engine keeps its ls_params[-1] = cpu_gmres_fs_cpr stage.
+        if self.discretizer_name == 'mech_discretizer':
+            lin_tol, lin_max_it = 1e-10, 5000
+        else:
+            lin_tol, lin_max_it = 1e-5, 50
         self.linear_solver = GMRESSolverSpec(
             prec=fs_cpr,
-            # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
-            # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()
-            # with sim_params (defaults 1e-5 / 50, globals.h:117), so the spec's numbers were
-            # decorative. The spec is authoritative now, so state the values the model has
-            # really been running -- keeping behaviour unchanged. FS-CPR does not reach 1e-8 on
-            # these systems anyway: asking for it only burns the iteration budget (on SPE10_mech
-            # 22 of 48 solves exhaust the 200-iteration cap; 99 vs 41 linear iters per Newton).
-            tolerance=1e-5,
-            max_iterations=50,
+            tolerance=lin_tol,
+            max_iterations=lin_max_it,
             restart=50,
             proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
         )
