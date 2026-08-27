@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import DartsModel
+from darts.models.darts_model import DartsModel
 import numpy as np
 
 from darts.physics.base.physics import PhysicsBase

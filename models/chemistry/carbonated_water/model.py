@@ -5,7 +5,7 @@ import os
 
 import darts
 from darts.models.output import Output
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from darts.physics.chemistry.property_container import (
@@ -124,7 +124,7 @@ class MyOutput(Output):
         return timesteps, property_array
 
 # Actual Model class creation here!
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, domain: str = '1D', nx: int = 200, mesh_filename: str = None,
                  poro_filename: str = None, minerals: list = ['calcite'],
                  kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],

@@ -808,9 +808,6 @@ class Model(DartsModel):
             # apply RHS flux
             self.apply_rhs_flux(dt, t)
 
-            if self.has_dfm_well:
-                self.apply_dfm_well_lateral_heat_flux(dt, t)
-
             if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()

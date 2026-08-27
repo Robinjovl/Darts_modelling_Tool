@@ -1,6 +1,6 @@
 from darts.input.input_data import InputData
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.physics.base.property_container import PropertyContainer
 from darts.engines import ms_well
 from darts.nonlinear_solvers import NewtonSolver
@@ -9,7 +9,7 @@ from darts.physics.properties.black_oil import *
 from darts.physics.blackoil import BlackOil, BlackOilFluidProps
 
 # Model class creation here!
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()

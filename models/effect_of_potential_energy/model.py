@@ -1,6 +1,6 @@
 import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.eos_physics import EoSPhysics
@@ -14,7 +14,7 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.nonlinear_solvers import NewtonSolver
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()

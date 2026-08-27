@@ -217,10 +217,12 @@ template <uint8_t N_DIMS, uint16_t N_OPS>
 struct interpolator_exposer
 {
   // template function used to expose different interpolators with the same Python interface.
-  // Exposed name pattern: <base_name>_<s|d>_<N_DIMS>_<N_OPS>. The former index-type letter
-  // (_i_/_l_) is gone: adaptive storage is keyed on cell_key_t, so the index type is no
-  // longer part of the class identity (physics_base.py still falls back to the legacy
-  // suffixed names when running against an older prebuilt library).
+  // Exposed name pattern: <base_name>_<s|d>_<N_DIMS>_<N_OPS>. Two tokens that used to sit
+  // in <base_name> are gone: the index-type letter (_i_/_l_), because storage is keyed on
+  // cell_key_t and the index type is no longer part of the class identity, and the
+  // "adaptive" qualifier, because the static interpolators were removed and every
+  // interpolator is adaptive. physics.py builds exactly this name -- there is no fallback
+  // to the old spellings, so a stale compiled module fails with a "rebuild" message.
   template <typename f_t, typename interpolator_class>
   void expose_class(py::module &m, std::string base_name)
   {
@@ -772,29 +774,31 @@ struct interpolator_exposer
   //   FULL:    multilinear_adaptive + linear_adaptive.
   // One exposed class per (algorithm, platform, precision): the adaptive classes carry
   // no index-type template parameter any more (storage is keyed on cell_key_t), so the
-  // former uint32/uint64 duplicates are gone and names carry no index-type letter.
+  // former uint32/uint64 duplicates are gone and names carry no index-type letter. The
+  // exposed names also drop the "adaptive" token: with the static interpolators removed
+  // it no longer distinguishes anything (the C++ class names keep it).
   void expose(py::module &m)
   {
     // do not expose multilinear for higher dimensions, as it becomes inefficient
     if constexpr (N_DIMS <= 12)
     {
-      expose_class<double, multilinear_adaptive_cpu_interpolator<double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
+      expose_class<double, multilinear_adaptive_cpu_interpolator<double, N_DIMS, N_OPS>>(m, "multilinear_cpu_interpolator");
     }
-    // expose_class<float, multilinear_adaptive_cpu_interpolator<float, N_DIMS, N_OPS>>(m, "multilinear_adaptive2_cpu_interpolator");
+    // expose_class<float, multilinear_adaptive_cpu_interpolator<float, N_DIMS, N_OPS>>(m, "multilinear2_cpu_interpolator");
 
 #if !defined(OD_INTERP_PROFILE_MINIMAL)
     // Linear adaptive — exposed under FULL. Like the multilinear adaptive classes it
     // carries no index-type template parameter (int32-native vertex enumeration).
-    expose_class<double, linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
+    expose_class<double, linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>>(m, "linear_cpu_interpolator");
 #endif
     //#ifdef WITH_GPU
 //#endif
 #ifdef WITH_GPU
 
 
-    expose_class<double, multilinear_adaptive_gpu_interpolator<double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_gpu_interpolator");
+    expose_class<double, multilinear_adaptive_gpu_interpolator<double, N_DIMS, N_OPS>>(m, "multilinear_gpu_interpolator");
 
-    // expose_class<float, multilinear_adaptive_gpu_interpolator<float, N_DIMS, N_OPS>>(m, "multilinear_adaptive_gpu_interpolator");
+    // expose_class<float, multilinear_adaptive_gpu_interpolator<float, N_DIMS, N_OPS>>(m, "multilinear_gpu_interpolator");
 
 #endif //WITH_GPU
   }

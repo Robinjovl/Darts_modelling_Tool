@@ -1,5 +1,5 @@
 from darts.engines import *
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
@@ -14,7 +14,7 @@ from darts.physics.properties.flash import ConstantK
 import numpy as np
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()

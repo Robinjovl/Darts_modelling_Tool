@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from darts.engines import value_vector
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.nonlinear_solvers import NewtonSolver
 from darts.physics.base.physics import PhysicsBase, HistoryField
 from darts.physics.properties.basic import ConstFunc
@@ -67,7 +67,7 @@ def default_corey_regions() -> dict[int, Corey]:
     return {0: Corey(**base)}
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, hys: bool = True):
         super().__init__()
         self.timer.node["initialization"].start()

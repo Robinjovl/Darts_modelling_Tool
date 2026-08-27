@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, sim_params, ms_well
 from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
@@ -16,7 +16,7 @@ from darts.pipes.set_initial_conditions import SingleAmbientTemperature
 from darts.pipes.pipe import Pipe
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # call base class constructor
         super().__init__()

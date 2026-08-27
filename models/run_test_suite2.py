@@ -6,6 +6,7 @@ from contextlib import redirect_stdout
 
 from darts.engines import sim_params
 from darts.engines import print_build_info as engines_pbi
+from darts.tools.cicd_tools import check_performance as cicd_check_performance
 from compare_well_time_series import (
     compare_generated_well_time_series,
     create_well_time_series_snapshot,
@@ -393,7 +394,7 @@ def check_performance(mod, formulation=None):
     overwrite = 0
     if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = 1
-    failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix + tag)
+    failed = cicd_check_performance(m, overwrite=overwrite, pkl_suffix=pkl_suffix + tag)
     if formulation is not None:
         failed_well_time_series, _, _ = compare_generated_well_time_series(
             model_path,

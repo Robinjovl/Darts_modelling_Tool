@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from darts.engines import value_vector, sim_params
@@ -15,7 +15,7 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.viscosity import MaoDuan2009
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, resolution=10):
         # call base class constructor
         super().__init__()

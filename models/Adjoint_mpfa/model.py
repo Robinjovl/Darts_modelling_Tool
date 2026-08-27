@@ -1,4 +1,3 @@
-from darts.models.cicd_model import CICDModel
 from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, ms_well
 from darts.nonlinear_solvers import NewtonSolver
