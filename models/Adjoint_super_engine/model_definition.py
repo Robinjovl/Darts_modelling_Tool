@@ -6,6 +6,7 @@ from darts import linear_solvers
 from darts.linear_solvers import (
     BCSRCPRSpec,
     BILU0Spec,
+    LinearSolver,
     LocalCorrectionSpec,
     MGRLevelSpec,
     MGRSolverSpec,
@@ -316,15 +317,13 @@ class Model(CICDModel, OptModuleSettings):
         # Idempotent: the forward solver is built once (before engine.init, so the
         # adjoint solver can hold a reference to it). The base reset() calls
         # set_solver() again at its top -- skip the rebuild so that reference stays
-        # valid.
-        if self.linear_solver is not None:
+        # valid. self.linear_solver is composed once in __init__ and is never None
+        # itself; .spec is the idempotency marker (None until this method runs).
+        if self.linear_solver.spec is not None:
             return
         # Single per-model home for time-stepping / Newton config (the unified
         # set_solver pattern); the base reset() calls this before engine.init.
         self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
-        super().set_solver()  # platform default nonlinear + linear solvers
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-6, max_iterations=10,
-            chop=ChopSpec(mode='local'))
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
         # Forward MGR (BCSR-CPR) via the single unified spec API
         # (self.linear_solver.spec = MGRSolverSpec). The base LinearSolver._apply_solver
@@ -343,7 +342,11 @@ class Model(CICDModel, OptModuleSettings):
             block_size - 1
         )
 
-        self.linear_solver.spec = MGRSolverSpec(
+        # Built standalone (detached from the model) so the whole configuration is
+        # in hand before handing it to set_solver() -- no default spec is
+        # materialized and immediately discarded.
+        ls = LinearSolver(model=self)
+        ls.spec = MGRSolverSpec(
             tolerance=1e-3,
             max_iterations=50,
             log_level=self.params.linear_print_level,
@@ -423,7 +426,10 @@ class Model(CICDModel, OptModuleSettings):
             enable_well_level=False,
             enable_composition_level=False,
         )
-        self.linear_solver.label = "mgr (bcsr-cpr, forward)"
+        ls.label = "mgr (bcsr-cpr, forward)"
+        super().set_solver(linear_solver=ls)  # adopts ls; platform default nonlinear solver
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-6, max_iterations=10,
+            chop=ChopSpec(mode='local'))
 
     def set_adjoint_solver(self):
         if getattr(self, "adjoint_solver_mode", "mgr") in {"superlu", "cpra-gpu"}:

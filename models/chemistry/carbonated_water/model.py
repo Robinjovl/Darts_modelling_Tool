@@ -178,12 +178,8 @@ class Model(CICDModel):
 
     def set_solver(self):
         self.linear_solver.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
-        super().set_solver()  # platform default nonlinear + linear solvers
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
-            chop=ChopSpec(mode='local', factor=0.2))
-        self.nonlinear_solver.spec.chop.mode = 'local'
-        # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
-        self.nonlinear_solver.spec.chop.factor = 0.2
+
+        from darts.linear_solvers import LinearSolver
         # GPU -> AMGX-CPR; CPU -> FGMRES + CPR/AMG
         tolerance = 1e-6
         max_iterations = 500
@@ -195,6 +191,10 @@ class Model(CICDModel):
         elim = K > 0 and (n_vars is None or n_vars - K >= 2)
         elim_rows = list(range(K))
         elim_cols = list(range(1, K + 1))
+        # Built standalone (detached from the model) so the whole configuration is
+        # in hand before handing it to set_solver() -- no default spec is
+        # materialized and immediately discarded.
+        ls = LinearSolver(model=self)
         if getattr(self, 'platform', 'cpu') == 'gpu':
             from darts.linear_solvers import AMGXCPRSolverSpec
             if elim:
@@ -208,12 +208,12 @@ class Model(CICDModel):
                 # reuse for the elimination chain's OWN AMGX instances (per-
                 # instance ctor override) -- no process-global environment
                 # mutation, other AMGX instances keep the default adaptive reuse.
-                self.linear_solver.spec = AMGXCPRSolverSpec(
+                ls.spec = AMGXCPRSolverSpec(
                     max_iterations=max_iterations, tolerance=tolerance,
                     schur_elim_count=K, schur_elim_rows=elim_rows,
                     schur_elim_cols=elim_cols)
             else:
-                self.linear_solver.spec = AMGXCPRSolverSpec(
+                ls.spec = AMGXCPRSolverSpec(
                     max_iterations=max_iterations, tolerance=tolerance)
         else:
             from darts.linear_solvers import CPRSolverSpec, GMRESSolverSpec
@@ -227,7 +227,14 @@ class Model(CICDModel):
                 wrap.tolerance = tolerance
                 wrap.max_iterations = max_iterations
                 spec = wrap
-            self.linear_solver.spec = spec
+            ls.spec = spec
+
+        super().set_solver(linear_solver=ls)  # platform default nonlinear solver
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
+            chop=ChopSpec(mode='local', factor=0.2))
+        self.nonlinear_solver.spec.chop.mode = 'local'
+        # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
+        self.nonlinear_solver.spec.chop.factor = 0.2
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,

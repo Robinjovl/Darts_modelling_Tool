@@ -29,13 +29,12 @@ class Model(THMCModel):
         Xn_ref[:] = 0.0
 
     def set_solver(self):
-        super().set_solver()
-
         # Open-source FS-CPR by default -- inject the spec; the engine bypasses
         # sim_params.linear_type. FS-CPR is a PRECONDITIONER (single application),
         # not an outer Krylov loop -- wrap it in GMRES to mirror the proprietary
         # path (bos_gmres + bos_fs_cpr).
         from darts.models.darts_model import DataTS
+        from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         if not hasattr(self, 'data_ts') or self.data_ts is None:
             self.data_ts = DataTS(self.physics.n_vars)
@@ -59,7 +58,10 @@ class Model(THMCModel):
         # proprietary_linear_type (bos_fs_cpr) to params.linear_type -- but only for
         # mech_discretizer; pm_discretizer keeps its mechanics multi-stage backend
         # (engine.ls_params), so its spec carries no proprietary fallback (None).
-        self.linear_solver.spec = GMRESSolverSpec(
+        # Built standalone (detached from the model) so the platform default is
+        # never materialized.
+        ls = LinearSolver(model=self)
+        ls.spec = GMRESSolverSpec(
             prec=fs_cpr,
             # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
             # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()
@@ -74,6 +76,7 @@ class Model(THMCModel):
             proprietary_linear_type=(sim_params.cpu_gmres_fs_cpr
                                      if self.discretizer_name == 'mech_discretizer' else None),
         )
+        super().set_solver(linear_solver=ls)
         if self.discretizer_name == 'pm_discretizer':
             self.physics.engine.ls_params[-1].linear_type = (
                 sim_params.cpu_superlu if self.linear_solver.open_source_solvers_available()

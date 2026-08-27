@@ -198,13 +198,19 @@ class Model(CICDModel):
         # cuSOLVER QR (gpu_cusolver; CuDSSSolverSpec is the faster alternative
         # on WITH_CUDSS builds). Proprietary builds ignore CPU specs and lack
         # an in-tree GPU direct solver -> keep their engine-factory default.
-        from darts.linear_solvers import GPUCuSolverSpec, SuperLUSolverSpec
+        from darts.linear_solvers import GPUCuSolverSpec, LinearSolver, SuperLUSolverSpec
+        # Built standalone (detached from the model) and only when a spec is
+        # actually picked below -- linear_solver=None lets set_solver() fall
+        # through to the platform default, same as before.
+        ls = None
         if getattr(self, "platform", "cpu") == "gpu":
             if self.linear_solver.open_source_solvers_available():
-                self.linear_solver.spec = GPUCuSolverSpec()
+                ls = LinearSolver(model=self)
+                ls.spec = GPUCuSolverSpec()
         else:
-            self.linear_solver.spec = SuperLUSolverSpec()
-        super().set_solver()  # platform default when no spec was picked above
+            ls = LinearSolver(model=self)
+            ls.spec = SuperLUSolverSpec()
+        super().set_solver(linear_solver=ls)  # platform default when no spec was picked above
         # Newton tuning -- MUST come after super().set_solver(): the base call is what
         # materializes the default NewtonSolver (dereferencing nonlinear_solver.spec
         # before it crashed every CI job with 'NoneType' object has no attribute 'spec').

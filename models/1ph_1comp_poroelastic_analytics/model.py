@@ -17,8 +17,6 @@ class Model(THMCModel):
         super().__init__()
 
     def set_solver(self):
-        super().set_solver()
-
         # data_ts is used only for linear solver params for PETSc
         self.data_ts = self.idata.sim.DataTS  # this needed as mech models have their own run_python implementation
 
@@ -37,6 +35,7 @@ class Model(THMCModel):
         # (U_VAR=0), pressure at ND=3, and carries no composition variable
         # (Z_VAR=255 sentinel). Read the layout off the engine so this stays
         # correct if the conventions change.
+        from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         engine = self.physics.engine
         mesh = self.reservoir.mesh
@@ -69,13 +68,15 @@ class Model(THMCModel):
             lin_tol, lin_max_it = 1e-10, 5000
         else:
             lin_tol, lin_max_it = 1e-5, 50
-        self.linear_solver.spec = GMRESSolverSpec(
+        ls = LinearSolver(model=self)
+        ls.spec = GMRESSolverSpec(
             prec=fs_cpr,
             tolerance=lin_tol,
             max_iterations=lin_max_it,
             restart=50,
             proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
         )
+        super().set_solver(linear_solver=ls)
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,

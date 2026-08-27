@@ -49,13 +49,12 @@ class Model(THMCModel):
 
 
     def set_solver(self):
-        super().set_solver()
-
         # Open-source FS-CPR by default (mech_discretizer / engine_super_elastic_cpu).
         # The spec drives _apply_solver in the open-source build; in the proprietary
         # build it is ignored and the engine factory uses params.linear_type
         # (bos_fs_cpr).
         from darts.models.darts_model import DataTS
+        from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         if not hasattr(self, 'data_ts') or self.data_ts is None:
             self.data_ts = DataTS(self.physics.n_vars)
@@ -79,8 +78,12 @@ class Model(THMCModel):
         # authoritative now, so state the values this model has really been running -- keeping
         # behaviour unchanged. FS-CPR does not reach 1e-8 on these systems anyway: asking for it
         # only burns the iteration budget (on SPE10_mech 22 of 48 solves exhaust the 200-iter cap).
-        self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-5, max_iterations=50, restart=50,
-                                      proprietary_linear_type=sim_params.cpu_gmres_fs_cpr)
+        # Built standalone (detached from the model) so the platform default is never
+        # materialized.
+        ls = LinearSolver(model=self)
+        ls.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-5, max_iterations=50, restart=50,
+                                  proprietary_linear_type=sim_params.cpu_gmres_fs_cpr)
+        super().set_solver(linear_solver=ls)
         self.data_ts.dt_first = 0.0001
         self.data_ts.dt_mult = 2
         self.data_ts.dt_max = 5

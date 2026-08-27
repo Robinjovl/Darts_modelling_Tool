@@ -130,24 +130,6 @@ class Model(THMCModel):
                     X[4 * cell_id + 3] += p(cell.centroid[0])
                     Xn[4 * cell_id + 3] += p(cell.centroid[0])
     def set_solver(self):
-        # Mechanics model: the LINEAR solver comes from params.linear_type /
-        # engine.ls_params (THMCModel.linear_solver_from_engine_factory), so the
-        # flow CPR/AMG default is not applied; the NONLINEAR solver is configured
-        # on its spec below. Called from the base reset(), before engine.init.
-        super().set_solver()
-        self.nonlinear_solver.spec.tolerance = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
-        self.nonlinear_solver.spec.chop.mode = 'local'  # Type of newton method (related to chopping strategy?)
-        self.nonlinear_solver.spec.chop.factor = 0.2  # Probably chop-criteria(?)
-        if self.friction_law == 'rsf':
-            self.nonlinear_solver.spec.max_iterations = 20
-        else:
-            self.nonlinear_solver.spec.max_iterations = 8
-
-        # swap the runtime to the fault-specialized mechanics Newton driver
-        # (contact-gap residual + cut-off + slip-area gating), reusing the spec
-        self.nonlinear_solver = DisplacedFaultNewtonSolver(self.nonlinear_solver.spec)
-        self.nonlinear_solver.bind(self)
-
         # Open-source FS-CPR by default (pm_discretizer / engine_pm_cpu). The
         # spec-built solver is injected via set_linear_solver and now genuinely
         # drives the open-source solve (engine_pm_cpu prefers the external
@@ -155,6 +137,7 @@ class Model(THMCModel):
         # proprietary-build / factory path. Mid-run changes (e.g. the dynamic
         # rupture stage in main.py) go through model.linear_solver.update_solver().
         from darts.models.darts_model import DataTS
+        from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         if not hasattr(self, 'data_ts') or self.data_ts is None:
             self.data_ts = DataTS(self.physics.n_vars)
@@ -191,9 +174,29 @@ class Model(THMCModel):
         # residuals to ~10 digits) and every fault field is within isclose(1e-6, 1e-8) of
         # it, at ~20% more wall time. The static case is insensitive (constant mu) and
         # passes either way. main.py tightens this further (1e-12 / 500) for the dynamic
-        # rupture stage via update_solver().
-        self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-10, max_iterations=500, restart=50)
+        # rupture stage via update_solver(). Built standalone (detached from the model)
+        # so the whole configuration is in hand before handing it to set_solver().
+        ls = LinearSolver(model=self)
+        ls.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-10, max_iterations=500, restart=50)
         self.solver_phase = 'static'  # main.py flips to 'dynamic' at rupture
+
+        # Mechanics model: the LINEAR solver comes from params.linear_type /
+        # engine.ls_params (THMCModel.linear_solver_from_engine_factory), so the
+        # flow CPR/AMG default is not applied; the NONLINEAR solver is configured
+        # on its spec below. Called from the base reset(), before engine.init.
+        super().set_solver(linear_solver=ls)
+        self.nonlinear_solver.spec.tolerance = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
+        self.nonlinear_solver.spec.chop.mode = 'local'  # Type of newton method (related to chopping strategy?)
+        self.nonlinear_solver.spec.chop.factor = 0.2  # Probably chop-criteria(?)
+        if self.friction_law == 'rsf':
+            self.nonlinear_solver.spec.max_iterations = 20
+        else:
+            self.nonlinear_solver.spec.max_iterations = 8
+
+        # swap the runtime to the fault-specialized mechanics Newton driver
+        # (contact-gap residual + cut-off + slip-area gating), reusing the spec
+        self.nonlinear_solver = DisplacedFaultNewtonSolver(self.nonlinear_solver.spec)
+        self.nonlinear_solver.bind(self)
 
         # Idempotent: ls_params is appended once even though set_solver() runs on every reset().
         if len(self.physics.engine.ls_params) == 0:
