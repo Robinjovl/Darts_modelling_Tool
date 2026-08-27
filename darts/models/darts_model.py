@@ -152,8 +152,8 @@ class DartsModel:
         # Timestep-control structure (see darts.timestep_control.DataTS): a plain
         # settings holder, unlike the two solvers above it has no bind/build step,
         # so it's just a regular member -- constructed here with n_vars=0 and
-        # resized to the physics' actual n_vars by _apply_nonlinear() during
-        # init() (physics doesn't exist yet at this point). Read/write directly,
+        # resized to the physics' actual n_vars by init() (physics doesn't exist
+        # yet at this point). Read/write directly,
         # e.g. self.data_ts.dt_first = ..., self.data_ts.runtime = ....
         self.data_ts = DataTS()
 
@@ -310,9 +310,17 @@ class DartsModel:
         self.set_boundary_conditions()
         self.set_well_controls()
 
-        # Materialize the nonlinear solver spec (and default specs/data_ts if the
-        # model did not configure them) before the engine is initialized.
-        self._apply_nonlinear()
+        # Materialize the solvers (and default specs/data_ts if the model did
+        # not configure them) before the engine is initialized.
+        self.set_solver()
+        # data_ts may have been constructed pre-init with n_vars=0: size eta now
+        if len(self.data_ts.eta) < self.physics.n_vars:
+            self.data_ts.eta = 1e20 * np.ones(self.physics.n_vars)
+        # fail loudly on an obviously-broken timestepping config, matching the
+        # per-timestep spec.validate() the Newton loop already does
+        self.data_ts.validate()
+        # bind the (possibly detached) solver to this model
+        self.nonlinear_solver.bind(self)
 
         # when restarting the initial conditions are set in self.load_restart_data() and the engine is reset.
         self.restart = restart
@@ -343,12 +351,17 @@ class DartsModel:
         :class:`darts.linear_solvers.LinearSolver` instance whose declarative spec is
         ``linear_solver.spec``; the default is constructed in :meth:`set_solver`) is then bound,
         built and injected by :meth:`_apply_solver` before ``engine.init``, so the
-        engine adopts its ``handle`` and bypasses its own factory -- the mirror of
-        ``nonlinear_solver.bind(self)`` in the !327 design. In proprietary / GPU builds
-        no backend is built and the engine factory selects the solver from
-        ``params.linear_type``.
+        engine adopts its ``handle`` and bypasses its own factory. The nonlinear
+        solver is (re)bound here too: ``set_solver()`` runs a second time (the first
+        was in ``init()``, right after the reservoir/mesh and engine object exist),
+        and a model's override may unconditionally
+        reassign ``self.nonlinear_solver`` on every call (no existing-instance
+        guard), leaving a fresh, unbound instance otherwise. In proprietary / GPU
+        builds no linear backend is built and the engine factory selects the solver
+        from ``params.linear_type``.
         """
         self.set_solver()
+        self.nonlinear_solver.bind(self)
         self.linear_solver._apply_solver()
         self.physics.engine.init(
             self.reservoir.mesh,
@@ -777,19 +790,6 @@ class DartsModel:
             for k, v in ls_spec.to_dict().items():
                 print(f"\t{k} = {v}")
 
-    def _apply_nonlinear(self):
-        """Bind the nonlinear solver to this model and make sure ``data_ts``
-        is sized to the physics. Called from init()."""
-        self.set_solver()
-        # data_ts may have been constructed pre-init with n_vars=0: size eta now
-        if len(self.data_ts.eta) < self.physics.n_vars:
-            self.data_ts.eta = 1e20 * np.ones(self.physics.n_vars)
-        # fail loudly on an obviously-broken timestepping config, matching the
-        # per-timestep spec.validate() the Newton loop already does
-        self.data_ts.validate()
-        # bind the (possibly detached) solver to this model
-        self.nonlinear_solver.bind(self)
-
     def run_simple(self, physics, data_ts, days, restart_dt=0.0):
         """Removed. Use :meth:`run` after configuring the model normally.
 
@@ -1029,7 +1029,7 @@ class DartsModel:
             ``None``, meaning inherit :attr:`self.verbose`.
         :type verbose: int
         """
-        return self.nonlinear_solver.bind(self).solve_timestep(dt, t, verbose)
+        return self.nonlinear_solver.solve_timestep(dt, t, verbose)
 
     def update_dfm_well_vels_and_ders(self, dt, t, iter_counter):
         """
