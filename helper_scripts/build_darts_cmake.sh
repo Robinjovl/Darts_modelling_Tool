@@ -206,7 +206,7 @@ if [[ "$clean_mode" == true ]]; then
     # scratch (including thirdparty).
     echo -e '\n   Cleaning build folder'
     rm -rf build
-    rm -rf thirdparty/hypre/src/cmbuild thirdparty/install
+    rm -rf thirdparty/hypre/src/cmbuild thirdparty/build thirdparty/install
 fi
 
 # Reuse an existing thirdparty build when one is present: if HYPRE is already
@@ -352,6 +352,9 @@ if [[ "$skip_req" == false ]]; then
     if [[ "$phreeqc" == true ]]; then
         echo -e "\n-- Install IPhreeqc: START\n"
         cd thirdparty
+        if [[ "$clean_mode" == true ]]; then
+            rm -rf build/iphreeqc
+        fi
         mkdir -p build/iphreeqc && cd build/iphreeqc
         cmake \
             -D CMAKE_INSTALL_PREFIX=../../install/iphreeqc \
