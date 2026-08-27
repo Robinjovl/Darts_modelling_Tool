@@ -1,5 +1,5 @@
 """
-Provide reusable support for non-Newton OBL history state.
+Provide reusable support for extending OBL with history state.
 """
 
 from collections.abc import Iterable

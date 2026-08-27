@@ -21,7 +21,7 @@ from darts.physics.base.operator_evaluator import (
     WellCtrlOperators,
     WellOperators,
 )
-from darts.physics.base.history import HistoryField, HistoryStateSupport
+from darts.physics.base.history_extension import HistoryField, HistoryStateSupport
 from darts.tools.obl_cache import OblCacheCodec
 
 
