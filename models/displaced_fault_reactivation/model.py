@@ -136,7 +136,7 @@ class Model(THMCModel):
         # solver over its ls_params bank); ls_params remains the
         # proprietary-build / factory path. Mid-run changes (e.g. the dynamic
         # rupture stage in main.py) go through model.linear_solver.update_solver().
-        from darts.models.darts_model import DataTS
+        from darts.timestep_control import DataTS
         from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         if not hasattr(self, 'data_ts') or self.data_ts is None:

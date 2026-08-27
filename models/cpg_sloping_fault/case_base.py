@@ -2,7 +2,7 @@ import numpy as np
 import os
 
 from darts.input.input_data import InputData
-from darts.models.darts_model import DataTS
+from darts.timestep_control import DataTS
 from darts.engines import sim_params
 
 class InputDataGeom():  # to group geometry input data

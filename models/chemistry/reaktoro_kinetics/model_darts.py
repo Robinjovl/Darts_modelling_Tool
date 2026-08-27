@@ -122,7 +122,7 @@ class Model(CICDModel):
         # Time-stepping and the linear solver are configured in set_solver()
         # (the unified self.linear_solver.spec = <LinearSolverSpec> pattern), which the base
         # reset() calls before engine.init.
-        self.runtime = 1
+        self.data_ts.runtime = 1
         self.timer.node["initialization"].stop()
 
     def set_solver(self):

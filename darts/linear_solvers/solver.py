@@ -36,7 +36,8 @@ nonlinear side). Scope:
   switching driven by :class:`~darts.linear_solvers.AdaptiveSolverSpec`;
 * the linear-solve entry points used by the nonlinear loop
   (``_solve_linear_equation``, ``get_linear_system``);
-* the deprecated ``set_sim_params`` / ``set_sim_params_data_ts`` family and the
+* the deprecated ``set_sim_params`` shim (timestep kwargs, delegating to
+  :func:`darts.timestep_control.apply_legacy_ts_kwargs`) and the
   one-deprecation-cycle mapping of removed nonlinear/linear keyword arguments onto
   the solver specs (``_migrate_legacy_solver_kwargs``) -- scheduled for removal when
   the deprecation cycle ends.
@@ -52,6 +53,7 @@ import numpy as np
 
 from darts.engines import sim_params
 from darts.linear_solvers.specs import LinearSolverSpec
+from darts.timestep_control import apply_legacy_ts_kwargs
 
 # Open-source linear-solver registry (the darts.linear_solvers package). It is absent
 # in proprietary (-a / -b) builds, where the engine's built-in factory selects
@@ -782,27 +784,6 @@ class LinearSolver:
 
     # ------------------------------------------------------------ deprecated config shims (former LegacyConfigShims mixin)
 
-    def set_sim_params_data_ts(self, data_ts):
-        """Deprecated: assign ``model.nonlinear_solver`` and set timestep controls on
-        ``model.data_ts`` instead."""
-        warnings.warn(
-            "set_sim_params_data_ts() is deprecated; specify DartsModel.nonlinear_solver "
-            "in set_solver() and set timestep controls on DartsModel.data_ts instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from darts.models.darts_model import DataTS  # lazy: avoids a circular import
-
-        model = self.model
-        model.set_solver()
-        model.data_ts = DataTS(model.physics.n_vars)
-        # copy attributes except eta
-        for k in DataTS._FIELDS:
-            if k == "eta":
-                continue
-            if hasattr(data_ts, k):
-                setattr(model.data_ts, k, getattr(data_ts, k))
-
     def set_sim_params(
         self,
         first_ts: float = None,
@@ -868,17 +849,9 @@ class LinearSolver:
             else:
                 model._pending_legacy_solver_kwargs = legacy
 
-        from darts.models.darts_model import DataTS  # lazy: avoids a circular import
-
-        # fresh timestep-control structure
-        model.data_ts = DataTS(model.physics.n_vars)
-        ts = model.data_ts
-
-        # Time stepping parameters. if None, default value will be used
-        ts.dt_first = first_ts if first_ts is not None else ts.dt_first
-        ts.dt_min = min_ts if min_ts is not None else ts.dt_min
-        ts.dt_max = max_ts if max_ts is not None else ts.dt_max
-        ts.dt_mult = mult_ts if mult_ts is not None else ts.dt_mult
+        # fresh timestep-control structure (if None, default value will be used);
+        # installs model.data_ts (including .runtime).
+        apply_legacy_ts_kwargs(model, first_ts, mult_ts, min_ts, max_ts, runtime)
 
         # NOTE: neither solver's parameters are accepted here -- this method
         # configures time-stepping only. Nonlinear settings live on
@@ -889,9 +862,6 @@ class LinearSolver:
         #     self.linear_solver.spec.tolerance = 1e-6
         # Legacy kwargs of either family are mapped for one deprecation cycle by
         # _migrate_legacy_solver_kwargs() above.
-
-        # single-sourced on data_ts.runtime via the runtime property
-        model.runtime = runtime
 
     def _migrate_legacy_solver_kwargs(self, legacy: dict):
         """One-deprecation-cycle shim: map removed ``set_sim_params`` solver

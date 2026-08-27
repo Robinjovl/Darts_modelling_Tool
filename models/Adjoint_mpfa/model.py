@@ -146,7 +146,7 @@ class Model(DartsModel, OptModuleSettings):
                                      epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
-        self.runtime = 1000
+        self.data_ts.runtime = 1000
         self.p_init = 200
         self.init_temp = 350
         self.inj = value_vector([1 - zero, self.init_temp - 30])

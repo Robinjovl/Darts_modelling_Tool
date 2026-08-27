@@ -53,7 +53,7 @@ class Model(THMCModel):
         # The spec drives _apply_solver in the open-source build; in the proprietary
         # build it is ignored and the engine factory uses params.linear_type
         # (bos_fs_cpr).
-        from darts.models.darts_model import DataTS
+        from darts.timestep_control import DataTS
         from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         if not hasattr(self, 'data_ts') or self.data_ts is None:

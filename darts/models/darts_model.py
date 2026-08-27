@@ -23,87 +23,7 @@ from darts.models.output import Output
 from darts.nonlinear_solvers import ChopSpec, NewtonSolver, Norm, OBLBoundsSpec
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
-
-
-class DataTS:
-    """Timestep-control parameters.
-
-    Holds ONLY the timestep controls (``dt_first``/``dt_min``/``dt_mult``/
-    ``dt_max``/``eta``) plus the total ``runtime``. Neither solver's settings
-    are mirrored here — each lives at its own single source of truth:
-    ``DartsModel.nonlinear_solver.spec`` (a
-    :class:`darts.nonlinear_solvers.NonlinearSolverSpec`, !327) and
-    ``DartsModel.linear_solver.spec`` (a
-    :class:`darts.linear_solvers.LinearSolverSpec`, !280 — the transitional
-    ``linear_*`` attributes this structure carried are now removed).
-
-    This is the timestepping analogue of the validated, serializable nonlinear
-    and linear solver specs: :meth:`validate` and :meth:`to_dict` mirror
-    ``NonlinearSolverSpec``'s, so the effective timestepping configuration is
-    serializable and inspectable (see :meth:`DartsModel.print_config`).
-    """
-
-    _FIELDS = (
-        "eta",
-        "dt_first",
-        "dt_min",
-        "dt_mult",
-        "dt_max",
-        "runtime",
-    )
-
-    def __init__(self, n_vars=0):
-        # timestep control (owned by this structure)
-        self.eta = (
-            1e20 * np.ones(n_vars)
-        )  # controls the timestep by the variable change from the previous newton iteration
-        # dX = Xn - X. Eta has a size of number of DOFs per cell. Set to a large value by default, so doesn't affect the timestep choice
-        self.dt_first = 1.0  # initial timestep [days]
-        # minimal allowed timestep [days] = the divergence-abort floor. NOTE: a
-        # known discrepancy remains -- set_sim_params(min_ts=) defaults to 1e-15,
-        # so a model configured through set_sim_params (without an explicit min_ts)
-        # floors lower than one that constructs DataTS directly. This value is left
-        # at 1e-12 deliberately (behaviour-preserving); the *effective* value is now
-        # surfaced by DartsModel.print_config(). Unifying the two paths is a follow-up
-        # that requires re-baselining the models that ride the abort floor.
-        self.dt_min = 1e-12
-        self.dt_mult = 2.0  # timestep multiplier, affects the next timestep choice
-        self.dt_max = 10.0  # maximal allowed timestep [days]
-        self.runtime = (
-            1000.0  # total runtime [days]; read by run() when days is not given
-        )
-
-    def validate(self):
-        """Raise ``ValueError`` on an obviously-invalid timestepping configuration
-        (mirror of ``NonlinearSolverSpec.validate()``); called at ``init()``."""
-        if self.dt_first <= 0:
-            raise ValueError(f"data_ts.dt_first must be > 0, got {self.dt_first}")
-        if self.dt_min <= 0:
-            raise ValueError(f"data_ts.dt_min must be > 0, got {self.dt_min}")
-        if self.dt_max < self.dt_min:
-            raise ValueError(
-                f"data_ts.dt_max ({self.dt_max}) must be >= dt_min ({self.dt_min})"
-            )
-        if self.dt_mult < 1.0:
-            raise ValueError(f"data_ts.dt_mult must be >= 1, got {self.dt_mult}")
-        if self.runtime <= 0:
-            raise ValueError(f"data_ts.runtime must be > 0, got {self.runtime}")
-
-    def to_dict(self):
-        """Serializable snapshot (mirror of ``NonlinearSolverSpec.to_dict()``)."""
-        return {
-            "eta": np.asarray(self.eta).tolist(),
-            "dt_first": self.dt_first,
-            "dt_min": self.dt_min,
-            "dt_mult": self.dt_mult,
-            "dt_max": self.dt_max,
-            "runtime": self.runtime,
-        }
-
-    def print(self):
-        print("Timestepping parameters:")
-        for k in self._FIELDS:
-            print("\t", k, "=", getattr(self, k))
+from darts.timestep_control import DataTS
 
 
 class DartsModel:
@@ -127,8 +47,8 @@ class DartsModel:
     #: :class:`~darts.linear_solvers.LinearSolverSpec` -- the mechanics / THMC
     #: path. :meth:`_apply_solver` then leaves the engine in charge *unless* the
     #: model explicitly chose a spec. (Before !327 this was discriminated by
-    #: ``data_ts is None``; ``data_ts`` is now a lazy property that always
-    #: materializes, so the intent is stated explicitly here.)
+    #: ``data_ts is None``; ``data_ts`` now always exists as a plain member, so
+    #: the intent is stated explicitly here.)
     linear_solver_from_engine_factory = False
 
     # Verbosity levels accepted by :meth:`run` (and other ``verbose`` switches).
@@ -228,9 +148,14 @@ class DartsModel:
         # bound to this model in init(). Its input spec is DartsModel
         # .nonlinear_solver.spec (retrievable for tracing/serialization).
         self.nonlinear_solver = None
-        self._data_ts = (
-            None  # lazy timestep-control structure, see the data_ts property
-        )
+
+        # Timestep-control structure (see darts.timestep_control.DataTS): a plain
+        # settings holder, unlike the two solvers above it has no bind/build step,
+        # so it's just a regular member -- constructed here with n_vars=0 and
+        # resized to the physics' actual n_vars by _apply_nonlinear() during
+        # init() (physics doesn't exist yet at this point). Read/write directly,
+        # e.g. self.data_ts.dt_first = ..., self.data_ts.runtime = ....
+        self.data_ts = DataTS()
 
         self.time = []
         self.n_newton_iters = []
@@ -830,32 +755,6 @@ class DartsModel:
         self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
         self.op_num[self.reservoir.mesh.n_res_blocks :] = len(self.op_list) - 1
 
-    @property
-    def data_ts(self):
-        """Timestep-control (and transitional linear-solver) structure, see
-        :class:`DataTS`. Created lazily so it can be read/written both before and
-        after ``init()``. The nonlinear-solver settings live on
-        ``self.nonlinear_solver.spec``, not here."""
-        if self._data_ts is None:
-            n_vars = self.physics.n_vars if getattr(self, "physics", None) else 0
-            self._data_ts = DataTS(n_vars)
-        return self._data_ts
-
-    @data_ts.setter
-    def data_ts(self, value):
-        self._data_ts = value
-
-    @property
-    def runtime(self):
-        """Total simulation time in days, read by :meth:`run` when ``days`` is not
-        given. Single-sourced on ``data_ts.runtime`` — reading it before any
-        assignment returns the default (1000.0) instead of raising ``AttributeError``."""
-        return self.data_ts.runtime
-
-    @runtime.setter
-    def runtime(self, value):
-        self.data_ts.runtime = value
-
     def print_config(self):
         """Print the effective solver configuration in one place — timestepping
         (``data_ts``) + nonlinear (``nonlinear_solver.spec``) + linear
@@ -880,16 +779,14 @@ class DartsModel:
 
     def _apply_nonlinear(self):
         """Bind the nonlinear solver to this model and make sure ``data_ts``
-        exists. Called from init()."""
+        is sized to the physics. Called from init()."""
         self.set_solver()
-        if self._data_ts is None:
-            self.data_ts = DataTS(self.physics.n_vars)
-        # the structure may have been created pre-init with n_vars=0: size eta now
-        if len(self._data_ts.eta) < self.physics.n_vars:
-            self._data_ts.eta = 1e20 * np.ones(self.physics.n_vars)
+        # data_ts may have been constructed pre-init with n_vars=0: size eta now
+        if len(self.data_ts.eta) < self.physics.n_vars:
+            self.data_ts.eta = 1e20 * np.ones(self.physics.n_vars)
         # fail loudly on an obviously-broken timestepping config, matching the
         # per-timestep spec.validate() the Newton loop already does
-        self._data_ts.validate()
+        self.data_ts.validate()
         # bind the (possibly detached) solver to this model
         self.nonlinear_solver.bind(self)
 
@@ -945,7 +842,7 @@ class DartsModel:
             "self.output does not exist, please call m.set_output() after m.init()"
         )
 
-        days = days if days is not None else self.runtime
+        days = days if days is not None else self.data_ts.runtime
         assert days > 0, "Time must be a positive value!"
 
         data_ts = self.data_ts

@@ -18,7 +18,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
         runtime = days
     else:
-        runtime = m.runtime
+        runtime = m.data_ts.runtime
 
     mult_dt = m.data_ts.dt_mult
     max_dt = m.data_ts.dt_max

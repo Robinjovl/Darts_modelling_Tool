@@ -33,7 +33,7 @@ class Model(THMCModel):
         # sim_params.linear_type. FS-CPR is a PRECONDITIONER (single application),
         # not an outer Krylov loop -- wrap it in GMRES to mirror the proprietary
         # path (bos_gmres + bos_fs_cpr).
-        from darts.models.darts_model import DataTS
+        from darts.timestep_control import DataTS
         from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         if not hasattr(self, 'data_ts') or self.data_ts is None:

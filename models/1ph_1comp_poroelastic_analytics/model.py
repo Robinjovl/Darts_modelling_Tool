@@ -285,7 +285,7 @@ class Model(THMCModel):
         #   from darts.linear_solvers import PETScSolverSpec, PardisoSolverSpec
         #   self.linear_solver.spec = PETScSolverSpec(variant="fs")
         #   self.linear_solver.spec = PardisoSolverSpec()
-        from darts.models.darts_model import DataTS
+        from darts.timestep_control import DataTS
         self.idata.sim.DataTS = DataTS(n_vars=0)
 
         self.idata.obl.zero = 1e-9

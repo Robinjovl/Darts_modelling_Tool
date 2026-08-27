@@ -156,7 +156,7 @@ class Model(CICDModel):
 
         # Time-stepping / Newton / linear-solver config (see DartsModel.set_solver,
         # called from reset()).
-        self.runtime = 1
+        self.data_ts.runtime = 1
         # default timestep control thresholds (overridable by callers)
         self.ni_dt_increase_cutoff = 5
         self.ni_dt_decrease_cutoff = 8
@@ -822,7 +822,7 @@ class Model(CICDModel):
         """
         verbose = self.verbose if verbose is None else verbose
         assert hasattr(self, 'output'), "self.output does not exist, please call m.set_output() after m.init()"
-        days = days if days is not None else self.runtime
+        days = days if days is not None else self.data_ts.runtime
         data_ts = self.data_ts
 
         self.output.save_well_after_run = save_well_data_after_run
