@@ -199,9 +199,6 @@ class NewtonSolver(NonlinearSolver):
             # apply RHS flux
             model.apply_rhs_flux(dt, t)
 
-            if model.has_dfm_well:
-                model.apply_dfm_well_lateral_heat_flux(dt, t)
-
             # The device RHS is authoritative after assembly; re-upload only when a
             # host-side flux modification actually touched the host mirror (!280 --
             # an unconditional copy costs a device transfer every Newton iteration).

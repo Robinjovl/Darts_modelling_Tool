@@ -18,7 +18,6 @@ from darts.models.legacy_config import LegacyConfigShims
 from darts.models.output import Output
 from darts.models.solver_binding import LinearSolverBinding
 from darts.nonlinear_solvers import ChopSpec, NewtonSolver, Norm, OBLBoundsSpec
-from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
 # set_solver() (the user-facing override hook kept on this module, below) constructs
@@ -1164,70 +1163,6 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
                 w.phases_vels = value_vector(well_phase_v)
                 w.phases_vels_ders = value_vector(well_phase_v_d)
         self.timer.node["simulation"].node["dfm_well_velocity_calculation"].stop()
-
-    def apply_dfm_well_lateral_heat_flux(self, dt, t):
-        """
-        Add the lateral (well-to-formation) heat exchange of DFM wells to the RHS
-
-        For every DFM well carrying a ``lateral_heat_rate_eval``, evaluate the
-        heat rate from the current segment temperatures and subtract its
-        contribution over the timestep from the energy equations of the well
-        segments. Segment temperatures come straight from the state for a PT
-        formulation, or from the property container for a PH one.
-
-        :param dt: Time step size [day]
-        :type dt: float
-        :param t: Simulation time [day]
-        :type t: float
-        """
-        for well in self.reservoir.wells:
-            if (
-                well.ms_type == ms_well.MS_Type.DFM
-                and self.wells[well.name].lateral_heat_rate_eval is not None
-            ):
-                # Get temperatures of segments
-                if self.physics.state_spec == self.physics.StateSpecification.PT:
-                    T_segments = self.physics.engine.X[
-                        well.well_head_idx * self.physics.n_vars
-                        + (self.physics.n_vars - 1) : (
-                            well.well_head_idx + well.num_segments
-                        )
-                        * self.physics.n_vars
-                        + (self.physics.n_vars - 1) : self.physics.n_vars
-                    ]
-                elif self.physics.state_spec == self.physics.StateSpecification.PH:
-                    T_segments = np.zeros(well.num_segments)
-                    for i in range(well.num_segments):
-                        state = self.physics.engine.X[
-                            (well.well_head_idx + i) * self.physics.n_vars : (
-                                well.well_head_idx + i + 1
-                            )
-                            * self.physics.n_vars
-                        ]
-                        self.physics.property_containers[0].evaluate(state)
-                        T_segments[i] = self.physics.property_containers[0].temperature
-
-                # Evaluate lateral heat rates and add them to the rhs
-                if isinstance(
-                    self.wells[well.name].lateral_heat_rate_eval,
-                    SemiAnalyticalWellLateralHeatTransfer,
-                ):
-                    well_lateral_heat_rate = self.wells[
-                        well.name
-                    ].lateral_heat_rate_eval.evaluate(T_segments, t + dt)
-                    rhs = np.array(self.physics.engine.RHS, copy=False)
-                    rhs[
-                        well.well_head_idx * self.physics.n_vars
-                        + (self.physics.n_vars - 1) : (
-                            well.well_head_idx + well.num_segments
-                        )
-                        * self.physics.n_vars
-                        + (self.physics.n_vars - 1) : self.physics.n_vars
-                    ] -= well_lateral_heat_rate * dt
-                else:
-                    raise TypeError(
-                        f"The provided lateral heat rate evaluator for the well {well.name} is not recognized!"
-                    )
 
     def do_after_step(self):
         """
