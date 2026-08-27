@@ -1,11 +1,11 @@
 from dartsflash.mixtures import IAPWS
 
 from darts.physics.base.physics import (
-    HistoryField,
     Iterable,
     PhysicsBase,
     timer_node,
 )
+from darts.physics.base.history import HistoryField
 from darts.physics.eos_physics import _EXPECTED_FLASH_TYPES, EoSPhysics
 
 

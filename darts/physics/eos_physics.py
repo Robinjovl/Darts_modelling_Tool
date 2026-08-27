@@ -1,11 +1,11 @@
 from dartsflash.mixtures import DARTSFlash, Mixture
 
 from darts.physics.base.physics import (
-    HistoryField,
     Iterable,
     PhysicsBase,
     timer_node,
 )
+from darts.physics.base.history import HistoryField
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy, EoSFugacity
 
 # Which DARTSFlash.FlashType(s) a given PhysicsBase.StateSpecification may be paired with.

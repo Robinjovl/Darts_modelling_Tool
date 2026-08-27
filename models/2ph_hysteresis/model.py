@@ -8,7 +8,8 @@ import numpy as np
 from darts.engines import value_vector
 from darts.models.darts_model import DartsModel
 from darts.nonlinear_solvers import NewtonSolver
-from darts.physics.base.physics import PhysicsBase, HistoryField
+from darts.physics.base.history import HistoryField
+from darts.physics.base.physics import PhysicsBase
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import ConstantK
@@ -16,7 +17,6 @@ from darts.physics.properties.hysteresis import (
     KilloughCapillaryPressureTable,
     KilloughRelPermTable,
 )
-from darts.physics.base.physics import PhysicsBase
 from darts.physics.base.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
 from dartsflash.components import CompData
