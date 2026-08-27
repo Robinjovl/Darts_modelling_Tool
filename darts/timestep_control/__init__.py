@@ -16,15 +16,16 @@ model's actual ``physics.n_vars`` by ``DartsModel._apply_nonlinear()`` during
 ``init()``. Tune it via ``self.data_ts.dt_first = ...`` etc., or replace it
 outright with ``self.data_ts = DataTS(...)`` in ``set_solver()``.
 
-``apply_legacy_ts_kwargs()`` is a one-deprecation-cycle helper used by
-``LinearSolver.set_sim_params()`` (the deprecated ``first_ts=``/``mult_ts=``/
-... entry point) to build and install a `DataTS` from legacy keyword
-arguments; new code should assign ``model.data_ts`` directly instead.
+``DataTS.set_sim_params()`` is the deprecated ``first_ts=``/``mult_ts=``/...
+legacy entry point (one deprecation cycle), reachable as
+``model.linear_solver.set_sim_params(...)`` (a thin backward-compatible
+delegator kept there since ~40 example models call it) or directly as
+``model.data_ts.set_sim_params(model, ...)``; new code should assign
+``model.data_ts`` fields directly instead.
 """
 
-from darts.timestep_control.data_ts import DataTS, apply_legacy_ts_kwargs
+from darts.timestep_control.data_ts import DataTS
 
 __all__ = [
     "DataTS",
-    "apply_legacy_ts_kwargs",
 ]

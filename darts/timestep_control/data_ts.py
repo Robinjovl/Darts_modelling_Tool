@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 
 
@@ -81,24 +83,78 @@ class DataTS:
         for k in self._FIELDS:
             print("\t", k, "=", getattr(self, k))
 
+    def set_sim_params(
+        self,
+        model,
+        first_ts: float = None,
+        mult_ts: float = None,
+        min_ts: float = 1e-15,
+        max_ts: float = None,
+        runtime: float = 1000,
+        **legacy,
+    ):
+        """
+        Deprecated: set the timestep controls on this structure (installing it as
+        ``model.data_ts``) and, for one deprecation cycle, migrate removed
+        nonlinear/linear solver keyword arguments onto ``model``'s solvers.
 
-def apply_legacy_ts_kwargs(
-    model,
-    first_ts: float = None,
-    mult_ts: float = None,
-    min_ts: float = 1e-15,
-    max_ts: float = None,
-    runtime: float = 1000,
-):
-    """One-deprecation-cycle helper for ``LinearSolver.set_sim_params()``'s
-    timestep-only portion: build a fresh :class:`DataTS`, assign the
-    (possibly ``None``) legacy ``*_ts`` kwargs onto it, install it as
-    ``model.data_ts``. Returns the new ``DataTS``."""
-    ts = DataTS(model.physics.n_vars)
-    ts.dt_first = first_ts if first_ts is not None else ts.dt_first
-    ts.dt_min = min_ts if min_ts is not None else ts.dt_min
-    ts.dt_max = max_ts if max_ts is not None else ts.dt_max
-    ts.dt_mult = mult_ts if mult_ts is not None else ts.dt_mult
-    ts.runtime = runtime
-    model.data_ts = ts
-    return model.data_ts
+        The nonlinear solver parameters are NOT set here anymore — specify them
+        on ``model.nonlinear_solver`` (a :class:`darts.nonlinear_solvers.NewtonSolver`),
+        typically in a ``set_solver()`` override::
+
+            self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
+                                                 chop=ChopSpec(mode='local', factor=0.2))
+
+        For one deprecation cycle the removed nonlinear keyword arguments
+        (``tol_newton``, ``it_newton``, ``newton_type``, ``newton_params``,
+        ``line_search``, ``coupled_well_res_norm_method``) are still accepted:
+        they emit a :class:`DeprecationWarning` and are mapped onto
+        ``model.nonlinear_solver.spec``. Any other unexpected keyword still raises
+        :class:`TypeError`.
+
+        :param first_ts: First timestep
+        :type first_ts: float
+        :param mult_ts: Timestep multiplier
+        :type mult_ts: float
+        :param max_ts: Maximum timestep
+        :type max_ts: float
+        :param runtime: Total runtime in days, default is 1000
+        :type runtime: float
+        Linear-solver parameters are NOT set here either: the linear solver is
+        configured through ``model.linear_solver.spec`` / ``.spec.tolerance`` /
+        ``.max_iterations`` in :meth:`DartsModel.set_solver`. For one deprecation
+        cycle the removed linear keyword arguments (``tol_linear``, ``it_linear``)
+        are accepted on the same terms as the nonlinear ones above.
+
+        .. deprecated::
+            Set timestep controls on ``model.data_ts``, the nonlinear solver on
+            ``model.nonlinear_solver`` and the linear solver on
+            ``model.linear_solver.spec`` instead.
+        """
+        warnings.warn(
+            "set_sim_params() is deprecated; set timestep controls on "
+            "DartsModel.data_ts and specify DartsModel.nonlinear_solver in set_solver()",
+            DeprecationWarning,
+            stacklevel=3,  # blame the set_solver() override, not the LinearSolver delegator
+        )
+        # Solver settings are NOT set here -- they live on model.nonlinear_solver /
+        # model.linear_solver. One-cycle migration of legacy solver kwargs: apply
+        # them now if the solvers already exist, otherwise DEFER to set_solver(),
+        # which materializes the defaults. Deferring (rather than materializing
+        # here) keeps set_sim_params() from re-entering the overridable
+        # set_solver() hook -- models call set_sim_params() from their set_solver()
+        # override, so calling back would recurse infinitely.
+        if legacy:
+            if getattr(model, "nonlinear_solver", None) is not None:
+                model.linear_solver._migrate_legacy_solver_kwargs(legacy)
+            else:
+                model._pending_legacy_solver_kwargs = legacy
+
+        # Time stepping parameters. if None, the current value is kept.
+        self.dt_first = first_ts if first_ts is not None else self.dt_first
+        self.dt_min = min_ts if min_ts is not None else self.dt_min
+        self.dt_max = max_ts if max_ts is not None else self.dt_max
+        self.dt_mult = mult_ts if mult_ts is not None else self.dt_mult
+        self.runtime = runtime
+        model.data_ts = self
+        return self
