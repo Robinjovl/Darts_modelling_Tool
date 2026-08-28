@@ -47,7 +47,7 @@ using namespace opendarts::linear_solvers;
 #ifdef OPENDARTS_LINEAR_SOLVERS
 // Open-source GPU solver wrappers. aips has no open-source counterpart and
 // is intentionally not included here.
-#include "linsolv_bos_cpr_gpu.hpp"
+#include "linsolv_cpr_gpu.hpp"
 #include "linsolv_cusparse_ilu.hpp"
 #include "linsolv_cusolv.hpp"
 #include "linsolv_bicgstab.hpp"
@@ -55,7 +55,7 @@ using namespace opendarts::linear_solvers;
 #include "linsolv_amgx.hpp"
 #endif
 #else
-#include "linsolv_bos_cpr_gpu.h"
+#include "linsolv_cpr_gpu.h"
 #include "linsolv_aips.h"
 #include "linsolv_amgx.h"
 #include "linsolv_cusparse_ilu.h"
@@ -963,10 +963,10 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			if constexpr (N_VARS > 1)
 			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
 			linear_solver_type_str = "GPU_GMRES_CPR_AMG";
@@ -986,10 +986,10 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			if constexpr (N_VARS > 1)
 			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			int n_terms = 10;
 			bool print_radius = false;
@@ -1024,10 +1024,10 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			if constexpr (N_VARS > 1)
 			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
 			// set full system prec

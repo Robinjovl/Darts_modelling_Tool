@@ -159,7 +159,7 @@ if(CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_gmres_gpu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusparse_ilu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusolv.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_bos_cpr_gpu.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cpr_gpu.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_mcsgs.cu
   )
   set(OD_GPU_SOLVERS_HEADER_FILES
@@ -168,7 +168,7 @@ if(CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_gmres_gpu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cusparse_ilu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cusolv.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bos_cpr_gpu.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cpr_gpu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_mcsgs.hpp
   )
   # csr_matrix.cpp and the .cpp GPU wrappers must be compiled as CUDA.
@@ -252,7 +252,7 @@ set_source_files_properties(
 
 # CPR solvers start at block size 2 — the constrained-pressure-residual split is
 # undefined for a 1x1 block (no non-pressure sub-block to decouple).
-foreach(_od_solver linsolv_bos_cpr_gpu)
+foreach(_od_solver linsolv_cpr_gpu)
   od_emit_template_instantiations(
     CLASS ${_od_solver}
     MIN_N 2

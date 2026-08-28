@@ -14,8 +14,8 @@
 // *************************************************************************
 
 //--------------------------------------------------------------------------
-#ifndef OPENDARTS_LINEAR_SOLVERS_LINSOLV_BOS_CPR_GPU_HPP
-#define OPENDARTS_LINEAR_SOLVERS_LINSOLV_BOS_CPR_GPU_HPP
+#ifndef OPENDARTS_LINEAR_SOLVERS_LINSOLV_CPR_GPU_HPP
+#define OPENDARTS_LINEAR_SOLVERS_LINSOLV_CPR_GPU_HPP
 //--------------------------------------------------------------------------
 
 #ifdef WITH_GPU
@@ -40,20 +40,20 @@ namespace opendarts
         by a second injected preconditioner (full_system_preconditioner). The
         block matrix-vector product comes from the csr_matrix GPU device layer.
 
-        Ported from the proprietary darts-linear-solvers linsolv_bos_cpr_gpu.
+        Ported from the proprietary darts-linear-solvers linsolv_cpr_gpu.
         Note: the diagonal-first reordering path (p_solver_requires_diag_first)
         depends on csr_matrix::set_diag_first, which is not part of the
         open-source csr_matrix; that flag is therefore forced off with a
         warning and the non-diagonal-first kernel path is always used.
     */
     template <uint8_t n_block_size>
-    class linsolv_bos_cpr_gpu : public opendarts::linear_solvers::linsolv_iface_bos<n_block_size>,
+    class linsolv_cpr_gpu : public opendarts::linear_solvers::linsolv_iface_bos<n_block_size>,
                                 public opendarts::linear_solvers::linear_solver_base
     {
     public:
-      linsolv_bos_cpr_gpu();
+      linsolv_cpr_gpu();
 
-      ~linsolv_bos_cpr_gpu();
+      ~linsolv_cpr_gpu();
 
       // Keep the csr_matrix_base init()/setup() overloads visible: declaring
       // the csr_matrix<N>* overloads below otherwise hides them by name.
@@ -216,5 +216,5 @@ namespace opendarts
 #endif // WITH_GPU
 
 //--------------------------------------------------------------------------
-#endif // OPENDARTS_LINEAR_SOLVERS_LINSOLV_BOS_CPR_GPU_HPP
+#endif // OPENDARTS_LINEAR_SOLVERS_LINSOLV_CPR_GPU_HPP
 //--------------------------------------------------------------------------

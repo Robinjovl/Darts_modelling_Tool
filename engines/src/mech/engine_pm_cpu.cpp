@@ -163,10 +163,10 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	  case sim_params::GPU_GMRES_CPR_AMG:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
-		linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+		linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 		cpr->set_prec(new linsolv_bos_amg<1>);
 		linear_solvers.back()->set_prec(cpr);
 		break;
@@ -175,10 +175,10 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	  case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
-		linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+		linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 		int n_json = 0;
 
