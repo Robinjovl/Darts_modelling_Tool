@@ -12,9 +12,9 @@ timestepping analogue of :mod:`darts.linear_solvers` (!280) and
 
 ``DartsModel.ts_control`` is a plain member, constructed with ``n_vars=0`` in
 ``DartsModel.__init__`` (before ``physics`` exists) and resized to the
-model's actual ``physics.n_vars`` by ``DartsModel._apply_nonlinear()`` during
-``init()``. Tune it via ``self.ts_control.dt_first = ...`` etc., or replace it
-outright with ``self.ts_control = TimestepControl(...)`` in ``set_solver()``.
+model's actual ``physics.n_vars`` by ``DartsModel.init()``. Tune it via
+``self.ts_control.dt_first = ...`` etc., or replace it outright with
+``self.ts_control = TimestepControl(...)`` in ``set_solver()``.
 
 ``TimestepControl.set_sim_params()`` is the deprecated ``first_ts=``/``mult_ts=``/...
 legacy entry point (one deprecation cycle), reachable as

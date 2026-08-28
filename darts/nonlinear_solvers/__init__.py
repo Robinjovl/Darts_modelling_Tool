@@ -30,7 +30,7 @@ Design (specified in ``set_solver()``, the same hook as the linear solver of MR2
           self.nonlinear_solver.spec.chop.factor = 0.2
 
 - The solver instance (created in ``set_solver()``)
-  is bound to the model by ``DartsModel._apply_nonlinear()`` during ``init()``. It
+  is bound to the model by ``DartsModel.init()`` (and re-bound by ``reset()``). It
   owns ``run_timestep()`` — the nonlinear loop driving the C++ per-iteration
   kernels (assembly, linear solve, dX corrections, residual norms). Every
   iteration is staged into ``pre_iteration`` (user routines), ``update`` (the

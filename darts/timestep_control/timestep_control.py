@@ -151,7 +151,14 @@ class TimestepControl:
         # set_solver() hook -- models call set_sim_params() from their set_solver()
         # override, so calling back would recurse infinitely.
         if legacy:
-            if getattr(model, "nonlinear_solver", None) is not None:
+            # BOTH solvers must exist: the migration reads model.nonlinear_solver.spec
+            # and dispatches through model.linear_solver. Reached with linear_solver
+            # still None via the direct model.ts_control.set_sim_params(model, ...)
+            # entry point, which does not go through the LinearSolver delegator.
+            if (
+                getattr(model, "nonlinear_solver", None) is not None
+                and getattr(model, "linear_solver", None) is not None
+            ):
                 model.linear_solver._migrate_legacy_solver_kwargs(legacy)
             else:
                 model._pending_legacy_solver_kwargs = legacy

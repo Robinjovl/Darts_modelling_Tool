@@ -268,16 +268,17 @@ class LinearSolver:
         :class:`LinearSolverSpec` (``self.spec``, or the platform default for models
         that only configure time-stepping) is built and injected, so ``engine.init``
         adopts it and bypasses its own factory. No-op in proprietary / GPU builds and
-        when no ``ts_control`` exists -- there the engine factory / ``params.linear_type``
+        for models that set ``linear_solver_from_engine_factory`` without choosing a
+        spec (mechanics / THMC) -- there the engine factory / ``params.linear_type``
         selects the solver.
         """
         model = self.model
         engine = getattr(model.physics, "engine", None)
         if engine is None:
             return
-        # Bind (possibly a no-op re-bind) -- mirror of nonlinear_solver.bind(self) in
-        # !327's _apply_nonlinear(). Binding resolves the platform-default spec, so it
-        # must precede the sim_params mirroring below.
+        # Bind (possibly a no-op re-bind) -- mirror of the nonlinear_solver.bind(self)
+        # that DartsModel.init()/reset() perform. Binding resolves the platform-default
+        # spec, so it must precede the sim_params mirroring below.
         self.bind(model)
         # self owns the linear-solver settings: mirror them into sim_params, which is
         # what engine.init() re-applies to the solver it (re-)inits.
@@ -330,10 +331,10 @@ class LinearSolver:
         if not isinstance(spec, LinearSolverSpec):
             # No solver assigned at all (self.spec is None -- reset() ran without
             # set_solver(), e.g. a THMC subclass override). Apply the platform default
-            # when this model uses the registry path, i.e. it has a ts_control -- matching
-            # the former _apply_linear_solver_spec, which defaulted to FGMRES + CPR/AMG.
-            # Mechanics / THMC models without ts_control leave the engine factory / ls_params
-            # in charge.
+            # when this model uses the registry path -- matching the former
+            # _apply_linear_solver_spec, which defaulted to FGMRES + CPR/AMG. Mechanics /
+            # THMC models (linear_solver_from_engine_factory) leave the engine factory /
+            # ls_params in charge instead.
             if getattr(model, "linear_solver_from_engine_factory", False):
                 return
             # The model's set_solver() override never materialized one: apply the
