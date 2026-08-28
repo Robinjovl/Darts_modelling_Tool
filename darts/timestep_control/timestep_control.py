@@ -21,6 +21,9 @@ class TimestepControl:
     serializable and inspectable (see :meth:`DartsModel.print_config`).
     """
 
+    #: per-DOF ``eta`` value meaning "this variable does not restrict the timestep"
+    ETA_UNCONSTRAINED = 1e20
+
     _FIELDS = (
         "eta",
         "dt_first",
@@ -33,7 +36,7 @@ class TimestepControl:
     def __init__(self, n_vars=0):
         # timestep control (owned by this structure)
         self.eta = (
-            1e20 * np.ones(n_vars)
+            self.ETA_UNCONSTRAINED * np.ones(n_vars)
         )  # controls the timestep by the variable change from the previous newton iteration
         # dX = Xn - X. Eta has a size of number of DOFs per cell. Set to a large value by default, so doesn't affect the timestep choice
         self.dt_first = 1.0  # initial timestep [days]
@@ -56,6 +59,26 @@ class TimestepControl:
         # NewtonSolver.run_timestep(); read back for post-run plotting/diagnostics.
         self.time = []  # accepted timestep end times [days]
         self.time_step_size = []  # accepted timestep sizes [days]
+
+    def resize(self, n_vars: int):
+        """Grow :attr:`eta` to ``n_vars`` entries; never shrinks.
+
+        ``__init__`` sizes ``eta`` from its ``n_vars`` argument, but a structure
+        built before the physics exists (``DartsModel.__init__`` constructs one
+        with ``n_vars=0``) only learns the real DOF count later. This is that
+        deferred sizing: ``DartsModel.init()`` calls it once ``physics.n_vars`` is
+        known, before and after ``set_solver()``.
+
+        Entries already set are carried over rather than discarded, so a
+        ``ts_control.eta[i] = ...`` written before the structure was sized
+        survives; the new tail defaults to :attr:`ETA_UNCONSTRAINED`. Idempotent.
+        """
+        eta = np.asarray(self.eta, dtype=float)
+        if eta.size >= n_vars:
+            return
+        grown = self.ETA_UNCONSTRAINED * np.ones(n_vars)
+        grown[: eta.size] = eta
+        self.eta = grown
 
     def validate(self):
         """Raise ``ValueError`` on an obviously-invalid timestepping configuration

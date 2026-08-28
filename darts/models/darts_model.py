@@ -311,11 +311,11 @@ class DartsModel:
         # yet), so eta is still empty. Size it BEFORE set_solver(): overrides tune
         # individual degrees of freedom (self.ts_control.eta[i] = ...), which needs
         # the array to have its final length already.
-        self._size_ts_control_eta()
+        self.ts_control.resize(self.physics.n_vars)
         self.set_solver()
         # ...and again afterwards, in case set_solver() replaced ts_control outright
         # (the mechanics models install one from their idata).
-        self._size_ts_control_eta()
+        self.ts_control.resize(self.physics.n_vars)
         # fail loudly on an obviously-broken timestepping config, matching the
         # per-timestep spec.validate() the Newton loop already does
         self.ts_control.validate()
@@ -339,24 +339,6 @@ class DartsModel:
         self.linear_solver._warn_if_direct_solver_oversized()
 
         init_timer.stop()
-
-    def _size_ts_control_eta(self):
-        """Grow ``ts_control.eta`` to ``physics.n_vars`` if it is still shorter.
-
-        ``TimestepControl`` is constructed in :meth:`__init__`, before ``physics``
-        exists, so its per-DOF ``eta`` starts empty and is sized here once
-        ``physics.n_vars`` is known. Entries already set are carried over rather
-        than discarded, so a pre-``init()`` ``ts_control.eta[i] = ...`` survives;
-        the new tail defaults to 1e20 (no timestep restriction), matching
-        ``TimestepControl.__init__``. Idempotent -- a no-op once sized.
-        """
-        n_vars = self.physics.n_vars
-        eta = np.asarray(self.ts_control.eta, dtype=float)
-        if eta.size >= n_vars:
-            return
-        grown = 1e20 * np.ones(n_vars)
-        grown[: eta.size] = eta
-        self.ts_control.eta = grown
 
     def reset(self):
         """
