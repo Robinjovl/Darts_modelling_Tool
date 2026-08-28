@@ -167,6 +167,12 @@ namespace opendarts
       {
         if (rp[i + 1] < rp[i])
           return fail("row_ptr is not non-decreasing at row " + std::to_string(i));
+        // Bound the row extent BEFORE dereferencing col_ind with it: the
+        // rp[n_block_rows] == nnzb check below is only reached after this loop,
+        // so without this test an overrunning row_ptr over-reads col_ind
+        // (a heap over-read) instead of producing the diagnostic.
+        if (rp[i + 1] > nnzb_)
+          return fail("row_ptr overruns the block count at row " + std::to_string(i));
 
         for (index_t jb = rp[i]; jb < rp[i + 1]; ++jb)
         {
@@ -176,6 +182,8 @@ namespace opendarts
 
         if (di[i] < 0)
           return fail("no diagonal block in row " + std::to_string(i));
+        if (di[i] >= nnzb_)
+          return fail("diag_ind out of range in row " + std::to_string(i));
         if (ci[di[i]] != i)
           return fail("diag_ind does not point at the diagonal block in row "
             + std::to_string(i));

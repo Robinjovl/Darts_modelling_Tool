@@ -1166,34 +1166,38 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
 
     def do_after_step(self):
         """
-        Hook for per-report-step actions (e.g. reporting, saving); override in a
-        model and call it from the script's reporting loop.
+        Hook for per-report-step actions (e.g. reporting, saving); can be
+        overridden by a user to be executed in run_simulation().
         """
         pass
 
     def run_simulation(self):
-        """Removed. Drive the reporting loop from the model script.
-
-        This was an idata-specific loop (``for dt in idata.sim.time_steps:``
-        calling :meth:`set_well_controls_idata`, :meth:`run` and
-        :meth:`do_after_step`), not generic model API. Write it explicitly in the
-        script instead::
-
-            time = 0.0
-            for dt in m.idata.sim.time_steps:
-                m.set_well_controls_idata(time=time)
-                if m.run(dt) != 0:
-                    break
-                m.do_after_step()
-                time += dt
-
-        .. deprecated::
-            Scheduled for deletion after one deprecation cycle.
         """
-        raise NotImplementedError(
-            "DartsModel.run_simulation() was removed: drive the reporting loop "
-            "from the model script (see the docstring for the equivalent code)."
-        )
+        Run the reporting loop over idata.sim.time_steps: for every report
+        step, apply the idata well controls (well control switch can be defined in idata),
+        and invoke the do_after_step hook.
+
+        :return: 0 on success, 1 if :meth:`run` failed on some step
+        :rtype: int
+        """
+        # simulation time at the START of the current report step, [days]
+        time = 0.0
+        # idata.sim.time_steps holds report-step LENGTHS, not absolute times
+        for ith_step, dt in enumerate(self.idata.sim.time_steps):
+            # apply the well controls scheduled for this point in time
+            self.set_well_controls_idata(time=time)
+
+            # advance by one report step -- run() drives its own adaptive
+            # timestepping inside dt and returns non-zero if it could not finish
+            ret = self.run(dt)
+            if ret != 0:
+                print("run() failed for the step=", ith_step, "dt=", dt)
+                return 1
+
+            # per-report-step user hook (reporting, saving, ...)
+            self.do_after_step()
+            time += dt
+        return 0
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         """

@@ -1,3 +1,4 @@
+from darts.input.black_oil import BlackOilFluidProps
 from darts.input.input_data import InputData
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
@@ -6,7 +7,7 @@ from darts.engines import ms_well
 from darts.nonlinear_solvers import NewtonSolver
 
 from darts.physics.properties.black_oil import *
-from darts.physics.blackoil import BlackOil, BlackOilFluidProps
+from darts.physics.black_oil import BlackOil
 
 # Model class creation here!
 class Model(DartsModel):

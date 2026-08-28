@@ -2,9 +2,10 @@ import numpy as np
 import pandas as pd
 from scipy import interpolate
 
+from darts.input.dead_oil import DeadOilFluidProps
 from darts.input.input_data import InputData
 from darts.engines import value_vector
-from darts.physics.deadoil import DeadOil, DeadOil2PFluidProps
+from darts.physics.dead_oil import DeadOil
 from darts.engines import well_control_iface
 
 from model_cpg import Model_CPG, fmt
@@ -121,7 +122,7 @@ class ModelDeadOil(Model_CPG):
         self.idata.geom.burden_layers = 0
 
         # this sets default properties
-        self.idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
+        self.idata.fluid = DeadOilFluidProps(n_phases=2) #if twophase else DeadOilFluidProps(n_phases=3)
 
         # example - how to change the properties
         # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)

@@ -884,6 +884,9 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	// Check if external solver was provided (from Python) - if so, use it instead of creating new one
 	if (!linear_solver && !linear_solver_external)
 	{
+		// Everything the factory allocates below is engine-owned and deleted in
+		// ~engine_base; re-establish the flag that set_linear_solver() clears.
+		linear_solver_owned = true;
 #ifdef OPENDARTS_LINEAR_SOLVERS
 		// Open-source build: the enum-driven factory below builds the
 		// proprietary bos solvers, which are not available here. The linear

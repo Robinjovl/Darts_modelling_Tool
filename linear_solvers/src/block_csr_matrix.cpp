@@ -270,6 +270,12 @@ namespace opendarts
 
     int block_csr_matrix::copy_struct_to_device()
     {
+      // Explicit copy request: the caller has just filled or edited the host
+      // structure through get_rows_ptr()/get_cols_ind()/get_diag_ind(), whose
+      // const_cast route cannot set the dual_array dirty flag. Mark it dirty
+      // here so the upload is unconditional rather than relying on the
+      // first-time !device_populated_ path.
+      structure_->mark_structure_modified();
       structure_->sync_structure_to_device();
       return 0;
     }

@@ -502,27 +502,6 @@ class PropertyContainer:
 
         return
 
-    def evaluate_at_cond(self, state):
-        # Composition vector and pressure from state:
-        pressure, state_spec_2, zc = self.get_state(state)
-
-        ph = self.run_flash(
-            pressure, state_spec_2, zc, evaluate_PT=self.evaluate_PT_bool
-        )
-
-        for j in ph:
-            M = np.sum(self.Mw * self.x[j][:])  # molar weight of mixture
-            self.dens_m[j] = (
-                self.density_ev[self.phases_name[j]].evaluate(
-                    self.pressure, self.temperature, self.x[j][:]
-                )
-                / M
-            )
-
-        self.compute_saturation(ph)
-
-        return self.sat, self.dens_m
-
     def set_output_props(self, props: dict):
         """
         :param props: Dictionary of lambdas with output properties to be evaluated

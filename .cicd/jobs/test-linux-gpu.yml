@@ -23,7 +23,7 @@
     after_script:
         - &archive_logic
             - cd models
-            - ./archive_pkl.sh $ODLS $TEST_GPU
+            - ./archive_pkl.sh "$ODLS" "$TEST_GPU"
             - cd ..
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"

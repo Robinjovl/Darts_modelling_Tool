@@ -4,7 +4,7 @@ from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
 from darts.physics.base.physics import PhysicsBase
-from darts.physics.base.property_container import PropertyContainer
+from darts.physics.dead_oil import DeadOilProperties
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -14,6 +14,7 @@ from reservoir import UnstructReservoir
 
 from darts.models.opt.opt_module_settings import OptModuleSettings
 from darts.engines import operator_set_evaluator_iface, index_vector
+
 
 class Model(DartsModel, OptModuleSettings):
     def __init__(self, discr_type, mesh_file, T=2000, report_step=100.0, customize_new_operator=False):
@@ -115,7 +116,8 @@ class Model(DartsModel, OptModuleSettings):
         self.cell_property = ['pressure'] + ['water']
         self.cell_property += ['temperature']
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon)
+        property_container = DeadOilProperties(phases_name=phases, components_name=components,
+                                               Mw=np.ones(len(phases)), eps_z=epsilon, temperature=None)
 
         # Define property evaluators based on custom properties
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
@@ -277,39 +279,6 @@ class Model(DartsModel, OptModuleSettings):
 
             n_fm = len(cell_m_one_way) - len(self.reservoir.wells)  # minus the trans between well head and well body
             return n_fm
-
-
-class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, eps_z=1e-11):
-        # Call base class constructor
-        self.nph = len(phases_name)
-        Mw = np.ones(self.nph)
-        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=None)
-
-    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
-        # evaluate_PT argument is required in PropertyContainer but is not needed in this model
-
-        self.temperature = temperature
-        self.nu = zc
-        for i in range(self.nph):
-            self.x[i, i] = 1
-        ph = np.array([0, 1], dtype=np.intp)
-        return ph
-
-    def evaluate_at_cond(self, pressure, zc):
-
-        self.sat[:] = 0
-
-        ph = [0, 1]
-        for j in ph:
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
-
-        self.dens_m = [1025, 0.77]  # to match DO based on PVT
-
-        self.nu = zc
-        self.compute_saturation(ph)
-
-        return self.sat, self.dens_m
 
 
 class geothermal_customized_etor(operator_set_evaluator_iface):
