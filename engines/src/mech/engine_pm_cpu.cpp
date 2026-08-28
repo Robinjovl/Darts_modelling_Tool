@@ -47,6 +47,9 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	active_linear_solver_id = 0;
 
 	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
+	// publish the assembled Jacobian to Python (as engine_super_elastic_cpu does),
+	// so the Python-resident solvers (PETSc / Pardiso) can read the block-CSR arrays
+	this->expose_jacobian();
 	return 0;
 }
 
