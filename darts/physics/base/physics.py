@@ -295,44 +295,6 @@ class PhysicsBase:
         return bool(self.history.fields)
 
     @property
-    def n_history(self) -> int:
-        """
-        Return the number of configured OBL history variables (``len(history_fields)``).
-
-        Zero by default -- see :attr:`has_history`.
-
-        :returns: Count of auxiliary OBL axes that enter interpolation but not the Newton system
-        :rtype: int
-        """
-        return self.history.n_fields
-
-    @property
-    def history_fields(self) -> list[HistoryField]:
-        """
-        Return configured history descriptors in OBL storage order.
-
-        Empty by default -- see :attr:`has_history`.
-
-        :returns: Ordered history descriptors.
-        """
-        return self.history.fields
-
-    @history_fields.setter
-    def history_fields(self, fields: Iterable[HistoryField] | None) -> None:
-        """
-        Reconfigure the history descriptors, replacing the whole support object.
-
-        Kept assignable because ``history_fields`` was a plain attribute before the
-        history logic moved to :mod:`darts.physics.base.history_extension`. Rebinding
-        (rather than mutating ``self.history.fields``) also works on a ``PhysicsBase``
-        built via ``__new__``, where ``self.history`` does not exist yet.
-
-        :param fields: Ordered :class:`HistoryField` descriptors, or None to disable
-        :returns: None
-        """
-        self.history = HistoryStateSupport(fields)
-
-    @property
     def n_state(self) -> int:
         """
         Return the total OBL interpolation-state size per cell = ``n_vars + n_history``.
@@ -340,7 +302,7 @@ class PhysicsBase:
         :returns: Number of axes the reservoir / well interpolators consume per cell
         :rtype: int
         """
-        return self.n_vars + self.n_history
+        return self.n_vars + self.history.n_fields
 
     def get_interpolator_state_labels(self) -> list:
         """
@@ -354,79 +316,6 @@ class PhysicsBase:
         :rtype: list[str]
         """
         return list(self.vars) + self.history.labels
-
-    def get_history_default(self, label: str) -> float:
-        """
-        Return the configured initial / fallback value for a history field.
-
-        :param label: Label of the history field, must match one declared in ``history_fields``
-        :type label: str
-        :returns: The ``default`` attribute of the matching :class:`HistoryField`
-        :rtype: float
-        :raises KeyError: If no history field has the requested label
-        """
-        return self.history.default(label)
-
-    def get_engine_history_array(self, label: str, n_blocks: int = None) -> np.ndarray:
-        """
-        Return a per-cell copy of ``engine.Xhistory`` restricted to one history axis.
-
-        The engine stores ``Xhistory`` as a flat ``[(n_blocks + n_bounds) * n_history]`` buffer in
-        cell-major order (all ``n_history`` values for cell 0, then cell 1, ...). This helper
-        pulls out just the reservoir blocks for one label and returns a copy (safe to mutate).
-
-        :param label: Label of the history field to extract, must match one in ``history_fields``
-        :type label: str
-        :param n_blocks: Number of reservoir blocks to read. When ``None``, inferred as
-                         ``Xhistory.size // n_history`` (i.e. all cells including boundaries)
-        :type n_blocks: int, optional
-        :returns: One-dimensional array of shape ``(n_blocks,)`` with the requested axis values
-        :rtype: numpy.ndarray
-        :raises RuntimeError: If no history fields are configured on this physics
-        :raises KeyError: If no history field has the requested label
-        """
-        return self.history.get_engine_array(self.engine, label, n_blocks)
-
-    def get_engine_interpolator_state(self, n_blocks: int = None) -> np.ndarray:
-        """
-        Return the full OBL state ``[X | Xhistory]`` flattened in cell-major order.
-
-        Used by :mod:`darts.output` to dump operator inputs for post-processing. The layout is
-        interleaved so callers that stride by ``n_state`` pick out one state variable per cell:
-        ``result[j::n_state]`` is the ``j``-th state axis for every reservoir cell.
-
-        :param n_blocks: Number of reservoir blocks. When ``None``, inferred from
-                         ``engine.X.size // n_vars``
-        :type n_blocks: int, optional
-        :returns: One-dimensional array of length ``n_blocks * n_state`` with primary vars and
-                  history values interleaved per cell
-        :rtype: numpy.ndarray
-        """
-        return self.history.get_interpolator_state(self.engine, self.n_vars, n_blocks)
-
-    def set_engine_history_array(
-        self, label: str, values, n_blocks: int = None
-    ) -> None:
-        """
-        Overwrite one axis of ``engine.Xhistory`` with a per-cell scalar or array.
-
-        The selected history column is updated through a reshaped writable NumPy view of
-        ``engine.Xhistory``.
-
-        :param label: Label of the history field to write, must match one in ``history_fields``
-        :type label: str
-        :param values: Value(s) for the single history axis identified by ``label``: either a
-                       scalar applied to every cell, or a one-dimensional array-like of length
-                       ``n_blocks``
-        :type values: float or array-like
-        :param n_blocks: Number of reservoir blocks to write. When ``None``, inferred as
-                         ``Xhistory.size // n_history`` (i.e. all cells including boundaries)
-        :type n_blocks: int, optional
-        :returns: None
-        :raises RuntimeError: If no history fields are configured on this physics
-        :raises KeyError: If no history field has the requested label
-        """
-        self.history.set_engine_array(self.engine, label, values, n_blocks)
 
     def init_physics(
         self,

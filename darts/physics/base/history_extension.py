@@ -93,7 +93,25 @@ class HistoryStateSupport:
 
         :param fields: Ordered descriptors for auxiliary OBL state axes.
         """
-        self.fields: list[HistoryField] = list(fields or [])
+        self.fields = fields
+
+    @property
+    def fields(self) -> list[HistoryField]:
+        """
+        Return configured history descriptors in OBL storage order.
+
+        :returns: Ordered history descriptors.
+        """
+        return self._fields
+
+    @fields.setter
+    def fields(self, fields: Iterable[HistoryField] | None) -> None:
+        """
+        Reconfigure the history descriptors.
+
+        :param fields: Ordered descriptors for auxiliary OBL state axes, or None to disable.
+        """
+        self._fields: list[HistoryField] = list(fields or [])
 
     @property
     def n_fields(self) -> int:
@@ -176,7 +194,7 @@ class HistoryStateSupport:
         if hasattr(property_container, "history_labels"):
             property_container.history_labels = self.labels
 
-    def get_engine_array(
+    def get_engine_history_array(
         self, engine: engine_base, label: str, n_blocks: int | None = None
     ) -> np.ndarray:
         """
@@ -227,7 +245,7 @@ class HistoryStateSupport:
         ]
         return np.concatenate([primary, history], axis=1).flatten()
 
-    def set_engine_array(
+    def set_engine_history_array(
         self,
         engine: engine_base,
         label: str,

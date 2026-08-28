@@ -640,8 +640,9 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
             return
 
         n_blocks = self.reservoir.mesh.n_blocks
-        for field in self.physics.history_fields:
-            self.physics.set_engine_history_array(
+        for field in self.physics.history.fields:
+            self.physics.history.set_engine_history_array(
+                self.physics.engine,
                 field.label,
                 field.default,
                 n_blocks=n_blocks,
@@ -663,8 +664,9 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
 
         The base implementation is a no-op. Subclasses backing a hysteretic physics should
         override this to read the current Newton state, compute the updated history value
-        per cell, and write it back via :meth:`PhysicsBase.set_engine_history_array` (or by
-        mutating the underlying ``engine.Xhistory`` vector directly).
+        per cell, and write it back via :meth:`HistoryStateSupport.set_engine_history_array`
+        (``self.physics.history.set_engine_history_array(...)``, or by mutating the
+        underlying ``engine.Xhistory`` vector directly).
 
         :returns: None
         """
@@ -694,12 +696,12 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         )
 
         # Split columns: primary Newton unknowns (self.physics.vars) go through
-        # set_initial_conditions_from_array; OBL history columns (self.physics.history_fields)
-        # go through set_engine_history_array so sg_max and friends survive restart.
-        # history_fields is empty unless the physics opted into history state
+        # set_initial_conditions_from_array; OBL history columns (self.physics.history.fields)
+        # go through history.set_engine_history_array so sg_max and friends survive restart.
+        # history.fields is empty unless the physics opted into history state
         # (physics.has_history), so this set is empty for almost every model.
         primary_names = list(self.physics.vars)
-        history_labels = {h.label for h in self.physics.history_fields}
+        history_labels = {h.label for h in self.physics.history.fields}
 
         initial_values = {}
         history_values = {}
@@ -722,7 +724,8 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         # Push the restored history columns into engine.Xhistory. reset() has already allocated
         # the buffer, so set_engine_history_array only needs to overwrite its contents.
         for label, values in history_values.items():
-            self.physics.set_engine_history_array(
+            self.physics.history.set_engine_history_array(
+                self.physics.engine,
                 label,
                 values,
                 n_blocks=self.reservoir.mesh.n_res_blocks,

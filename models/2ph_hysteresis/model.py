@@ -442,7 +442,8 @@ class Model(DartsModel):
         x = np.asarray(self.physics.engine.X)
         sg_max = None
         if "sg_max" in self.physics.history.labels:
-            sg_max = self.physics.get_engine_history_array(
+            sg_max = self.physics.history.get_engine_history_array(
+                self.physics.engine,
                 "sg_max",
                 n_blocks=self.reservoir.mesh.n_blocks,
             )
@@ -503,7 +504,8 @@ class Model(DartsModel):
         )
         sg = np.asarray(output_props["sat_V"][0], dtype=float)            # (n_res,)
         sg_max = np.array(
-            self.physics.get_engine_history_array(
+            self.physics.history.get_engine_history_array(
+                self.physics.engine,
                 "sg_max",
                 n_blocks=self.reservoir.mesh.n_blocks,
             ),
@@ -547,7 +549,8 @@ class Model(DartsModel):
             )
             sg_max_res[mask] = np.clip(new, 0.0, 1.0)
 
-        self.physics.set_engine_history_array(
+        self.physics.history.set_engine_history_array(
+            self.physics.engine,
             "sg_max",
             sg_max,
             n_blocks=self.reservoir.mesh.n_blocks,

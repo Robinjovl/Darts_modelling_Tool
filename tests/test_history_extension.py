@@ -25,8 +25,10 @@ def test_history_support_extends_axes_and_updates_engine_buffers() -> None:
         [1.0, 0.0, 0.0, 1.0],
         [10.0, 0.01, 0.1, 1.0],
     )
-    np.testing.assert_allclose(history.get_engine_array(engine, "sg_max"), [0.4, 0.5])
-    history.set_engine_array(engine, "cycle", 7.0)
+    np.testing.assert_allclose(
+        history.get_engine_history_array(engine, "sg_max"), [0.4, 0.5]
+    )
+    history.set_engine_history_array(engine, "cycle", 7.0)
     np.testing.assert_allclose(engine.Xhistory, [0.4, 7.0, 0.5, 7.0])
     np.testing.assert_allclose(
         history.get_interpolator_state(engine, n_vars=2),
@@ -82,13 +84,13 @@ def test_history_support_rejects_unknown_label_and_missing_fields() -> None:
     with pytest.raises(KeyError):
         history.default("nope")
     with pytest.raises(KeyError):
-        history.get_engine_array(engine, "nope")
+        history.get_engine_history_array(engine, "nope")
 
     empty = HistoryStateSupport()
     with pytest.raises(RuntimeError):
-        empty.get_engine_array(engine, "sg_max")
+        empty.get_engine_history_array(engine, "sg_max")
     with pytest.raises(RuntimeError):
-        empty.set_engine_array(engine, "sg_max", 1.0)
+        empty.set_engine_history_array(engine, "sg_max", 1.0)
 
 
 def test_history_field_validates_axis_metadata() -> None:
@@ -107,18 +109,20 @@ def test_history_field_validates_axis_metadata() -> None:
 
 
 def test_physics_history_fields_round_trip() -> None:
-    """`PhysicsBase.history_fields` stays assignable after the extraction."""
+    """`PhysicsBase.history.fields` stays assignable, now that the `history_fields`
+    setter moved from `PhysicsBase` onto `HistoryStateSupport` itself."""
     physics = PhysicsBase.__new__(PhysicsBase)
+    physics.history = HistoryStateSupport()
 
-    physics.history_fields = []
-    assert physics.n_history == 0
-    assert physics.history_fields == []
+    physics.history.fields = []
+    assert physics.history.n_fields == 0
+    assert physics.history.fields == []
 
     fields = [HistoryField("sg_max", default=0.2), HistoryField("cycle", default=3.0)]
-    physics.history_fields = fields
-    assert physics.n_history == 2
+    physics.history.fields = fields
+    assert physics.history.n_fields == 2
     assert physics.history.labels == ["sg_max", "cycle"]
-    assert physics.get_history_default("cycle") == 3.0
+    assert physics.history.default("cycle") == 3.0
 
-    physics.history_fields = None
-    assert physics.n_history == 0
+    physics.history.fields = None
+    assert physics.history.n_fields == 0
