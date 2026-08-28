@@ -129,18 +129,18 @@ class DartsModel:
         # Create sim_params object to set simulation parameters
         self.params = sim_params()
 
-        # The single source of truth for the linear solver: a composed LinearSolver instance
-        # It owns ALL linear-solver settings:
+        # The single source of truth for the linear solver: a composed LinearSolver instance,
+        # created once here and never reassigned afterward (mirrors nonlinear_solver's binding
+        # pattern, except LinearSolver takes its model at construction, so no separate bind()
+        # step is needed). It owns ALL linear-solver settings:
         # - self.linear_solver.spec: solver + preconditioner choice
         # - tolerance, max_iterations, print_level)
         # Its own _apply_solver() builds, injects and mirrors into sim_params before engine.init(),
-        # plus the solver-binding/orchestration and deprecated set_sim_params() methods
-        # Assigned lazily by set_solver() and bound to this model in init()
-        # A model may construct its own detached LinearSolver and assign it before calling
-        # set_solver() to skip the platform default. Tune it via
-        # self.linear_solver.spec.<field> = ..., or assign a fresh spec via
+        # plus the solver-binding/orchestration and deprecated set_sim_params() methods.
+        # The platform-default spec is materialized lazily by set_solver(); a model may instead
+        # assign its own spec before/after calling set_solver() via
         # self.linear_solver.spec = <LinearSolverSpec>.
-        self.linear_solver = None
+        self.linear_solver = LinearSolver(model=self)
 
         # Nonlinear solver instance (a NewtonSolver; see darts.nonlinear_solvers)
         # built from its declarative spec. Assigned lazily by set_solver() and
@@ -308,12 +308,14 @@ class DartsModel:
         # Materialize the solvers (and default specs/ts_control if the model did
         # not configure them) before the engine is initialized.
         self.set_solver()
+
         # ts_control may have been constructed pre-init with n_vars=0: size eta now
         if len(self.ts_control.eta) < self.physics.n_vars:
             self.ts_control.eta = 1e20 * np.ones(self.physics.n_vars)
         # fail loudly on an obviously-broken timestepping config, matching the
         # per-timestep spec.validate() the Newton loop already does
         self.ts_control.validate()
+
         # bind the (possibly detached) solver to this model
         self.nonlinear_solver.bind(self)
 
@@ -344,14 +346,18 @@ class DartsModel:
 
         The linear solver (``self.linear_solver``, a runtime
         :class:`darts.linear_solvers.LinearSolver` instance whose declarative spec is
-        ``linear_solver.spec``; the default is constructed in :meth:`set_solver`) is then bound,
+        ``linear_solver.spec``; the default spec is materialized in :meth:`set_solver`) is
+        always already bound to this model (constructed once in ``__init__``) and is
         built and injected by :meth:`_apply_solver` before ``engine.init``, so the
         engine adopts its ``handle`` and bypasses its own factory. The nonlinear
         solver is (re)bound here too: ``set_solver()`` runs a second time (the first
         was in ``init()``, right after the reservoir/mesh and engine object exist),
         and a model's override may unconditionally
         reassign ``self.nonlinear_solver`` on every call (no existing-instance
-        guard), leaving a fresh, unbound instance otherwise. In proprietary / GPU
+        guard), leaving a fresh, unbound instance otherwise -- unlike
+        ``linear_solver``, whose constructor takes the model directly, so
+        reassigning it (e.g. ``self.linear_solver.spec = ...``, or replacing it
+        outright with ``model=self``) never leaves it unbound. In proprietary / GPU
         builds no linear backend is built and the engine factory selects the solver
         from ``params.linear_type``.
         """
@@ -375,8 +381,7 @@ class DartsModel:
         :meth:`reset` (after the reservoir/mesh and engine object exist, before
         ``engine.init``), so it may freely:
 
-        * call ``self.linear_solver.set_sim_params(...)`` (time-stepping only) --
-          note ``self.linear_solver`` must exist first (see below);
+        * call ``self.linear_solver.set_sim_params(...)`` (time-stepping only);
         * set ``self.nonlinear_solver = <NonlinearSolver>`` (a
           :class:`~darts.nonlinear_solvers.NewtonSolver`, which accepts a
           ``NewtonSpec`` positionally or its keyword arguments);
@@ -394,18 +399,14 @@ class DartsModel:
           ``self.linear_solver.label`` names it in the log.
 
         ``self.linear_solver`` (a :class:`darts.linear_solvers.LinearSolver`, mirror
-        of ``nonlinear_solver`` holding a ``NewtonSolver``) is ``None`` until
-        materialized -- either by this method's own default-construction below, or
-        by a subclass assigning ``self.linear_solver = LinearSolver(...)`` (optionally
-        with a ``spec``) before calling ``super().set_solver()``, which then skips
-        the platform default. Code that touches ``self.linear_solver`` before this
-        method has run at least once (e.g. from ``__init__``, or before
-        ``super().set_solver()`` in an override) must construct it explicitly first::
+        of ``nonlinear_solver`` holding a ``NewtonSolver``) is constructed once in
+        ``__init__`` and never reassigned, so it always exists and is already bound
+        to this model -- unlike ``nonlinear_solver``, whose constructor takes no
+        ``model`` argument. Only its declarative ``spec`` is left unset until this
+        method's own default-construction below, or a subclass assigning
+        ``self.linear_solver.spec = <LinearSolverSpec>``.
 
-            if self.linear_solver is None:
-                self.linear_solver = LinearSolver(model=self)
-
-        The default implementation is idempotent and lazy: it keeps any solver a
+        The default implementation is idempotent and lazy: it keeps any spec a
         subclass already assigned and otherwise materializes the defaults below --
         which spell out **every** default parameter explicitly, so the effective
         configuration of a model that does not override it is readable here instead
@@ -422,17 +423,15 @@ class DartsModel:
         or by tuning the spec of the default::
 
             def set_solver(self):
-                if self.linear_solver is None:
-                    self.linear_solver = LinearSolver(model=self)
                 self.linear_solver.set_sim_params(first_ts=..., max_ts=...)  # time-stepping
                 super().set_solver()                            # default solvers
                 self.nonlinear_solver.spec.tolerance = 1e-4
                 self.linear_solver.spec.tolerance = 1e-6
 
-        or by constructing the whole solver up front, skipping the platform default::
+        or by assigning the whole spec up front, skipping the platform default::
 
             def set_solver(self):
-                self.linear_solver = LinearSolver(MGRSolverSpec(tolerance=1e-4), model=self)
+                self.linear_solver.spec = MGRSolverSpec(tolerance=1e-4)
                 super().set_solver()
         """
         # ------------------------------------------------------------ nonlinear
@@ -461,15 +460,9 @@ class DartsModel:
             # pre_routines / post_routines / fallbacks default to empty lists
 
         # --------------------------------------------------------------- linear
-        # self.linear_solver stays None until a subclass constructs one (before or
-        # after this super() call) or -- here -- the platform default is
-        # materialized. A subclass that constructed one standalone (without
-        # model=self, e.g. from the deprecated set_sim_params() legacy-kwargs path)
-        # is bound now.
-        if self.linear_solver is None:
-            self.linear_solver = LinearSolver(model=self)
-        elif self.linear_solver.model is None:
-            self.linear_solver.bind(self)
+        # self.linear_solver is constructed once in __init__ and never reassigned,
+        # so it's always bound to this model here already
+        # only the platform default spec is still materialized lazily, below.
 
         # Platform default with every parameter stated explicitly (mirrors the spec
         # dataclass field defaults — keep the two in sync). _default_spec marks
