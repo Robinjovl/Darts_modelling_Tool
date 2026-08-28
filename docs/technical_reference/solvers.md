@@ -77,19 +77,40 @@ The nonlinear default is a `NewtonSolver` with:
 `NewtonSolver` also takes `pre_routines`, `post_routines` and `fallbacks` (all empty by
 default) for user procedures around each nonlinear iteration.
 
+## Solvers and preconditioners
+
+Every spec plays one of three roles, given in the `Role` column of the tables below:
+
+* a **solver** is assigned to `self.linear_solver` and drives the solve to a tolerance;
+* a **preconditioner** is passed as `prec=` to a solver and is applied once per Krylov
+  iteration — it never converges anything by itself;
+* a **wrapper** composes another solver rather than replacing it (see *Composing solvers*).
+
 ## Linear solvers — CPU
 
 All specs inherit `tolerance` (`1e-5`), `max_iterations` (`50`) and `print_level` (`0`).
 
-| Spec | Type | Most important parameters |
-|---|---|---|
-| `GMRESSolverSpec` | restarted FGMRES, right-preconditioned | `restart` (Krylov subspace dimension, dataclass default `30`; the model default passes `50`), `prec` (a preconditioner spec, e.g. `CPRSolverSpec()`) |
-| `CPRSolverSpec` | two-stage CPR preconditioner | `weight_scheme` (`1` = True-IMPES), `amg_max_iters` (V-cycles on the pressure stage), `ilu_fill_level` (`0` = ILU(0) second stage), `stage2_type`, plus the full BoomerAMG configuration (`amg_coarsen_type=8` PMIS, `amg_interp_type=8` extended+i, `amg_relax_type=3`, `amg_strong_threshold=0.75`, `amg_max_coarse_size=100`, …) and hierarchy reuse (`reuse_amg_hierarchy`, `adaptive_amg_rebuild`, `adaptive_iter_threshold`, `adaptive_consecutive_bad`) |
-| `MGRSolverSpec` | HYPRE MGR multigrid reduction | `kdim` (Krylov dimension, `30`), `use_flex_gmres`, `use_physics_scaling`, level controls (`enable_well_level`, `enable_composition_level`, `pressure_level`, `custom_levels`), `use_bcsr_cpr`, `bilu0`, `local_correction`, `pressure_amg` |
-| `FSCPRSolverSpec` | FS-CPR poromechanics preconditioner | `u_amg_max_iters`, `p_amg_max_iters`, `force_amg_asymmetric`, and the problem layout `n_res` / `n_fracs` / `n_wells` / `p_var` / `z_var` / `u_var` / `nc` |
-| `SuperLUSolverSpec` | sparse direct | none beyond the inherited fields (a direct solve takes no tolerance) |
-| `PETScSolverSpec` | PETSc (`petsc4py`) Krylov, Python-resident | `variant` (default `'cpr'`); builds a scalar PETSc `AIJ` matrix |
-| `PardisoSolverSpec` | Pardiso (`pypardiso` / Intel MKL) direct, Python-resident | none beyond the inherited fields |
+| Spec | Role | Library | Type | Most important parameters |
+|---|---|---|---|---|
+| `GMRESSolverSpec` | solver | open-DARTS | restarted FGMRES, right-preconditioned | `restart` (Krylov subspace dimension, dataclass default `30`; the model default passes `50`), `prec` (a preconditioner spec, e.g. `CPRSolverSpec()`) |
+| `CPRSolverSpec` | preconditioner | open-DARTS + HYPRE | two-stage CPR | `weight_scheme` (`1` = True-IMPES), `amg_max_iters` (V-cycles on the pressure stage), `stage2_type` (`1` = in-tree block ILU(0), the default; `0` = HYPRE scalar ILU(k)), `ilu_fill_level` (fill level for the `stage2_type=0` path only — inert at the default), plus the full BoomerAMG configuration (`amg_coarsen_type=8` PMIS, `amg_interp_type=8` extended+i, `amg_relax_type=3`, `amg_strong_threshold=0.75`, `amg_max_coarse_size=100`, …) and hierarchy reuse (`reuse_amg_hierarchy`, `adaptive_amg_rebuild`, `adaptive_iter_threshold`, `adaptive_consecutive_bad`) |
+| `MGRSolverSpec` | preconditioner, assigned as a solver | HYPRE | MGR multigrid reduction + its own FlexGMRES/GMRES | `kdim` (Krylov dimension, `30`), `use_flex_gmres`, `use_physics_scaling`, level controls (`enable_well_level`, `enable_composition_level`, `pressure_level`, `custom_levels`), `use_bcsr_cpr`, `bilu0`, `local_correction`, `pressure_amg` |
+| `FSCPRSolverSpec` | preconditioner | HYPRE | FS-CPR poromechanics preconditioner | `u_amg_max_iters`, `p_amg_max_iters`, `force_amg_asymmetric`, and the problem layout `n_res` / `n_fracs` / `n_wells` / `p_var` / `z_var` / `u_var` / `nc` |
+| `SuperLUSolverSpec` | solver / preconditioner | SuperLU | sparse direct | none beyond the inherited fields (a direct solve takes no tolerance) |
+| `PETScSolverSpec` | solver | PETSc | Krylov, Python-resident | `variant` (default `'cpr'`); builds a scalar PETSc `AIJ` matrix |
+| `PardisoSolverSpec` | solver | Pardiso | direct, Python-resident | none beyond the inherited fields |
+
+> **`MGRSolverSpec` is the exception to the solver/preconditioner split.** MGR is a
+> preconditioner exactly like CPR — HYPRE attaches it with
+> `HYPRE_ParCSRFlexGMRESSetPrecond(gmres, HYPRE_MGRSolve, HYPRE_MGRSetup, mgr_precond)`, and
+> `use_mgr=False` runs the Krylov solver *without* it. But the spec names the whole **bundle**:
+> FlexGMRES (or GMRES) *plus* MGR as its preconditioner. So it is assigned directly to
+> `self.linear_solver`, and it cannot be passed as `prec=` —
+> `GMRESSolverSpec(prec=MGRSolverSpec(...))` would nest one Krylov solver inside another,
+> making the inner operator *varying*, which breaks the outer non-flexible GMRES and diverges
+> into HYPRE NaNs. It raises `ValueError`. Hence the asymmetry in the names: `CPRSolverSpec`
+> is a bare preconditioner that *needs* a `GMRESSolverSpec` around it, while `MGRSolverSpec`
+> already contains its Krylov driver — despite both ending in `SolverSpec`.
 
 ## Linear solvers — GPU
 
@@ -97,17 +118,36 @@ GPU specs name the backend that the GPU engine factory builds; the AMG configura
 lives in the engine factory / AMGX JSON rather than in Python. The Python knobs are the
 inherited three plus local Schur elimination.
 
-| Spec | Type | Most important parameters |
-|---|---|---|
-| `AMGXCPRSolverSpec` | GMRES + AMGX-CPR (**GPU default**) | `tolerance`, `max_iterations`, `print_level`, `schur_elim_count` / `schur_elim_rows` / `schur_elim_cols` |
-| `GPUBiCGStabCPRSolverSpec` | BiCGStab + AMGX-CPR | as above |
-| `GPUGMRESILU0SolverSpec` | GMRES + cuSPARSE-ILU(0), single-stage fallback when the GPU build has no AMGX | as above |
-| `CuDSSSolverSpec` | NVIDIA cuDSS sparse **direct** solver | as above; `WITH_CUDSS` is ON by default, but the GPU build silently omits cuDSS if the prebuilt library is not found |
-| `GPUCuSolverSpec` | cuSOLVER QR sparse direct (legacy) | as above |
+| Spec | Role | Library | Type | Most important parameters |
+|---|---|---|---|---|
+| `AMGXCPRSolverSpec` | solver | AMGX + open-DARTS | GMRES + AMGX-CPR (**GPU default**) | `tolerance`, `max_iterations`, `print_level`, `schur_elim_count` / `schur_elim_rows` / `schur_elim_cols` |
+| `GPUBiCGStabCPRSolverSpec` | solver | AMGX + open-DARTS | BiCGStab + AMGX-CPR | as above |
+| `GPUGMRESILU0SolverSpec` | solver | cuSPARSE + open-DARTS | GMRES + cuSPARSE-ILU(0), single-stage fallback when the GPU build has no AMGX | as above |
+| `CuDSSSolverSpec` | solver | cuDSS | sparse **direct** solver | as above; `WITH_CUDSS` is ON by default, but the GPU build silently omits cuDSS if the prebuilt library is not found |
+| `GPUCuSolverSpec` | solver | cuSOLVER | QR sparse direct; NVIDIA deprecates this API in favour of cuDSS | as above |
 
 `schur_elim_count` (`0` = off) statically condenses that many cell-local equations before
 the solve; `schur_elim_rows` / `schur_elim_cols` name the eliminated equation rows and
 unknown columns and must have `schur_elim_count` entries.
+
+
+`GMRESSolverSpec` is the only spec exposing a `prec` field, so it is the composition point
+on CPU. `MGRSolverSpec` is the exception to the pattern — see the note under the CPU table.
+
+## Backends
+
+Solver components are either **in-tree** (no external dependency) or built on a
+**third-party** library. HYPRE is the only third-party library the CPU default requires, and
+only for its pressure-stage AMG; the rest are independently optional.
+
+**Every Krylov driver except MGR's is open-DARTS's own.** `GMRESSolverSpec` is in-tree even
+  when preconditioned by HYPRE BoomerAMG, and the GPU GMRES/BiCGStab are in-tree cuBLAS code
+  even when preconditioned by AMGX. Only `MGRSolverSpec` runs a HYPRE Krylov solver
+  (`HYPRE_ParCSRFlexGMRESCreate` / `HYPRE_ParCSRGMRESCreate`).
+
+**"GMRES" has three different implementations**: in-tree CPU (`linsolv_gmres.cpp`), in-tree
+  GPU (`linsolv_gmres_gpu.cpp`, cuBLAS) and HYPRE's. They are not interchangeable and are not
+  selected independently of the spec.
 
 ## Composing solvers
 
