@@ -5,7 +5,6 @@ import signal
 import threading
 import warnings
 from collections.abc import Iterable
-from dataclasses import dataclass
 from enum import Enum
 from functools import total_ordering
 from typing import Any
@@ -15,6 +14,7 @@ from scipy.interpolate import interp1d
 
 from darts.engines import *
 from darts.interpolators import *
+from darts.physics.base.history_extension import HistoryField, HistoryStateSupport
 from darts.physics.base.operator_evaluator import (
     PropertyOperators,
     ReservoirOperators,
@@ -23,55 +23,6 @@ from darts.physics.base.operator_evaluator import (
     WellOperators,
 )
 from darts.tools.obl_cache import OblCacheCodec
-
-
-@dataclass
-class HistoryField:
-    """
-    Describe one OBL history variable declaratively.
-
-    History variables enter the OBL interpolator state but are NOT Newton unknowns — the physics
-    advances them outside of Newton (e.g. max gas saturation updated after each converged timestep
-    for Killough relative-permeability hysteresis).
-
-    :param label: Axis label used for interpolator state ordering (e.g. ``"sg_max"``)
-    :param axes_step: Cell size for this history axis
-    :param axes_origin: Grid origin for this history axis
-    :param default: Reservoir initial value and fallback value at wells / boundaries
-    """
-
-    label: str
-    axes_step: float = 1.0
-    axes_origin: float = 0.0
-    default: float = 0.0
-
-    def __post_init__(self) -> None:
-        """
-        Normalize and validate the history-axis descriptor after dataclass initialization.
-
-        :returns: None
-        :raises ValueError: If the label is empty, if ``axes_step`` is not finite and
-            strictly positive, or if ``axes_origin`` / ``default`` are not finite.
-        """
-        self.axes_step = float(self.axes_step)
-        self.axes_origin = float(self.axes_origin)
-        self.default = float(self.default)
-        if not self.label:
-            raise ValueError("HistoryField.label must be non-empty")
-        if not (0.0 < self.axes_step < float("inf")):
-            raise ValueError(
-                f"HistoryField {self.label!r} axes_step={self.axes_step!r} "
-                "must be finite and strictly positive"
-            )
-        if not (-float("inf") < self.axes_origin < float("inf")):
-            raise ValueError(
-                f"HistoryField {self.label!r} axes_origin={self.axes_origin!r} "
-                "must be finite"
-            )
-        if not (-float("inf") < self.default < float("inf")):
-            raise ValueError(
-                f"HistoryField {self.label!r} default={self.default!r} must be finite"
-            )
 
 
 class PhysicsBase:
@@ -147,7 +98,7 @@ class PhysicsBase:
         extrapolation_flag: bool = True,
         state_spec: 'PhysicsBase.StateSpecification' = None,
         cache: bool = False,
-        history_fields: Iterable['HistoryField'] | None = None,
+        history_fields: Iterable[HistoryField] | None = None,
     ) -> None:
         """
         Configure the OBL grid and physics state for a compositional simulation.
@@ -177,7 +128,7 @@ class PhysicsBase:
         :param history_fields: Optional :class:`HistoryField` descriptors declaring auxiliary
             OBL axes (e.g. ``sg_max`` for Killough hysteresis) that are fed into operator
             interpolation but are NOT Newton unknowns. Pass ``None`` or an empty list for
-            standard drainage-only behaviour.
+            standard OBL behaviour.
         """
         # Default state_spec must be supplied here (rather than in the signature) because the
         # class reference PhysicsBase is not yet resolvable at default-evaluation time.
@@ -304,12 +255,17 @@ class PhysicsBase:
         self.output_property_itor = {}
 
         # Optional OBL history variables (e.g. max gas saturation for Killough hysteresis).
-        # Keep this as a list rather than a dict: these descriptors define not only labels,
-        # but also the ordering of the appended OBL history axes. That ordering must stay
-        # consistent across Python, engine.Xhistory, and the interpolator state [X | Xhistory].
-        # An empty list disables history-aware behaviour; a non-empty list extends the OBL
-        # interpolation state without touching the Newton system.
-        self.history_fields: list[HistoryField] = list(history_fields or [])
+        # The descriptors are ordered; see darts.physics.base.history_extension for the
+        # ordering contract they share with engine.Xhistory and the interpolator state.
+        #
+        # History state is OPT-IN and OFF BY DEFAULT. With history_fields left at its default
+        # of None -- the overwhelmingly common case, only models such as models/2ph_hysteresis
+        # pass it -- this holds an EMPTY HistoryStateSupport: has_history is False, n_history
+        # is 0, and the OBL state is exactly self.vars. Every operation on the empty object is
+        # an inert no-op, so no call site is *required* to guard; where code does branch (to
+        # skip work or to route restart columns), read has_history rather than testing for the
+        # presence of this attribute, which is always set.
+        self.history = HistoryStateSupport(history_fields)
 
     def check_properties(self):
         """
@@ -321,14 +277,22 @@ class PhysicsBase:
         return
 
     @property
-    def n_history(self) -> int:
+    def has_history(self) -> bool:
         """
-        Return the number of configured OBL history variables (``len(history_fields)``).
+        Return whether this physics declares any OBL history state. ``False`` by default.
 
-        :returns: Count of auxiliary OBL axes that enter interpolation but not the Newton system
-        :rtype: int
+        History state is opt-in: it is ``True`` only when the model passed a non-empty
+        ``history_fields`` to the constructor (see ``models/2ph_hysteresis``). Every other
+        physics -- i.e. almost all of them -- leaves this ``False``, in which case the OBL
+        state is exactly ``self.vars`` and the whole history machinery is inert.
+
+        This is the flag to branch on. Do not test for the presence of ``self.history``:
+        that attribute is always set, holding an empty descriptor set when history is off.
+
+        :returns: True when at least one :class:`HistoryField` is configured
+        :rtype: bool
         """
-        return len(self.history_fields)
+        return bool(self.history.fields)
 
     @property
     def n_state(self) -> int:
@@ -338,7 +302,7 @@ class PhysicsBase:
         :returns: Number of axes the reservoir / well interpolators consume per cell
         :rtype: int
         """
-        return self.n_vars + self.n_history
+        return self.n_vars + self.history.n_fields
 
     def get_interpolator_state_labels(self) -> list:
         """
@@ -351,118 +315,7 @@ class PhysicsBase:
         :returns: Ordered list of axis labels of length ``n_state``
         :rtype: list[str]
         """
-        return list(self.vars) + [h.label for h in self.history_fields]
-
-    def get_history_default(self, label: str) -> float:
-        """
-        Return the configured initial / fallback value for a history field.
-
-        :param label: Label of the history field, must match one declared in ``history_fields``
-        :type label: str
-        :returns: The ``default`` attribute of the matching :class:`HistoryField`
-        :rtype: float
-        :raises KeyError: If no history field has the requested label
-        """
-        for h in self.history_fields:
-            if h.label == label:
-                return h.default
-        raise KeyError(label)
-
-    def get_engine_history_array(self, label: str, n_blocks: int = None) -> np.ndarray:
-        """
-        Return a per-cell copy of ``engine.Xhistory`` restricted to one history axis.
-
-        The engine stores ``Xhistory`` as a flat ``[(n_blocks + n_bounds) * n_history]`` buffer in
-        cell-major order (all ``n_history`` values for cell 0, then cell 1, ...). This helper
-        pulls out just the reservoir blocks for one label and returns a copy (safe to mutate).
-
-        :param label: Label of the history field to extract, must match one in ``history_fields``
-        :type label: str
-        :param n_blocks: Number of reservoir blocks to read. When ``None``, inferred as
-                         ``Xhistory.size // n_history`` (i.e. all cells including boundaries)
-        :type n_blocks: int, optional
-        :returns: One-dimensional array of shape ``(n_blocks,)`` with the requested axis values
-        :rtype: numpy.ndarray
-        :raises RuntimeError: If no history fields are configured on this physics
-        :raises KeyError: If no history field has the requested label
-        """
-        if not self.history_fields:
-            raise RuntimeError("Physics has no history fields configured")
-        idx = next(
-            (i for i, h in enumerate(self.history_fields) if h.label == label), -1
-        )
-        if idx < 0:
-            raise KeyError(label)
-        Xhistory = np.asarray(self.engine.Xhistory, copy=False)
-        n_history = self.n_history
-        if n_blocks is None:
-            n_blocks = Xhistory.size // n_history
-        return Xhistory.reshape(-1, n_history)[:n_blocks, idx].copy()
-
-    def get_engine_interpolator_state(self, n_blocks: int = None) -> np.ndarray:
-        """
-        Return the full OBL state ``[X | Xhistory]`` flattened in cell-major order.
-
-        Used by :mod:`darts.output` to dump operator inputs for post-processing. The layout is
-        interleaved so callers that stride by ``n_state`` pick out one state variable per cell:
-        ``result[j::n_state]`` is the ``j``-th state axis for every reservoir cell.
-
-        :param n_blocks: Number of reservoir blocks. When ``None``, inferred from
-                         ``engine.X.size // n_vars``
-        :type n_blocks: int, optional
-        :returns: One-dimensional array of length ``n_blocks * n_state`` with primary vars and
-                  history values interleaved per cell
-        :rtype: numpy.ndarray
-        """
-        if n_blocks is None:
-            n_blocks = self.engine.X.size // self.n_vars
-        X = np.asarray(self.engine.X, copy=False).reshape(-1, self.n_vars)[:n_blocks]
-        if not self.history_fields:
-            return X.flatten()
-        Xhistory = np.asarray(self.engine.Xhistory, copy=False).reshape(
-            -1, self.n_history
-        )[:n_blocks]
-        return np.concatenate([X, Xhistory], axis=1).flatten()
-
-    def set_engine_history_array(
-        self, label: str, values, n_blocks: int = None
-    ) -> None:
-        """
-        Overwrite one axis of ``engine.Xhistory`` with a per-cell scalar or array.
-
-        The selected history column is updated through a reshaped writable NumPy view of
-        ``engine.Xhistory``.
-
-        :param label: Label of the history field to write, must match one in ``history_fields``
-        :type label: str
-        :param values: Value(s) for the single history axis identified by ``label``: either a
-                       scalar applied to every cell, or a one-dimensional array-like of length
-                       ``n_blocks``
-        :type values: float or array-like
-        :param n_blocks: Number of reservoir blocks to write. When ``None``, inferred as
-                         ``Xhistory_flat.size // n_history``
-        :type n_blocks: int, optional
-        :returns: None
-        :raises RuntimeError: If no history fields are configured on this physics
-        :raises KeyError: If no history field has the requested label
-        """
-        if not self.history_fields:
-            raise RuntimeError("Physics has no history fields configured")
-        idx = next(
-            (i for i, h in enumerate(self.history_fields) if h.label == label), -1
-        )
-        if idx < 0:
-            raise KeyError(label)
-        n_history = self.n_history
-        Xhistory_flat = np.asarray(self.engine.Xhistory, copy=False)
-        if n_blocks is None:
-            n_blocks = Xhistory_flat.size // n_history
-        if np.isscalar(values):
-            history_values = np.full(n_blocks, float(values))
-        else:
-            history_values = np.asarray(values, dtype=float).reshape(-1)
-        Xhistory_view = Xhistory_flat.reshape(-1, n_history)
-        Xhistory_view[:n_blocks, idx] = history_values
+        return list(self.vars) + self.history.labels
 
     def init_physics(
         self,
@@ -518,8 +371,7 @@ class PhysicsBase:
 
         # Tell the engine how many per-cell history variables to reserve in its Xop / Xhistory
         # buffers. Must be set before engine.init() allocates them.
-        if hasattr(self.engine, "n_history_runtime"):
-            self.engine.n_history_runtime = self.n_history
+        self.history.configure_engine(self.engine)
 
         # for separate mineral fraction in reactive flow formulations
         if n_solid is not None:
@@ -548,7 +400,7 @@ class PhysicsBase:
         # When history fields are active, verify that all hysteresis-bearing evaluators in
         # every region share consistent trapping parameters. Catches silent drift between
         # rel_perm_ev and capillary_pressure_ev built from independent Corey sources.
-        if self.history_fields:
+        if self.has_history:
             for pc in self.property_containers.values():
                 if hasattr(pc, "validate_history_consistency"):
                     pc.validate_history_consistency()
@@ -584,10 +436,7 @@ class PhysicsBase:
         # to the state vector so that it can locate primary vars correctly (e.g. temperature
         # at position [nc] rather than [-1] when sg_max is appended), and pass the ordered
         # labels so it can expose {label: value} to history-aware evaluators.
-        if hasattr(property_container, "n_history"):
-            property_container.n_history = self.n_history
-        if hasattr(property_container, "history_labels"):
-            property_container.history_labels = [h.label for h in self.history_fields]
+        self.history.configure_property_container(property_container)
         self.property_containers[region] = property_container
         self.regions.append(region)
         return
@@ -707,10 +556,9 @@ class PhysicsBase:
         # Reservoir/property/well interpolators consume the full OBL state
         # [primary vars | history vars]. The thermal-var interpolator uses a separate
         # primary PT grid for well initialization.
-        operator_axes_step = self.axes_step + [h.axes_step for h in self.history_fields]
-        operator_axes_origin = self.axes_origin + [
-            h.axes_origin for h in self.history_fields
-        ]
+        operator_axes_origin, operator_axes_step = self.history.extend_axes(
+            self.axes_origin, self.axes_step
+        )
         self.acc_flux_itor = {}
         self.property_itor = {}
         for region in self.regions:
@@ -1111,7 +959,7 @@ class PhysicsBase:
             values = np.resize(np.asarray(values), mesh.n_res_blocks)
             np.asarray(mesh.initial_state)[ith_var :: self.n_vars] = values
 
-        self.populate_mesh_history_defaults(mesh)
+        self.history.populate_boundary_defaults(mesh)
 
     def set_initial_conditions_from_array(
         self, mesh: conn_mesh, input_distribution: dict
@@ -1216,31 +1064,7 @@ class PhysicsBase:
         # Broadcast HistoryField.default values into mesh.Xhistory_bounds so boundary cells
         # (MPFA / mech engines with n_bounds > 0) start from the configured default instead
         # of the engine's zero fallback in build_Xop.
-        self.populate_mesh_history_defaults(mesh)
-
-    def populate_mesh_history_defaults(self, mesh: conn_mesh) -> None:
-        """
-        Allocate and fill ``mesh.Xhistory_bounds`` from ``history_fields`` defaults.
-
-        The engine's ``build_Xop`` reads boundary-cell history values from ``mesh.Xhistory_bounds``
-        and falls back to zero when the buffer is empty. This helper writes the configured
-        ``HistoryField.default`` for each field into every boundary cell so engines that use
-        non-zero defaults (MPFA / mechanical paths with boundary cells) behave correctly.
-        No-op when ``history_fields`` is empty or ``mesh.n_bounds == 0``.
-
-        :param mesh: Connection mesh the engine will run on
-        :type mesh: darts.engines.conn_mesh
-        :returns: None
-        """
-        if not self.history_fields:
-            return
-        n_bounds = int(getattr(mesh, "n_bounds", 0))
-        if n_bounds <= 0:
-            return
-        defaults = np.array([h.default for h in self.history_fields], dtype=float)
-        # cell-major layout: [(h_0, h_1, ..., h_{n_history-1}) for cell 0, cell 1, ...]
-        flat = np.tile(defaults, n_bounds)
-        mesh.Xhistory_bounds = value_vector(flat.tolist())
+        self.history.populate_boundary_defaults(mesh)
 
     def init_wells(self, wells: list[ms_well]) -> None:
         """
@@ -1266,14 +1090,7 @@ class PhysicsBase:
                 self.thermal,
             )
 
-        if self.history_fields:
-            defaults = value_vector([h.default for h in self.history_fields])
-            for w in wells:
-                w.Xhistory_well_default = defaults
-                if hasattr(w, "control"):
-                    w.control.Xhistory_well_default = defaults
-                if hasattr(w, "constraint"):
-                    w.constraint.Xhistory_well_default = defaults
+        self.history.populate_well_defaults(wells)
 
     def create_interpolator(
         self,
@@ -1325,11 +1142,8 @@ class PhysicsBase:
             axes_step = self.axes_step
         if axes_origin is None:
             axes_origin = self.axes_origin
-        if include_history and self.history_fields and use_default_axes:
-            axes_step = list(axes_step) + [h.axes_step for h in self.history_fields]
-            axes_origin = list(axes_origin) + [
-                h.axes_origin for h in self.history_fields
-            ]
+        if include_history and self.has_history and use_default_axes:
+            axes_origin, axes_step = self.history.extend_axes(axes_origin, axes_step)
         axes_step = [float(s) for s in axes_step]
         axes_origin = [float(o) for o in axes_origin]
         if len(axes_step) != len(axes_origin):
@@ -1864,10 +1678,9 @@ class PhysicsBase:
 
         with open(os.path.join(output_folder, 'body_path.txt'), "w") as fp:
             self.processed_body_idxs = set()
-            axes_origin = self.axes_origin + [
-                h.axes_origin for h in self.history_fields
-            ]
-            axes_step = self.axes_step + [h.axes_step for h in self.history_fields]
+            axes_origin, axes_step = self.history.extend_axes(
+                self.axes_origin, self.axes_step
+            )
             labels = self.get_interpolator_state_labels()
             for idx, label in enumerate(labels):
                 fp.write(f"{axes_origin[idx]:f} {axes_step[idx]:f} {label}\n")

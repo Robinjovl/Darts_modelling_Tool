@@ -3,8 +3,8 @@ import warnings
 import numpy as np
 from dartsflash.mixtures import DARTSFlash, Mixture
 
+from darts.physics.base.history_extension import HistoryField
 from darts.physics.base.physics import (
-    HistoryField,
     Iterable,
     PhysicsBase,
     timer_node,

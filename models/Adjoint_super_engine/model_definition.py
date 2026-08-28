@@ -682,7 +682,7 @@ class Model(DartsModel, OptModuleSettings):
             customized_component_itor, _ = self.physics.create_interpolator(customized_component_etor,
                                                                          n_ops=1,
                                                                          platform='cpu', algorithm='multilinear',
-                                                                         mode='adaptive', precision='d',
+                                                                         precision='d',
                                                                          timer_name='customized component interpolation')
             self.physics.engine.customize_operator = self.customize_new_operator
 
