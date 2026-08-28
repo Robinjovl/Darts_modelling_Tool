@@ -67,7 +67,7 @@ CONFIG = CaseConfig(
 
 
 def build_model(config: CaseConfig, platform: str = "cpu") -> Model:
-    model = Model(hys=config.hysteresis)
+    model = Model(hysteresis=config.hysteresis)
     initial_composition = config.initial_composition or {
         config.components[0]: DEFAULT_INITIAL_COMPOSITION[config.components[0]],
         config.components[1]: DEFAULT_INITIAL_COMPOSITION[config.components[1]],

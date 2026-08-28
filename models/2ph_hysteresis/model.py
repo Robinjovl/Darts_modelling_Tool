@@ -8,7 +8,8 @@ import numpy as np
 from darts.engines import value_vector
 from darts.models.darts_model import DartsModel
 from darts.nonlinear_solvers import NewtonSolver
-from darts.physics.base.physics import PhysicsBase, HistoryField
+from darts.physics.base.history_extension import HistoryField
+from darts.physics.base.physics import PhysicsBase
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import ConstantK
@@ -16,7 +17,6 @@ from darts.physics.properties.hysteresis import (
     KilloughCapillaryPressureTable,
     KilloughRelPermTable,
 )
-from darts.physics.base.physics import PhysicsBase
 from darts.physics.base.property_container import PropertyContainer
 from darts.reservoirs.struct_reservoir import StructReservoir
 from dartsflash.components import CompData
@@ -68,10 +68,14 @@ def default_corey_regions() -> dict[int, Corey]:
 
 
 class Model(DartsModel):
-    def __init__(self, hys: bool = True):
+    #: Override DartsModel's framework default (off) -- this example exists to
+    #: exercise the sg_max history workflow, so it defaults to on.
+    hysteresis = True
+
+    def __init__(self, hysteresis: bool = True):
         super().__init__()
         self.timer.node["initialization"].start()
-        self.hys = hys
+        self.hysteresis = hysteresis
         self.thermal = False
         self.prod = True
         self.rate_rhs = True
@@ -308,7 +312,7 @@ class Model(DartsModel):
                     default=0.0,
                 )
             ]
-            if self.hys
+            if self.hysteresis
             else []
         )
 
@@ -360,9 +364,9 @@ class Model(DartsModel):
                 "Aq",
                 lookup_file=lookup_file,
             )
-            # Both drainage-only (hys=False) and hysteretic (hys=True) cases use
-            # the same dict-based evaluators. PropertyContainer.evaluate() forwards
-            # sg_max when it is present in state (hys=True) and skips it otherwise.
+            # Both drainage-only (hysteresis=False) and hysteretic (hysteresis=True) cases
+            # use the same dict-based evaluators. PropertyContainer.evaluate() forwards
+            # sg_max when it is present in state (hysteresis=True) and skips it otherwise.
             property_container.capillary_pressure_ev = {
                 "V": gas_pc,
                 "Aq": aqueous_pc,
@@ -436,10 +440,10 @@ class Model(DartsModel):
         m_co2 = 44.01
         m_h2o = 18.0
         x = np.asarray(self.physics.engine.X)
-        history_labels = [h.label for h in self.physics.history_fields]
         sg_max = None
-        if "sg_max" in history_labels:
-            sg_max = self.physics.get_engine_history_array(
+        if "sg_max" in self.physics.history.labels:
+            sg_max = self.physics.history.get_engine_history_array(
+                self.physics.engine,
                 "sg_max",
                 n_blocks=self.reservoir.mesh.n_blocks,
             )
@@ -490,8 +494,7 @@ class Model(DartsModel):
         super().after_converged_timestep()
 
     def update_history_fields_after_timestep(self) -> None:
-        history_labels = [h.label for h in self.physics.history_fields]
-        if not self.hys or "sg_max" not in history_labels:
+        if not self.hysteresis or "sg_max" not in self.physics.history.labels:
             return
 
         n_res_blocks = self.reservoir.mesh.n_res_blocks
@@ -501,7 +504,8 @@ class Model(DartsModel):
         )
         sg = np.asarray(output_props["sat_V"][0], dtype=float)            # (n_res,)
         sg_max = np.array(
-            self.physics.get_engine_history_array(
+            self.physics.history.get_engine_history_array(
+                self.physics.engine,
                 "sg_max",
                 n_blocks=self.reservoir.mesh.n_blocks,
             ),
@@ -545,7 +549,8 @@ class Model(DartsModel):
             )
             sg_max_res[mask] = np.clip(new, 0.0, 1.0)
 
-        self.physics.set_engine_history_array(
+        self.physics.history.set_engine_history_array(
+            self.physics.engine,
             "sg_max",
             sg_max,
             n_blocks=self.reservoir.mesh.n_blocks,
@@ -559,6 +564,6 @@ class Model(DartsModel):
     def vtk_output_properties(self) -> list[str]:
         output_properties = list(self.physics.property_containers[0].output_props.keys())
         output_properties.extend(self.physics.vars)
-        if self.hys:
+        if self.hysteresis:
             output_properties.append("sg_max")
         return output_properties
