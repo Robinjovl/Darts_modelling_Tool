@@ -5,7 +5,7 @@ from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
 from darts.physics.base.physics import PhysicsBase
-from darts.physics.base.property_container import PropertyContainer
+from darts.physics.deadoil import DeadOilProperties
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -55,7 +55,8 @@ class Model(DartsModel):
         self.inj = value_vector([1 - zero, 300])
         self.ini = value_vector([zero])
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon)
+        property_container = DeadOilProperties(phases_name=phases, components_name=components,
+                                               Mw=np.ones(len(phases)), eps_z=epsilon, temperature=None)
 
         # Define property evaluators based on custom properties
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
@@ -100,63 +101,3 @@ class Model(DartsModel):
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=180.)
-
-
-class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, eps_z=1e-11):
-        # Call base class constructor
-        self.nph = len(phases_name)
-        Mw = np.ones(self.nph)
-        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=None)
-
-    def evaluate(self, state):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
-        """
-        # Composition vector and pressure from state:
-        vec_state_as_np = np.asarray(state)
-        self.pressure = vec_state_as_np[0]
-        self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
-
-        zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
-
-        self.clean_arrays()
-        # two-phase flash - assume water phase is always present and water component last
-        for i in range(self.nph):
-            self.x[i, i] = 1
-
-        self.ph = np.array([0, 1], dtype=np.intp)
-
-        for j in self.ph:
-            # molar weight of mixture
-            M = np.sum(self.x[j, :] * self.Mw)
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure)  # output in [kg/m3]
-            self.dens_m[j] = self.dens[j] / M
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
-
-        self.nu = zc
-        self.compute_saturation(self.ph)
-
-        for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
-            self.pc[j] = 0
-
-        return
-
-    def evaluate_at_cond(self, pressure, zc):
-
-        self.sat[:] = 0
-
-        ph = [0, 1]
-        for j in ph:
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
-
-        self.dens_m = [1025, 0.77]  # to match DO based on PVT
-
-        self.nu = zc
-        self.compute_saturation(ph)
-
-        return self.sat, self.dens_m

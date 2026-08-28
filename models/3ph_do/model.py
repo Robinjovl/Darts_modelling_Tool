@@ -5,7 +5,7 @@ from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 import numpy as np
 
 from darts.physics.base.physics import PhysicsBase
-from darts.physics.base.property_container import PropertyContainer
+from darts.physics.deadoil import DeadOilProperties
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
@@ -59,7 +59,8 @@ class Model(DartsModel):
         self.ini_stream = [0.05, 0.2 - zero]
 
         """ properties correlations """
-        property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw, eps_z=epsilon)
+        property_container = DeadOilProperties(phases_name=phases, components_name=components, Mw=Mw,
+                                               eps_z=epsilon, temperature=1.)
 
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-3, dens0=200)),
                                               ('oil', DensityBasic(compr=1e-5, dens0=600)),
@@ -99,22 +100,3 @@ class Model(DartsModel):
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=60.)
-
-
-class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, eps_z=1e-11, rock_comp=1e-6):
-        # Call base class constructor
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z,
-                         rock_comp=rock_comp, temperature=1.)
-
-    def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = None):
-        # evaluate_PT argument is required in PropertyContainer but is not needed in this model
-
-        ph = np.array([0, 1, 2], dtype=np.intp)
-        self.temperature = temperature
-
-        for i in range(self.nc):
-            self.x[i][i] = 1
-        self.nu = zc
-
-        return ph
