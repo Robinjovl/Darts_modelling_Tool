@@ -6,8 +6,8 @@ import numpy as np
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 from darts.physics.properties.black_oil import *
-from darts.physics.deadoil import DeadOilProperties
-from darts.physics.blackoil import BlackOilProperties
+from darts.physics.dead_oil import DeadOilProperties
+from darts.physics.black_oil import BlackOilProperties
 from darts.nonlinear_solvers import NewtonSolver
 
 

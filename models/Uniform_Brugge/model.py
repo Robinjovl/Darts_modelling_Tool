@@ -7,7 +7,7 @@ from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from mesh_creator import mesh_creator
 
 from darts.physics.base.physics import PhysicsBase
-from darts.physics.blackoil import BlackOilProperties
+from darts.physics.black_oil import BlackOilProperties
 
 from darts.physics.properties.black_oil import *
 

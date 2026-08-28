@@ -5,7 +5,7 @@ from scipy import interpolate
 from darts.input.dead_oil import DeadOilFluidProps
 from darts.input.input_data import InputData
 from darts.engines import value_vector
-from darts.physics.deadoil import DeadOil
+from darts.physics.dead_oil import DeadOil
 from darts.engines import well_control_iface
 
 from model_cpg import Model_CPG, fmt

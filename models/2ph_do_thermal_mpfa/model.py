@@ -4,7 +4,7 @@ from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
 from darts.physics.base.physics import PhysicsBase
-from darts.physics.deadoil import DeadOilProperties
+from darts.physics.dead_oil import DeadOilProperties
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic

@@ -7,7 +7,7 @@ from darts.engines import ms_well
 from darts.nonlinear_solvers import NewtonSolver
 
 from darts.physics.properties.black_oil import *
-from darts.physics.blackoil import BlackOil
+from darts.physics.black_oil import BlackOil
 
 # Model class creation here!
 class Model(DartsModel):

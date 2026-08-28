@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 from darts.physics.base.property_container import PropertyContainer
-from darts.physics.deadoil import DeadOilProperties
+from darts.physics.dead_oil import DeadOilProperties
 from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
