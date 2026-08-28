@@ -922,13 +922,9 @@ class Output:
             # Reservoir H5 stores extended state [X | Xhistory] so restart preserves history;
             # well H5 accumulates only primary Newton state (n_vars-wide), so it stays
             # primary-width regardless of history_fields.
-            if extended_state and hasattr(self.physics, "n_state"):
+            if extended_state and self.physics.has_history:
                 n_state = self.physics.n_state
-                var_labels = (
-                    self.physics.get_interpolator_state_labels()
-                    if hasattr(self.physics, "get_interpolator_state_labels")
-                    else list(self.physics.vars)
-                )
+                var_labels = self.physics.get_interpolator_state_labels()
             else:
                 n_state = self.physics.n_vars
                 var_labels = list(self.physics.vars)
@@ -1029,12 +1025,12 @@ class Output:
                 # Dataset width drives whether we write the extended state [X | Xhistory] (reservoir
                 # H5, used for restart) or just the primary Newton state (well H5).
                 dataset_width = x_dataset.shape[2]
-                if dataset_width > self.physics.n_vars and hasattr(
-                    self.physics, "get_engine_interpolator_state"
-                ):
+                if dataset_width > self.physics.n_vars and self.physics.has_history:
                     full = np.asarray(
-                        self.physics.get_engine_interpolator_state(
-                            n_blocks=self.reservoir.mesh.n_blocks
+                        self.physics.history.get_interpolator_state(
+                            self.physics.engine,
+                            self.physics.n_vars,
+                            n_blocks=self.reservoir.mesh.n_blocks,
                         ),
                         dtype=float,
                     )
@@ -1226,9 +1222,11 @@ class Output:
             # Get current time
             timesteps = np.array(self.physics.engine.t).reshape(1)
 
-            if hasattr(self.physics, "get_interpolator_state_labels"):
-                X = self.physics.get_engine_interpolator_state(
-                    n_blocks=self.reservoir.mesh.n_res_blocks
+            if self.physics.has_history:
+                X = self.physics.history.get_interpolator_state(
+                    self.physics.engine,
+                    self.physics.n_vars,
+                    n_blocks=self.reservoir.mesh.n_res_blocks,
                 )
                 var_names = self.physics.get_interpolator_state_labels()
             else:
@@ -2467,7 +2465,7 @@ class Output:
         # is False, the default): n_state == n_vars and history_defaults is empty.
         n_state = physics.n_state
         history_defaults = np.array(
-            [h.default for h in physics.history_fields],
+            [h.default for h in physics.history.fields],
             dtype=float,
         )
         block_idx = index_vector(np.arange(batch_size).astype(np.int32))
