@@ -128,7 +128,7 @@ class PhysicsBase:
         :param history_fields: Optional :class:`HistoryField` descriptors declaring auxiliary
             OBL axes (e.g. ``sg_max`` for Killough hysteresis) that are fed into operator
             interpolation but are NOT Newton unknowns. Pass ``None`` or an empty list for
-            standard drainage-only behaviour.
+            standard OBL behaviour.
         """
         # Default state_spec must be supplied here (rather than in the signature) because the
         # class reference PhysicsBase is not yet resolvable at default-evaluation time.
@@ -254,6 +254,12 @@ class PhysicsBase:
         self.output_property_operators = {}
         self.output_property_itor = {}
 
+        # OBL history state is OPT-IN and OFF BY DEFAULT. With history_fields left at its
+        # default of None (the overwhelmingly common case -- only models such as
+        # models/2ph_hysteresis pass it), this holds an EMPTY HistoryStateSupport:
+        # has_history is False, n_history == 0, the OBL state is exactly self.vars, and
+        # every self.history.* integration point below is a no-op. Read has_history (not
+        # the presence of this attribute, which is always set) to test for history state.
         self.history = HistoryStateSupport(history_fields)
 
     def check_properties(self):
@@ -266,9 +272,29 @@ class PhysicsBase:
         return
 
     @property
+    def has_history(self) -> bool:
+        """
+        Return whether this physics declares any OBL history state. ``False`` by default.
+
+        History state is opt-in: it is ``True`` only when the model passed a non-empty
+        ``history_fields`` to the constructor (see ``models/2ph_hysteresis``). Every other
+        physics -- i.e. almost all of them -- leaves this ``False``, in which case the OBL
+        state is exactly ``self.vars`` and the whole history machinery is inert.
+
+        This is the flag to branch on. Do not test for the presence of ``self.history``:
+        that attribute is always set, holding an empty descriptor set when history is off.
+
+        :returns: True when at least one :class:`HistoryField` is configured
+        :rtype: bool
+        """
+        return bool(self.history.fields)
+
+    @property
     def n_history(self) -> int:
         """
         Return the number of configured OBL history variables (``len(history_fields)``).
+
+        Zero by default -- see :attr:`has_history`.
 
         :returns: Count of auxiliary OBL axes that enter interpolation but not the Newton system
         :rtype: int
@@ -279,6 +305,8 @@ class PhysicsBase:
     def history_fields(self) -> list[HistoryField]:
         """
         Return configured history descriptors in OBL storage order.
+
+        Empty by default -- see :attr:`has_history`.
 
         :returns: Ordered history descriptors.
         """
@@ -463,7 +491,7 @@ class PhysicsBase:
         # When history fields are active, verify that all hysteresis-bearing evaluators in
         # every region share consistent trapping parameters. Catches silent drift between
         # rel_perm_ev and capillary_pressure_ev built from independent Corey sources.
-        if self.history_fields:
+        if self.has_history:
             for pc in self.property_containers.values():
                 if hasattr(pc, "validate_history_consistency"):
                     pc.validate_history_consistency()
@@ -1267,7 +1295,7 @@ class PhysicsBase:
             axes_step = self.axes_step
         if axes_origin is None:
             axes_origin = self.axes_origin
-        if include_history and self.history_fields and use_default_axes:
+        if include_history and self.has_history and use_default_axes:
             axes_origin, axes_step = self.history.extend_axes(axes_origin, axes_step)
         axes_step = [float(s) for s in axes_step]
         axes_origin = [float(o) for o in axes_origin]

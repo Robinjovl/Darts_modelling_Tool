@@ -2463,9 +2463,11 @@ class Output:
         # primary-only state to a history-aware interpolator reads past the buffer and
         # corrupts memory. Gravity (the only reservoir operator used here) depends on
         # phase densities, not on the history axes, so the defaults do not bias rates.
-        n_state = getattr(physics, "n_state", n_vars)
+        # Both collapse to the primary-only case when history is off (physics.has_history
+        # is False, the default): n_state == n_vars and history_defaults is empty.
+        n_state = physics.n_state
         history_defaults = np.array(
-            [h.default for h in getattr(physics, "history_fields", [])],
+            [h.default for h in physics.history_fields],
             dtype=float,
         )
         block_idx = index_vector(np.arange(batch_size).astype(np.int32))

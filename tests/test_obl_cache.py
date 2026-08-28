@@ -12,6 +12,7 @@ import os
 import numpy as np
 import pytest
 
+from darts.physics.base.history_extension import HistoryStateSupport
 from darts.physics.base.physics import PhysicsBase
 from darts.tools.obl_cache import OblCacheCodec
 
@@ -293,7 +294,9 @@ def _cache_physics(tmp_path):
     p = PhysicsBase.__new__(PhysicsBase)
     p.axes_step = [1.0] * ND
     p.axes_origin = [0.0] * ND
-    p.history_fields = []
+    # history_fields / n_history / has_history are read-only views onto this object;
+    # an empty one is the default "no history state" case (PhysicsBase.has_history False).
+    p.history = HistoryStateSupport()
     p.cache = True
     p.cache_dir = str(tmp_path)
     p.created_itors = []
