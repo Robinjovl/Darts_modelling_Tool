@@ -14,6 +14,7 @@ from scipy.interpolate import interp1d
 
 from darts.engines import *
 from darts.interpolators import *
+from darts.physics.base.history_extension import HistoryField, HistoryStateSupport
 from darts.physics.base.operator_evaluator import (
     PropertyOperators,
     ReservoirOperators,
@@ -21,7 +22,6 @@ from darts.physics.base.operator_evaluator import (
     WellCtrlOperators,
     WellOperators,
 )
-from darts.physics.base.history_extension import HistoryField, HistoryStateSupport
 from darts.tools.obl_cache import OblCacheCodec
 
 
@@ -254,12 +254,17 @@ class PhysicsBase:
         self.output_property_operators = {}
         self.output_property_itor = {}
 
-        # OBL history state is OPT-IN and OFF BY DEFAULT. With history_fields left at its
-        # default of None (the overwhelmingly common case -- only models such as
-        # models/2ph_hysteresis pass it), this holds an EMPTY HistoryStateSupport:
-        # has_history is False, n_history == 0, the OBL state is exactly self.vars, and
-        # every self.history.* integration point below is a no-op. Read has_history (not
-        # the presence of this attribute, which is always set) to test for history state.
+        # Optional OBL history variables (e.g. max gas saturation for Killough hysteresis).
+        # The descriptors are ordered; see darts.physics.base.history_extension for the
+        # ordering contract they share with engine.Xhistory and the interpolator state.
+        #
+        # History state is OPT-IN and OFF BY DEFAULT. With history_fields left at its default
+        # of None -- the overwhelmingly common case, only models such as models/2ph_hysteresis
+        # pass it -- this holds an EMPTY HistoryStateSupport: has_history is False, n_history
+        # is 0, and the OBL state is exactly self.vars. Every operation on the empty object is
+        # an inert no-op, so no call site is *required* to guard; where code does branch (to
+        # skip work or to route restart columns), read has_history rather than testing for the
+        # presence of this attribute, which is always set.
         self.history = HistoryStateSupport(history_fields)
 
     def check_properties(self):
@@ -311,6 +316,21 @@ class PhysicsBase:
         :returns: Ordered history descriptors.
         """
         return self.history.fields
+
+    @history_fields.setter
+    def history_fields(self, fields: Iterable[HistoryField] | None) -> None:
+        """
+        Reconfigure the history descriptors, replacing the whole support object.
+
+        Kept assignable because ``history_fields`` was a plain attribute before the
+        history logic moved to :mod:`darts.physics.base.history_extension`. Rebinding
+        (rather than mutating ``self.history.fields``) also works on a ``PhysicsBase``
+        built via ``__new__``, where ``self.history`` does not exist yet.
+
+        :param fields: Ordered :class:`HistoryField` descriptors, or None to disable
+        :returns: None
+        """
+        self.history = HistoryStateSupport(fields)
 
     @property
     def n_state(self) -> int:
@@ -400,7 +420,7 @@ class PhysicsBase:
                        ``n_blocks``
         :type values: float or array-like
         :param n_blocks: Number of reservoir blocks to write. When ``None``, inferred as
-                         ``Xhistory_flat.size // n_history``
+                         ``Xhistory.size // n_history`` (i.e. all cells including boundaries)
         :type n_blocks: int, optional
         :returns: None
         :raises RuntimeError: If no history fields are configured on this physics
