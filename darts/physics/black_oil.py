@@ -124,7 +124,7 @@ class BlackOilProperties(PropertyContainer):
             self.nu[1] = zc[1] / (1 - xgo)
             self.nu[0] = 1 - self.nu[1] - self.nu[2]
 
-        self.compute_saturation(self.ph)
+        self.compute_saturation()
 
         for j in self.ph:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(

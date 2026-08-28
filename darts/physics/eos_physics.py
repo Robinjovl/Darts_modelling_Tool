@@ -1,3 +1,6 @@
+import warnings
+
+import numpy as np
 from dartsflash.mixtures import DARTSFlash, Mixture
 
 from darts.physics.base.history_extension import HistoryField
@@ -198,3 +201,71 @@ class EoSPhysics(PhysicsBase):
         """
         region = region if region is not None else 0
         return EoSFugacity(flash_ev=self.flash_evs[region], phase_idx=phase_idx)
+
+    def evaluate_flash(
+        self,
+        state_spec: dict = None,
+        compositions: dict = None,
+        obl_interval_multiplier: float = 1.0,
+        region: int = None,
+    ):
+        """
+        Evaluate flash over the given state-spec and composition ranges.
+
+        Any state-spec or composition variable that is omitted (or given as ``None``) is
+        swept over its full OBL axis range, sampled at ``flash_sweep_n`` points, coarsened
+        by ``obl_interval_multiplier``. This pre-evaluation sweep only controls how finely
+        the flash is pre-tabulated; it is independent of the (unbounded) OBL grid itself.
+
+        :param state_spec: Dict of state-spec values (e.g. {'p': ..., 'T': ...});
+                            a missing/``None`` entry is swept over its OBL axis range
+        :type state_spec: dict
+        :param compositions: Dict of component mole fractions; a missing/``None`` entry is
+                              swept over its OBL axis range
+        :type compositions: dict
+        :param obl_interval_multiplier: Multiplier to OBL axis intervals used for the sweep,
+                                        default 1
+        :type obl_interval_multiplier: float
+        :param region: Property region, defaults to 0
+        :type region: int
+        :returns: Flash results, as returned by ``DARTSFlash.evaluate_flash()``
+        """
+        region = region if region is not None else 0
+        flash_ev = self.get_flash_ev(region)
+
+        flash_sweep_n = 1024
+
+        # Copy caller-provided dicts so we don't mutate them in place
+        state_spec = dict(state_spec) if state_spec is not None else {}
+        compositions = dict(compositions) if compositions is not None else {}
+
+        def sweep(axis_idx: int) -> np.ndarray:
+            n = int(flash_sweep_n // obl_interval_multiplier)
+            return (
+                np.arange(n) * (self.axes_step[axis_idx] * obl_interval_multiplier)
+                + self.axes_origin[axis_idx]
+            )
+
+        # Fill in unspecified state-spec variables from OBL axes
+        state_vars = [self.vars[0], self.vars[-1]] if self.thermal else [self.vars[0]]
+        for i, spec in enumerate(state_vars):
+            if state_spec.get(spec) is None:
+                axis_idx = 0 if i == 0 else -1
+                state_spec[spec] = sweep(axis_idx)
+
+        if not set(state_spec.keys()) <= set(state_vars):
+            warnings.warn(
+                f"Not all specified variables in state_spec are primary variables: "
+                f"expected {state_vars}, got {list(state_spec.keys())}",
+                stacklevel=2,
+            )
+
+        # Fill in unspecified compositions from OBL axes; last component is dependent
+        compositions[self.components[-1]] = 1.0
+        for i, comp in enumerate(self.components[:-1]):
+            if compositions.get(comp) is None:
+                compositions[comp] = sweep(i + 1)
+
+        return flash_ev.evaluate_flash(
+            state_spec=state_spec, compositions=compositions, mole_fractions=True
+        )
