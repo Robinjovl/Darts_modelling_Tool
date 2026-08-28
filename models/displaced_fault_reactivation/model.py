@@ -136,11 +136,7 @@ class Model(THMCModel):
         # solver over its ls_params bank); ls_params remains the
         # proprietary-build / factory path. Mid-run changes (e.g. the dynamic
         # rupture stage in main.py) go through model.linear_solver.update_solver().
-        from darts.timestep_control import TimestepControl
-        from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
-        if not hasattr(self, 'ts_control') or self.ts_control is None:
-            self.ts_control = TimestepControl(self.physics.n_vars)
         mesh = self.reservoir.mesh
         n_res_blks = mesh.n_res_blocks
         n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
@@ -175,7 +171,6 @@ class Model(THMCModel):
         # it, at ~20% more wall time. The static case is insensitive (constant mu) and
         # passes either way. main.py tightens this further (1e-12 / 500) for the dynamic
         # rupture stage via update_solver().
-        self.linear_solver = LinearSolver(model=self)
         self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-10, max_iterations=500, restart=50)
         self.solver_phase = 'static'  # main.py flips to 'dynamic' at rupture
 

@@ -15,7 +15,7 @@ from darts.physics.chemistry.property_container import (
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
 from darts.nonlinear_solvers import NewtonSolver
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.linear_solvers import LinearSolver, SuperLUSolverSpec
+from darts.linear_solvers import SuperLUSolverSpec
 from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
@@ -126,14 +126,13 @@ class Model(DartsModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
         # SuperLU direct solve for this small, stiff chemistry system, declared solely
         # through self.linear_solver (replaces the params.linear_type = cpu_superlu carrier,
         # which the base FGMRES+CPR default had been shadowing). proprietary_linear_type
-        # carries the same enum for the proprietary build's engine factory. Configured
-        # directly on self.linear_solver (constructed above) -- no platform default is
-        # ever materialized and discarded.
+        # carries the same enum for the proprietary build's engine factory. Set on the
+        # composed self.linear_solver (created in DartsModel.__init__) -- no platform
+        # default is ever materialized and discarded.
         self.linear_solver.spec = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200,
                                     proprietary_linear_type=sim_params.cpu_superlu)
         super().set_solver()  # platform default nonlinear solver

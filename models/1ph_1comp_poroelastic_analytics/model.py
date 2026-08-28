@@ -35,7 +35,6 @@ class Model(THMCModel):
         # (U_VAR=0), pressure at ND=3, and carries no composition variable
         # (Z_VAR=255 sentinel). Read the layout off the engine so this stays
         # correct if the conventions change.
-        from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
         engine = self.physics.engine
         mesh = self.reservoir.mesh
@@ -68,7 +67,6 @@ class Model(THMCModel):
             lin_tol, lin_max_it = 1e-10, 5000
         else:
             lin_tol, lin_max_it = 1e-5, 50
-        self.linear_solver = LinearSolver(model=self)
         self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
             tolerance=lin_tol,

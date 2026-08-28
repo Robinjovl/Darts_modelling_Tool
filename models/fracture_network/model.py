@@ -185,8 +185,7 @@ class Model(DartsModel):
         return pc
 
     def set_solver(self):
-        from darts.linear_solvers import GPUCuSolverSpec, LinearSolver, SuperLUSolverSpec
-        self.linear_solver = LinearSolver(model=self)
+        from darts.linear_solvers import GPUCuSolverSpec, SuperLUSolverSpec
         # Time-stepping.
         self.linear_solver.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60 )
 

@@ -14,11 +14,15 @@ engine object exist, but before `engine.init()`. Override it in a model to decla
 * the nonlinear solver, via `self.nonlinear_solver = NewtonSolver(...)`;
 * the linear solver, via `self.linear_solver.spec = <LinearSolverSpec>`.
 
-`nonlinear_solver` holds a *runtime* `NewtonSolver`. `linear_solver` is a composed
-`darts.linear_solvers.LinearSolver` instance, created once by `DartsModel.__init__` and
-never reassigned — it owns the declarative `spec` as well as every method that binds a
+`nonlinear_solver` holds a *runtime* `NewtonSolver`, which a model replaces outright to
+change the Newton driver — so it is (re)bound to the model on every `init()`/`reset()`.
+`linear_solver` is a composed `darts.linear_solvers.LinearSolver` instance, created once
+by `DartsModel.__init__` **with the model already attached** and never reassigned — so
+there is no bind step. It owns the declarative `spec` as well as every method that binds a
 model to its linear solver (`update_solver()`, `get_linear_system()`, the deprecated
-`set_sim_params()` family, ...). Assign a **spec** to `.spec` to choose a solver:
+`set_sim_params()` family, ...). Because it exists from construction, it is safe to touch
+before `init()` — from a subclass `__init__` or a driver script. Assign a **spec** to
+`.spec` to choose a solver:
 
 ```python
 self.linear_solver.spec = MGRSolverSpec(tolerance=1e-4)

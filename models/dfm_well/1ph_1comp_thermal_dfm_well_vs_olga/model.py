@@ -34,9 +34,6 @@ class Model(DartsModel):
         self.zero = 1e-10
         self.set_physics()
 
-        if self.linear_solver is None:
-            from darts.linear_solvers import LinearSolver
-            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60),
                             runtime=10 / 24 / 60,   # This runtime will be used when CI test is conducted without the main file
                             )
@@ -49,9 +46,6 @@ class Model(DartsModel):
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
             chop=ChopSpec(mode='local'),
             coupled_well_res_norm_method=2)
-        if self.linear_solver is None:
-            from darts.linear_solvers import LinearSolver
-            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.spec.tolerance = 1e-4
         self.linear_solver.spec.max_iterations = 10
 

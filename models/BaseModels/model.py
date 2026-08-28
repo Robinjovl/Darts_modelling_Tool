@@ -57,9 +57,6 @@ class Model(DartsModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        if self.linear_solver is None:
-            from darts.linear_solvers import LinearSolver
-            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=1e-3, mult_ts=4, max_ts=self.dt_max )
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-2)

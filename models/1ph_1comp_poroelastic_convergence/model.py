@@ -33,11 +33,7 @@ class Model(THMCModel):
         # sim_params.linear_type. FS-CPR is a PRECONDITIONER (single application),
         # not an outer Krylov loop -- wrap it in GMRES to mirror the proprietary
         # path (bos_gmres + bos_fs_cpr).
-        from darts.timestep_control import TimestepControl
-        from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
-        if not hasattr(self, 'ts_control') or self.ts_control is None:
-            self.ts_control = TimestepControl(self.physics.n_vars)
         mesh = self.reservoir.mesh
         n_blocks = mesh.n_blocks
         n_res_blks = mesh.n_res_blocks
@@ -58,9 +54,8 @@ class Model(THMCModel):
         # proprietary_linear_type (bos_fs_cpr) to params.linear_type -- but only for
         # mech_discretizer; pm_discretizer keeps its mechanics multi-stage backend
         # (engine.ls_params), so its spec carries no proprietary fallback (None).
-        # Constructed and configured here, before super().set_solver() below, so
-        # the platform default is never materialized.
-        self.linear_solver = LinearSolver(model=self)
+        # The spec is set here, before super().set_solver() below, so the platform
+        # default is never materialized.
         self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
             # NOTE: 1e-5 / 50 are the values this model has always effectively run with.

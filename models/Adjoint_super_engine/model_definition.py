@@ -317,11 +317,11 @@ class Model(DartsModel, OptModuleSettings):
         # Idempotent: the forward solver is built once (before engine.init, so the
         # adjoint solver can hold a reference to it). The base reset() calls
         # set_solver() again at its top -- skip the rebuild so that reference stays
-        # valid. self.linear_solver is None until this method runs (mirrors
-        # nonlinear_solver), so its identity is the idempotency marker.
-        if self.linear_solver is not None:
+        # valid. self.linear_solver itself is composed in DartsModel.__init__ and so
+        # always exists; the SPEC this method assigns below is what marks the work as
+        # already done.
+        if self.linear_solver.spec is not None:
             return
-        self.linear_solver = LinearSolver(model=self)
         # Single per-model home for time-stepping / Newton config (the unified
         # set_solver pattern); the base reset() calls this before engine.init.
         self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
@@ -343,8 +343,8 @@ class Model(DartsModel, OptModuleSettings):
             block_size - 1
         )
 
-        # Configured directly on self.linear_solver (constructed above) -- no
-        # platform default is ever materialized and discarded.
+        # Set on the composed self.linear_solver (created in DartsModel.__init__) --
+        # no platform default is ever materialized and discarded.
         self.linear_solver.spec = MGRSolverSpec(
             tolerance=1e-3,
             max_iterations=50,

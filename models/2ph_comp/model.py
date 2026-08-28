@@ -111,7 +111,6 @@ class Model(DartsModel):
         # Single per-model home for time-stepping / Newton + linear-solver config
         # (the unified set_solver() pattern). Called by the base reset() before
         # engine.init, so these settings feed engine.init().
-        self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
 
@@ -135,8 +134,8 @@ class Model(DartsModel):
             block_size - 1
         )
 
-        # Configured directly on self.linear_solver (constructed above) -- no
-        # platform default is ever materialized and discarded.
+        # Set on the composed self.linear_solver (created in DartsModel.__init__) --
+        # no platform default is ever materialized and discarded.
         self.linear_solver.spec = MGRSolverSpec(
             tolerance=1e-4,
             max_iterations=50,

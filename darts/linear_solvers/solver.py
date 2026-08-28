@@ -2,8 +2,9 @@
 
 Mirrors the runtime-solver design of :mod:`darts.nonlinear_solvers` (!327):
 ``DartsModel.nonlinear_solver`` holds a detached :class:`NewtonSolver` instance that
-binds to the model during ``init()``; :class:`LinearSolver` is the linear twin. It is
-constructed *detached* from the model (no physics / engine needed), holds the
+binds to the model during ``init()``; :class:`LinearSolver` is the linear twin, except
+that it takes its model at construction instead of binding later. It needs no physics /
+engine at that point (only the back-reference), holds the
 declarative :attr:`spec` (a :class:`~darts.linear_solvers.specs.LinearSolverSpec`),
 and materializes its computational backend when it is bound during ``reset()`` -- the
 point where the matrix block size and the engine object exist (before
@@ -119,10 +120,12 @@ def _describe_solver_spec(spec) -> str:
 class LinearSolver:
     """Runtime linear solver bound to a model at ``reset()``/``init()`` time.
 
-    Mirror of :class:`darts.nonlinear_solvers.NonlinearSolver`: constructed
-    detached, the declarative configuration stays retrievable as :attr:`spec`
-    (serializable via ``spec.to_dict()``), and the model binds it via
-    :meth:`bind` before materializing the backend.
+    Near-mirror of :class:`darts.nonlinear_solvers.NonlinearSolver`: the declarative
+    configuration stays retrievable as :attr:`spec` (serializable via
+    ``spec.to_dict()``). Unlike the nonlinear solver it takes its ``model`` at
+    construction (``DartsModel.__init__`` composes it as
+    ``LinearSolver(model=self)``) and is never reassigned, so no separate
+    :meth:`bind` step is needed before the backend is materialized.
 
     :param spec: the :class:`LinearSolverSpec` to run. ``None`` until the model's
         ``set_solver()`` materializes the platform default (or a raw handle is
@@ -175,17 +178,21 @@ class LinearSolver:
     # ------------------------------------------------------------ construction
 
     @classmethod
-    def from_handle(cls, raw, label: str = None) -> "LinearSolver":
+    def from_handle(cls, raw, label: str = None, model=None) -> "LinearSolver":
         """Wrap a raw compiled solver handle built outside the spec API (the
         documented fine-control path, e.g.
         ``linear_solvers.create_mgr_solver_for_block_size(...)``). The wrapper
-        has no :attr:`spec`; the handle is injected as-is."""
+        has no :attr:`spec`; the handle is injected as-is.
+
+        Pass ``model=`` when the result is assigned to ``DartsModel.linear_solver``:
+        the composed instance always carries its model (there is no separate bind
+        step), so a replacement must carry it too."""
         if not is_compiled_solver_handle(raw):
             raise TypeError(
                 "LinearSolver.from_handle expects a compiled darts.linear_solvers "
                 f"solver handle, got {type(raw).__name__}"
             )
-        solver = cls()
+        solver = cls(model=model)
         solver.handle = raw
         solver.label = label
         return solver
@@ -193,9 +200,12 @@ class LinearSolver:
     # ------------------------------------------------------------ binding
 
     def bind(self, model) -> "LinearSolver":
-        """Attach this (possibly detached) solver to a model; returns self. The
-        backend is materialized separately by :meth:`_apply_solver` (it needs
-        the matrix block size and the engine object)."""
+        """Re-point this solver at ``model``; returns self.
+
+        Not needed on the normal path -- ``DartsModel.__init__`` composes the
+        instance with ``model=self`` and nothing reassigns it. Kept for the
+        standalone case (a solver built outside a model, then attached) and for
+        symmetry with :meth:`darts.nonlinear_solvers.NonlinearSolver.bind`."""
         self.model = model
         return self
 
@@ -273,13 +283,16 @@ class LinearSolver:
         selects the solver.
         """
         model = self.model
+        if model is None:
+            raise RuntimeError(
+                "LinearSolver is not attached to a model: DartsModel.linear_solver is "
+                "composed in __init__ with model=self, so a replacement must pass "
+                "model= too (LinearSolver(spec, model=self) / "
+                "LinearSolver.from_handle(raw, model=self))."
+            )
         engine = getattr(model.physics, "engine", None)
         if engine is None:
             return
-        # Bind (possibly a no-op re-bind) -- mirror of the nonlinear_solver.bind(self)
-        # that DartsModel.init()/reset() perform. Binding resolves the platform-default
-        # spec, so it must precede the sim_params mirroring below.
-        self.bind(model)
         # self owns the linear-solver settings: mirror them into sim_params, which is
         # what engine.init() re-applies to the solver it (re-)inits.
         self._sync_solver_to_sim_params()

@@ -53,11 +53,7 @@ class Model(THMCModel):
         # The spec drives _apply_solver in the open-source build; in the proprietary
         # build it is ignored and the engine factory uses params.linear_type
         # (bos_fs_cpr).
-        from darts.timestep_control import TimestepControl
-        from darts.linear_solvers import LinearSolver
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
-        if not hasattr(self, 'ts_control') or self.ts_control is None:
-            self.ts_control = TimestepControl(self.physics.n_vars)
         mesh = self.reservoir.mesh
         n_res_blks = mesh.n_res_blocks
         n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
@@ -78,9 +74,8 @@ class Model(THMCModel):
         # authoritative now, so state the values this model has really been running -- keeping
         # behaviour unchanged. FS-CPR does not reach 1e-8 on these systems anyway: asking for it
         # only burns the iteration budget (on SPE10_mech 22 of 48 solves exhaust the 200-iter cap).
-        # Constructed and configured here, before super().set_solver() below, so
-        # the platform default is never materialized.
-        self.linear_solver = LinearSolver(model=self)
+        # The spec is set here, before super().set_solver() below, so the platform
+        # default is never materialized.
         self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-5, max_iterations=50, restart=50,
                                   proprietary_linear_type=sim_params.cpu_gmres_fs_cpr)
         super().set_solver()

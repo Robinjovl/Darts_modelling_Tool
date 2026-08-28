@@ -177,8 +177,6 @@ class Model(DartsModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        from darts.linear_solvers import LinearSolver
-        self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
 
         # GPU -> AMGX-CPR; CPU -> FGMRES + CPR/AMG
@@ -192,8 +190,8 @@ class Model(DartsModel):
         elim = K > 0 and (n_vars is None or n_vars - K >= 2)
         elim_rows = list(range(K))
         elim_cols = list(range(1, K + 1))
-        # Configured directly on self.linear_solver (constructed above) -- no
-        # platform default is ever materialized and discarded.
+        # Set on the composed self.linear_solver (created in DartsModel.__init__) --
+        # no platform default is ever materialized and discarded.
         if getattr(self, 'platform', 'cpu') == 'gpu':
             from darts.linear_solvers import AMGXCPRSolverSpec
             if elim:

@@ -54,9 +54,6 @@ class Model(DartsModel):
         else:
             max_ts_mult = 5.
         max_ts = min(4., max_ts_mult * 1000 / self.nx)
-        if self.linear_solver is None:
-            from darts.linear_solvers import LinearSolver
-            self.linear_solver = LinearSolver(model=self)
         self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=max_ts, runtime=1000  )
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10, chop=ChopSpec(mode='local'))
