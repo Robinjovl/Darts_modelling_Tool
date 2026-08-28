@@ -85,6 +85,11 @@ def get_interpolator_class(algorithm, platform, precision, n_dims, n_ops):
     itor_name = get_interpolator_name(algorithm, platform, precision, n_dims, n_ops)
     itor_cls = globals().get(itor_name)
     if itor_cls is None:
+        # The 'linear' family is optional: -DOPENDARTS_INTERPOLATOR_PROFILE=MINIMAL omits
+        # those templates, and the Windows CI build uses such a profile. Skip rather than
+        # fail there. 'multilinear' is present in every profile, so a miss is a real error.
+        if algorithm == 'linear':
+            pytest.skip(f'{itor_name} is not exposed in this build')
         pytest.fail(f'{itor_name} is not exposed in darts.interpolators')
     return itor_name, itor_cls
 
