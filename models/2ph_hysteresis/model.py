@@ -90,6 +90,10 @@ class Model(DartsModel):
         self.start_injection_h2o_days = 800.0
         self.water_injection_rate = 1.728
         self.co2_injection_rate = 6.4
+        # per-DOF timestep control: cap the composition change per timestep.
+        # Applied to ts_control.eta in set_solver(), once init() has sized eta to
+        # physics.n_vars (it is empty before that -- see DartsModel.init).
+        self.dt_eta = 0.05
 
         self.setup_case(
             nx=100,
@@ -119,7 +123,7 @@ class Model(DartsModel):
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=16)
         self.linear_solver.spec.tolerance = 1e-3
         self.linear_solver.spec.max_iterations = 20
-        self.ts_control.eta[-1] = 0.05
+        self.ts_control.eta[-1] = self.dt_eta
 
     def setup_case(
         self,
@@ -139,8 +143,11 @@ class Model(DartsModel):
         stop_injection_after_days: float | None = 400.0,
         start_injection_h2o_days: float | None = 800.0,
         water_injection_rate: float = 1.728,
+        dt_eta: float | None = None,
     ) -> None:
         self.zero = zero
+        if dt_eta is not None:
+            self.dt_eta = dt_eta
         self.thermal = thermal
         self.temperature = temperature
         self.injection_temperature = (

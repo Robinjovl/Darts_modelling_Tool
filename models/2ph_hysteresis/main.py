@@ -90,6 +90,7 @@ def build_model(config: CaseConfig, platform: str = "cpu") -> Model:
         stop_injection_after_days=config.stop_injection_after_days,
         start_injection_h2o_days=config.start_injection_h2o_days,
         water_injection_rate=1.728,
+        dt_eta=config.dt_eta,
     )
     model.nonlinear_solver = NewtonSolver(tolerance=config.tol_newton, max_iterations=config.it_newton)
     model.linear_solver.set_sim_params(
@@ -97,9 +98,9 @@ def build_model(config: CaseConfig, platform: str = "cpu") -> Model:
         mult_ts=config.mult_ts,
         max_ts=config.max_ts,
         runtime=config.total_days)
-    # Linear-solver settings (tolerance / max_iterations) are owned by
-    # Model.set_solver() -> self.linear_solver; it runs at init() and is authoritative.
-    model.ts_control.eta[-1] = config.dt_eta
+    # Linear-solver settings (tolerance / max_iterations) and the per-DOF
+    # ts_control.eta are owned by Model.set_solver() -> self.linear_solver; it runs
+    # at init() and is authoritative. dt_eta reaches it through setup_case() above.
     model.init(platform=platform)
     model.set_output(output_folder=config.output_folder, all_phase_props=True)
     return model
