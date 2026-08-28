@@ -14,6 +14,7 @@ from scipy.interpolate import interp1d
 
 from darts.engines import *
 from darts.interpolators import *
+from darts.physics.base.history_extension import HistoryField, HistoryStateSupport
 from darts.physics.base.operator_evaluator import (
     PropertyOperators,
     ReservoirOperators,
@@ -21,7 +22,6 @@ from darts.physics.base.operator_evaluator import (
     WellCtrlOperators,
     WellOperators,
 )
-from darts.physics.base.history_extension import HistoryField, HistoryStateSupport
 from darts.tools.obl_cache import OblCacheCodec
 
 
@@ -283,6 +283,21 @@ class PhysicsBase:
         :returns: Ordered history descriptors.
         """
         return self.history.fields
+
+    @history_fields.setter
+    def history_fields(self, fields: Iterable[HistoryField] | None) -> None:
+        """
+        Reconfigure the history descriptors, replacing the whole support object.
+
+        Kept assignable because ``history_fields`` was a plain attribute before the
+        history logic moved to :mod:`darts.physics.base.history_extension`. Rebinding
+        (rather than mutating ``self.history.fields``) also works on a ``PhysicsBase``
+        built via ``__new__``, where ``self.history`` does not exist yet.
+
+        :param fields: Ordered :class:`HistoryField` descriptors, or None to disable
+        :returns: None
+        """
+        self.history = HistoryStateSupport(fields)
 
     @property
     def n_state(self) -> int:
