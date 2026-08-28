@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <algorithm>
 #include <time.h>
 #include <functional>
@@ -118,6 +119,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	// create linear solver
 	if (!linear_solver)
 	{
+		// Factory-allocated solvers are engine-owned and deleted in ~engine_base.
+		linear_solver_owned = true;
 		switch (params->linear_type)
 		{
 #ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS solvers; the open-source build injects via the registry
@@ -255,6 +258,15 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		default:
 			break;
 		}
+		// A compiled-out case leaves linear_solver at nullptr (engine_base.h
+		// initialises it there), and the caller dereferences it immediately.
+		// Fail with a diagnostic instead of a null deref.
+		if (!linear_solver)
+			throw std::runtime_error(
+				"engine_super_elastic_cpu: linear solver type " +
+				std::to_string(static_cast<int>(params->linear_type)) +
+				" is not available in this build; use sim_params::CPU_SUPERLU or inject "
+				"a solver from Python via set_linear_solver().");
 	}
 
 	n_vars = get_n_vars();

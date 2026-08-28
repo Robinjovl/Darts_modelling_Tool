@@ -408,8 +408,12 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 #endif
 
   std::string linear_solver_type_str;
-  if (!linear_solver)
+  // Guard on the injected solver too, matching the CPU factory: an injected
+  // solver must never be shadowed by a freshly built one.
+  if (!linear_solver && !linear_solver_external)
   {
+    // Factory-allocated solvers are engine-owned and deleted in ~engine_base.
+    linear_solver_owned = true;
 #ifdef OPENDARTS_LINEAR_SOLVERS
     // Open-source GPU build: the proprietary bos GMRES/CPR/AMG solvers are
     // stubbed out, so the full linear_type-driven factory below cannot run.

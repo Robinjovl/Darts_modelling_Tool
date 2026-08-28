@@ -91,9 +91,10 @@ del /s /q darts\*.dll 2>NUL
 rmdir /s /q dist 2>NUL
 
 if %clean_mode%==true (
-  echo - Cleaning up ^(darts build + thirdparty HYPRE; -c forces a complete rebuild^)
+  echo - Cleaning up ^(darts build + thirdparty HYPRE/SuperLU; -c forces a complete rebuild^)
   rmdir /s /q build 2>NUL
-  rmdir /s /q thirdparty\hypre\src\cmbuild 2>NUL
+  rmdir /s /q thirdparty\hypre\build 2>NUL
+  rmdir /s /q thirdparty\build 2>NUL
   rmdir /s /q thirdparty\install 2>NUL
   REM goto :eof
 )
@@ -161,8 +162,8 @@ if %skip_req%==false (
         -D CMAKE_SUPPRESS_REGENERATION=ON ^
         %hypre_omp_flag% ^
         -D CMAKE_INSTALL_PREFIX=..\..\install ^
-        -D HYPRE_SEQUENTIAL=ON ../src > ..\..\..\make_hypre.log || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\make_hypre.log || goto :error
+        -D HYPRE_SEQUENTIAL=ON ../src > ..\..\..\make_hypre.log 2>&1 || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\make_hypre.log 2>&1 || goto :error
   cd ..\..\
   rem -- Install SuperLU (pinned git submodule thirdparty\superlu, built with its
   rem own CMake + MSVC generator into thirdparty\install, mirroring HYPRE). Double
@@ -184,8 +185,8 @@ if %skip_req%==false (
         -D BUILD_SHARED_LIBS=OFF ^
         -D CMAKE_POSITION_INDEPENDENT_CODE=ON ^
         -D CMAKE_INSTALL_PREFIX=..\..\install ^
-        ..\..\superlu > ..\..\..\make_superlu.log || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% >> ..\..\..\make_superlu.log || goto :error
+        ..\..\superlu > ..\..\..\make_superlu.log 2>&1 || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% >> ..\..\..\make_superlu.log 2>&1 || goto :error
   cd ..\..\..
 
   if %phreeqc%==true (
@@ -242,8 +243,8 @@ echo CMake options: %cmake_options%
 cmake %cmake_options% ..
 
 REM build and install
-cmake --build . --config %config% --parallel %NT% > ..\make_darts.log || goto :error
-cmake --build . --config %config% --target INSTALL --parallel %NT% >> ..\make_darts.log || goto :error
+cmake --build . --config %config% --parallel %NT% > ..\make_darts.log 2>&1 || goto :error
+cmake --build . --config %config% --target INSTALL --parallel %NT% >> ..\make_darts.log 2>&1 || goto :error
 
 if %testing%==true ctest -C %config%  || goto :error
 
