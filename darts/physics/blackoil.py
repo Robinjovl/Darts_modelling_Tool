@@ -1,18 +1,7 @@
-from darts.input.input_data import FluidProps, InputData
+from darts.input.input_data import InputData
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.black_oil import *
-
-
-class BlackOilBase(PhysicsBase):
-    def __init__(self, idata, timer):
-        super().__init__(idata, timer, BlackOilProperties)
-
-        property_container = BlackOilProperties(idata)
-        property_container.density_ev = idata.fluid.density
-        property_container.viscosity_ev = idata.fluid.viscosity
-        property_container.rel_perm_ev = idata.fluid.rel_perm
-        self.add_property_region(property_container)
 
 
 class BlackOil(PhysicsBase):
@@ -64,37 +53,6 @@ class BlackOil(PhysicsBase):
         self.add_property_region(property_container)
 
 
-class BlackOilFluidProps(FluidProps):
-    def __init__(self, pvt):
-        super().__init__()
-        self.components = ["g", "o", "w"]
-        self.phases = ["gas", "oil", "water"]
-        self.Mw = np.ones(len(self.components))
-
-        self.pvt = pvt
-        self.flash_ev = flash_black_oil(pvt)
-        self.density = dict(
-            [
-                ('gas', DensityGas(pvt)),
-                ('oil', DensityOil(pvt)),
-                ('water', DensityWat(pvt)),
-            ]
-        )
-        self.viscosity = dict(
-            [('gas', ViscGas(pvt)), ('oil', ViscOil(pvt)), ('water', ViscWat(pvt))]
-        )
-        self.rel_perm = dict(
-            [
-                ('gas', GasRelPerm(pvt)),
-                ('oil', OilRelPerm(pvt)),
-                ('water', WatRelPerm(pvt)),
-            ]
-        )
-        self.capillary_pressure = dict(
-            [('pcow', CapillaryPressurePcow(pvt)), ('pcgo', CapillaryPressurePcgo(pvt))]
-        )
-
-
 class BlackOilProperties(PropertyContainer):
     def __init__(
         self,
@@ -105,7 +63,9 @@ class BlackOilProperties(PropertyContainer):
         temperature: float = None,
     ):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=1.0)
+        super().__init__(
+            phases_name, components_name, Mw, eps_z=eps_z, temperature=temperature
+        )
         # self.surf_dens = get_table_keyword(idata.fluid.pvt, 'DENSITY')[0]
         # self.surf_oil_dens = self.surf_dens[0]
         # self.surf_wat_dens = self.surf_dens[1]
