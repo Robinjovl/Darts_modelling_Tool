@@ -254,6 +254,10 @@ class PhysicsBase:
         self.output_property_operators = {}
         self.output_property_itor = {}
 
+        # Optional OBL history variables (e.g. max gas saturation for Killough hysteresis).
+        # The descriptors are ordered; see darts.physics.base.history_extension for the
+        # ordering contract they share with engine.Xhistory and the interpolator state.
+        # An empty list disables history-aware behaviour, so no call site needs a guard.
         self.history = HistoryStateSupport(history_fields)
 
     def check_properties(self):
@@ -387,7 +391,7 @@ class PhysicsBase:
                        ``n_blocks``
         :type values: float or array-like
         :param n_blocks: Number of reservoir blocks to write. When ``None``, inferred as
-                         ``Xhistory_flat.size // n_history``
+                         ``Xhistory.size // n_history`` (i.e. all cells including boundaries)
         :type n_blocks: int, optional
         :returns: None
         :raises RuntimeError: If no history fields are configured on this physics

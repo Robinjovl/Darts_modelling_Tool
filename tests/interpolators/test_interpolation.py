@@ -72,42 +72,38 @@ class Nonlinear(operator_set_evaluator_iface):
         return 0
 
 
-def get_interpolator_name(algorithm, mode, platform, precision, n_dims, n_ops):
+def get_interpolator_name(algorithm, platform, precision, n_dims, n_ops):
     # Letterless naming: the index-type template parameter was dropped from the
-    # adaptive interpolators, so exposed names carry no _i_/_l_ index-type letter.
-    itor_name = (
-        f"{algorithm}_{mode}_{platform}_interpolator_{precision}_{n_dims}_{n_ops}"
-    )
+    # interpolators, so exposed names carry no _i_/_l_ index-type letter. The
+    # interpolation-mode token is gone too -- !280 removed the static interpolators,
+    # so interpolation is always adaptive and the names no longer spell it out.
+    itor_name = f"{algorithm}_{platform}_interpolator_{precision}_{n_dims}_{n_ops}"
     return itor_name
 
 
-def get_interpolator_class(algorithm, mode, platform, precision, n_dims, n_ops):
-    itor_name = get_interpolator_name(
-        algorithm, mode, platform, precision, n_dims, n_ops
-    )
+def get_interpolator_class(algorithm, platform, precision, n_dims, n_ops):
+    itor_name = get_interpolator_name(algorithm, platform, precision, n_dims, n_ops)
     itor_cls = globals().get(itor_name)
     if itor_cls is None:
-        if algorithm == 'linear' and mode == 'adaptive':
-            pytest.skip(f'{itor_name} is not exposed in this build')
         pytest.fail(f'{itor_name} is not exposed in darts.interpolators')
     return itor_name, itor_cls
 
 
 @pytest.mark.parametrize(
-    "itor_type, itor_mode, n_dim, is_barycentric, norm",
+    "itor_type, n_dim, is_barycentric, norm",
     [
-        ("multilinear", "adaptive", 4, None, np.inf),
-        ("linear", "adaptive", 4, False, np.inf),
-        ("linear", "adaptive", 4, True, np.inf),
+        ("multilinear", 4, None, np.inf),
+        ("linear", 4, False, np.inf),
+        ("linear", 4, True, np.inf),
     ],
 )
-def test_interpolator_convergence(itor_type, itor_mode, n_dim, is_barycentric, norm):
+def test_interpolator_convergence(itor_type, n_dim, is_barycentric, norm):
     zero = 1.0e-9
     n_ops = 6 * n_dim + 17
     axes_min = n_dim * [-1 - zero]
     axes_max = n_dim * [1 + zero]
     evaluator = Nonlinear(n_dim, n_ops)
-    _, itor_cls = get_interpolator_class(itor_type, itor_mode, 'cpu', 'd', n_dim, n_ops)
+    _, itor_cls = get_interpolator_class(itor_type, 'cpu', 'd', n_dim, n_ops)
     resolutions = [n_dim * [8], n_dim * [32], n_dim * [128]]
 
     # generate random states
@@ -185,28 +181,28 @@ def test_interpolator_convergence(itor_type, itor_mode, n_dim, is_barycentric, n
     # print(diff)
     if itor_type == 'linear' and is_barycentric:
         print(
-            f'{itor_type} {itor_mode} barycentric interpolation with Delaunay triangulation (n_dim={n_dim}): {test_status}'
+            f'{itor_type} barycentric interpolation with Delaunay triangulation (n_dim={n_dim}): {test_status}'
         )
     elif itor_type == 'linear' and not is_barycentric:
         print(
-            f'{itor_type} {itor_mode} interpolation with standard triangulation (n_dim={n_dim}): {test_status}'
+            f'{itor_type} interpolation with standard triangulation (n_dim={n_dim}): {test_status}'
         )
     else:
-        print(f'{itor_type} {itor_mode} interpolation (n_dim={n_dim}): {test_status}')
+        print(f'{itor_type} interpolation (n_dim={n_dim}): {test_status}')
     # print('Conv. order: val = ' + str(orders[0]) + ', der = ' + str(orders[1]))
 
     assert success, 'Conv. order: val = ' + str(orders[0]) + ', der = ' + str(orders[1])
 
 
 @pytest.mark.parametrize(
-    "itor_type, itor_mode, n_dim, is_barycentric",
+    "itor_type, n_dim, is_barycentric",
     [
-        ("multilinear", "adaptive", 4, None),
-        ("linear", "adaptive", 4, False),
-        ("linear", "adaptive", 4, True),
+        ("multilinear", 4, None),
+        ("linear", 4, False),
+        ("linear", 4, True),
     ],
 )
-def test_linearity_preservation(itor_type, itor_mode, n_dim, is_barycentric):
+def test_linearity_preservation(itor_type, n_dim, is_barycentric):
     zero = 1.0e-9
     n_ops = 6 * n_dim + 17
     n_axes_points = n_dim * [128]
@@ -216,7 +212,7 @@ def test_linearity_preservation(itor_type, itor_mode, n_dim, is_barycentric):
 
     # initialize interpolator. New adaptive ctor is (evaluator, axes_origin,
     # axes_step); derive step from the (n_axes_points, axes_min, axes_max) window.
-    _, itor_cls = get_interpolator_class(itor_type, itor_mode, 'cpu', 'd', n_dim, n_ops)
+    _, itor_cls = get_interpolator_class(itor_type, 'cpu', 'd', n_dim, n_ops)
     axes_step = [
         (axes_max[d] - axes_min[d]) / (n_axes_points[d] - 1) for d in range(n_dim)
     ]
@@ -290,14 +286,14 @@ def test_linearity_preservation(itor_type, itor_mode, n_dim, is_barycentric):
 
     if itor_type == 'linear' and is_barycentric:
         print(
-            f'{itor_type} {itor_mode} barycentric interpolation with Delaunay triangulation (n_dim={n_dim}): {test_status}'
+            f'{itor_type} barycentric interpolation with Delaunay triangulation (n_dim={n_dim}): {test_status}'
         )
     elif itor_type == 'linear' and not is_barycentric:
         print(
-            f'{itor_type} {itor_mode} interpolation with standard triangulation (n_dim={n_dim}): {test_status}'
+            f'{itor_type} interpolation with standard triangulation (n_dim={n_dim}): {test_status}'
         )
     else:
-        print(f'{itor_type} {itor_mode} interpolation (n_dim={n_dim}): {test_status}')
+        print(f'{itor_type} interpolation (n_dim={n_dim}): {test_status}')
 
 
 # ── Tests for the parallel operator update (MR297) ──────────────────────────
@@ -316,9 +312,7 @@ def _build_multilinear_adaptive(
     No timer node is attached on purpose: this exercises the null-timer path of
     the three-phase adaptive update (the ``if (this->timer)`` guards added in MR297).
     """
-    _, itor_cls = get_interpolator_class(
-        'multilinear', 'adaptive', 'cpu', 'd', n_dim, n_ops
-    )
+    _, itor_cls = get_interpolator_class('multilinear', 'cpu', 'd', n_dim, n_ops)
     # New adaptive ctor is (evaluator, axes_origin, axes_step); derive step from the
     # legacy (n_axes_points, axes_min, axes_max) window so cell spacing is unchanged.
     axes_step = [

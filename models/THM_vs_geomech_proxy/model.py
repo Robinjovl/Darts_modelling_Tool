@@ -544,7 +544,7 @@ class Model(THMCModel):
             if self.thermal:
                 boundary_state['temperature'] = self.idata.initial.temperature_at_ref_depth
             boundary_state['pressure'] = self.idata.initial.pressure_at_ref_depth
-            init = Initialize(physics=self.physics, algorithm='multilinear', mode='adaptive',
+            init = Initialize(physics=self.physics, algorithm='multilinear',
                               is_barycentric=False)
 
             nb = 100
