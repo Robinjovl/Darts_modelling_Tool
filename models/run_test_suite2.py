@@ -101,9 +101,7 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
     # NE>1 pressure stage is memory-correct (scalar to_nb_1 expansion of the
     # PPSS block) but converges orders of magnitude slower than the proprietary
     # FS-CPR's Schur reduction (bai_mech_rect: LI 325k vs ~50). Re-enable once
-    # the proprietary NE>1 reduction is ported to linsolv_fs_cpr -- see
-    # MR280_MASTER_PLAN.md ("FS-CPR NE>1"). NE == 1 cases (terzaghi/mandel/
-    # SPE10_mech single_phase/displaced_fault) run and pass.
+    # the proprietary NE>1 reduction is ported to linsolv_fs_cpr.
     FS_CPR_NE_GT1_READY = False
 
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
