@@ -149,6 +149,12 @@ namespace opendarts
       cublasDnrm2(cub_handle, n, r, 1, &nrmr0);
       cublasDnrm2(cub_handle, n, B, 1, &b_norm);
 
+      // Keep the TRUE initial residual ||b - A x0|| separate from the
+      // convergence denominator: the two coincide only for a zero initial
+      // guess, and the regression check of the unified solve() convention must
+      // compare against the residual the solve actually started from.
+      const double nrmr0_true = nrmr0;
+
       // Convergence criterion |r_i|/|b| <= tol when |b| > 0.
       if (b_norm > 1e-16)
         nrmr0 = b_norm;
@@ -240,12 +246,18 @@ namespace opendarts
       last_converged = (nrmr < tolerance * nrmr0);
 
       this->timer_solve->node["BiCGStab"].stop();
-      // A non-finite residual means the iterate is garbage -- hard failure.
-      // Plain non-convergence at max_iters keeps the legacy 0 return; it is
-      // visible through stats().converged.
+      // Unified solve() convention (see linear_solver.hpp): a non-finite
+      // residual, or one that ended ABOVE the residual the solve started from
+      // (BiCGStab oscillates, but finishing worse than the initial guess makes
+      // the iterate a regression), is a hard failure. Otherwise exhaustion with
+      // progress reports solve_result::not_converged and the nonlinear solver
+      // decides whether to accept the step.
       if (!std::isfinite(nrmr))
         return -4;
-      return 0;
+      if (!opendarts::linear_solvers::solve_result::residual_did_not_regress(
+              static_cast<double>(nrmr), static_cast<double>(nrmr0_true)))
+        return -6; // residual grew over the whole solve: unusable iterate
+      return last_converged ? 0 : opendarts::linear_solvers::solve_result::not_converged;
     }
 
     template <uint8_t N_BLOCK_SIZE>

@@ -72,10 +72,33 @@ The nonlinear default is a `NewtonSolver` with:
 | `norm` | `Norm.L2` | residual norm |
 | `coupled_well_res_norm_method` | `1` | DFM coupled well-residual norm (`1` or `2`) |
 | `chop` | `ChopSpec(mode='local', factor=0.1, log_transform=False)` | update limiting; `mode` is `'local'`, `'global'` or `None`, `factor` is the max composition change per iteration |
+| `on_linear_nonconvergence` | `'accept'` | policy for a linear solve that exhausted its budget on a usable iterate: `'accept'` the inexact-Newton step or `'cut'` the timestep (see below) |
 | `obl_bounds` | `OBLBoundsSpec(mode=None)` | optional per-axis clamping to the OBL box; `mode='obl_axes'` with `axis_min` / `axis_max` |
 
 `NewtonSolver` also takes `pre_routines`, `post_routines` and `fallbacks` (all empty by
 default) for user procedures around each nonlinear iteration.
+
+### Non-convergence policy of the linear solve
+
+Every linear solver reports one of three outcomes per solve (the unified
+`linear_solver::solve()` convention): **converged**, **not converged but usable** (the
+iteration budget ran out on a finite, non-regressing residual), or **hard failure**
+(non-finite or growing residual, backend error). A hard failure always aborts the Newton
+iteration and cuts the timestep. What happens on a *usable but non-converged* solve is a
+nonlinear-solver policy, not the linear solver's decision:
+
+```python
+self.nonlinear_solver.spec.on_linear_nonconvergence = 'accept'   # default
+self.nonlinear_solver.spec.on_linear_nonconvergence = 'cut'
+```
+
+`'accept'` applies the inexact-Newton step and lets the Newton residual gate decide —
+the classical inexact-Newton treatment and the historical behaviour of the default
+FGMRES+CPR solver. `'cut'` treats it as a failed solve and cuts the timestep — the
+historical behaviour of MGR. With one policy in force, different linear solvers run the
+same Newton trajectory on the same problem, which makes solver comparisons
+like-for-like. Non-converged solves are marked ` NC` in the per-iteration log line and
+counted in `nonlinear_solver.status.n_linear_nonconverged`.
 
 ## Solvers and preconditioners
 

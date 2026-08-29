@@ -104,6 +104,73 @@ def test_linear_failure_aborts_and_marks_wasted(make_newton, rc, reason):
     assert solver.stats.n_timesteps_wasted == 1
 
 
+def test_linear_nonconvergence_accepted_by_default(make_newton):
+    # rc 3 = "budget exhausted, iterate usable" (unified solve() convention).
+    # Default policy 'accept': the step is applied, iterations are counted, the
+    # occurrence is recorded, and the timestep converges on the Newton gate.
+    solver, model, engine, _ = make_newton(res_seq=[1.0, 1e-12], solve_rcs=[3])
+    converged = solver.run_timestep(1.0, 0.0)
+    assert converged is True
+    assert solver.status.linear_solver_rc == 0  # accepted: not a failure
+    assert solver.status.n_linear_nonconverged == 1
+    assert solver.status.n_linear == engine.get_last_linear_iters()
+    assert engine.n_apply_update >= 1  # the inexact step WAS applied
+
+
+def test_linear_nonconvergence_cut_policy(make_newton):
+    spec = NewtonSpec()
+    spec.on_linear_nonconvergence = "cut"
+    solver, model, engine, _ = make_newton(spec=spec, res_seq=[1.0, 1.0], solve_rcs=[3])
+    converged = solver.run_timestep(1.0, 0.0)
+    assert converged is False
+    assert solver.status.linear_solver_rc == 3
+    assert solver.status.n_linear_nonconverged == 1
+    assert engine.n_apply_update == 0  # never applied
+    assert "did not converge" in solver._failure_message(1.0)
+
+
+def test_on_linear_nonconvergence_validation():
+    assert NewtonSpec().on_linear_nonconvergence == "accept"
+    spec = NewtonSpec()
+    spec.on_linear_nonconvergence = "abort"  # invalid
+    with pytest.raises(ValueError, match="on_linear_nonconvergence"):
+        spec.validate()
+
+
+def test_on_linear_nonconvergence_is_keyword_only():
+    # The field was appended to the BASE spec; making it positional would shift
+    # every inherited positional argument (NewtonSpec.chop was the 10th) and
+    # silently rebind existing call sites.
+    spec = NewtonSpec(1e-3, 100.0, 20, 1e-3, Norm.L2, 1, [], [], [], ChopSpec())
+    assert isinstance(spec.chop, ChopSpec)
+    assert spec.on_linear_nonconvergence == "accept"
+    assert NewtonSpec(on_linear_nonconvergence="cut").on_linear_nonconvergence == "cut"
+
+
+@pytest.mark.parametrize("rc", [1, 2])
+def test_hard_failure_ignores_accept_policy(make_newton, rc):
+    # 'accept' must apply ONLY to the usable-iterate status (3). A setup (1) or
+    # hard solve (2) failure still aborts, whatever the policy says.
+    spec = NewtonSpec()
+    spec.on_linear_nonconvergence = "accept"
+    solver, model, engine, _ = make_newton(
+        spec=spec, res_seq=[1.0, 1.0], solve_rcs=[rc]
+    )
+    assert solver.run_timestep(1.0, 0.0) is False
+    assert solver.status.linear_solver_rc == rc
+    assert engine.n_apply_update == 0
+    assert solver.status.n_linear_nonconverged == 0
+
+
+def test_nonconvergence_then_success_counts_both(make_newton):
+    # A non-converged solve followed by a converged one: iterations from both
+    # are accounted, and only the first is counted as non-converged.
+    solver, model, engine, _ = make_newton(res_seq=[1.0, 1.0, 1e-12], solve_rcs=[3, 0])
+    assert solver.run_timestep(1.0, 0.0) is True
+    assert solver.status.n_linear_nonconverged == 1
+    assert solver.status.n_linear == 2 * engine.get_last_linear_iters()
+
+
 # -------------------------------------------------------------- F2 OBL modes
 def test_build_corrections_obl_modes(make_newton):
     # mode=None (default): no OBL step at all

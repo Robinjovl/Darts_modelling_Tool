@@ -1034,7 +1034,11 @@ namespace opendarts
         se_reduce_rhs_kernel<N, K, M><<<grid, SE_BLOCK>>>(n_rows, rows_ptr_d, cols_ind_d,
           values_d, k_rows_d, elim_cols_d, h_eff_d, B, b_red_d);
         const int rc = inner->solve(b_red_d, x_red_d);
-        if (rc) return rc;
+        // Unified convention: a POSITIVE rc means the inner iterate is usable
+        // (not converged). The back-substitution must still run -- returning
+        // early would hand back a half-built X -- and the code propagates so
+        // the nonlinear policy can decide. Only negative (hard failure) aborts.
+        if (rc < 0) return rc;
         se_backsub_kernel<N, K, M><<<grid, SE_BLOCK>>>(n_rows, x_red_d, elim_cols_d, keep_cols_d, Gm_d, h_eff_d, X);
         // chained rows: recompute x[elim] with final dep values (host, O(wells)).
         // A cell can carry several chains (multiple eliminated rows / neighbours);
@@ -1082,13 +1086,16 @@ namespace opendarts
               cudaMemcpy(X + (size_t)i * N + elim_cols[a], &xelim[a], sizeof(mat_float), cudaMemcpyHostToDevice);
           }
         }
-        return 0;
+        return rc;
       }
 #endif
-      if (reduce_rhs_host(B)) return 1;
+      if (reduce_rhs_host(B)) return -1;
       const int rc = inner->solve(b_red.data(), x_red.data());
-      if (rc) return rc;
-      return backsub_host(B, X);
+      if (rc < 0) return rc; // hard failure only; a usable (positive) iterate
+                             // still needs the back-substitution below
+      const int bs = backsub_host(B, X);
+      if (bs) return -1;
+      return rc;
     }
 
     // Explicit instantiations for (N, K): N in 2..OD_SE_NMAX, K in 1..min(4, N-1).

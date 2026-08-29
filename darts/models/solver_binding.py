@@ -643,7 +643,10 @@ class LinearSolverBinding:
         solver (:meth:`darts.nonlinear_solvers.NonlinearSolver._solve_linear`).
 
         Returns ``(rc, n_iters, residual)`` for every backend -- ``rc`` is ``0``
-        on success, ``1`` on setup failure, ``2`` on solve failure -- so the
+        on success, ``1`` on setup failure, ``2`` on a hard solve failure, ``3``
+        when the solver exhausted its budget on a usable iterate (the unified
+        ``linear_solver::solve()`` convention; the nonlinear
+        ``on_linear_nonconvergence`` policy decides accept-vs-cut) -- so the
         nonlinear driver stays backend-agnostic (!327 contract).
 
         Two solver kinds are dispatched here (!280 spec-driven routing, which

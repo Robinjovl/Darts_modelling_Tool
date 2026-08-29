@@ -577,6 +577,28 @@ public:
 	index_t get_last_linear_iters() const { return last_linear_iters; }
 	value_t get_last_linear_residual() const { return last_linear_residual; }
 
+	/// @brief Translate a linear_solver::solve() status into the engine status
+	/// every solve_linear_equation() override reports to the Python nonlinear
+	/// solver. Single point of truth for the mapping, shared by all engines:
+	///   0  -> 0  converged
+	///  >0  -> 3  budget exhausted on a usable iterate; the nonlinear
+	///            on_linear_nonconvergence policy decides accept-vs-cut
+	///  <0  -> 2  hard failure; never apply the iterate
+	/// In a proprietary (BOS) build the solvers do not implement the unified
+	/// convention, so any nonzero stays a conservative hard failure.
+	int classify_linear_solve_status(int r_code)
+	{
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		if (r_code > 0)
+		{
+			last_linear_iters = linear_solver->get_n_iters();
+			last_linear_residual = linear_solver->get_residual();
+			return 3;
+		}
+#endif // OPENDARTS_LINEAR_SOLVERS
+		return r_code ? 2 : 0;
+	}
+
 	value_t newton_update_coefficient; // Newton update coefficient for line search
 
 	// nonlinear update controls, owned by the Python nonlinear solver spec
