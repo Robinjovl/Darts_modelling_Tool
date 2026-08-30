@@ -494,6 +494,9 @@ class PropertyContainer:
 
         for j in range(self.ns):
             idx = self.np_fl + j
+            # Explicit solids have no row in self.x, so self.x[0, :] is passed only as a
+            # required placeholder; the evaluator ignores it and uses its internally
+            # stored solid-phase composition.
             self.enthalpy[idx] = self.enthalpy_ev[self.phases_name[idx]].evaluate(
                 self.pressure, self.temperature, self.x[0, :]
             )
