@@ -699,7 +699,14 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 #endif // OPENDARTS_LINEAR_SOLVERS
   }
 
-  std::cout << "Linear solver type is " << params->linear_type << std::endl;
+  // Print the solver name
+  if (linear_solver_type_str.empty())
+  {
+    linear_solver_type_str = external_solver_name.empty()
+        ? std::string("external (injected via set_linear_solver)")
+        : external_solver_name;
+  }
+  std::cout << "Linear solver type is " << linear_solver_type_str << std::endl;
 
   // *** allocate host data ***
 
