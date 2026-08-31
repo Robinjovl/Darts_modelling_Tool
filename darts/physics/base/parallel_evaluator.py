@@ -27,6 +27,7 @@ All top-level classes and worker functions pickle correctly under both ``fork`` 
 """
 
 import contextlib
+import hashlib
 import multiprocessing
 import os
 import pickle
@@ -162,6 +163,37 @@ def _stdout_to_log():
         os.close(saved_fd)
 
 
+# Keeps the threadpoolctl limiter alive for the worker's lifetime; dropping the
+# returned object would let threadpoolctl restore the original BLAS limits.
+_worker_threadpool_limits = None
+
+
+def _pin_worker_threads():
+    """Pin this worker process to a single compute thread, at runtime.
+
+    Setting ``OMP_NUM_THREADS`` alone is inert here: libgomp and OpenBLAS latch
+    their thread count when the runtime initialises. Under ``fork`` that happened
+    in the parent; under ``spawn`` it happens while unpickling this initializer
+    imports numpy / ``darts.engines`` -- both strictly before a pool initializer
+    runs. Only the runtime setters take effect, so call them explicitly; the env
+    var is still exported for lazily-initialised libraries and grandchildren.
+    """
+    global _worker_threadpool_limits
+    os.environ["OMP_NUM_THREADS"] = "1"
+    try:
+        from darts.engines import set_num_threads  # omp_set_num_threads
+
+        set_num_threads(1)
+    except Exception:
+        pass  # engines built without OpenMP: nothing to pin
+    try:
+        from threadpoolctl import threadpool_limits  # OpenBLAS / MKL
+
+        _worker_threadpool_limits = threadpool_limits(limits=1)
+    except Exception:
+        pass  # threadpoolctl optional
+
+
 def _worker_init_multi(factories: dict, silence_workers: bool = True):
     """Build one evaluator per wrap key in this worker process.
 
@@ -177,11 +209,10 @@ def _worker_init_multi(factories: dict, silence_workers: bool = True):
     :param silence_workers: Mute worker stdout (default ``True``).
     """
     global _worker_evaluators
-    # Pin worker BLAS/OpenMP threading to 1: the pool typically runs dozens of
-    # workers, and inheriting the parent's OMP_NUM_THREADS (e.g. 16) would
-    # oversubscribe the host by an order of magnitude during warm-up and
-    # batched evaluation.
-    os.environ["OMP_NUM_THREADS"] = "1"
+    # Pin worker BLAS/OpenMP threading to 1 before any evaluator is built: the
+    # pool typically runs dozens of workers, and inheriting the parent's thread
+    # count would oversubscribe the host by an order of magnitude.
+    _pin_worker_threads()
     if silence_workers:
         _silence_worker_process()
     else:
@@ -277,6 +308,17 @@ class ModelEvaluatorFactory:
     # the mesh discretization alone is tens of seconds per rebuild.
     _model_cache: dict = {}
 
+    @classmethod
+    def clear_model_cache(cls):
+        """Drop every reconstructed model cached in this process.
+
+        The cache is process-wide and unbounded: each entry holds a full mesh and
+        physics stack, so a long-lived process that builds several distinct models
+        (a parameter sweep, an optimisation loop, a notebook session) would retain
+        all of them. Called from :meth:`SharedEvaluatorPool.shutdown`.
+        """
+        cls._model_cache.clear()
+
     def _model_key(self):
         """Cache key identifying the model reconstruction this factory performs.
 
@@ -284,14 +326,24 @@ class ModelEvaluatorFactory:
         constructor arguments) map to the same key regardless of which physics
         ``attribute``/``region`` they fetch, so they share one cached model.
 
-        :return: Hashable tuple of (module, qualname, repr(args), repr(kwargs)).
+        :return: Hashable ``(class, content-digest)`` tuple, or ``None`` when the
+            arguments cannot be digested (the model is then simply not cached).
         """
-        return (
-            self.model_cls.__module__,
-            self.model_cls.__qualname__,
-            repr(self.init_args),
-            repr(sorted(self.init_kwargs.items())),
-        )
+        # repr() must NOT be used here: an argument without __repr__ falls back to
+        # object.__repr__, which embeds its memory address -- equivalent models
+        # then miss the cache, and a recycled address can make two DIFFERENT
+        # models collide on one key. numpy also abbreviates repr() of arrays
+        # larger than 1000 elements, so distinct fields collide deterministically.
+        # Digest the pickled payload instead; the factory must be picklable to
+        # reach a worker at all.
+        try:
+            payload = pickle.dumps(
+                (self.init_args, sorted(self.init_kwargs.items())),
+                protocol=pickle.HIGHEST_PROTOCOL,
+            )
+        except Exception:
+            return None
+        return (self.model_cls, hashlib.blake2b(payload, digest_size=16).digest())
 
     def __call__(self):
         """Return the evaluator object this factory targets.
@@ -305,7 +357,7 @@ class ModelEvaluatorFactory:
         :return: ``model.physics.<attribute>`` (indexed by ``region`` when set).
         """
         key = self._model_key()
-        model = ModelEvaluatorFactory._model_cache.get(key)
+        model = None if key is None else ModelEvaluatorFactory._model_cache.get(key)
         if model is None:
             # Reconstruct the model: runs the model's own set_reservoir/set_physics.
             # init() is intentionally NOT called -- no engine, no nested worker pool.
@@ -313,7 +365,8 @@ class ModelEvaluatorFactory:
             # reservoir_operators are normally populated by init_physics(); build just
             # the operator objects here from the property containers set in set_physics.
             model.physics.set_operators()
-            ModelEvaluatorFactory._model_cache[key] = model
+            if key is not None:
+                ModelEvaluatorFactory._model_cache[key] = model
         obj = getattr(model.physics, self.attribute)
         return obj[self.region] if self.region is not None else obj
 
@@ -482,6 +535,8 @@ class SharedEvaluatorPool:
             pool.terminate()
             pool.join()
             self._pool = None
+            # Release the worker-model cache with the pool that populated it.
+            ModelEvaluatorFactory.clear_model_cache()
 
     def __del__(self):
         try:

@@ -88,6 +88,8 @@ namespace opendarts
       single_precision = 0;
       d_B = d_X = d_Z = nullptr;
       h_Q = d_Q = nullptr;
+      handle = nullptr;
+      descr = nullptr;
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -100,8 +102,10 @@ namespace opendarts
       cudaFree(d_Q);
       cudaFree(d_Z);
 
-      cusolverSpDestroy(handle);
-      cusparseDestroyMatDescr(descr);
+      if (handle)
+        cusolverSpDestroy(handle);
+      if (descr)
+        cusparseDestroyMatDescr(descr);
     }
 
     template <uint8_t N_BLOCK_SIZE>
@@ -112,6 +116,17 @@ namespace opendarts
       A_matrix = A_input;
       n_rows = A_matrix->n_rows;
       nnz = A_matrix->n_non_zeros;
+
+      // Re-init: release the previous handles/descriptor/buffers. They are all
+      // (re)created unconditionally below, so the earlier set would be orphaned.
+      delete[] h_Q;
+      h_Q = nullptr;
+      if (d_B) { cudaFree(d_B); d_B = nullptr; }
+      if (d_Z) { cudaFree(d_Z); d_Z = nullptr; }
+      if (d_X) { cudaFree(d_X); d_X = nullptr; }
+      if (d_Q) { cudaFree(d_Q); d_Q = nullptr; }
+      if (handle) { cusolverSpDestroy(handle); handle = nullptr; }
+      if (descr) { cusparseDestroyMatDescr(descr); descr = nullptr; }
 
       // Mirror the matrix on the device and, for block matrices, build the
       // scalar-CSR device view that cuSOLVER QR consumes. Dispatches between

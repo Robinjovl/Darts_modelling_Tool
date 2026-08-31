@@ -50,6 +50,14 @@ class DartsModel:
     #: the intent is stated explicitly here.)
     linear_solver_from_engine_factory = False
 
+    #: Whether this model declares OBL history-state fields (e.g. ``sg_max`` for
+    #: Killough hysteresis) on its physics. Off by default so existing models that
+    #: never touch ``history_fields`` are unaffected; a model that wants hysteresis
+    #: support overrides this -- e.g. as a constructor parameter it assigns to
+    #: ``self.hysteresis`` -- before calling :meth:`set_physics`, and passes
+    #: ``history_fields=[...] if self.hysteresis else []`` into ``PhysicsBase``.
+    hysteresis = False
+
     # Verbosity levels accepted by :meth:`run` (and other ``verbose`` switches).
     # ``verbose`` is an integer; legacy ``bool`` values map to 0/1 transparently
     # (Python ``False``/``True`` are ``0``/``1``), so existing callers are unaffected.
@@ -547,18 +555,20 @@ class DartsModel:
     def initialize_history_fields(self):
         """Seed ``engine.Xhistory`` with the per-field default value for every reservoir cell.
 
-        No-op when the physics has no ``history_fields`` configured (the engine then also has
-        ``n_history_runtime == 0`` and no ``Xhistory`` buffer). Called by :meth:`init` right after
+        OBL history state is off by default (``physics.has_history is False``), so for almost
+        every model this returns immediately -- the engine then also has
+        ``n_history_runtime == 0`` and no ``Xhistory`` buffer. Called by :meth:`init` right after
         :meth:`reset`, which is where the C++ engine allocates ``Xhistory``.
 
         :returns: None
         """
-        if not getattr(self.physics, "history_fields", None):
+        if not self.physics.has_history:
             return
 
         n_blocks = self.reservoir.mesh.n_blocks
-        for field in self.physics.history_fields:
-            self.physics.set_engine_history_array(
+        for field in self.physics.history.fields:
+            self.physics.history.set_engine_history_array(
+                self.physics.engine,
                 field.label,
                 field.default,
                 n_blocks=n_blocks,
@@ -580,8 +590,9 @@ class DartsModel:
 
         The base implementation is a no-op. Subclasses backing a hysteretic physics should
         override this to read the current Newton state, compute the updated history value
-        per cell, and write it back via :meth:`PhysicsBase.set_engine_history_array` (or by
-        mutating the underlying ``engine.Xhistory`` vector directly).
+        per cell, and write it back via :meth:`HistoryStateSupport.set_engine_history_array`
+        (``self.physics.history.set_engine_history_array(...)``, or by mutating the
+        underlying ``engine.Xhistory`` vector directly).
 
         :returns: None
         """
@@ -611,12 +622,12 @@ class DartsModel:
         )
 
         # Split columns: primary Newton unknowns (self.physics.vars) go through
-        # set_initial_conditions_from_array; OBL history columns (self.physics.history_fields)
-        # go through set_engine_history_array so sg_max and friends survive restart.
+        # set_initial_conditions_from_array; OBL history columns (self.physics.history.fields)
+        # go through history.set_engine_history_array so sg_max and friends survive restart.
+        # history.fields is empty unless the physics opted into history state
+        # (physics.has_history), so this set is empty for almost every model.
         primary_names = list(self.physics.vars)
-        history_labels = set()
-        if hasattr(self.physics, "history_fields"):
-            history_labels = {h.label for h in self.physics.history_fields}
+        history_labels = {h.label for h in self.physics.history.fields}
 
         initial_values = {}
         history_values = {}
@@ -639,7 +650,8 @@ class DartsModel:
         # Push the restored history columns into engine.Xhistory. reset() has already allocated
         # the buffer, so set_engine_history_array only needs to overwrite its contents.
         for label, values in history_values.items():
-            self.physics.set_engine_history_array(
+            self.physics.history.set_engine_history_array(
+                self.physics.engine,
                 label,
                 values,
                 n_blocks=self.reservoir.mesh.n_res_blocks,
@@ -1051,34 +1063,38 @@ class DartsModel:
 
     def do_after_step(self):
         """
-        Hook for per-report-step actions (e.g. reporting, saving); override in a
-        model and call it from the script's reporting loop.
+        Hook for per-report-step actions (e.g. reporting, saving); can be
+        overridden by a user to be executed in run_simulation().
         """
         pass
 
     def run_simulation(self):
-        """Removed. Drive the reporting loop from the model script.
-
-        This was an idata-specific loop (``for dt in idata.sim.time_steps:``
-        calling :meth:`set_well_controls_idata`, :meth:`run` and
-        :meth:`do_after_step`), not generic model API. Write it explicitly in the
-        script instead::
-
-            time = 0.0
-            for dt in m.idata.sim.time_steps:
-                m.set_well_controls_idata(time=time)
-                if m.run(dt) != 0:
-                    break
-                m.do_after_step()
-                time += dt
-
-        .. deprecated::
-            Scheduled for deletion after one deprecation cycle.
         """
-        raise NotImplementedError(
-            "DartsModel.run_simulation() was removed: drive the reporting loop "
-            "from the model script (see the docstring for the equivalent code)."
-        )
+        Run the reporting loop over idata.sim.time_steps: for every report
+        step, apply the idata well controls (well control switch can be defined in idata),
+        and invoke the do_after_step hook.
+
+        :return: 0 on success, 1 if :meth:`run` failed on some step
+        :rtype: int
+        """
+        # simulation time at the START of the current report step, [days]
+        time = 0.0
+        # idata.sim.time_steps holds report-step LENGTHS, not absolute times
+        for ith_step, dt in enumerate(self.idata.sim.time_steps):
+            # apply the well controls scheduled for this point in time
+            self.set_well_controls_idata(time=time)
+
+            # advance by one report step -- run() drives its own adaptive
+            # timestepping inside dt and returns non-zero if it could not finish
+            ret = self.run(dt)
+            if ret != 0:
+                print("run() failed for the step=", ith_step, "dt=", dt)
+                return 1
+
+            # per-report-step user hook (reporting, saving, ...)
+            self.do_after_step()
+            time += dt
+        return 0
 
     def set_rhs_flux(self, t: float = None) -> np.ndarray:
         """

@@ -81,14 +81,25 @@ namespace opendarts
         printf("Matrix is not square!\n");
         return -1;
       }
-      n = A_input->n_rows * N_BLOCK_SIZE;
+      const int n_new = A_input->n_rows * N_BLOCK_SIZE;
 
-      if (!wksp_d)
+      // The r/rw/p/pw/s/t/v slices below are spaced by n, so a re-init against a
+      // differently sized system must re-allocate and re-slice: keeping the old
+      // buffer while solve() operates on the new n makes the slices alias and
+      // writes past the end of the allocation (cf. linsolv_gmres_gpu::init).
+      if (n_new != n || !wksp_d)
       {
+        if (wksp_d)
+          cudaFree(wksp_d);
+        wksp_d = nullptr;
+        r = rw = p = pw = s = t = v = nullptr;
+        n = n_new;
+
         cudaError_t cudaStat = cudaMalloc((void **)&wksp_d, sizeof(double) * n * 7);
         if (cudaStat != cudaSuccess)
         {
           printf("Error! Can't allocate device memory: %s\n", cudaGetErrorString(cudaStat));
+          wksp_d = nullptr;
           return -2;
         }
         r = wksp_d;
@@ -158,7 +169,10 @@ namespace opendarts
 
         // Preconditioning step.
         if (prec->solve(p, pw))
+        {
+          this->timer_solve->node["BiCGStab"].stop();
           return -3;
+        }
 
         // Matrix-vector multiplication.
         this->timer_solve->node["BiCGStab"].node["SPMV_bsr"].start();
@@ -188,7 +202,10 @@ namespace opendarts
 
         // Preconditioning step.
         if (prec->solve(r, s))
+        {
+          this->timer_solve->node["BiCGStab"].stop();
           return -3;
+        }
 
         // Matrix-vector multiplication.
         this->timer_solve->node["BiCGStab"].node["SPMV_bsr"].start();

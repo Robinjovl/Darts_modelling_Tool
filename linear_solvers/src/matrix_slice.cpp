@@ -110,8 +110,10 @@ namespace opendarts
       const int n_block_size = src.block_size();
       assert(n_block_size > 0);
       // The slice's intra-block (k,l) must fit inside the source block.
-      assert(s.pos % n_block_size + s.sizes[0] <= n_block_size);
-      assert(s.pos / n_block_size + s.sizes[1] <= n_block_size);
+      // pos is a row-major intra-block offset (row_offset * N + col_offset),
+      // so pos / N bounds the rows (sizes[0]) and pos % N the columns.
+      assert(s.pos / n_block_size + s.sizes[0] <= n_block_size);
+      assert(s.pos % n_block_size + s.sizes[1] <= n_block_size);
 
       const index_t *rows = src.row_ptr();
       const index_t *cols = src.col_ind();
@@ -128,8 +130,10 @@ namespace opendarts
       s.global_to_local_rows.assign(
           static_cast<std::size_t>(s.sizes[0]) * s.n_rows, 0);
 
-      const std::uint8_t start_col_pos =
-          static_cast<std::uint8_t>(s.pos % n_block_size);
+      // The flat scalar row of a slice row is N * i + row_offset + k, so the
+      // ROW half of pos is what belongs here (pos % N is the COLUMN offset).
+      const std::uint8_t start_row_pos =
+          static_cast<std::uint8_t>(s.pos / n_block_size);
 
       index_t i_dest = 0;
       index_t row_dest = 0;
@@ -150,7 +154,7 @@ namespace opendarts
             row_dest = static_cast<index_t>(s.sizes[0]) * i_dest + k;
 
             s.global_to_local_rows[row_dest] =
-                static_cast<index_t>(n_block_size) * i + start_col_pos + k;
+                static_cast<index_t>(n_block_size) * i + start_row_pos + k;
 
             index_t &cur_row = d_rows[row_dest];
             index_t &next_row = d_rows[row_dest + 1];

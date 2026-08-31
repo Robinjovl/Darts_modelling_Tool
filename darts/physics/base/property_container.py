@@ -274,30 +274,43 @@ class PropertyContainer:
         for j in range(self.np_fl):
             self.x[j][:] = 0
 
-    def compute_saturation(self, ph):
-        # Get saturations [volume fraction]
-        vol = [self.nu[j] / self.dens_m[j] for j in ph]
-        self.sat[ph] = vol / np.sum(vol)
+    def compute_saturation(self, state_pt=None, evaluate_PT_from_PHflash: bool = False):
+        """
+        Compute phase saturations from molar phase fractions and phase densities.
 
-        return
+        Two uses:
+        - ``state_pt=None`` (default): used from within :meth:`evaluate`, where flash and
+          phase densities (``self.ph``, ``self.dens_m``) have already been computed for
+          the current state earlier in that call.
+        - ``state_pt`` given: used for initial-conditions calculation (previously the
+          separate ``compute_saturation_full()`` method). Runs the flash for the given
+          PT-state and computes phase densities before computing saturations.
 
-    def compute_saturation_full(self, state_pt, evaluate_PT_from_PHflash: bool = False):
-        pressure, temperature, zc = self.get_state(state_pt)
-        self.clean_arrays()
-        self.ph = self.run_flash(
-            pressure, temperature, zc, evaluate_PT=evaluate_PT_from_PHflash
-        )
-
-        for j in self.ph:
-            M = np.sum(self.Mw * self.x[j][:])
-            self.dens_m[j] = (
-                self.density_ev[self.phases_name[j]].evaluate(
-                    pressure, temperature, self.x[j, :]
-                )
-                / M
+        :param state_pt: State (pressure, [temperature], compositions) to flash; if
+                          ``None``, uses the already-computed ``self.ph``/``self.dens_m``
+        :param evaluate_PT_from_PHflash: Passed to :meth:`run_flash` when ``state_pt`` is
+                                          given, to evaluate PT-state from a PH-flash object
+        :returns: Saturation of the first phase, ``self.sat[0]``
+        """
+        if state_pt is not None:
+            pressure, temperature, zc = self.get_state(state_pt)
+            self.clean_arrays()
+            self.ph = self.run_flash(
+                pressure, temperature, zc, evaluate_PT=evaluate_PT_from_PHflash
             )
 
-        self.compute_saturation(self.ph)
+            for j in self.ph:
+                M = np.sum(self.Mw * self.x[j][:])
+                self.dens_m[j] = (
+                    self.density_ev[self.phases_name[j]].evaluate(
+                        pressure, temperature, self.x[j, :]
+                    )
+                    / M
+                )
+
+        # Get saturations [volume fraction]
+        vol = [self.nu[j] / self.dens_m[j] for j in self.ph]
+        self.sat[self.ph] = vol / np.sum(vol)
 
         return self.sat[0]
 
@@ -415,7 +428,7 @@ class PropertyContainer:
                 self.x[j, : self.nc_fl] * self.Mw[: self.nc_fl]
             )
 
-        self.compute_saturation(self.ph)
+        self.compute_saturation()
 
         # Extract every appended history variable by label, preserving the physics-declared
         # order. history_labels is populated by PhysicsBase.add_property_region; when it's
@@ -501,27 +514,6 @@ class PropertyContainer:
             )
 
         return
-
-    def evaluate_at_cond(self, state):
-        # Composition vector and pressure from state:
-        pressure, state_spec_2, zc = self.get_state(state)
-
-        ph = self.run_flash(
-            pressure, state_spec_2, zc, evaluate_PT=self.evaluate_PT_bool
-        )
-
-        for j in ph:
-            M = np.sum(self.Mw * self.x[j][:])  # molar weight of mixture
-            self.dens_m[j] = (
-                self.density_ev[self.phases_name[j]].evaluate(
-                    self.pressure, self.temperature, self.x[j][:]
-                )
-                / M
-            )
-
-        self.compute_saturation(ph)
-
-        return self.sat, self.dens_m
 
     def set_output_props(self, props: dict):
         """

@@ -44,7 +44,7 @@
         - echo "test finished"
     after_script:
         - cd models
-        - ./archive_pkl.sh $ODLS $TEST_GPU
+        - ./archive_pkl.sh "$ODLS" "$TEST_GPU"
         - cd ..
     artifacts:
       paths:

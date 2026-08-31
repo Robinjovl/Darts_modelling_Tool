@@ -491,7 +491,7 @@ class ModelProperties(PropertyContainer):
             ##########################################################
 
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :], self.dens[j])  # output in [cp]
-        self.compute_saturation(self.ph)
+        self.compute_saturation()
 
         self.pc = np.array(self.capillary_pressure_ev.evaluate(self.sat))
 
