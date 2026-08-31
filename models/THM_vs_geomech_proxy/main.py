@@ -17,6 +17,22 @@ def is_struct_like_case(case):
     return len(parts) >= 3 and all(p.isdigit() for p in parts[-3:])
 
 
+def case_5_mesh_name(mesh_size):
+    """
+    Return the case/output folder name for a case_5 mesh resolution.
+
+    :param mesh_size: Far-field characteristic Gmsh size in metres.
+    :type mesh_size: float
+    :return: Case name unique to the requested mesh resolution.
+    :rtype: str
+    """
+    size = float(mesh_size)
+    if size <= 0.0:
+        raise ValueError('case_5 mesh sizes must be positive')
+    size_label = f'{size:g}'.replace('.', 'p')
+    return f'case_5_mesh_{size_label}m'
+
+
 def plot_results(model, time_data_dict, out_dir):
     """Plot well data for thermal/isothermal and single/doublet cases."""
     import matplotlib.pyplot as plt
@@ -395,7 +411,7 @@ if __name__ == '__main__':
     cases = []
 
     # nx ny nz
-    #cases += ['17_17_15']  # for debugging
+    # cases += ['17_17_15']  # for debugging
     #cases += ['41_41_66']
     #cases += ['71_71_66']
     #cases += ['83_83_90']  # for isothermal (single well)
@@ -409,13 +425,20 @@ if __name__ == '__main__':
     #cases += ['case_2']
     #cases += ['case_3']
     #cases += ['case_4']
-    #cases += ['case_5']
+    cases += ['case_5']
     #cases += ['no_damage_zone']
     #cases += ['no_damage_zone_heter_mech_prop']
-    cases += ['zero_rate_17_17_15']
+    # cases += ['zero_rate_17_17_15']
 
-    thermal = False
-    #thermal = True
+    # Run the same coupled thermal-geomechanical case on multiple meshes.
+    # well size keeps the same 1:20 ratio used by the 200 m reference mesh.
+    case_5_mesh_study = False
+    case_5_mesh_sizes = [300.0]
+    if case_5_mesh_study:
+        cases = [case_5_mesh_name(mesh_size) for mesh_size in case_5_mesh_sizes]
+
+    # thermal = False
+    thermal = True
 
     if not thermal:
         physics_type = 'single_phase'
@@ -439,12 +462,32 @@ if __name__ == '__main__':
     #sim_time = 30 # days
     #report_step = sim_time  # days
 
-    if 'case_5' in cases and generate_mesh:  # with a damage zone near the fault
+    has_case_5 = any(
+        case == 'case_5' or case.startswith('case_5_mesh_') for case in cases
+    )
+    if has_case_5 and generate_mesh:
         from set_case import set_input_data
         from gen_fault_msh import generate_3d_fault_mesh
-        # case_5 owns its well locations; build its idata and hand it to the mesh generator
-        idata_case_5 = set_input_data('case_5', physics_type=physics_type, wells_type=wells_type)
-        generate_3d_fault_mesh(idata_case_5)
+        for mesh_size in case_5_mesh_sizes if case_5_mesh_study else [200.0]:
+            mesh_case = case_5_mesh_name(mesh_size) if case_5_mesh_study else 'case_5'
+            idata_case_5 = set_input_data(
+                mesh_case, physics_type=physics_type, wells_type=wells_type
+            )
+            mesh_filename = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                'meshes', mesh_case, 'mesh.msh',
+            )
+            os.makedirs(os.path.dirname(mesh_filename), exist_ok=True)
+            print(
+                f'Generating {mesh_case}: bulk={mesh_size:g} m, '
+                f'well={mesh_size / 20:g} m'
+            )
+            generate_3d_fault_mesh(
+                idata_case_5,
+                msh_filename=mesh_filename,
+                bulk_mesh_size=mesh_size,
+                well_mesh_size=mesh_size / 20.0,
+            )
 
     if 'no_damage_zone' in cases:
         from gen_fault_msh_no_damage_zone import gen_fault_msh_no_damage_zone

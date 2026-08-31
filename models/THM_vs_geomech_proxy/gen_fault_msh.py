@@ -9,7 +9,8 @@ def generate_3d_fault_mesh(
     fault_dip_degrees=45.0,
     reservoir_block_offset=180.0,
     damage_width_left=100,
-    damage_width_right=200,
+    damage_width_right=100,
+    bulk_mesh_size=200.0,
     well_mesh_size=10.0,
     well_cylinder_radius=20.0,
     well_transition_radius=250.0,
@@ -24,7 +25,7 @@ def generate_3d_fault_mesh(
     a, b = 30.0, 230.0
     Lplus = b + 150
     phi = math.radians(fault_dip_degrees)
-    lc = 300.0
+    lc = float(bulk_mesh_size)
     mult, mult1 = 0.7, 0.3
     fault_offset = 500.0
     fault_thickness = 20.0  # true thickness normal to the fault [m]

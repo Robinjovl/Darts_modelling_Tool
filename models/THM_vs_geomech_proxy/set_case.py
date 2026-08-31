@@ -25,8 +25,10 @@ def set_input_data(
             input_data = input_data_case_3(physics_type)
         case "case_4": # case_3 but heterogeneous geomechanical props (E, nu, biot, th_expn) per tag
             input_data = input_data_case_4(physics_type)
-        case "case_5":
-            input_data = input_data_case_5(physics_type)
+        case case_name if (
+            case_name == "case_5" or case_name.startswith("case_5_mesh_")
+        ):
+            input_data = input_data_case_5(physics_type, mesh_dir=case_name)
         case "no_damage_zone":
             input_data = input_data_no_damage_zone(physics_type)
         case "no_damage_zone_heter_mech_prop":
