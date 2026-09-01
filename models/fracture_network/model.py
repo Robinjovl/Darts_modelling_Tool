@@ -187,7 +187,11 @@ class Model(DartsModel):
     def set_solver(self):
         from darts.linear_solvers import GPUCuSolverSpec, SuperLUSolverSpec
         # Time-stepping.
-        self.linear_solver.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60 )
+        self.ts_control.dt_first = 1e-6
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 1.5
+        self.ts_control.dt_max = 60
+        self.ts_control.runtime = 1000
 
         # Linear solver: this is a Geothermal DFM (discrete fracture matrix) model.
         # The default FGMRES+CPR (and MGR) stall on its wide, strongly-coupled

@@ -48,9 +48,11 @@ class Model(DartsModel):
         # NOTE: set_sim_params stays in __init__ (not moved to set_solver): set_wells()
         # builds RampUpRate from self.ts_control.dt_first and runs during init() before
         # reset()/set_solver(). dfm_well is the documented set_solver exception.
-        self.linear_solver.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60),
-                            runtime=1/24/60, # This runtime will be used when CI test is conducted without the main file
-                            )
+        self.ts_control.dt_first = 0.0001/(24*60*60)
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 2/(24*60*60)
+        self.ts_control.runtime = 1/24/60  # This runtime will be used when CI test is conducted without the main file
 
         # # For injection at a constant WHP
         # self.linear_solver.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=0.1/(24*60*60),  tol_linear=1e-4,

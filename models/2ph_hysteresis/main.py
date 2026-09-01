@@ -93,11 +93,11 @@ def build_model(config: CaseConfig, platform: str = "cpu") -> Model:
         dt_eta=config.dt_eta,
     )
     model.nonlinear_solver = NewtonSolver(tolerance=config.tol_newton, max_iterations=config.it_newton)
-    model.linear_solver.set_sim_params(
-        first_ts=config.first_ts,
-        mult_ts=config.mult_ts,
-        max_ts=config.max_ts,
-        runtime=config.total_days)
+    model.ts_control.dt_first = config.first_ts
+    model.ts_control.dt_min = 1e-15
+    model.ts_control.dt_mult = config.mult_ts
+    model.ts_control.dt_max = config.max_ts
+    model.ts_control.runtime = config.total_days
     # Linear-solver settings (tolerance / max_iterations) and the per-DOF
     # ts_control.eta are owned by Model.set_solver() -> self.linear_solver; it runs
     # at init() and is authoritative. dt_eta reaches it through setup_case() above.

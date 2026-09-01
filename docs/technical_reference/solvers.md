@@ -9,8 +9,8 @@ solvers available on CPU and GPU with their most important parameters.
 `set_solver()` is called at the start of `reset()` — after the reservoir/mesh and the
 engine object exist, but before `engine.init()`. Override it in a model to declare:
 
-* time-stepping, via `self.linear_solver.set_sim_params(...)` (time-stepping
-  parameters **only**);
+* time-stepping, via `self.ts_control.dt_first` / `.dt_mult` / `.dt_max` / `.runtime`
+  etc.;
 * the nonlinear solver, via `self.nonlinear_solver = NewtonSolver(...)`;
 * the linear solver, via `self.linear_solver.spec = <LinearSolverSpec>`.
 
@@ -19,8 +19,8 @@ change the Newton driver — so it is (re)bound to the model on every `init()`/`
 `linear_solver` is a composed `darts.linear_solvers.LinearSolver` instance, created once
 by `DartsModel.__init__` **with the model already attached** and never reassigned — so
 there is no bind step. It owns the declarative `spec` as well as every method that binds a
-model to its linear solver (`update_solver()`, `get_linear_system()`, the deprecated
-`set_sim_params()` family, ...). Because it exists from construction, it is safe to touch
+model to its linear solver (`update_solver()`, `get_linear_system()`, ...). Because it
+exists from construction, it is safe to touch
 before `init()` — from a subclass `__init__` or a driver script. Assign a **spec** to
 `.spec` to choose a solver:
 
@@ -44,7 +44,8 @@ or keep the defaults and tune them through `.spec`:
 
 ```python
 def set_solver(self):
-    self.linear_solver.set_sim_params(first_ts=..., max_ts=...)   # time-stepping
+    self.ts_control.dt_first = ...                  # time-stepping
+    self.ts_control.dt_max = ...
     super().set_solver()                            # default solvers
     self.nonlinear_solver.spec.tolerance = 1e-4
     self.linear_solver.spec.tolerance = 1e-6

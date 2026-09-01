@@ -52,7 +52,11 @@ class Model(DartsModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.linear_solver.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650  )
+        self.ts_control.dt_first = 1e-4
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 8
+        self.ts_control.dt_max = 365
+        self.ts_control.runtime = 3650
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=20,
             chop=ChopSpec(mode='global', factor=1))

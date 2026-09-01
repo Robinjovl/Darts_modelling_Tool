@@ -45,7 +45,11 @@ class ModelSpec(Model):
     def set_solver(self):
         # Base Model.set_solver() now owns set_sim_params(); replicate it here since
         # this override does not call super().
-        self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000)
+        self.ts_control.dt_first = 0.001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 1
+        self.ts_control.runtime = 1000
         super().set_solver()  # platform default nonlinear + linear solvers
         # must mirror Model.set_solver()'s nonlinear settings exactly -- this
         # harness compares the raw MGR build against the spec build, so any

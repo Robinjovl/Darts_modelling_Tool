@@ -111,7 +111,11 @@ class Model(DartsModel):
         # Single per-model home for time-stepping / Newton + linear-solver config
         # (the unified set_solver() pattern). Called by the base reset() before
         # engine.init, so these settings feed engine.init().
-        self.linear_solver.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000 )
+        self.ts_control.dt_first = 0.001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 1
+        self.ts_control.runtime = 1000
         self.params.linear_print_level = 0  # 0 = quiet, 1 = basic, 2 = verbose
 
         # MGR (BCSR-CPR) via the single unified spec API (self.linear_solver.spec = MGRSolverSpec).

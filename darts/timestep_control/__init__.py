@@ -17,11 +17,10 @@ model's actual ``physics.n_vars`` by ``DartsModel.init()``. Tune it via
 ``self.ts_control = TimestepControl(...)`` in ``set_solver()``.
 
 ``TimestepControl.set_sim_params()`` is the deprecated ``first_ts=``/``mult_ts=``/...
-legacy entry point (one deprecation cycle), reachable as
-``model.linear_solver.set_sim_params(...)`` (a thin backward-compatible
-delegator kept there since ~40 example models call it) or directly as
-``model.ts_control.set_sim_params(model, ...)``; new code should assign
-``model.ts_control`` fields directly instead.
+legacy entry point (one deprecation cycle), reachable directly as
+``model.ts_control.set_sim_params(model, ...)`` (the former
+``model.linear_solver.set_sim_params(...)`` delegator is removed); new code
+should assign ``model.ts_control`` fields directly instead.
 """
 
 from darts.timestep_control.timestep_control import TimestepControl

@@ -28,7 +28,11 @@ class Model(DartsModel):
         self.zero = 1e-13
         self.set_physics()
 
-        self.linear_solver.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=0.2, runtime=300 )
+        self.ts_control.dt_first = 0.0001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 0.2
+        self.ts_control.runtime = 300
 
         self.timer.node["initialization"].stop()
 

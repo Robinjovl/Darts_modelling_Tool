@@ -37,12 +37,11 @@ nonlinear side). Scope:
   switching driven by :class:`~darts.linear_solvers.AdaptiveSolverSpec`;
 * the linear-solve entry points used by the nonlinear loop
   (``_solve_linear_equation``, ``get_linear_system``);
-* the deprecated ``set_sim_params`` shim, a thin delegator to
-  :meth:`darts.timestep_control.TimestepControl.set_sim_params` (kept here under its
-  historic name for the ~40 example models still calling it), and the
-  one-deprecation-cycle mapping of removed nonlinear/linear keyword arguments onto
-  the solver specs (``_migrate_legacy_solver_kwargs``, invoked from there) --
-  scheduled for removal when the deprecation cycle ends.
+* the one-deprecation-cycle mapping of removed nonlinear/linear keyword arguments
+  (previously reachable via the now-removed ``set_sim_params`` shim) onto the
+  solver specs (``_migrate_legacy_solver_kwargs``, still invoked from
+  :meth:`darts.timestep_control.TimestepControl.set_sim_params`) -- scheduled for
+  removal when the deprecation cycle ends.
 
 (``set_solver()`` itself -- the user-facing override hook that constructs the
 explicit platform defaults -- stays on ``DartsModel`` for readability; this class only
@@ -798,25 +797,6 @@ class LinearSolver:
 
     # ------------------------------------------------------------ deprecated config shims (former LegacyConfigShims mixin)
 
-    def set_sim_params(
-        self,
-        first_ts: float = None,
-        mult_ts: float = None,
-        min_ts=1e-15,
-        max_ts: float = None,
-        runtime: float = 1000,
-        **legacy,
-    ):
-        """Deprecated: thin backward-compatible delegator to
-        :meth:`~darts.timestep_control.TimestepControl.set_sim_params` (kept here under
-        its historic name since ~40 example models call
-        ``model.linear_solver.set_sim_params(...)``); see that method for the
-        full docstring and the legacy-kwarg migration it performs via
-        :meth:`_migrate_legacy_solver_kwargs`."""
-        return self.model.ts_control.set_sim_params(
-            self.model, first_ts, mult_ts, min_ts, max_ts, runtime, **legacy
-        )
-
     def _migrate_legacy_solver_kwargs(self, legacy: dict):
         """One-deprecation-cycle shim: map removed ``set_sim_params`` solver
         keyword arguments -- nonlinear (!327) and linear (!280) alike -- onto
@@ -890,17 +870,3 @@ class LinearSolver:
             DeprecationWarning,
             stacklevel=3,
         )
-
-    def copy_data_ts_to_sim_params(self):
-        """No-op retained for compatibility: nothing is mirrored into ``sim_params``
-        any more.
-
-        * timestep controls live on ``ts_control`` and are read directly by ``run()``;
-        * nonlinear settings are synced into the engine by the nonlinear solver
-          (``NonlinearSolverSpec.sync_to_engine``, !327);
-        * linear settings are mirrored by :meth:`_sync_solver_to_sim_params` from
-          ``self.spec`` before ``engine.init()`` (!280).
-
-        The corresponding C++ ``sim_params`` fields (``first_ts``/``max_ts``/
-        ``mult_ts``/``tolerance_newton``/``max_i_newton``) no longer exist.
-        """

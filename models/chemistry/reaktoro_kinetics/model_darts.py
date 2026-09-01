@@ -126,7 +126,10 @@ class Model(DartsModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.linear_solver.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
+        self.ts_control.dt_first = 1e-5
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_max = 1e-3
+        self.ts_control.runtime = 1000
         # SuperLU direct solve for this small, stiff chemistry system, declared solely
         # through self.linear_solver (replaces the params.linear_type = cpu_superlu carrier,
         # which the base FGMRES+CPR default had been shadowing). proprietary_linear_type

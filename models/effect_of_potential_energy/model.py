@@ -34,9 +34,11 @@ class Model(DartsModel):
         return
 
     def set_solver(self):
-        self.linear_solver.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5,
-                            runtime=50, # This runtime will be used when CI test is conducted without the main file
-                            )
+        self.ts_control.dt_first = 1e-5
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 1.5
+        self.ts_control.dt_max = 5
+        self.ts_control.runtime = 50  # This runtime will be used when CI test is conducted without the main file
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10)
         self.linear_solver.spec.tolerance = 1e-5

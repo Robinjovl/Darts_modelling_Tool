@@ -393,7 +393,8 @@ class DartsModel:
         :meth:`reset` (after the reservoir/mesh and engine object exist, before
         ``engine.init``), so it may freely:
 
-        * call ``self.linear_solver.set_sim_params(...)`` (time-stepping only);
+        * set ``self.ts_control.dt_first`` / ``.dt_mult`` / ``.dt_max`` / ``.runtime``
+          etc. (time-stepping only);
         * set ``self.nonlinear_solver = <NonlinearSolver>`` (a
           :class:`~darts.nonlinear_solvers.NewtonSolver`, which accepts a
           ``NewtonSpec`` positionally or its keyword arguments);
@@ -435,7 +436,8 @@ class DartsModel:
         or by tuning the spec of the default::
 
             def set_solver(self):
-                self.linear_solver.set_sim_params(first_ts=..., max_ts=...)  # time-stepping
+                self.ts_control.dt_first = ...                  # time-stepping (not restricted to self.set_solver())
+                self.ts_control.dt_max = ...
                 super().set_solver()                            # default solvers
                 self.nonlinear_solver.spec.tolerance = 1e-4
                 self.linear_solver.spec.tolerance = 1e-6

@@ -109,7 +109,11 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
-        self.linear_solver.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365  )
+        self.ts_control.dt_first = 1e-6
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 365
+        self.ts_control.runtime = 1000
         # self.ts_control.eta = np.ones(self.physics.n_vars)
 
         """ Define reservoir """

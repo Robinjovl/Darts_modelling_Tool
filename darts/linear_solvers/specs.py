@@ -47,7 +47,6 @@ class LinearSolverSpec:
     configures the linear solve in one place::
 
         def set_solver(self):
-            self.linear_solver.set_sim_params(first_ts=..., tol_newton=1e-3)  # time-stepping / Newton
             super().set_solver()                                # platform default spec
             self.linear_solver.spec.tolerance = 1e-6                        # linear knobs
             self.linear_solver.spec.max_iterations = 40
