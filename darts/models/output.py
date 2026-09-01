@@ -1045,17 +1045,13 @@ class Output:
                     )[cell_id]
                 else:
                     engine_state = np.asarray(self.physics.engine.X)
-                    engine_width = (
-                        engine_state.size // self.reservoir.mesh.n_blocks
-                    )
+                    engine_width = engine_state.size // self.reservoir.mesh.n_blocks
                     reshaped = engine_state.reshape(
                         (self.reservoir.mesh.n_blocks, engine_width)
                     )
                     if engine_width != dataset_width:
                         flow_start = getattr(self.physics.engine, "P_VAR", 0)
-                        reshaped = reshaped[
-                            :, flow_start : flow_start + dataset_width
-                        ]
+                        reshaped = reshaped[:, flow_start : flow_start + dataset_width]
                     reshaped = reshaped[cell_id]
                 data_array = np.expand_dims(
                     reshaped, axis=0
@@ -1323,9 +1319,7 @@ class Output:
                 for region, prop_itor in prop_itor_dict.items():
                     # op_num also contains well blocks, while the state and output
                     # buffers passed here contain reservoir blocks only.
-                    block_idx = np.where(self.op_num[:nb] == region)[0].astype(
-                        np.int32
-                    )
+                    block_idx = np.where(self.op_num[:nb] == region)[0].astype(np.int32)
                     prop_itor.evaluate_with_derivatives(
                         state, index_vector(block_idx), values, dvalues
                     )
@@ -2176,18 +2170,14 @@ class Output:
             # MPFA mechanics wells can leave well_bottom_idx undefined
             # and store both connection directions. For those simple EPM wells,
             # each perforation connects directly from well_body_idx.
-            standard_lookup_ok = (
-                conn_idxs.size == len(well.perforations)
-                and np.all(
-                    block_m[conn_idxs] >= self.reservoir.mesh.n_res_blocks
-                )
+            standard_lookup_ok = conn_idxs.size == len(well.perforations) and np.all(
+                block_m[conn_idxs] >= self.reservoir.mesh.n_res_blocks
             )
             if not standard_lookup_ok:
                 fallback_conn_idxs = []
                 for perf in well.perforations:
                     matches = np.flatnonzero(
-                        (block_m == well.well_body_idx)
-                        & (block_p == perf[1])
+                        (block_m == well.well_body_idx) & (block_p == perf[1])
                     )
                     if matches.size != 1:
                         raise RuntimeError(
@@ -2495,7 +2485,7 @@ class Output:
         # engine width to identify that stored layout, but keep n_vars as the
         # flow-state width used below for interpolation.
         n_vars = physics.n_vars
-        engine_n_vars = physics.engine.N_VARS
+        engine_n_vars = physics.engine.get_n_vars()
         # The reservoir / well-control interpolators consume the full OBL state
         # [primary | history] (n_state axes), but the well H5 stores only the primary
         # Newton state (n_vars-wide). Pad the missing history columns with each field's
