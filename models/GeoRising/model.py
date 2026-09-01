@@ -80,8 +80,8 @@ class Model(DartsModel):
 
         # discretize structured reservoir
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
-                                         permx=perm, permy=perm, permz=perm * 0.1, poro=poro, depth=2000,
-                                         hcap=2200, rcond=500)
+                                         permx=perm, permy=perm, permz=perm * 0.1, poro=poro,
+                                         start_z=2000, hcap=2200, rcond=500)
         self.reservoir.boundary_volumes['yz_minus'] = 1e8
         self.reservoir.boundary_volumes['yz_plus'] = 1e8
         self.reservoir.boundary_volumes['xz_minus'] = 1e8

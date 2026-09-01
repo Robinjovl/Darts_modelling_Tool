@@ -118,6 +118,11 @@ class PhysicsBase:
             floor, avoids the simplex boundary), thermal axis = 273.15 K for
             ``state_spec=PT`` or 0 for ``state_spec=PH`` (enthalpy reference depends on
             the EOS — pass an explicit ``axes_origin`` to override).
+
+            For ``state_spec=PH``/``PS`` the separate ``ThermalVarOperator`` grid is
+            *not* this one: it is PT-parametrized, so its trailing axis defaults to
+            273.15 K with 1 K cells (attributes ``thermal_var_axes_origin`` /
+            ``thermal_var_axes_step``, overridable before ``init_physics()``).
         :param epsilon_z: Composition-axis offset (default 1e-9).
         :param sim_eps_multiplier: Multiplier on ``epsilon_z`` to obtain ``sim_eps``, the
             epsilon below which the Newton update is clipped to the physical [0,1] simplex.
@@ -211,6 +216,26 @@ class PhysicsBase:
             f"axes_origin must have {self.n_vars} entries, got {len(axes_origin)}"
         )
         self.axes_origin = [float(o) for o in axes_origin]
+
+        # ThermalVarOperator grid. The operator is PT-parametrized -- its state is
+        # [p, z_1, ..., z_{nc-1}, T] -- so for a PH/PS state specification the main
+        # grid's trailing axis (enthalpy/entropy) is the wrong scale for it: the grid
+        # nodes it would be sampled on are *temperatures* laid out with an enthalpy
+        # origin and step. On a genuinely enthalpy-scaled axis that lands supporting
+        # points outside the fluid's valid temperature range -- e.g. below the water
+        # freezing point, where the flash returns NaN -- and it makes the
+        # temperature -> thermal-variable conversion used to initialize an injection
+        # well (well_control_iface::initialize_well_state) inaccurate, because the
+        # conversion is interpolated over a cell tens of kelvin wide.
+        #
+        # So default the trailing axis to the historic Geothermal window -- 273.15 K
+        # origin, 1 K cells -- and keep the pressure/composition axes of the main grid.
+        # For P/PT the main grid already *is* PT-parametrized and is used unchanged
+        # (create_interpolator falls back to it when these attributes are unset).
+        # A model may override either attribute any time before init_physics().
+        if self.is_ph:
+            self.thermal_var_axes_step = self.axes_step[:-1] + [1.0]
+            self.thermal_var_axes_origin = self.axes_origin[:-1] + [273.15]
 
         # Extrapolation logic (z[last component] < 0 when nc >= 3) requires a single dz
         # shared by every composition axis.
@@ -612,9 +637,10 @@ class PhysicsBase:
             precision=itor_precision,
             is_barycentric=is_barycentric,
         )
-        # Thermal-var interpolator uses a PT-based grid; the derived physics class may
-        # set self.thermal_var_axes_step / self.thermal_var_axes_origin to override the
-        # default (which mirrors the main grid).
+        # Thermal-var interpolator uses a PT-based grid: for P/PT that is the main
+        # grid, for PH/PS it is the main grid with a temperature trailing axis
+        # (defaulted in __init__). A model may override self.thermal_var_axes_step /
+        # self.thermal_var_axes_origin before init_physics().
         thermal_step = getattr(self, 'thermal_var_axes_step', None)
         thermal_origin = getattr(self, 'thermal_var_axes_origin', None)
         self.thermal_var_itor, _ = self.create_interpolator(
