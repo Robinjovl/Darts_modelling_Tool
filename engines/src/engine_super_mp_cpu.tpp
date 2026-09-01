@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <algorithm>
 #include <time.h>
 #include <functional>
@@ -223,6 +224,12 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		default:
 			break;
 		}
+
+		if (!linear_solver)
+			throw std::runtime_error(
+				"engine_super_mp_cpu: linear solver type " +
+				std::to_string(static_cast<int>(params->linear_type)) +
+				" is not available in this build");
 	}
 
 	n_vars = get_n_vars();

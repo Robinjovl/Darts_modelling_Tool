@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -211,6 +212,12 @@ int engine_nc_nl_cpu<NC>::init_base(conn_mesh *mesh_, std::vector<ms_well *> &we
 		default:
 			break;
 		}
+
+		if (!linear_solver)
+			throw std::runtime_error(
+				"engine_nc_nl_cpu: linear solver type " +
+				std::to_string(static_cast<int>(params->linear_type)) +
+				" is not available in this build.");
 	}
 
 	n_vars = get_n_vars();
