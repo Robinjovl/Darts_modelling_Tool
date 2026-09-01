@@ -244,7 +244,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     m.init()
     m.timer.node["model.init()"].stop()
 
-    n_vars = m.physics.n_vars + 3 # 3 displs
+    n_vars = m.physics.engine.get_n_vars()
     n_cells = m.reservoir.mesh.n_blocks
     est_mem_gb = 16 * n_vars * n_cells / 1024**2  # 16 KB per cell per variable (for THM)
     print(f"Estimated memory requirement: 16 KB * {n_vars} vars * {n_cells} cells = {est_mem_gb:.2f} GB")
@@ -264,7 +264,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
             pass
 
     splitter = '-' * 100 + '\n'
-    
+
     # Set up darts output to evaluate secondary properties (e.g. viscosity) from the
     # primary variables via the property interpolator. all_phase_props=True registers the
     # phase properties (incl. 'mu_<phase>') in output.properties and builds property_itor.
@@ -307,7 +307,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     m.reservoir.create_vtk_wells(output_directory=m.output_directory)
 
-  
+
     visc_key = f'mu_{m.physics.phases[0]}'  # state-dependent viscosity property key, e.g. 'mu_wat'
 
     m.timer.node["run_python"] = timer_node()
@@ -495,7 +495,7 @@ if __name__ == '__main__':
 
     for case in cases:
         os.system("title thm_proxy: " + case + " PID=" + str(os.getpid())) # set the window title
-    
+
         # generate_mesh only applies to struct-like NX_NY_NZ cases; named cases
         # (zero_rate, case_*, no_damage_zone*) ship a committed mesh and have no nx/ny/nz.
         case_generate_mesh = generate_mesh and is_struct_like_case(case)
