@@ -49,7 +49,7 @@ class DataTS:
         self.eta = (
             1e20 * np.ones(n_vars)
         )  # controls the timestep by the variable change from the previous newton iteration
-        # dX = Xn - X. Eta has a size of number of DOFs per cell. Set to a large value by default, so doesn't affect the timestep choice
+        # dX = Xn - X. Eta has a size of number of degrees of freedom per cell. Set to a large value by default, so doesn't affect the timestep choice
         self.dt_first = 1.0  # initial timestep [days]
         self.dt_min = 1e-12  # minimal allowed timestep [days]
         self.dt_mult = 2.0  # timestep multiplier, affects the next timestep choice

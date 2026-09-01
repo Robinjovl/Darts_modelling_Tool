@@ -2109,8 +2109,8 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 	index_t well_head_idx = n_res_blocks;
 	n_perfs = 0;
 
-	// calculate number of additional unknowns will be added
-	index_t dofs_num = 0, n_segments, i_w, i_r;
+	index_t dofs_num = 0;  // number of degrees of freedom
+	index_t n_segments, i_w, i_r;
 	value_t wi, wid;
 	for (index_t iw = 0; iw < wells.size(); iw++)
 	{

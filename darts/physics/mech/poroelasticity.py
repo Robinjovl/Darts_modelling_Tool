@@ -82,7 +82,7 @@ class Poroelasticity(PhysicsBase):
         Return the OBL interpolator state for the mechanics engine.
 
         Unlike the flow engines, the poroelastic ``engine.X`` stores ``n_dim`` displacement
-        DOFs per cell in addition to the flow unknowns, so the per-cell stride is the engine's
+        degrees of freedom per cell in addition to the flow unknowns, so the per-cell stride is the engine's
         ``N_VARS`` (not the physics' flow ``n_vars`` that the base implementation assumes --
         that would mix displacements into the state and fail to reshape). Rather than hard-code
         the field order per discretizer, we read the layout straight from the engine: the flow
@@ -103,7 +103,7 @@ class Poroelasticity(PhysicsBase):
         """
         stride = (
             self.engine.N_VARS
-        )  # full per-cell width in engine.X = flow unknowns + n_dim displ DOFs
+        )  # full per-cell width in engine.X = flow unknowns + n_dim displacement degrees of freedom
         if n_blocks is None:
             n_blocks = self.engine.X.size // stride
         # flow unknowns are a contiguous block of n_vars columns starting at P_VAR
