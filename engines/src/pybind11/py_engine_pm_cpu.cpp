@@ -62,7 +62,6 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_property_readonly_static("P_VAR", [](py::object) {return engine_pm_cpu::P_VAR; }) \
 		.def_property_readonly_static("Z_VAR", [](py::object) {return engine_pm_cpu::Z_VAR; }) \
 		.def_property_readonly_static("U_VAR", [](py::object) {return engine_pm_cpu::U_VAR; }) \
-		.def_property_readonly_static("N_VARS", [](py::object) {return engine_pm_cpu::N_VARS; }) \
 		.def_property_readonly_static("N_OPS", [](py::object) {return engine_pm_cpu::N_OPS; }) \
 		.def_property_readonly_static("NC", [](py::object) {return engine_pm_cpu::NC_; }) \
 		.def_property_readonly_static("ACC_OP", [](py::object) {return engine_pm_cpu::ACC_OP; }) \
