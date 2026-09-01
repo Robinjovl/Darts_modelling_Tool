@@ -242,6 +242,12 @@ class LinearSolver:
         """
         return self.spec if isinstance(self.spec, LinearSolverSpec) else None
 
+    #: Reservoir-cell count above which selecting a direct (SuperLU) solver is
+    #: reported as likely too large for it to scale. Advisory only -- it changes
+    #: no behaviour, it only decides when :meth:`_warn_if_direct_solver_oversized`
+    #: speaks up.
+    DIRECT_SOLVER_MAX_CELLS = 100000
+
     def _warn_if_direct_solver_oversized(self):
         """Warn when a direct (SuperLU) solver is selected on a mesh too large for
         it to scale -- called once by ``DartsModel.init()`` after the mesh is
@@ -252,11 +258,11 @@ class LinearSolver:
             model.params.linear_type == sim_params.linear_solver_t.cpu_superlu
             or type(self._resolve_solver_spec()).__name__ == "SuperLUSolverSpec"
         )
-        if is_superlu and model.reservoir.mesh.n_res_blocks > 30000:
+        n_res_blocks = model.reservoir.mesh.n_res_blocks
+        if is_superlu and n_res_blocks > self.DIRECT_SOLVER_MAX_CELLS:
             warnings.warn(
                 "The number of cells looks too big to use a direct linear solver: "
-                + str(model.reservoir.mesh.n_res_blocks)
-                + ' > 30000',
+                f"{n_res_blocks} > {self.DIRECT_SOLVER_MAX_CELLS}",
                 stacklevel=3,
             )
 
