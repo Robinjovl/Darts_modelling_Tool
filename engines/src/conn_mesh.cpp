@@ -2184,12 +2184,9 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 		// the equilibrium pressure gradient along the chain matches the reservoir.
 		for (index_t p = 0; p < n_segments; p++)
 		{
-			// Match the reservoir/discretizer gravity convention (downward = -z):
-			// grav_rhs must use (depth[parent] - depth[child]), i.e. the same sign as
-			// init_grav_coef's (depth[block_m] - depth[block_p]). Using the opposite
-			// sign makes the well hydrostatic gradient oppose the formation, producing
-			// a spurious dp of ~2x the hydrostatic column along the perforated interval.
-			value_t dz = depth[well_head_idx + p] - depth[well_head_idx + p + 1];
+			// The Darcy stencil is T * (p_parent - p_child), so hydrostatic balance
+			// requires the opposing child-to-parent coordinate difference here.
+			value_t dz = depth[well_head_idx + p + 1] - depth[well_head_idx + p];
 			value_t grav_rhs = wells[iw]->well_transmissibility * g_constant * dz;
 			add_conn_block(well_head_idx + p, well_head_idx + p + 1,
 			               wells[iw]->well_transmissibility, 0, P_VAR, grav_rhs);
