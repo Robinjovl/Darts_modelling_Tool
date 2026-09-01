@@ -156,7 +156,7 @@ class Model(DartsModel):
 
         # Time-stepping / Newton / linear-solver config (see DartsModel.set_solver,
         # called from reset()).
-        self.runtime = 1
+        self.ts_control.runtime = 1
         # default timestep control thresholds (overridable by callers)
         self.ni_dt_increase_cutoff = 5
         self.ni_dt_decrease_cutoff = 8
@@ -177,13 +177,11 @@ class Model(DartsModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
-        super().set_solver()  # platform default nonlinear + linear solvers
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
-            chop=ChopSpec(mode='local', factor=0.2))
-        self.nonlinear_solver.spec.chop.mode = 'local'
-        # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
-        self.nonlinear_solver.spec.chop.factor = 0.2
+        self.ts_control.dt_first = 1e-5
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_max = 1e-3
+        self.ts_control.runtime = 1000
+
         # GPU -> AMGX-CPR; CPU -> FGMRES + CPR/AMG
         tolerance = 1e-6
         max_iterations = 500
@@ -195,6 +193,8 @@ class Model(DartsModel):
         elim = K > 0 and (n_vars is None or n_vars - K >= 2)
         elim_rows = list(range(K))
         elim_cols = list(range(1, K + 1))
+        # Set on the composed self.linear_solver (created in DartsModel.__init__) --
+        # no platform default is ever materialized and discarded.
         if getattr(self, 'platform', 'cpu') == 'gpu':
             from darts.linear_solvers import AMGXCPRSolverSpec
             if elim:
@@ -208,12 +208,12 @@ class Model(DartsModel):
                 # reuse for the elimination chain's OWN AMGX instances (per-
                 # instance ctor override) -- no process-global environment
                 # mutation, other AMGX instances keep the default adaptive reuse.
-                self.linear_solver = AMGXCPRSolverSpec(
+                self.linear_solver.spec = AMGXCPRSolverSpec(
                     max_iterations=max_iterations, tolerance=tolerance,
                     schur_elim_count=K, schur_elim_rows=elim_rows,
                     schur_elim_cols=elim_cols)
             else:
-                self.linear_solver = AMGXCPRSolverSpec(
+                self.linear_solver.spec = AMGXCPRSolverSpec(
                     max_iterations=max_iterations, tolerance=tolerance)
         else:
             from darts.linear_solvers import CPRSolverSpec, GMRESSolverSpec
@@ -227,7 +227,14 @@ class Model(DartsModel):
                 wrap.tolerance = tolerance
                 wrap.max_iterations = max_iterations
                 spec = wrap
-            self.linear_solver = spec
+            self.linear_solver.spec = spec
+
+        super().set_solver()  # platform default nonlinear solver
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
+            chop=ChopSpec(mode='local', factor=0.2))
+        self.nonlinear_solver.spec.chop.mode = 'local'
+        # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
+        self.nonlinear_solver.spec.chop.factor = 0.2
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,
@@ -746,9 +753,9 @@ class Model(DartsModel):
                 pass
             # Mirror the base method's per-step history bookkeeping for the failed step.
             try:
-                self.time.append(t)
-                self.n_newton_iters.append(self.nonlinear_solver.status.n_newton)
-                self.time_step_size.append(dt)
+                self.ts_control.time.append(t)
+                self.nonlinear_solver.n_newton_iters.append(self.nonlinear_solver.status.n_newton)
+                self.ts_control.time_step_size.append(dt)
             except Exception:
                 pass
             return 0  # converged = False -> run() else-branch cuts dt
@@ -816,8 +823,8 @@ class Model(DartsModel):
         """
         verbose = self.verbose if verbose is None else verbose
         assert hasattr(self, 'output'), "self.output does not exist, please call m.set_output() after m.init()"
-        days = days if days is not None else self.runtime
-        data_ts = self.data_ts
+        days = days if days is not None else self.ts_control.runtime
+        ts_control = self.ts_control
 
         self.output.save_well_after_run = save_well_data_after_run
 
@@ -838,11 +845,11 @@ class Model(DartsModel):
 
         # same logic as in engine.run
         if fabs(t) < 1e-15 or not hasattr(self, 'prev_dt'):
-            dt = data_ts.dt_first
+            dt = ts_control.dt_first
         elif restart_dt > 0.:
             dt = restart_dt
         else:
-            dt = min(self.prev_dt*data_ts.dt_mult, days, data_ts.dt_max)
+            dt = min(self.prev_dt*ts_control.dt_mult, days, ts_control.dt_max)
 
         self.prev_dt = dt
 
@@ -860,10 +867,10 @@ class Model(DartsModel):
         # it must not break the good-step streak.
         dt_truncated = False
 
-        if np.fabs(data_ts.dt_mult - 1) < 1e-10:
+        if np.fabs(ts_control.dt_mult - 1) < 1e-10:
             omega = 0.
         else:
-            omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
+            omega = 1 / (ts_control.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
 
         # Per-timestep Python orchestration outside run_timestep (state copies, dt/CFL
         # control, well-data accumulation) is otherwise untimed; bracket it into the
@@ -883,10 +890,10 @@ class Model(DartsModel):
                 ts += 1
 
                 x = np.array(self.physics.engine.X, copy=False)[:nb * nc]
-                dt_mult_new = data_ts.dt_mult
+                dt_mult_new = ts_control.dt_mult
                 for i in range(nc):
                     max_dx[i] = np.max(abs(xn[i::nc] - x[i::nc]))
-                    mult = ((1 + omega) * data_ts.eta[i]) / (max_dx[i] + omega * data_ts.eta[i])
+                    mult = ((1 + omega) * ts_control.eta[i]) / (max_dx[i] + omega * ts_control.eta[i])
                     if mult < dt_mult_new:
                         dt_mult_new = mult
 
@@ -901,23 +908,23 @@ class Model(DartsModel):
                     # dt_max is sustainable, so leave the streak untouched (neither
                     # increment nor reset).
                     pass
-                elif fabs(dt - data_ts.dt_max) < 1.e-10 and status.n_newton < self.ni_dt_increase_cutoff:
+                elif fabs(dt - ts_control.dt_max) < 1.e-10 and status.n_newton < self.ni_dt_increase_cutoff:
                     self._n_good_steps += 1
                 else:
                     self._n_good_steps = 0
 
                 if status.n_newton > self.ni_dt_decrease_cutoff:
-                    data_ts.dt_max /= 2 * data_ts.dt_mult
+                    ts_control.dt_max /= 2 * ts_control.dt_mult
                     self._n_good_steps = 0
 
                 if self._n_good_steps > self.n_good_ts:
-                    data_ts.dt_max *= 2 * data_ts.dt_mult
+                    ts_control.dt_max *= 2 * ts_control.dt_mult
                     self._n_good_steps = 0
 
-                dt = min(dt * dt_mult_new, data_ts.dt_max)
+                dt = min(dt * dt_mult_new, ts_control.dt_max)
 
                 dt_truncated = False
-                if np.fabs(t + dt - stop_time) < data_ts.dt_min:
+                if np.fabs(t + dt - stop_time) < ts_control.dt_min:
                     dt = stop_time - t
                     dt_truncated = True
 
@@ -951,22 +958,22 @@ class Model(DartsModel):
                     dt /= 10.0
                     n_bad_steps += 2
                 else:
-                    dt /= data_ts.dt_mult
+                    dt /= ts_control.dt_mult
                     n_bad_steps += 1
                 self._n_good_steps = 0
                 dt_truncated = False
 
                 if n_bad_steps > 1:
-                    data_ts.dt_max /= 2.
+                    ts_control.dt_max /= 2.
                     n_bad_steps = 0
 
                 if verbose:
                     print("Cut timestep to %2.10f (solver rc=%d)"
                           % (dt, getattr(self, '_linear_solver_rc_last', 0)))
-                if dt <= data_ts.dt_min:
+                if dt <= ts_control.dt_min:
                     overhead.stop()  # keep the bracket balanced before aborting the run
                     raise RuntimeError('Stop simulation. Reason: reached min. timestep '
-                                       + str(data_ts.dt_min) + ' dt=' + str(dt))
+                                       + str(ts_control.dt_min) + ' dt=' + str(dt))
 
             overhead.stop()
 

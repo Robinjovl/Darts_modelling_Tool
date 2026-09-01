@@ -209,7 +209,7 @@ class ModelCCS(Model_CPG):
     def set_input_data(self, case=''):
         self.idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
         set_input_data(self.idata, case)
-        self.idata.sim.DataTS.dt_first = 1e-5
+        self.idata.sim.TimestepControl.dt_first = 1e-5
 
         self.idata.geom.burden_layers = 0
 

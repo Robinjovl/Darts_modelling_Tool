@@ -40,7 +40,11 @@ class Model(DartsModel, OptModuleSettings):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5 )
+        self.ts_control.dt_first = 0.0001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 5
+        self.ts_control.runtime = 1000
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
         self.linear_solver.spec.tolerance = 1e-6
@@ -144,7 +148,7 @@ class Model(DartsModel, OptModuleSettings):
                                      epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
-        self.runtime = 1000
+        self.ts_control.runtime = 1000
         self.p_init = 200
         self.init_temp = 350
         self.inj = value_vector([1 - zero, self.init_temp - 30])

@@ -36,11 +36,13 @@ class Model(DartsModel):
         self.set_physics()
 
         # NOTE: set_sim_params stays in __init__ (not moved to set_solver): set_wells()
-        # builds RampUpRate from self.data_ts.dt_first and runs during init() before
+        # builds RampUpRate from self.ts_control.dt_first and runs during init() before
         # reset()/set_solver(). dfm_well is the documented set_solver exception.
-        self.set_sim_params(first_ts=0.001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60),
-                            runtime = 100 / 60 / 60 / 24,  # This runtime will be used when CI test is conducted without the main file
-                            )
+        self.ts_control.dt_first = 0.001/(24*60*60)
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 2/(24*60*60)
+        self.ts_control.runtime = 100 / 60 / 60 / 24  # This runtime will be used when CI test is conducted without the main file
 
         self.timer.node["initialization"].stop()
 
@@ -180,7 +182,7 @@ class Model(DartsModel):
         inj_phase_comp = np.array([1 - self.zero, self.zero])
         inj_fluid_props = {"composition": inj_phase_comp}
 
-        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx,
+        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.ts_control.dt_first, inj_segment_idx,
                                   inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
                                   verbose=verbose)
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation

@@ -34,9 +34,11 @@ class Model(DartsModel):
         self.zero = 1e-10
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60),
-                            runtime=10 / 24 / 60,   # This runtime will be used when CI test is conducted without the main file
-                            )
+        self.ts_control.dt_first = 0.0001/(24*60*60)
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 2/(24*60*60)
+        self.ts_control.runtime = 10 / 24 / 60  # This runtime will be used when CI test is conducted without the main file
 
         self.timer.node["initialization"].stop()
 
