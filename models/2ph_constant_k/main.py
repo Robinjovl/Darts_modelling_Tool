@@ -514,17 +514,17 @@ def run(itor_type, obl_points, n_comps, reservoir_type, nx: int = None, is_baryc
             ts_mult = 4.0 if reservoir_type == 'spe10_20_40_40' else 1.0
             t = n.physics.engine.t
             if t < 70:
-                n.data_ts.dt_max = ts_mult * 0.25
+                n.ts_control.dt_max = ts_mult * 0.25
             elif t < 100:
-                n.data_ts.dt_max = ts_mult * 0.35
+                n.ts_control.dt_max = ts_mult * 0.35
             elif t < 400:
-                n.data_ts.dt_max = ts_mult * 0.5
+                n.ts_control.dt_max = ts_mult * 0.5
             elif t < 2000:
-                n.data_ts.dt_max = ts_mult * 1.0
+                n.ts_control.dt_max = ts_mult * 1.0
             else:
-                n.data_ts.dt_max = ts_mult * 1.5
+                n.ts_control.dt_max = ts_mult * 1.5
 
-        print(f'dt_max = {n.data_ts.dt_max}')
+        print(f'dt_max = {n.ts_control.dt_max}')
         n.run(30.5)
         if reservoir_type != '1D' and vtk_output:
             n.output.output_to_vtk(ith_step=i + 1, output_properties=out_props)

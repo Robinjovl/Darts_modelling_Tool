@@ -185,8 +185,13 @@ class Model(DartsModel):
         return pc
 
     def set_solver(self):
+        from darts.linear_solvers import GPUCuSolverSpec, SuperLUSolverSpec
         # Time-stepping.
-        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60 )
+        self.ts_control.dt_first = 1e-6
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 1.5
+        self.ts_control.dt_max = 60
+        self.ts_control.runtime = 1000
 
         # Linear solver: this is a Geothermal DFM (discrete fracture matrix) model.
         # The default FGMRES+CPR (and MGR) stall on its wide, strongly-coupled
@@ -198,12 +203,14 @@ class Model(DartsModel):
         # cuSOLVER QR (gpu_cusolver; CuDSSSolverSpec is the faster alternative
         # on WITH_CUDSS builds). Proprietary builds ignore CPU specs and lack
         # an in-tree GPU direct solver -> keep their engine-factory default.
-        from darts.linear_solvers import GPUCuSolverSpec, SuperLUSolverSpec
+        # self.linear_solver.spec is only assigned when a spec is actually picked
+        # below -- left None otherwise, so set_solver() falls through to the
+        # platform default, same as before.
         if getattr(self, "platform", "cpu") == "gpu":
-            if self.open_source_solvers_available():
-                self.linear_solver = GPUCuSolverSpec()
+            if self.linear_solver.open_source_solvers_available():
+                self.linear_solver.spec = GPUCuSolverSpec()
         else:
-            self.linear_solver = SuperLUSolverSpec()
+            self.linear_solver.spec = SuperLUSolverSpec()
         super().set_solver()  # platform default when no spec was picked above
         # Newton tuning -- MUST come after super().set_solver(): the base call is what
         # materializes the default NewtonSolver (dereferencing nonlinear_solver.spec

@@ -2,7 +2,7 @@ import numpy as np
 import os
 
 from darts.input.input_data import InputData
-from darts.models.darts_model import DataTS
+from darts.timestep_control import TimestepControl
 from darts.engines import sim_params
 
 class InputDataGeom():  # to group geometry input data
@@ -30,19 +30,19 @@ def input_data_base(idata: InputData, case: str):
     idata.sim.time_steps = np.zeros(n_time_steps) + dt
 
     # time stepping and convergence parameters
-    idata.sim.DataTS = DataTS(n_vars=0)
-    idata.sim.DataTS.dt_first = 0.01
-    idata.sim.DataTS.dt_mult = 2
-    idata.sim.DataTS.dt_max = 92
+    idata.sim.TimestepControl = TimestepControl(n_vars=0)
+    idata.sim.TimestepControl.dt_first = 0.01
+    idata.sim.TimestepControl.dt_mult = 2
+    idata.sim.TimestepControl.dt_max = 92
 
     idata.sim.newton_tolerance = 1e-2
     idata.sim.linear_tol = 1e-4
     # optional: choose a non-default linear solver via the Spec interface,
     # e.g. in the model's set_solver():
     #   from darts.linear_solvers import SuperLUSolverSpec, PETScSolverSpec, PardisoSolverSpec
-    #   self.linear_solver = SuperLUSolverSpec()
-    #   self.linear_solver = PETScSolverSpec(variant="cpr")
-    #   self.linear_solver = PardisoSolverSpec()
+    #   self.linear_solver.spec = SuperLUSolverSpec()
+    #   self.linear_solver.spec = PETScSolverSpec(variant="cpr")
+    #   self.linear_solver.spec = PardisoSolverSpec()
 
     idata.generate_grid = 'generate' in case
     idata.geom = InputDataGeom()

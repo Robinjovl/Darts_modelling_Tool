@@ -36,16 +36,11 @@ class Model(THMCModel):
         super().__init__()
 
     def set_solver(self):
-        super().set_solver()
-
         # Open-source FS-CPR by default -- inject the spec; the engine bypasses
         # sim_params.linear_type. FS-CPR is a PRECONDITIONER (single application),
         # not an outer Krylov loop -- wrap it in GMRES to mirror the proprietary
         # path (bos_gmres + bos_fs_cpr).
-        from darts.models.darts_model import DataTS
         from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
-        if not hasattr(self, 'data_ts') or self.data_ts is None:
-            self.data_ts = DataTS(self.physics.n_vars)
         mesh = self.reservoir.mesh
         n_blocks = mesh.n_blocks
         n_res_blks = mesh.n_res_blocks
@@ -65,8 +60,9 @@ class Model(THMCModel):
         # open-source CPU build; on the proprietary build _apply_solver applies
         # proprietary_linear_type (bos_fs_cpr) to params.linear_type. No model-level
         # params.linear_type needed -- its open-source value was the engine default
-        # (cpu_superlu) anyway.
-        self.linear_solver = GMRESSolverSpec(
+        # (cpu_superlu) anyway. The spec is set here, before super().set_solver()
+        # below, so the platform default is never materialized.
+        self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
             # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
             # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()
@@ -80,10 +76,11 @@ class Model(THMCModel):
             restart=50,
             proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
         )
+        super().set_solver()
 
-        self.data_ts.dt_first = 0.0001
-        self.data_ts.dt_mult = 2
-        self.data_ts.dt_max = 5
+        self.ts_control.dt_first = 0.0001
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 5
         self.nonlinear_solver.spec.tolerance = 1e-6
         self.params.tolerance_linear = 1e-8
         self.nonlinear_solver.spec.max_iterations = 20
