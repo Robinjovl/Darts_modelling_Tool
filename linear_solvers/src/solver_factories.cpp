@@ -384,6 +384,10 @@ namespace opendarts
           this->solver = nullptr;
         }
 
+        /** Declare the wrapped BoomerAMG as a SYSTEM of @p n unknowns per node.
+         *  Used for the FS-CPR displacement block (see below). */
+        void set_num_functions(int n) { inner_->set_num_functions(n); }
+
         int set_prec(opendarts::linear_solvers::linsolv_iface *prec_in) override
         {
           return inner_->set_prec(prec_in);
@@ -470,6 +474,21 @@ namespace opendarts
         // which made the wrapper appear to return identically-zero solutions.
         auto u_prec = std::make_shared<hypre_amg_adapter<1>>();
         auto p_prec = std::make_shared<hypre_amg_adapter<1>>();
+        // The U (displacement) block is a 3-component elasticity system stored
+        // INTERLEAVED (u_x,u_y,u_z per node) by linsolv_fs_cpr's scalar
+        // expansion, so run its BoomerAMG as a SYSTEMS solver. As a plain
+        // scalar AMG it coarsens the three components independently, which
+        // costs a large factor in outer iterations on unstructured meshes.
+        // ND is fixed at 3 in linsolv_fs_cpr (3D mechanics). The P (pressure)
+        // stage is genuinely scalar and stays at the default.
+        u_prec->set_num_functions(3);
+        // Likewise the P stage when NE > 1 (thermo / multiphase poromechanics):
+        // linsolv_fs_cpr expands the NE-component PPSS block to a scalar CSR
+        // interleaved by NE, so BoomerAMG must be told it is an NE-unknown
+        // system. For NE == 1 this is the scalar default and a no-op.
+        constexpr int NE_FS = static_cast<int>(N_BLOCK_SIZE) - 3;
+        if (NE_FS > 1)
+          p_prec->set_num_functions(NE_FS);
 
         auto solver = std::make_shared<opendarts::linear_solvers::linsolv_fs_cpr<N_BLOCK_SIZE>>(
             P_VAR, Z_VAR, U_VAR, NC);

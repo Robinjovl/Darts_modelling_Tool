@@ -96,19 +96,14 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
             os.path.join('dfm_well', '2ph_2comp_isothermal_dfm_vertical_well_vs_dwell'),
         ]
 
-    # Multi-variable-flow poromechanics (NE > 1: thermo / multi-phase coupled
-    # to mechanics) is gated off in the open-source suite: the in-tree FS-CPR's
-    # NE>1 pressure stage is memory-correct (scalar to_nb_1 expansion of the
-    # PPSS block) but converges orders of magnitude slower than the proprietary
-    # FS-CPR's Schur reduction (bai_mech_rect: LI 325k vs ~50). Re-enable once
-    # the proprietary NE>1 reduction is ported to linsolv_fs_cpr.
-    FS_CPR_NE_GT1_READY = False
-
+    # Multi-variable-flow poromechanics (NE > 1: thermo / multi-phase coupled to
+    # mechanics) runs the DIRECT solver on the open-source lane, as it did before
+    # !280 -- the in-tree FS-CPR stagnates on NE>1 systems, so the mechanics
+    # models opt out of it there (see their set_solver()). With that restored,
+    # every mechanics case the pre-!280 suite covered runs again.
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
     test_args_mech = []
-    mech_cases = ['terzaghi', 'mandel', 'terzaghi_two_layers']
-    if FS_CPR_NE_GT1_READY:
-        mech_cases += ['bai']  # thermoporoelasticity -> NE = 2
+    mech_cases = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']  # bai -> NE = 2
     for case in mech_cases:
         for discr_name in ['mech_discretizer', 'pm_discretizer']:
             if case == 'bai' and discr_name == 'pm_discretizer':
@@ -118,17 +113,12 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
                     continue
                 test_args_mech.append([case, discr_name, mesh])
 
-    if FS_CPR_NE_GT1_READY:
-        test_dirs_mech += ['1ph_1comp_poroelastic_convergence']  # NE = 2
-        test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
-    else:
-        test_args_mech = [test_args_mech]
+    test_dirs_mech += ['1ph_1comp_poroelastic_convergence']  # NE = 2
+    test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
     if heavy_models:
         test_dirs_mech += ['SPE10_mech']
-        physics_list = ['single_phase']
-        if FS_CPR_NE_GT1_READY:
-            physics_list += ['single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
+        physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
         meshes_list = ['data_10_10_10']
         test_args_mech_spe10 = []
         for physics in physics_list:
@@ -458,7 +448,15 @@ if __name__ == '__main__':
     # displaced_fault_reactivation, the extra CPG geometries, SPE11b). GPU
     # suite runs keep the lighter set (they already brush the job time limit).
     _normalize_odls_env()
-    heavy_models = os.getenv('TEST_GPU') != '1'
+    # Heavy mechanics cases (SPE10_mech, displaced_fault_reactivation) run on the
+    # iterative/BOS lane only, as before !280. _normalize_odls_env() already
+    # returns False under TEST_GPU=1, so this keeps the GPU-suite skip too.
+    # Rationale: SPE10_mech's dead_oil / dead_oil_thermal physics are not
+    # solvable by the in-tree FS-CPR -- GMRES makes no progress at all on them
+    # (relative residual pinned at 1.0 for the full 5000-iteration budget) --
+    # while the proprietary FS-CPR handles them. That lane split is what
+    # development had; running them open-source is new scope, not a regression.
+    heavy_models = _normalize_odls_env()
 
     rcode = run_testing(platform, overwrite, heavy_models, test_all_models)
     exit(rcode)

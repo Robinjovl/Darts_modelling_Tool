@@ -74,8 +74,13 @@ class Model(THMCModel):
             # really been running -- keeping behaviour unchanged. FS-CPR does not reach 1e-8 here
             # anyway: asking for it only burns the iteration budget -- 22 of 48 solves exhaust the
             # 200-iteration cap (99 vs 41 linear iterations per Newton).
-            tolerance=1e-5,
-            max_iterations=50,
+            # Pre-!280 this model solved at tolerance_linear=1e-8 with
+            # max_i_linear=5000 (THMCModel's mech_discretizer params, tightened here).
+            # The spec owns params now, so it must carry those values: at the
+            # 1e-5/50 sim_params default every solve exits at ~0.7 relative
+            # residual and the dead-oil physics never advance.
+            tolerance=1e-8,
+            max_iterations=5000,
             restart=50,
             proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
         )

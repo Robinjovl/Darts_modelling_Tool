@@ -149,6 +149,15 @@ namespace opendarts
       check_result(HYPRE_BoomerAMGSetInterpType(this->solver, 6));    // Direct
       check_result(HYPRE_BoomerAMGSetRelaxType(this->solver, 6));     // Hybrid GS
 
+      // Systems AMG: when the caller declared n unknowns per node
+      // (set_num_functions -- the displacement block of FS-CPR), tell BoomerAMG
+      // so that coarsening and interpolation respect the vector structure
+      // instead of treating each component as an independent scalar field.
+      // HYPRE's default dof_func is row % num_functions, which matches the
+      // interleaved storage the FS-CPR U block uses.
+      if (num_functions_ > 1)
+        check_result(HYPRE_BoomerAMGSetNumFunctions(this->solver, num_functions_));
+
       (void) A_in;  // matrix is consumed in setup()
       return 0;
     }
