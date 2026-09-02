@@ -225,10 +225,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     :param decouple_geomech: turn off mechanics->porosity (so pressure and flow) influence
     :param generate_mesh: if True, mesh will be generated, otherwise it will be loaded from the model_folder/meshes
     :param solver_type: 'superlu', 'fs_cpr', or 'by_env_var' (see Model.set_solver_params)
-    :param save_well_time_data: if True, write the well time-series files (pkl/xlsx). The test
-                                path turns it off: the reference for this model is the vtk
-                                solution (see run_test), and well time-series
-                                do not represent the mechanical response at all.
+    :param save_well_time_data: if True, write the well time-series files (pkl/xlsx). 
     :return:
     '''
 
@@ -425,8 +422,7 @@ def run_test(args: list = [], platform='cpu'):
             report_step=30.0,
             clear_output_dir=True,
             solver_type='by_env_var',
-            # the reference of this model is the vtk solution, not the well time-series
-            save_well_time_data=False,
+            save_well_time_data=True,
         )
     except Exception as e:
         import traceback
