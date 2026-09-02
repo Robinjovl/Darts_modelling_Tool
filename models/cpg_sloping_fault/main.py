@@ -29,7 +29,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         log_stream = redirect_all_output(log_filename)
 
     if physics_type == 'geothermal':
-        m = ModelGeothermal(iapws_physics=True)
+        m = ModelGeothermal(iapws_physics=True, formulation='PT'))
     elif physics_type == 'deadoil':
         m = ModelDeadOil()
     elif physics_type == 'CCS':
