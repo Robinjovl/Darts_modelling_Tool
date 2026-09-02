@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Report shared NVIDIA GPU load and select a device for a CI job.
+Summarize shared NVIDIA GPU occupancy and select a device for a CI job.
 """
 
 from __future__ import annotations
@@ -13,18 +13,12 @@ import socket
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-GPU_SAMPLE_QUERY = "index,utilization.gpu,memory.used,memory.total"
-GPU_DETAIL_QUERY = (
-    "timestamp,index,uuid,name,pstate,utilization.gpu,utilization.memory,"
-    "memory.used,memory.total,power.draw,power.limit,temperature.gpu,"
-    "temperature.memory,clocks.current.sm,clocks.max.sm,"
-    "clocks_event_reasons.active,compute_mode"
-)
-COMPUTE_APP_QUERY = "timestamp,gpu_uuid,pid,process_name,used_gpu_memory"
+GPU_SAMPLE_QUERY = "index,uuid,utilization.gpu,memory.used,memory.total"
+COMPUTE_APP_QUERY = "gpu_uuid,pid"
 
 
 class PreflightError(RuntimeError):
@@ -34,6 +28,7 @@ class PreflightError(RuntimeError):
 @dataclass(frozen=True)
 class GpuSample:
     index: int
+    uuid: str
     utilization: float
     memory_used: int
     memory_total: int
@@ -42,9 +37,11 @@ class GpuSample:
 @dataclass
 class GpuSummary:
     index: int
+    uuid: str
     utilization_sum: float = 0.0
     peak_utilization: float = 0.0
     max_memory_used: int = 0
+    memory_total: int = 0
     min_memory_free: int | None = None
     sample_count: int = 0
 
@@ -56,6 +53,7 @@ class GpuSummary:
         self.utilization_sum += sample.utilization
         self.peak_utilization = max(self.peak_utilization, sample.utilization)
         self.max_memory_used = max(self.max_memory_used, sample.memory_used)
+        self.memory_total = sample.memory_total
         memory_free = sample.memory_total - sample.memory_used
         if self.min_memory_free is None:
             self.min_memory_free = memory_free
@@ -64,44 +62,28 @@ class GpuSummary:
         self.sample_count += 1
 
 
-def print_command(command: list[str], suffix: str = "") -> None:
-    print(f"+ {shlex.join(command)}{suffix}", flush=True)
-
-
-def run_diagnostic(command: list[str]) -> subprocess.CompletedProcess[str]:
-    print_command(command)
-    result = subprocess.run(
-        command,
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    if result.stdout:
-        print(result.stdout.rstrip())
-    if result.returncode:
-        print(
-            f"WARNING: diagnostic command exited with status {result.returncode}",
-            file=sys.stderr,
-        )
-    return result
+@dataclass
+class ProcessSummary:
+    count: int = 0
+    owners: set[str] = field(default_factory=set)
 
 
 def parse_samples(output: str) -> list[GpuSample]:
     samples = []
     for row in csv.reader(output.splitlines()):
-        fields = [field.strip() for field in row]
+        fields = [value.strip() for value in row]
         if not fields:
             continue
-        if len(fields) != 4:
+        if len(fields) != 5:
             raise PreflightError(f"Unexpected nvidia-smi sample row: {row!r}")
         try:
             samples.append(
                 GpuSample(
                     index=int(fields[0]),
-                    utilization=float(fields[1]),
-                    memory_used=int(fields[2]),
-                    memory_total=int(fields[3]),
+                    uuid=fields[1],
+                    utilization=float(fields[2]),
+                    memory_used=int(fields[3]),
+                    memory_total=int(fields[4]),
                 )
             )
         except ValueError as error:
@@ -119,15 +101,10 @@ def collect_samples(count: int, interval: float) -> list[GpuSample]:
         f"--query-gpu={GPU_SAMPLE_QUERY}",
         "--format=csv,noheader,nounits",
     ]
-    print_command(command, f"  # {count} samples, {interval:g} seconds apart")
+    print(f"Sampling {count} times at {interval:g}-second intervals...")
     samples = []
     for sample_number in range(count):
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
         if result.returncode:
             detail = result.stderr.strip() or result.stdout.strip()
             raise PreflightError(f"nvidia-smi sampling failed: {detail}")
@@ -140,29 +117,11 @@ def collect_samples(count: int, interval: float) -> list[GpuSample]:
 def summarize_samples(samples: list[GpuSample]) -> list[GpuSummary]:
     summaries: dict[int, GpuSummary] = {}
     for sample in samples:
-        summary = summaries.setdefault(sample.index, GpuSummary(index=sample.index))
+        summary = summaries.setdefault(
+            sample.index, GpuSummary(index=sample.index, uuid=sample.uuid)
+        )
         summary.add(sample)
     return [summaries[index] for index in sorted(summaries)]
-
-
-def print_samples(samples: list[GpuSample], summaries: list[GpuSummary]) -> None:
-    print("GPU selection samples (index, utilization %, used MiB, total MiB):")
-    for sample in samples:
-        print(
-            f"{sample.index}, {sample.utilization:g}, "
-            f"{sample.memory_used}, {sample.memory_total}"
-        )
-
-    print(
-        "GPU selection summary (index, average util %, peak util %, "
-        "max used MiB, min free MiB):"
-    )
-    for summary in summaries:
-        print(
-            f"{summary.index} {summary.average_utilization:.2f} "
-            f"{summary.peak_utilization:g} {summary.max_memory_used} "
-            f"{summary.min_memory_free}"
-        )
 
 
 def select_gpu(
@@ -179,7 +138,6 @@ def select_gpu(
             ) from error
         for summary in summaries:
             if summary.index == requested_index:
-                print(f"Honoring requested physical GPU_DEVICE={requested_index}")
                 return summary
         raise PreflightError(
             f"Requested GPU_DEVICE={requested_index} does not identify an available GPU"
@@ -195,7 +153,6 @@ def select_gpu(
         print(
             f"WARNING: no GPU has {min_free_memory} MiB free; "
             "selecting the least-loaded device",
-            file=sys.stderr,
         )
         eligible = summaries
 
@@ -210,88 +167,113 @@ def select_gpu(
     )
 
 
-def report_process_owners() -> None:
+def query_process_owners(pids: set[int]) -> dict[int, str]:
+    if not pids:
+        return {}
+    command = [
+        "ps",
+        "-o",
+        "pid=,user=",
+        "-p",
+        ",".join(str(pid) for pid in sorted(pids)),
+    ]
+    result = subprocess.run(command, check=False, capture_output=True, text=True)
+    owners = {}
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0].isdigit():
+            owners[int(fields[0])] = fields[1]
+    return owners
+
+
+def query_processes(summaries: list[GpuSummary]) -> dict[int, ProcessSummary]:
     command = [
         "nvidia-smi",
-        "--query-compute-apps=pid",
+        f"--query-compute-apps={COMPUTE_APP_QUERY}",
         "--format=csv,noheader,nounits",
     ]
-    print_command(command)
     result = subprocess.run(command, check=False, capture_output=True, text=True)
     if result.returncode:
-        print(result.stderr.rstrip(), file=sys.stderr)
-        return
+        print("WARNING: could not query active CUDA processes")
+        return {}
 
-    pids = sorted(
-        {
-            int(line.strip())
-            for line in result.stdout.splitlines()
-            if line.strip().isdigit()
-        }
-    )
-    if pids:
-        run_diagnostic(
-            [
-                "ps",
-                "-o",
-                "user:24,pid,etimes,comm",
-                "-p",
-                ",".join(str(pid) for pid in pids),
-            ]
-        )
-
-
-def run_monitoring(sample_count: int) -> None:
-    commands = [
-        [
-            "nvidia-smi",
-            "dmon",
-            "-s",
-            "pucvmet",
-            "-d",
-            "1",
-            "-c",
-            str(sample_count),
-            "-o",
-            "DT",
-        ],
-        [
-            "nvidia-smi",
-            "pmon",
-            "-s",
-            "um",
-            "-d",
-            "1",
-            "-c",
-            str(sample_count),
-            "-o",
-            "DT",
-        ],
-    ]
     processes = []
-    for command in commands:
-        print_command(command)
-        processes.append(
-            (
-                command,
-                subprocess.Popen(
-                    command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                ),
-            )
+    for row in csv.reader(result.stdout.splitlines()):
+        fields = [value.strip() for value in row]
+        if len(fields) != 2 or not fields[1].isdigit():
+            continue
+        processes.append((fields[0], int(fields[1])))
+
+    owners = query_process_owners({pid for _, pid in processes})
+    index_by_uuid = {summary.uuid: summary.index for summary in summaries}
+    process_summaries: dict[int, ProcessSummary] = {}
+    for uuid, pid in processes:
+        if uuid not in index_by_uuid:
+            continue
+        process_summary = process_summaries.setdefault(
+            index_by_uuid[uuid], ProcessSummary()
         )
-    for command, process in processes:
-        output, _ = process.communicate()
-        print(f"=== {shlex.join(command)} ===")
-        if output:
-            print(output.rstrip())
-        if process.returncode:
-            print(
-                f"WARNING: diagnostic command exited with status {process.returncode}",
-                file=sys.stderr,
-            )
+        process_summary.count += 1
+        process_summary.owners.add(owners.get(pid, "unknown"))
+    return process_summaries
+
+
+def occupancy_status(
+    summary: GpuSummary,
+    processes: ProcessSummary,
+    active_threshold: float,
+    busy_threshold: float,
+) -> str:
+    if summary.average_utilization >= busy_threshold:
+        return "BUSY"
+    if summary.average_utilization >= active_threshold:
+        return "ACTIVE"
+    if processes.count or summary.max_memory_used >= 1024:
+        return "RESERVED"
+    return "IDLE"
+
+
+def find_visible_gpu(
+    summaries: list[GpuSummary], visible_devices: str
+) -> GpuSummary | None:
+    if "," in visible_devices:
+        return None
+    for summary in summaries:
+        if visible_devices in {str(summary.index), summary.uuid}:
+            return summary
+    return None
+
+
+def print_summary(
+    summaries: list[GpuSummary],
+    process_summaries: dict[int, ProcessSummary],
+    selected_index: int | None,
+    active_threshold: float,
+    busy_threshold: float,
+) -> None:
+    print("GPU occupancy (* = selected/preallocated physical GPU):")
+    print("    GPU  STATE       AVG%  PEAK%     MEMORY GiB  PROCS  OWNERS")
+    for summary in summaries:
+        processes = process_summaries.get(summary.index, ProcessSummary())
+        status = occupancy_status(summary, processes, active_threshold, busy_threshold)
+        owner_names = sorted(processes.owners)
+        owners = ",".join(owner_names[:4]) or "-"
+        if len(owner_names) > 4:
+            owners += f",+{len(owner_names) - 4} more"
+        marker = "*" if summary.index == selected_index else " "
+        memory = (
+            f"{summary.max_memory_used / 1024:.1f}/{summary.memory_total / 1024:.1f}"
+        )
+        print(
+            f" {marker}  {summary.index:>3}  {status:<9} "
+            f"{summary.average_utilization:>5.1f} "
+            f"{summary.peak_utilization:>6.1f} "
+            f"{memory:>14} {processes.count:>6}  {owners}"
+        )
+    print(
+        f"States: BUSY >= {busy_threshold:g}%; ACTIVE >= {active_threshold:g}%; "
+        "RESERVED = lower load but holding memory/processes; otherwise IDLE."
+    )
 
 
 def write_environment(path: Path, values: dict[str, str]) -> None:
@@ -303,7 +285,7 @@ def write_environment(path: Path, values: dict[str, str]) -> None:
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Report NVIDIA GPU load and select a device for a CI job."
+        description="Summarize NVIDIA GPU occupancy and select a CI device."
     )
     parser.add_argument(
         "--env-file",
@@ -313,8 +295,8 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--samples", type=int, default=10)
     parser.add_argument("--interval", type=float, default=1.0)
-    parser.add_argument("--monitor-samples", type=int, default=5)
     parser.add_argument("--min-free-mib", type=int, default=4096)
+    parser.add_argument("--active-threshold", type=float, default=10.0)
     parser.add_argument("--busy-threshold", type=float, default=80.0)
     return parser.parse_args()
 
@@ -322,61 +304,58 @@ def parse_arguments() -> argparse.Namespace:
 def main() -> int:
     sys.stdout.reconfigure(line_buffering=True)
     args = parse_arguments()
-    if args.samples < 1 or args.interval < 0 or args.monitor_samples < 1:
-        raise PreflightError("Sample counts must be positive and interval non-negative")
+    if args.samples < 1 or args.interval < 0:
+        raise PreflightError("Sample count must be positive and interval non-negative")
+    if not 0 <= args.active_threshold < args.busy_threshold <= 100:
+        raise PreflightError(
+            "Occupancy thresholds must satisfy 0 <= active < busy <= 100"
+        )
 
-    visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
-    requested_gpu = os.environ.get("GPU_DEVICE", "")
-    print("=== Shared GPU CI preflight ===")
-    print(datetime.now().astimezone().isoformat(timespec="seconds"))
-    print(socket.getfqdn())
+    visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip()
+    requested_gpu = os.environ.get("GPU_DEVICE", "").strip()
+    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+    print(f"=== GPU CI preflight | {socket.getfqdn()} | {timestamp} ===")
     print(
-        f"Initial CUDA_VISIBLE_DEVICES={visible_devices or '<unset>'} "
+        f"Initial allocation: CUDA_VISIBLE_DEVICES={visible_devices or '<unset>'}; "
         f"GPU_DEVICE={requested_gpu or '<unset>'}"
     )
 
-    run_diagnostic(["nvidia-smi"])
-    run_diagnostic(["nvidia-smi", "topo", "-m"])
-    run_diagnostic(
-        [
-            "nvidia-smi",
-            f"--query-gpu={GPU_DETAIL_QUERY}",
-            "--format=csv",
-        ]
-    )
-    run_diagnostic(
-        [
-            "nvidia-smi",
-            f"--query-compute-apps={COMPUTE_APP_QUERY}",
-            "--format=csv",
-        ]
-    )
-    report_process_owners()
+    samples = collect_samples(args.samples, args.interval)
+    summaries = summarize_samples(samples)
+    process_summaries = query_processes(summaries)
 
     if visible_devices:
-        print(f"Keeping preconfigured CUDA_VISIBLE_DEVICES={visible_devices}")
+        selected = find_visible_gpu(summaries, visible_devices)
         environment = {
             "CUDA_VISIBLE_DEVICES": visible_devices,
             "GPU_DEVICE": requested_gpu or "0",
         }
+        decision = f"preserve preallocated CUDA_VISIBLE_DEVICES={visible_devices}"
     else:
-        samples = collect_samples(args.samples, args.interval)
-        summaries = summarize_samples(samples)
-        print_samples(samples, summaries)
         selected = select_gpu(summaries, requested_gpu, args.min_free_mib)
-        if selected.average_utilization >= args.busy_threshold:
-            print(
-                f"WARNING: selected GPU {selected.index} averaged "
-                f"{selected.average_utilization:.2f}% utilization",
-                file=sys.stderr,
-            )
         environment = {
             "DARTS_CI_PHYSICAL_GPU_DEVICE": str(selected.index),
             "CUDA_VISIBLE_DEVICES": str(selected.index),
             "GPU_DEVICE": "0",
         }
+        reason = "explicit GPU_DEVICE override" if requested_gpu else "lowest load"
+        decision = f"physical GPU {selected.index} ({reason}) -> logical CUDA device 0"
 
-    run_monitoring(args.monitor_samples)
+    selected_index = selected.index if selected is not None else None
+    print_summary(
+        summaries,
+        process_summaries,
+        selected_index,
+        args.active_threshold,
+        args.busy_threshold,
+    )
+    print(f"Decision: {decision}")
+    if selected is not None and selected.average_utilization >= args.busy_threshold:
+        print(
+            f"WARNING: selected GPU {selected.index} is BUSY at "
+            f"{selected.average_utilization:.1f}% average utilization",
+        )
+
     write_environment(args.env_file, environment)
     return 0
 
