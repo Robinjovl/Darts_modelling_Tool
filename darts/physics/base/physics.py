@@ -155,6 +155,7 @@ class PhysicsBase:
         state_spec: 'PhysicsBase.StateSpecification' = None,
         cache: bool = False,
         history_fields: Iterable['HistoryField'] | None = None,
+        cache_live_reload: bool = False,
     ) -> None:
         """
         Configure the OBL grid and physics state for a compositional simulation.
@@ -281,12 +282,15 @@ class PhysicsBase:
         # Initialize timer for simulation and caching
         self.timer = timer.node["simulation"]
         self.cache = cache
+        self.cache_live_reload = cache_live_reload
         # list of created interpolators
         # is used on destruction to save cache data
         if self.cache:
             self.created_itors = []
             self._cache_finalized = False
             self._last_flushed_sizes = {}
+            self._cache_read_offsets = {}
+            self._cache_read_inodes = {}
             # Fallback key set for interpolators without native dirty-point tracking.
             self._flushed_point_keys = {}
             # PID of the process that owns this cache. Cache file writes must only happen
@@ -1653,6 +1657,15 @@ class PhysicsBase:
                 # during simulations new points will be evaluated.
                 # on model destruction (or interpreter exit), itor point data will be written to disk
                 self.created_itors.append((itor, itor_cache_filename))
+                try:
+                    self._cache_read_offsets[id(itor)] = os.path.getsize(
+                        itor_cache_filename
+                    )
+                    self._cache_read_inodes[id(itor)] = os.stat(
+                        itor_cache_filename
+                    ).st_ino
+                except OSError:
+                    self._cache_read_offsets[id(itor)] = 0
 
         itor.init()
         # for static itors, save the cache immediately after init, if it has not been already loaded
@@ -1726,6 +1739,9 @@ class PhysicsBase:
                 self._last_flushed_sizes[itor_id] = cur_size
                 continue
 
+            cache_lock = codec.cache_lock(filename, exclusive=True)
+            cache_lock.__enter__()
+
             # Temporarily ignore SIGINT/SIGTERM to avoid partial writes during sudden termination
             prev_int = None
             prev_term = None
@@ -1748,7 +1764,10 @@ class PhysicsBase:
                     # Existing arena cache: append only the points materialized since the
                     # last flush as a trailing DELTA(+EPOCH) frame, then recompact if the
                     # un-compacted tail grew large.
-                    if itor_id in getattr(self, '_force_recompact', ()):
+                    if (
+                        itor_id in getattr(self, '_force_recompact', ())
+                        and not getattr(self, 'cache_live_reload', False)
+                    ):
                         # ABI/placement-mismatch recovery loaded everything into the
                         # overlay; rebuild the arena with THIS binary's placement so future
                         # loads mmap cleanly (a pure-replay run would otherwise never do it).
@@ -1783,7 +1802,8 @@ class PhysicsBase:
                                 filename, codec._KIND_EPOCH, epoch_keys, epoch_vals
                             )
                     self._mark_point_data_delta_flushed(itor, None, cur_size)
-                    codec._maybe_compact(itor, filename)
+                    if not getattr(self, 'cache_live_reload', False):
+                        codec._maybe_compact(itor, filename)
                     continue
 
                 # No arena cache yet (absent, or a foreign/older file at this path): write a
@@ -1806,6 +1826,7 @@ class PhysicsBase:
                     print("WARNING: cache write verification failed for", filename)
                 self._mark_point_data_flushed(itor, None, cur_size)
             finally:
+                cache_lock.__exit__(None, None, None)
                 if prev_int is not None:
                     try:
                         signal.signal(signal.SIGINT, prev_int)
@@ -1816,6 +1837,61 @@ class PhysicsBase:
                         signal.signal(signal.SIGTERM, prev_term)
                     except Exception:
                         pass
+
+    def reload_cache_deltas(self) -> int:
+        """Import cache frames appended by peer simulations since the last reload."""
+        if os.getpid() != getattr(self, '_cache_owner_pid', os.getpid()):
+            return 0
+        if not getattr(self, 'cache_live_reload', False):
+            return 0
+        if not hasattr(self, '_cache_read_offsets'):
+            self._cache_read_offsets = {}
+        if not hasattr(self, '_cache_read_inodes'):
+            self._cache_read_inodes = {}
+        imported_total = 0
+        codec = self._cache_codec
+        for itor, fname in getattr(self, 'created_itors', ()):
+            filename = self._cache_filename(fname)
+            if not os.path.exists(filename):
+                continue
+            itor_id = id(itor)
+            current_size = codec._point_data_size(itor)
+            if self._last_flushed_sizes.get(itor_id) != current_size:
+                raise RuntimeError(
+                    'reload_cache_deltas requires local deltas to be flushed first; '
+                    'call sync_cache() instead'
+                )
+            with codec.cache_lock(filename, exclusive=False):
+                stat = os.stat(filename)
+                previous_inode = self._cache_read_inodes.get(itor_id)
+                offset = self._cache_read_offsets.get(itor_id, 0)
+                if previous_inode is not None and previous_inode != stat.st_ino:
+                    print(
+                        'WARNING: live cache file was replaced; skipping reload for',
+                        filename,
+                    )
+                    continue
+                if stat.st_size < offset:
+                    print(
+                        'WARNING: live cache file shrank; skipping reload for', filename
+                    )
+                    continue
+                next_offset, imported = codec.merge_trailing_frames(
+                    itor, filename, offset
+                )
+                self._cache_read_offsets[itor_id] = next_offset
+                self._cache_read_inodes[itor_id] = stat.st_ino
+            if imported:
+                imported_total += imported
+                self._mark_point_data_flushed(
+                    itor, None, codec._point_data_size(itor)
+                )
+        return imported_total
+
+    def sync_cache(self) -> int:
+        """Publish local deltas, then import complete deltas from peer simulations."""
+        self.write_cache()
+        return self.reload_cache_deltas()
 
     def _cache_filename(self, fname: str) -> str:
         filename = fname

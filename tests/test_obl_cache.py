@@ -7,6 +7,7 @@ arena-capable .so isn't built.
 Run:  PYTHONPATH=<repo> python -m pytest tests/test_obl_cache.py -q
 """
 
+import multiprocessing
 import os
 
 import numpy as np
@@ -82,14 +83,28 @@ def _pd(itor):
     }
 
 
-def _new_physics(itor, path):
+def _new_physics(itor, path, live=False):
     p = PhysicsBase.__new__(PhysicsBase)
     p.created_itors = [(itor, str(path))]
     p._last_flushed_sizes = {}
     p._flushed_point_keys = {}
+    p._cache_read_offsets = {}
+    p._cache_read_inodes = {}
     p.cache = True
+    p.cache_live_reload = live
     p._cache_owner_pid = os.getpid()
+    if os.path.exists(path):
+        p._cache_read_offsets[id(itor)] = os.path.getsize(path)
+        p._cache_read_inodes[id(itor)] = os.stat(path).st_ino
     return p
+
+
+def _locked_append_worker(path, first_key):
+    codec = OblCacheCodec()
+    keys = np.arange(first_key, first_key + ND, dtype=np.int32).reshape(1, ND)
+    vals = np.full((1, NO), float(first_key), dtype=np.float64)
+    with codec.cache_lock(path, exclusive=True):
+        codec._append_frame(path, codec._KIND_DELTA, keys, vals)
 
 
 def test_cache_write_reload_roundtrip(tmp_path):
@@ -286,6 +301,58 @@ def test_cache_epochs_survive_compaction(tmp_path, monkeypatch):
     itor2 = _new_itor(cls, ev)
     p._load_cache(itor2, str(path))
     assert _pd(itor2) == _pd(itor)
+
+
+def test_live_reload_shares_peer_deltas(tmp_path):
+    cls = _itor_cls()
+    ev = _make_evaluator()
+    rng = np.random.default_rng(31)
+    path = tmp_path / "obl_point_data_test.pkl"
+
+    itor1 = _new_itor(cls, ev)
+    _materialize(itor1, rng, 100)
+    p1 = _new_physics(itor1, path, live=True)
+    p1.write_cache()
+    p1._cache_read_offsets[id(itor1)] = os.path.getsize(path)
+    p1._cache_read_inodes[id(itor1)] = os.stat(path).st_ino
+
+    itor2 = _new_itor(cls, ev)
+    p2 = _new_physics(itor2, path, live=True)
+    assert p2._load_cache(itor2, str(path)) == itor1.point_data_size()
+    itor2.clear_point_data_delta()
+    p2._last_flushed_sizes[id(itor2)] = itor2.point_data_size()
+
+    _materialize(itor1, rng, 100)
+    p1.write_cache()
+    imported = p2.reload_cache_deltas()
+
+    assert imported > 0
+    assert _pd(itor2) == _pd(itor1)
+    dkeys, _ = p2._cache_codec._point_data_delta_arrays(itor2)
+    assert dkeys is None or len(dkeys) == 0
+
+
+def test_interprocess_locked_appends_are_complete(tmp_path):
+    cls = _itor_cls()
+    ev = _make_evaluator()
+    path = tmp_path / "obl_point_data_test.pkl"
+    itor = _new_itor(cls, ev)
+    _materialize(itor, np.random.default_rng(32), 20)
+    p = _new_physics(itor, path)
+    p.write_cache()
+
+    workers = [
+        multiprocessing.Process(target=_locked_append_worker, args=(str(path), 1000 + i * ND))
+        for i in range(4)
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(10)
+        assert worker.exitcode == 0
+
+    itor2 = _new_itor(cls, ev)
+    assert p._load_cache(itor2, str(path)) == itor.point_data_size() + 4
 
 
 if __name__ == "__main__":

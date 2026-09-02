@@ -40,6 +40,8 @@ as a plain pickle via :meth:`_atomic_pickle_dump` / :meth:`_safe_pickle_load`.
 (The _MAGIC bytes are retained verbatim so cache files written by earlier builds still load.)
 """
 
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 import pickle
@@ -65,6 +67,19 @@ class OblCacheCodec:
     # Recompact (rebuild a single consolidated arena) once the trailing un-compacted DELTA
     # region exceeds max(this, arena_bytes/4), folding the deltas back into the arena.
     _COMPACT_TRAILING_BYTES = 1 << 30  # 1 GiB
+
+    @contextmanager
+    def cache_lock(self, path: str, exclusive: bool = True):
+        """Serialize cache readers/writers across independent simulations."""
+        lock_path = path + '.lock'
+        os.makedirs(os.path.dirname(lock_path) or '.', exist_ok=True)
+        with open(lock_path, 'a+b') as lock_fp:
+            mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+            fcntl.flock(lock_fp.fileno(), mode)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
 
     @staticmethod
     def _point_data_size(itor) -> int:
@@ -436,6 +451,7 @@ class OblCacheCodec:
         the overlay via add_point_data_arrays (crc-checked; torn final frame ignored)."""
         filesize = os.path.getsize(path)
         offset = start_offset
+        imported = 0
         hdr_size = self._FRAME_HDR.size
         while offset + hdr_size <= filesize:
             with open(path, 'rb') as fp:
@@ -479,8 +495,27 @@ class OblCacheCodec:
                     del vals
                     break
             itor.add_point_data_arrays(keys, vals)
+            if kind == self._KIND_DELTA:
+                imported += n_rows
             del vals
             offset = payload_off + payload_len
+        return offset, imported
+
+    def merge_trailing_frames(self, itor, path, start_offset):
+        """Import complete frames at or after start_offset incrementally.
+
+        Returns (next_offset, imported_rows). An incomplete final frame leaves
+        next_offset at its header so a later live reload can retry it.
+        """
+        meta = self._read_header(path)
+        if meta is None:
+            return start_offset, 0
+        arena_end = int(meta['arena_end'])
+        if start_offset < arena_end:
+            start_offset = arena_end
+        return self._merge_trailing_frames(
+            itor, path, start_offset, int(meta['n_dims']), int(meta['n_ops'])
+        )
 
     def _scan_occupied_into_overlay(self, itor, path, meta):
         """ABI-mismatch recovery: read the arena's occupied slots (bitmap-driven,
