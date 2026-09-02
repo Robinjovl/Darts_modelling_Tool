@@ -190,6 +190,15 @@ default.
 
 ### When FS-CPR cannot work at all
 
+> **Historical note.** Between 2025-11-25 and the fix, FS-CPR appeared to fail on
+> highly-resolved heterogeneous meshes. That was not a preconditioner problem: an
+> unqualified `abs()` in the discretizer was truncating MPFA projection distances
+> and SVD pivots to integers (see the CHANGELOG entry), which destroyed the
+> M-matrix structure of the pressure block. With that fixed, FS-CPR solves
+> `SPE10_mech/data_20_40_40` in ~14 linear iterations per Newton. The guidance
+> below applies to operators that are genuinely outside classical AMG's reach --
+> check the discretization first.
+
 FS-CPR's stages are single BoomerAMG V-cycles, and a V-cycle is a contraction
 only when the operator is close enough to an M-matrix for its point smoother to
 converge. An MPFA pressure block on a strongly heterogeneous full-tensor field

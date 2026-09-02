@@ -1,3 +1,10 @@
+// <cstdlib>/<cmath> supply the floating-point std::abs overloads.
+// These were previously reaching this file only transitively through
+// <Eigen/Dense>; when that include was dropped, unqualified abs() bound
+// to ::abs(int) and silently TRUNCATED distances/singular values to
+// integers. Keep both the includes and the std:: qualification.
+#include <cstdlib>
+#include <cmath>
 #include <vector>
 #include <fstream>
 #include <chrono>
@@ -359,7 +366,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 					// Location of connecting element centroid
 					x2 = mesh->centroids[el_id2];
 					// Projection from centroid of connecting element to interface surface
-					d2 = abs(dot(x2 - conn.c, n));
+					d2 = std::abs(dot(x2 - conn.c, n));
 					// Coefficient lambda for each connection
 					lambda2 = dot(n, matrix_vector_product(perms[el_id2], n));
 
@@ -523,7 +530,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 					// Location of connecting element centroid
 					x2 = mesh->centroids[el_id2];
 					// Projection from centroid of connecting element to interface surface
-					d2 = abs(dot(x2 - conn.c, n));
+					d2 = std::abs(dot(x2 - conn.c, n));
 					// Coefficient lambda for each connection
 					lambda2 = dot(n, matrix_vector_product(perms[el_id2], n));
 
@@ -734,7 +741,7 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 		  // Location of connecting element centroid
 		  x2 = mesh->centroids[el_id2];
 		  // Projection from centroid of connecting element to interface surface
-		  d2 = abs(dot(x2 - conn.c, n));
+		  d2 = std::abs(dot(x2 - conn.c, n));
 		  // Co-normal hydraulic conductivity for each connection
 		  lambda2 = dot(n, matrix_vector_product(perms[el_id2], n));
 		  // Co-normal heat conductivity for each connection
@@ -972,7 +979,7 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 		  // Location of connecting element centroid
 		  x2 = mesh->centroids[el_id2];
 		  // Projection from centroid of connecting element to interface surface
-		  d2 = abs(dot(x2 - conn.c, n));
+		  d2 = std::abs(dot(x2 - conn.c, n));
 		  // Coefficient lambda for each connection
 		  lambda2 = dot(n, matrix_vector_product(perms[el_id2], n));
 
@@ -1244,7 +1251,7 @@ vector<index_t> Discretizer::find_connections_to_reconstruct_gradient(const inde
 					// Location of connecting element centroid
 					x2 = mesh->centroids[el_id2];
 					// Projection from centroid of connecting element to interface surface
-					d2 = abs(dot(x2 - conn.c, n));
+					d2 = std::abs(dot(x2 - conn.c, n));
 					// Coefficient lambda for each connection
 					lambda2 = dot(n, matrix_vector_product(perms[el_id2], n));
 
