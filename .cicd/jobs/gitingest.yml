@@ -9,6 +9,12 @@ gitingest-digest:
         # Unique conda env name per job to avoid collisions on shared runners
         CONDA_ENV: "gitingest_${CI_JOB_ID}"
         CONDAPATH: /data/gitlab-runner/miniconda3
+        # Job-private conda package cache to avoid races on the shared
+        # /data/gitlab-runner/miniconda3/pkgs/ cache: concurrent jobs on the
+        # same runner have left half-extracted packages there, which makes
+        # `conda create` abort with "Encountered corrupt package tarball" /
+        # "No package '...' found in cache directories". Same fix as pre-commit.
+        CONDA_PKGS_DIRS: "${CI_PROJECT_DIR}/.conda-pkgs"
         # Optional manifest file (one path per line; lines starting with # are comments)
         GITINGEST_MANIFEST: "helper_scripts/gitingest-include.txt"
         # Output directory and filename prefix for the digest
@@ -20,8 +26,18 @@ gitingest-digest:
         # Prepare Python env on Tahiti runner (same pattern as GPU tests)
         - spack env activate open_darts_gcc134 || true
         - . "${CONDAPATH}/etc/profile.d/conda.sh"
+        # `conda env remove` cannot delete a half-created env (it raises
+        # DirectoryNotACondaEnvironmentError), so fall back to rm -rf.
         - conda env remove -n ${CONDA_ENV} -y || true
-        - conda create -n ${CONDA_ENV} python=${PY_VER} -q -y
+        - rm -rf "${CONDAPATH}/envs/${CONDA_ENV:?}"
+        # Retry once with a purged (job-private) package cache, so a corrupt
+        # cache entry cannot fail the job.
+        - |
+          if ! conda create -n "${CONDA_ENV}" python="${PY_VER}" -q -y; then
+            echo "conda create failed; purging package cache and retrying once..." >&2
+            rm -rf "${CI_PROJECT_DIR}/.conda-pkgs" "${CONDAPATH}/envs/${CONDA_ENV:?}"
+            conda create -n "${CONDA_ENV}" python="${PY_VER}" -q -y
+          fi
         - conda activate ${CONDA_ENV}
         - python -m pip install --upgrade pip
         # Try to install gitingest if available on PyPI; job will still succeed if not
@@ -116,6 +132,9 @@ gitingest-digest:
         - spack env activate open_darts_gcc134 || true
         - . "${CONDAPATH}/etc/profile.d/conda.sh"
         - conda env remove -n ${CONDA_ENV} -y || true
+        # Drop leftovers `conda env remove` refuses to touch, so the shared
+        # conda root does not accumulate stale gitingest_* directories.
+        - rm -rf "${CONDAPATH}/envs/${CONDA_ENV:?}" "${CI_PROJECT_DIR}/.conda-pkgs" || true
         - echo "OPEN_DARTS_GITINGEST_JOB_ID=${CI_JOB_ID}" > gitingest.env
         - echo "OPEN_DARTS_REF=${CI_COMMIT_REF_NAME}" >> gitingest.env
         - echo "OPEN_DARTS_COMMIT_SHA=${CI_COMMIT_SHA}" >> gitingest.env
