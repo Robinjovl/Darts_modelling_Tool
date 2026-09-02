@@ -1159,7 +1159,10 @@ class PhysicsBase:
                         if self.nc > 1
                         else np.array([1.0])
                     )
-                    state_pt = np.array([pressure[j]] + list(zc) + [temperature[j]])
+                    # get_state() reads [p, z_0..z_{nc-2}, T], so only nc-1 compositions shuld be in the state
+                    state_pt = np.array(
+                        [pressure[j]] + list(zc[:-1]) + [temperature[j]]
+                    )
                     values[j] = self.property_containers[0].compute_total_enthalpy(
                         state_pt
                     )
