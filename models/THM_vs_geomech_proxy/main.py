@@ -215,7 +215,7 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
                                                      stats.n_linear_total, stats.n_linear_wasted))
 def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90., plot_vtk_timesteps=[],
-        clear_output_dir=False, solver_type='fs_cpr'):
+        clear_output_dir=False, solver_type='fs_cpr', save_well_time_data=True):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
     :param physics_type: 'single_phase', 'single_phase_thermal'
@@ -224,6 +224,10 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     :param decouple_geomech: turn off mechanics->porosity (so pressure and flow) influence
     :param generate_mesh: if True, mesh will be generated, otherwise it will be loaded from the model_folder/meshes
     :param solver_type: 'superlu', 'fs_cpr', or 'by_env_var' (see Model.set_solver_params)
+    :param save_well_time_data: if True, write the well time-series files (pkl/xlsx). The test
+                                path turns it off: the reference for this model is the vtk
+                                solution (see compare_solution_with_ref), and well time-series
+                                do not represent the mechanical response at all.
     :return:
     '''
 
@@ -255,7 +259,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     #redirect_darts_output('log.txt')
     m.timer.node["update"] = timer_node()
     # Properties for writing to vtk format:
-    m.output_directory = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder)
+    m.output_directory = get_output_directory(model_folder, physics_type, wells_type)
 
     if clear_output_dir and os.path.exists(m.output_directory):
         try:
@@ -365,6 +369,143 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     return m, data
 
 
+# ---------------------------------------------------------------------------
+# Reference solution (vtk) for the test suite
+# ---------------------------------------------------------------------------
+# The well time-series pkl files used by most models carry only well rates and
+# BHP, so they say nothing about the mechanical response (displacements and
+# stresses), which is what this model is about. As in
+# models/displaced_fault_reactivation, the reference is therefore the vtk
+# solution of the last reported timestep, compared field by field.
+
+# Properties compared with the reference. Displacements and effective-stress
+# change carry the mechanical response; pressure/temperature carry the flow part
+# it is coupled to. The remaining vtk arrays are either constant model input
+# (perm, E, poisson, poro) or algebraic combinations of the compared ones
+# (tot_stress, eff_stress, strain), so they are left out to keep the reference
+# files small.
+REF_PROPS = ['pressure', 'temperature', 'ux', 'uy', 'uz', 'delta_eff_stress']
+REF_REL_TOLERANCE = 1e-6
+REF_ABS_TOLERANCE = 1e-8
+REF_TIMESTEP = 1  # reported timestep to compare (the last one in the test configuration)
+
+
+def get_output_directory(model_folder, physics_type, wells_type):
+    """Output folder of a run, also used to locate its reference solution."""
+    return os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder)
+
+
+def get_ref_directory(output_directory):
+    """
+    Reference folder of a run: ref/<case folder>. The leading 'results' of the
+    output folder is dropped - references are committed input, not output.
+    """
+    return os.path.join('ref', os.path.basename(os.path.normpath(output_directory)))
+
+
+def get_solution_filename(ith_step=REF_TIMESTEP):
+    return 'solution' + str(ith_step) + '.vtu'
+
+
+def read_vtk(filename, props):
+    """Read cell centers, cell data, points and point data of the listed properties."""
+    import meshio
+
+    mesh = meshio.read(filename=filename)
+
+    # cell data
+    centers = np.empty([0, 3])
+    cell_data = {}
+    for geom_name, geom in mesh.cells_dict.items():
+        centers = np.append(centers, np.average(mesh.points[geom], axis=1), axis=0)
+        for prop in props:
+            if prop in mesh.cell_data_dict:
+                if prop not in cell_data: cell_data[prop] = []
+                cell_data[prop].append(mesh.cell_data_dict[prop][geom_name])
+
+    # point data
+    points = mesh.points
+    point_data = {}
+    for prop_name, prop in mesh.point_data.items():
+        if prop_name in props:
+            point_data[prop_name] = prop
+
+    return centers, cell_data, points, point_data
+
+
+def save_solution_ref(output_directory, ith_step=REF_TIMESTEP):
+    """
+    Store the current solution as the reference one (run with UPLOAD_PKL=1).
+
+    Only REF_PROPS are kept and the file is written compressed, which keeps the
+    committed reference several times smaller than the full simulation output.
+    """
+    import meshio
+
+    vtk_fname = get_solution_filename(ith_step)
+    vtk_cur_fname = os.path.join(output_directory, vtk_fname)
+    vtk_ref_fname = os.path.join(get_ref_directory(output_directory), vtk_fname)
+
+    mesh = meshio.read(vtk_cur_fname)
+    cell_data = {prop: mesh.cell_data[prop] for prop in REF_PROPS if prop in mesh.cell_data}
+    os.makedirs(os.path.dirname(vtk_ref_fname), exist_ok=True)
+    meshio.write(vtk_ref_fname, meshio.Mesh(mesh.points, mesh.cells, cell_data=cell_data),
+                 binary=True, compression='zlib')
+    print('SAVED REFERENCE VTK FILE', vtk_ref_fname)
+    return 0
+
+
+def compare_solution_with_ref(output_directory, ith_step=REF_TIMESTEP, verbose=True):
+    """Compare the vtk solution of one reported timestep with the reference one."""
+    vtk_fname = get_solution_filename(ith_step)
+    vtk_ref_fname = os.path.join(get_ref_directory(output_directory), vtk_fname)
+    vtk_cur_fname = os.path.join(output_directory, vtk_fname)
+
+    if not os.path.exists(vtk_ref_fname):
+        print('REFERENCE VTK FILE', os.path.abspath(vtk_ref_fname), 'does not exist.')
+        print('Run with UPLOAD_PKL=1 to create or update this reference file.')
+        return 1
+    if not os.path.exists(vtk_cur_fname):
+        print('SOLUTION VTK FILE', os.path.abspath(vtk_cur_fname), 'was not written by the run.')
+        return 1
+
+    ref = read_vtk(vtk_ref_fname, REF_PROPS)  # the reference solution
+    cur = read_vtk(vtk_cur_fname, REF_PROPS)  # the current solution
+    names = ['centers', 'cell_data', 'points', 'point_data']  # object names to be compared
+
+    eps_div = 1e-15  # to avoid division by zero
+    ret_flag = 0
+    for n, r, c in zip(names, ref, cur):
+        if type(r) == dict:  # cell_data is a dict, so check each item there
+            if len(r) == 0:  # point_data is empty, skip it
+                continue
+            missing = [prop for prop in r.keys() if prop not in c]
+            if missing:
+                print('There are no properties', missing, 'in', vtk_cur_fname)
+                ret_flag = 1
+            ns = [prop for prop in r.keys() if prop in c]
+            rs, cs = [r[prop] for prop in ns], [c[prop] for prop in ns]  # dict to list
+        else:
+            ns, rs, cs = [n], [r], [c]  # create a list just to have a loop below for both cases
+        for ni, ri, ci in zip(ns, rs, cs):
+            r1 = np.array(ri)
+            c1 = np.array(ci)
+            if r1.shape != c1.shape:
+                print('There is a shape difference', r1.shape, 'vs', c1.shape, 'for', ni)
+                ret_flag = 1
+                continue
+            diff = np.fabs(r1 - c1) / (np.fabs(r1) + eps_div)  # relative difference
+            diff_max = diff.max() if diff.size else 0.0
+            if np.isclose(r1, c1, rtol=REF_REL_TOLERANCE, atol=REF_ABS_TOLERANCE).all():
+                if verbose:
+                    print('Comparing', ni, 'diff', diff_max)
+            else:
+                ret_flag = 1
+                print('There is a rel.difference', diff_max, 'for', ni)
+    print('compare:', 'OK' if ret_flag == 0 else 'FAILED')
+    return ret_flag
+
+
 def run_test(args: list = [], platform='cpu'):
     import time
     if len(args) < 2:
@@ -372,6 +513,8 @@ def run_test(args: list = [], platform='cpu'):
         return 1, 0.0
     case = args[0]
     physics_type = args[1]
+    # the test suite appends its overwrite flag to the argument list; UPLOAD_PKL=1 works too
+    overwrite = str(args[2]) == '1' if len(args) > 2 else os.getenv('UPLOAD_PKL') == '1'
     thermal = physics_type == 'single_phase_thermal'
     wells_type = 'doublet' if thermal else 'inj'
     # structured NX_NY_NZ cases need mesh generation; named cases have a committed mesh
@@ -388,12 +531,19 @@ def run_test(args: list = [], platform='cpu'):
             report_step=30.0,
             clear_output_dir=True,
             solver_type='by_env_var',
+            # the reference of this model is the vtk solution, not the well time-series
+            save_well_time_data=False,
         )
-        return 0, time.time() - t0
     except Exception as e:
         import traceback
         traceback.print_exc()
         return 1, time.time() - t0
+
+    output_directory = get_output_directory(case, physics_type, wells_type)
+    if overwrite:
+        # a zero test time makes the suite report SAVED instead of OK
+        return save_solution_ref(output_directory), 0.0
+    return compare_solution_with_ref(output_directory), time.time() - t0
 
 
 if __name__ == '__main__':
