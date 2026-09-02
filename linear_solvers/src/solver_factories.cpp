@@ -473,26 +473,79 @@ namespace opendarts
         // linsolv_hypre_amg::solve (and matching in linsolv_hypre_ilu),
         // which made the wrapper appear to return identically-zero solutions.
         auto u_prec = std::make_shared<hypre_amg_adapter<1>>();
-        auto p_prec = std::make_shared<hypre_amg_adapter<1>>();
         // The U (displacement) block is a 3-component elasticity system stored
         // INTERLEAVED (u_x,u_y,u_z per node) by linsolv_fs_cpr's scalar
         // expansion, so run its BoomerAMG as a SYSTEMS solver. As a plain
         // scalar AMG it coarsens the three components independently, which
         // costs a large factor in outer iterations on unstructured meshes.
-        // ND is fixed at 3 in linsolv_fs_cpr (3D mechanics). The P (pressure)
-        // stage is genuinely scalar and stays at the default.
+        // ND is fixed at 3 in linsolv_fs_cpr (3D mechanics).
         u_prec->set_num_functions(3);
-        // Likewise the P stage when NE > 1 (thermo / multiphase poromechanics):
-        // linsolv_fs_cpr expands the NE-component PPSS block to a scalar CSR
-        // interleaved by NE, so BoomerAMG must be told it is an NE-unknown
-        // system. For NE == 1 this is the scalar default and a no-op.
-        constexpr int NE_FS = static_cast<int>(N_BLOCK_SIZE) - 3;
-        if (NE_FS > 1)
-          p_prec->set_num_functions(NE_FS);
 
         auto solver = std::make_shared<opendarts::linear_solvers::linsolv_fs_cpr<N_BLOCK_SIZE>>(
             P_VAR, Z_VAR, U_VAR, NC);
+
+        // ------------------------------------------------------------------
+        // Flow (PPSS) stage. NE == 1 is a genuinely scalar pressure system and
+        // gets a plain BoomerAMG. NE > 1 is a coupled system of component mass
+        // balances (+ the energy balance when thermal), and BoomerAMG applied
+        // to it RAW diverges: it relaxes point-wise (hybrid Gauss-Seidel), so
+        // it smooths undecoupled equations whose cell-local (p, z)
+        // cross-coupling gives a Gauss-Seidel spectral radius of ~400 on
+        // SPE10_mech dead_oil. NumFunctions fixes interpolation, not the
+        // smoother, so it cannot rescue that -- the block has to be decoupled.
+        //
+        // Two decouplings are available (fs_cpr_solver_config::p_stage_type):
+        //   2 (default) block-diagonal / ABF scaling of the flow block, then
+        //     the same systems BoomerAMG. Keeps multigrid on every flow
+        //     unknown, which is what the diffusive thermoporoelastic cases
+        //     want.
+        //   1 a nested block CPR (linsolv_cpr<NE>), mirroring the proprietary
+        //     linsolv_bos_fs_cpr, which injects a linsolv_bos_cpr<NE> here:
+        //     AMG on a true-IMPES-decoupled scalar PRESSURE matrix, with a
+        //     block ILU(0) second stage carrying the remaining unknowns.
+        // Both converge on advective flow; 2 is markedly cheaper on the
+        // thermal cases because 1 demotes temperature to ILU(0).
+        // ------------------------------------------------------------------
+        constexpr int NE_FS = static_cast<int>(N_BLOCK_SIZE) - 3;
+        std::shared_ptr<opendarts::linear_solvers::linsolv_iface> p_prec;
+        if constexpr (NE_FS > 1)
+        {
+          if (config.p_stage_type == 1)
+          {
+            auto cpr = std::make_shared<opendarts::linear_solvers::linsolv_cpr<NE_FS>>();
+            // A default-constructed linsolv_cpr leaves every BoomerAMG option
+            // at the HYPRE built-in default, which is a known large-factor
+            // regression against the tuned profile. Push the cpr_solver_config
+            // defaults (PMIS / theta 0.75 / C-F hybrid GS, true-IMPES column-sum
+            // weights, block-ILU(0) stage 2) explicitly, with the V-cycle budget
+            // taken from the FS-CPR spec's p_amg_max_iters.
+            opendarts::linear_solvers::cpr_solver_config cpr_cfg;
+            cpr_cfg.amg_max_iters = config.p_amg_max_iters;
+            cpr->reconfigure(cpr_cfg);
+            p_prec = cpr;
+            solver->set_p_prec_takes_block(true);
+          }
+        }
+        if (!p_prec)
+        {
+          // NE == 1 (a genuinely scalar pressure system), or NE > 1 with the
+          // systems-AMG stage: a single BoomerAMG on the scalar (nb=1)
+          // expansion of the flow block, told how many unknowns per node it
+          // carries so it coarsens them as a coupled system. For NE > 1 the
+          // block is first decoupled by its per-cell diagonal (p_stage_type 2)
+          // unless the raw-block fallback (0) was asked for.
+          auto amg = std::make_shared<hypre_amg_adapter<1>>();
+          if constexpr (NE_FS > 1)
+          {
+            amg->set_num_functions(NE_FS);
+            solver->set_p_decouple_block_diag(config.p_stage_type != 0);
+          }
+          p_prec = amg;
+        }
+
         solver->set_force_amg_asymmetric(config.force_amg_asymmetric);
+        solver->set_stage_growth_cap(
+            static_cast<opendarts::config::mat_float>(config.stage_growth_cap));
         solver->set_block_sizes(config.n_res, config.n_fracs, config.n_wells);
         solver->set_amg_sweeps(config.p_amg_max_iters, config.u_amg_max_iters);
         // 2-arg set_prec; G-prec is not used in the FS_UP path.

@@ -307,6 +307,36 @@ namespace opendarts
       int u_amg_max_iters = 1;                   // U-block BoomerAMG V-cycle budget (1 = single sweep)
       int p_amg_max_iters = 1;                   // PPSS BoomerAMG V-cycle budget
 
+      // Flow (PPSS) stage when NE = N_VARS - 3 > 1, i.e. thermo- or
+      // multiphase poromechanics. NE == 1 (poroelastic) is a genuinely scalar
+      // pressure system and ignores this field.
+      //
+      //   2 (default) = systems BoomerAMG on the block-diagonal-DECOUPLED
+      //       PPSS block (Behie & Vinsome's Alternate Block Factorization; see
+      //       linsolv_fs_cpr::decouple_ppss_block_).
+      //   1 = nested block CPR (linsolv_cpr<NE>) -- parity with the
+      //       proprietary linsolv_bos_fs_cpr, which injects a
+      //       linsolv_bos_cpr<NE> as its NE > 1 pressure stage.
+      //   0 = systems BoomerAMG on the RAW block (pre-decoupling behaviour).
+      //
+      // Option 0 cannot work for advection-dominated flow: BoomerAMG relaxes
+      // point-wise (hybrid Gauss-Seidel), so it smooths the raw, undecoupled
+      // component mass balances, whose cell-local (p, z) cross-coupling makes
+      // the smoother DIVERGE -- measured GS spectral radius ~400 on SPE10_mech
+      // dead_oil. NumFunctions changes interpolation, not the smoother, so it
+      // cannot rescue that. Both 1 and 2 decouple and so both converge; 2 is
+      // the default because it keeps the multigrid treatment of the diffusive
+      // rows that a nested CPR hands to its ILU(0) second stage, which matters
+      // for thermoporoelasticity (the `bai` case).
+      int p_stage_type = 2;
+
+      // Divergence guard on the sub-preconditioner stages: a stage apply whose
+      // output exceeds this multiple of its own input in max-norm (or is
+      // non-finite) fails the solve instead of being reported as a usable
+      // iterate. See linsolv_fs_cpr::stage_diverged_ for why a diverging
+      // BoomerAMG V-cycle is otherwise silent. Non-positive disables it.
+      double stage_growth_cap = 1.0e12;
+
       // Variable-index overrides; -1 = "use the engine_super_elastic_cpu
       // convention default". Set explicitly for engine_pm_cpu (which uses
       // p_var=3, u_var=0, z_var=255, nc=1). Stored as int because the

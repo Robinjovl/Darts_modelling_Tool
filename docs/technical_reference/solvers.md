@@ -118,7 +118,7 @@ All specs inherit `tolerance` (`1e-5`), `max_iterations` (`50`) and `print_level
 | `GMRESSolverSpec` | solver | open-DARTS | restarted FGMRES, right-preconditioned | `restart` (Krylov subspace dimension, dataclass default `30`; the model default passes `50`), `prec` (a preconditioner spec, e.g. `CPRSolverSpec()`) |
 | `CPRSolverSpec` | preconditioner | open-DARTS + HYPRE | two-stage CPR | `weight_scheme` (`1` = True-IMPES), `amg_max_iters` (V-cycles on the pressure stage), `stage2_type` (`1` = in-tree block ILU(0), the default; `0` = HYPRE scalar ILU(k)), `ilu_fill_level` (fill level for the `stage2_type=0` path only — inert at the default), plus the full BoomerAMG configuration (`amg_coarsen_type=8` PMIS, `amg_interp_type=8` extended+i, `amg_relax_type=3`, `amg_strong_threshold=0.75`, `amg_max_coarse_size=100`, …) and hierarchy reuse (`reuse_amg_hierarchy`, `adaptive_amg_rebuild`, `adaptive_iter_threshold`, `adaptive_consecutive_bad`) |
 | `MGRSolverSpec` | preconditioner, assigned as a solver | HYPRE | MGR multigrid reduction + its own FlexGMRES/GMRES | `kdim` (Krylov dimension, `30`), `use_flex_gmres`, `use_physics_scaling`, level controls (`enable_well_level`, `enable_composition_level`, `pressure_level`, `custom_levels`), `use_bcsr_cpr`, `bilu0`, `local_correction`, `pressure_amg` |
-| `FSCPRSolverSpec` | preconditioner | HYPRE | FS-CPR poromechanics preconditioner | `u_amg_max_iters`, `p_amg_max_iters`, `force_amg_asymmetric`, and the problem layout `n_res` / `n_fracs` / `n_wells` / `p_var` / `z_var` / `u_var` / `nc` |
+| `FSCPRSolverSpec` | preconditioner | HYPRE | FS-CPR poromechanics preconditioner | `u_amg_max_iters`, `p_amg_max_iters`, `stage_growth_cap` (divergence guard, default `1e12` -- see *FS-CPR flow stage* below), `p_stage_type` (flow-block strategy when `NE = N_VARS - 3 > 1`: `2` = block-diagonal-decoupled systems AMG, the default; `1` = nested block CPR; `0` = raw systems AMG, diagnostic only — see *FS-CPR flow stage* below), `force_amg_asymmetric`, and the problem layout `n_res` / `n_fracs` / `n_wells` / `p_var` / `z_var` / `u_var` / `nc` |
 | `SuperLUSolverSpec` | solver / preconditioner | SuperLU | sparse direct | none beyond the inherited fields (a direct solve takes no tolerance) |
 | `PETScSolverSpec` | solver | PETSc | Krylov, Python-resident | `variant` (default `'cpr'`); builds a scalar PETSc `AIJ` matrix |
 | `PardisoSolverSpec` | solver | Pardiso | direct, Python-resident | none beyond the inherited fields |
@@ -134,6 +134,94 @@ All specs inherit `tolerance` (`1e-5`), `max_iterations` (`50`) and `print_level
 > into HYPRE NaNs. It raises `ValueError`. Hence the asymmetry in the names: `CPRSolverSpec`
 > is a bare preconditioner that *needs* a `GMRESSolverSpec` around it, while `MGRSolverSpec`
 > already contains its Krylov driver — despite both ending in `SolverSpec`.
+
+### FS-CPR flow stage (`p_stage_type`)
+
+FS-CPR splits the poromechanics Jacobian into a displacement block `U` (3
+components per node) and a flow block, each preconditioned by its own
+BoomerAMG inside the outer GMRES. When the model has a single flow equation
+(`NE = N_VARS - 3 == 1`, poroelasticity) the flow block is a scalar pressure
+system and a plain BoomerAMG is the right tool.
+
+When `NE > 1` — thermoporoelasticity, or multiphase flow coupled to mechanics —
+the flow block is a *coupled system* of component mass balances plus, when
+thermal, the energy balance. There is no pressure equation among those rows.
+BoomerAMG relaxes **point-wise** (hybrid Gauss–Seidel), so handing it those
+rows unmodified means smoothing equations whose cell-local coupling is
+dominated by the off-diagonal: `∂R_mass/∂z` is the accumulation term while
+`∂R_mass/∂p` is only compressibility-small. On `SPE10_mech/dead_oil` that ratio
+is ~700 and the resulting Gauss–Seidel spectral radius is ~400, i.e. the
+smoother *amplifies* error and the solve makes no progress at all.
+`HYPRE_BoomerAMGSetNumFunctions` cannot rescue this: it changes interpolation,
+not the smoother. The block has to be decoupled first.
+
+`p_stage_type` selects how:
+
+| Value | Flow stage | Notes |
+|---|---|---|
+| `2` (default) | block-diagonal (ABF / quasi-IMPES) scaling of the flow block, then a systems BoomerAMG | Every flow unknown keeps multigrid treatment. Best on the thermal cases. |
+| `1` | nested block CPR (`linsolv_cpr<NE>`) | Mirrors the proprietary FS-CPR. BoomerAMG on a true-IMPES-decoupled scalar *pressure* matrix, block ILU(0) carrying the rest. |
+| `0` | systems BoomerAMG on the raw block | Pre-decoupling behaviour; diagnostic only, diverges on advective flow. |
+
+Both `1` and `2` converge on every mechanics case in the test suite. `2` is the
+default because demoting temperature to an ILU(0) second stage costs a large
+factor on diffusive problems, while the extra cost of `2` on advective ones is
+small:
+
+| Case | `0` raw | `1` nested CPR | `2` decoupled AMG |
+|---|---|---|---|
+| `bai` (thermoporoelastic, 3 meshes) | 738 | 9352 | 757 |
+| `SPE10_mech/single_phase_thermal` | 363 | 370 | 421 |
+| `SPE10_mech/dead_oil` | *no progress* | 1695 | 1997 |
+| `SPE10_mech/dead_oil_thermal` | *no progress* | 1610 | 1900 |
+
+(total linear iterations, with identical timestep and Newton counts
+throughout; `NE == 1` cases are unaffected by this field and are bit-identical
+across all three.)
+
+`2` is not the cheapest on any single row, but it is the only setting that runs
+every case, and its cost against the best available option is bounded and
+small. `0` cannot run multiphase flow at all. `1` is catastrophic on `bai` --
+12x -- because it hands the energy balance to an ILU(0) second stage instead of
+multigrid. Models that are known to be diffusive can set `p_stage_type=0`, and
+models that are known to be advective can set `1`, but neither is safe as a
+default.
+
+
+### When FS-CPR cannot work at all
+
+FS-CPR's stages are single BoomerAMG V-cycles, and a V-cycle is a contraction
+only when the operator is close enough to an M-matrix for its point smoother to
+converge. An MPFA pressure block on a strongly heterogeneous full-tensor field
+need not be: on `SPE10_mech/data_20_40_40` only 41.7% of pressure rows are
+diagonally dominant (99.8% on the 32x smaller `data_10_10_10`), 808 of 32004
+rows carry a negative diagonal, and `cond_1(A_pp)` is 1.3e13 against 4.0e9.
+
+The V-cycle then diverges, and it does so **silently**: HYPRE returns no error
+and the vector is finite, just enormous — one apply amplifies the RHS by ~1.6e17.
+FGMRES stalls at relative residual 1.0, reports "budget exhausted, residual did
+not regress", and the default `on_linear_nonconvergence='accept'` policy applies
+the step, so the Newton loop spins indefinitely.
+
+`stage_growth_cap` catches this: a stage apply that is non-finite, or that
+exceeds the cap times its own input in max-norm, fails the solve so the
+timestep is cut. Healthy models peak at 106.5x amplification (measured over
+1067 applies), so the `1e12` default has ten orders of headroom and still
+catches the pathology five orders below it.
+
+This makes such a failure diagnosable in under a second; it does not make the
+operator solvable. If you hit it, the flow block is outside what a classical
+AMG V-cycle can precondition — retuning BoomerAMG does not help (strength
+threshold 0.25/0.5/0.75/0.9, `RelaxType` 3 + `RelaxOrder` 1, three
+interpolation variants and the full CPR profile all still stall), raising the
+V-cycle budget does not help, and neither does the proprietary BOS AMG: linked
+from its prebuilt library and run against the same matrices it stalls
+identically (8–18 iterations per solve on `data_10_10_10`, relative residual
+~1.0 after 1001 iterations on `data_20_40_40`). Even a two-level hierarchy with
+an *exact* coarse solve amplifies by 1.4e7, and ILUT either hits singular
+pivots or diverges — on such an operator use a direct solver for the flow
+stage or for the whole system.
+
 
 ## Linear solvers — GPU
 

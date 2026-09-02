@@ -96,11 +96,10 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
             os.path.join('dfm_well', '2ph_2comp_isothermal_dfm_vertical_well_vs_dwell'),
         ]
 
-    # Multi-variable-flow poromechanics (NE > 1: thermo / multi-phase coupled to
-    # mechanics) runs the DIRECT solver on the open-source lane, as it did before
-    # !280 -- the in-tree FS-CPR stagnates on NE>1 systems, so the mechanics
-    # models opt out of it there (see their set_solver()). With that restored,
-    # every mechanics case the pre-!280 suite covered runs again.
+    # Poromechanics. Every case runs the in-tree FS-CPR on the open-source
+    # lane, including the multi-variable-flow ones (NE = N_VARS - 3 > 1: thermo
+    # or multi-phase flow coupled to mechanics), whose flow stage is a nested
+    # block CPR -- see fs_cpr_solver_config::p_stage_type.
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
     test_args_mech = []
     mech_cases = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']  # bai -> NE = 2

@@ -117,10 +117,11 @@ namespace opendarts
       opendarts::config::mat_float tolerance)
     {
       // BoomerAMG configured to be used as a preconditioner -- mirrors the
-      // proven LinearSolver::setupAMGPreconditioner sequence (PMIS coarsening,
-      // direct interpolation, hybrid GS relaxation). Without these explicit
-      // choices HYPRE's defaults make BoomerAMGSetup hang on the pressure
-      // subsystem from the engine.
+      // sequence inherited from LinearSolver::setupAMGPreconditioner. Without
+      // these explicit choices HYPRE's defaults make BoomerAMGSetup hang on the
+      // pressure subsystem from the engine. (The historical comment described
+      // this as "PMIS coarsening, direct interpolation"; the codes below are
+      // actually Falgout and extended+i.)
       const int print_level = 0;
 
       // Ensure HYPRE is initialised before any HYPRE_* call. When this
@@ -145,9 +146,19 @@ namespace opendarts
 
       // Coarsening / interpolation / relaxation -- the porous-media
       // recommended set, matching the in-tree MGR's AMG configuration.
-      check_result(HYPRE_BoomerAMGSetCoarsenType(this->solver, 6));   // PMIS
-      check_result(HYPRE_BoomerAMGSetInterpType(this->solver, 6));    // Direct
-      check_result(HYPRE_BoomerAMGSetRelaxType(this->solver, 6));     // Hybrid GS
+      check_result(HYPRE_BoomerAMGSetCoarsenType(this->solver, 6));   // Falgout (PMIS is 8)
+      check_result(HYPRE_BoomerAMGSetInterpType(this->solver, 6));    // extended+i (direct is 3)
+      check_result(HYPRE_BoomerAMGSetRelaxType(this->solver, 6));     // hybrid symmetric GS/SSOR
+      // NOTE: everything else is left at the HYPRE default, in particular
+      // StrongThreshold = 0.25 (tuned for 2-D Laplace), RelaxOrder = 0 (no C/F
+      // ordering) and MaxCoarseSize = 9. cpr_solver_config carries a tuned
+      // profile for linsolv_cpr's AMG; this wrapper has no equivalent, so
+      // FS-CPR's stages run untuned. That is a real gap, but note it is NOT
+      // what makes a V-cycle diverge on a non-M-matrix operator: sweeping
+      // StrongThreshold over 0.25/0.5/0.75/0.9, RelaxType 3 + RelaxOrder 1,
+      // three interpolation variants and the full CPR profile all leave
+      // SPE10_mech/data_20_40_40 stalled at relative residual 1.0. See
+      // linsolv_fs_cpr::stage_diverged_.
 
       // Systems AMG: when the caller declared n unknowns per node
       // (set_num_functions -- the displacement block of FS-CPR), tell BoomerAMG
