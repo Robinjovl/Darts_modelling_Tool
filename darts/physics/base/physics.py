@@ -963,11 +963,9 @@ class PhysicsBase:
 
                 values = np.empty(mesh.n_res_blocks)
                 for j in range(mesh.n_res_blocks):
-                    zc = (
-                        np.append(np.asarray(zi[:, j]), 1.0 - np.sum(zi[:, j]))
-                        if self.nc > 1
-                        else np.array([1.0])
-                    )
+                    # compute_total_enthalpy() -> PropertyContainer.get_state() expects the
+                    # primary state [P, z_0..z_{nc-2}, T], i.e. nc+1 entries
+                    zc = np.asarray(zi[:, j]) if self.nc > 1 else np.empty(0)
                     state_pt = np.array([pressure[j]] + list(zc) + [temperature[j]])
                     values[j] = self.property_containers[0].compute_total_enthalpy(
                         state_pt
