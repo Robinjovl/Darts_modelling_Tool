@@ -29,7 +29,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         log_stream = redirect_all_output(log_filename)
 
     if physics_type == 'geothermal':
-        m = ModelGeothermal(iapws_physics=True)
+        m = ModelGeothermal(iapws_physics=True, formulation='PT')
     elif physics_type == 'deadoil':
         m = ModelDeadOil()
     elif physics_type == 'CCS':
@@ -303,8 +303,8 @@ if __name__ == '__main__':
     # physics_list += ['deadoil']
 
     cases_list = []
-    cases_list += ['generate_5x3x4']
-    #cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_5x3x4']
+    cases_list += ['generate_51x51x1']
     #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['40x40x10']
@@ -312,9 +312,9 @@ if __name__ == '__main__':
     #cases_list += ['40x40x10_regions']
 
     well_controls = []
-    well_controls += ['wrate']
+    #well_controls += ['wrate']
     #well_controls += ['wbhp']
-    #well_controls += ['wperiodic']
+    well_controls += ['wperiodic']
 
     for physics_type in physics_list:
         for case_geom in cases_list:
