@@ -29,7 +29,7 @@ Help_Info()
   echo "   -p               : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
   echo "   -v               : Enable build with valgrind support (OFF by default)"
   echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
-  echo "   HYPRE_OPENMP env : Build HYPRE with OpenMP (parallel BoomerAMG/ILU in CPR/MGR). Opt-in, for MT builds; changes solver numerics. Default: false. Requires -c to (re)build HYPRE."
+  echo "   HYPRE_OPENMP env : Build HYPRE with OpenMP (parallel BoomerAMG/ILU in CPR/MGR). Default: true; set HYPRE_OPENMP=0 to build HYPRE sequentially. Slightly changes solver numerics. Requires -c to (re)build HYPRE."
 }
 
 ensure_reaktoro_conda()
@@ -97,7 +97,7 @@ gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
 valgrind=false    # Whether support valgrind profiling or not
 CUDA_ARCH="${CUDA_ARCH:-}"
-HYPRE_OPENMP="${HYPRE_OPENMP:-false}" # Build HYPRE with its own OpenMP threading (opt-in env var)
+HYPRE_OPENMP="${HYPRE_OPENMP:-true}" # Build HYPRE with its own OpenMP threading (on by default; HYPRE_OPENMP=0 opts out)
 
 while getopts ":chtwmrab:d:j:g:Gpv" option; do
     case "$option" in
@@ -174,9 +174,8 @@ if [ "$iter_solvers" == false ]; then
     # block_csr_matrix Jacobian in parallel over a real multi-threaded row
     # partition, the interpolators evaluate in parallel, and the in-tree GMRES
     # Krylov kernels (SpMV, dot, axpy) run in parallel. The HYPRE-based
-    # preconditioner stages (CPR/MGR BoomerAMG/ILU) still run sequentially. No
-    # bos_solvers needed -- see linear_solvers/include/omp_partition.hpp and
-    # linear_solvers/src/linsolv_gmres.cpp.
+    # preconditioner stages (CPR/MGR BoomerAMG/ILU) are threaded too, unless the
+    # build opted out with HYPRE_OPENMP=0.
     echo -e '\n openDARTS multi-threaded (OpenMP) build using the in-tree open-source solvers (no bos_solvers).'
   fi
 fi
@@ -271,16 +270,17 @@ if [[ "$skip_req" == false ]]; then
     # NOTE: this branch pins a newer HYPRE (thirdparty/hypre 341f9089) whose CMake
     # option is HYPRE_ENABLE_MPI (the pre-merge development tree used the older
     # HYPRE_WITH_MPI spelling for its older pin).
-    # Optionally build HYPRE with its own OpenMP threading (parallel BoomerAMG /
-    # HYPRE_ILU smoothers + SpMV). Opt-in via HYPRE_OPENMP=1; it parallelises the
-    # CPR/MGR preconditioner stages that otherwise run sequentially, but changes
-    # solver numerics (HYPRE's hybrid smoothers go processor-local, so results
-    # are no longer bit-identical to the serial build and iteration counts may
-    # shift). Intended for MT builds. See SOLVER_REFACTORING_PLAN.md.
-    hypre_omp_flag=""
-    if [[ "$HYPRE_OPENMP" == "true" || "$HYPRE_OPENMP" == "1" || "$HYPRE_OPENMP" == "ON" ]]; then
+    # Build HYPRE with its own OpenMP threading (parallel BoomerAMG / HYPRE_ILU
+    # smoothers + SpMV). ON by default. Note it changes
+    # solver numerics -- HYPRE's hybrid smoothers go processor-local, so results
+    # are not identical to a sequential HYPRE and iteration counts may shift.
+    # Set HYPRE_OPENMP=0 to build HYPRE sequentially.
+    hypre_omp_flag="-D HYPRE_ENABLE_OPENMP=ON"
+    if [[ "$HYPRE_OPENMP" == "false" || "$HYPRE_OPENMP" == "0" || "$HYPRE_OPENMP" == "OFF" ]]; then
+        echo "-- HYPRE OpenMP disabled (HYPRE_OPENMP=$HYPRE_OPENMP)"
+        hypre_omp_flag=""
+    else
         echo "-- HYPRE OpenMP enabled (HYPRE_ENABLE_OPENMP=ON)"
-        hypre_omp_flag="-D HYPRE_ENABLE_OPENMP=ON"
     fi
     cmake -D HYPRE_BUILD_TESTS=OFF \
           -D HYPRE_BUILD_EXAMPLES=OFF \
