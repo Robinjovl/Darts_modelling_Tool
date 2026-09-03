@@ -69,15 +69,11 @@ class Model(THMCModel):
         # CPU build; on the proprietary build _apply_solver applies
         # proprietary_linear_type (bos_fs_cpr) to params.linear_type. No model-level
         # params.linear_type needed (its open-source value was the engine default).
-        # 1e-5 / 50 is what this model has always effectively run with: until !280 the
-        # engine overwrote a spec's tolerance/max_iterations at init() with sim_params
-        # (defaults 1e-5 / 50), so the spec's numbers were decorative. The spec is
-        # authoritative now, so state the values this model has really been running -- keeping
-        # behaviour unchanged. FS-CPR does not reach 1e-8 on these systems anyway: asking for it
-        # only burns the iteration budget (on SPE10_mech 22 of 48 solves exhaust the 200-iter cap).
+        # Pre-!280 this model solved at tolerance_linear=1e-8 / max_i_linear=5000.
+        # The spec owns those parameters now, so it must carry the same values.
         # The spec is set here, before super().set_solver() below, so the platform
         # default is never materialized.
-        self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-5, max_iterations=50, restart=50,
+        self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-8, max_iterations=5000, restart=50,
                                   proprietary_linear_type=sim_params.cpu_gmres_fs_cpr)
         super().set_solver()
         self.ts_control.dt_first = 0.0001

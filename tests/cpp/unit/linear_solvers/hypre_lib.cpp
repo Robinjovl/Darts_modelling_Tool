@@ -175,15 +175,34 @@ int test_hypre_BoomerAMG_solver()
   // Compute the right hand side
   check_result(HYPRE_ParCSRMatrixMatvec(1.0, A_par, x_par, 0.0, b_from_x_par));
 
-  // Compute the error on the right hand side
+  // Compute the error on the right hand side.
+  //
+  // The check must be RELATIVE, because that is what the solver guarantees:
+  // HYPRE_BoomerAMGSetTol sets a relative convergence tolerance. Comparing the
+  // absolute ||A x - b||_2 against tolerance*10 was latently wrong -- with
+  // b_i = 1 and n = 120, ||b||_2 = sqrt(120) = 10.95, so a fully converged
+  // solve may legitimately return an absolute residual of up to
+  // tolerance*||b||_2 = 1.1e-11, which is ABOVE the 1e-11 bar. A sequential
+  // HYPRE happened to land under it by luck; once HYPRE is built with OpenMP
+  // its hybrid Gauss-Seidel smoother goes thread-local and the (equally
+  // converged) iterate lands just over, failing the test for no numerical
+  // reason. Normalising by ||b||_2 makes the assertion dimensionally
+  // consistent with the tolerance it is derived from, and thread-count
+  // independent.
+  opendarts::config::mat_float b_norm;
+  check_result(HYPRE_ParVectorInnerProd(b_par, b_par, &b_norm));
+  b_norm = std::sqrt(b_norm);
+
   opendarts::config::mat_float error;
   check_result(HYPRE_ParVectorAxpy(-1.0, b_par, b_from_x_par));
   check_result(HYPRE_ParVectorInnerProd(b_from_x_par, b_from_x_par, &error));
   error = std::sqrt(error);
 
-  std::cout << "\nError: " << error << std::endl;
+  const opendarts::config::mat_float relative_error = error / b_norm;
 
-  if(error >= tolerance*10)
+  std::cout << "\nError: " << error << " (relative: " << relative_error << ")" << std::endl;
+
+  if(relative_error >= tolerance*10)
     error_output = 1;
 
   return error_output;

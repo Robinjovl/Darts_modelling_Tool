@@ -490,8 +490,10 @@ void bind_unified_solver_api(py::module &m)
     // Open-source FS-CPR (poromechanics) preconditioner configuration.
     py::class_<fs_cpr_solver_config, solver_config>(m, "FSCPRSolverConfig",
         "Configuration for the open-source FS-CPR (Full-System CPR) 4-block "
-        "poromechanics preconditioner. Sub-preconditioners (HYPRE BoomerAMG "
-        "for both U and PPSS) are created by the factory using these knobs; "
+        "poromechanics preconditioner. Sub-preconditioners are created by the "
+        "factory using these knobs: systems BoomerAMG for the U block, and for "
+        "the flow block a BoomerAMG that by default runs on the "
+        "block-diagonal-decoupled system when NE > 1 (see p_stage_type); "
         "nested spec injection is not yet supported.")
         .def(py::init<>())
         .def_readwrite("force_amg_asymmetric", &fs_cpr_solver_config::force_amg_asymmetric)
@@ -500,6 +502,17 @@ void bind_unified_solver_api(py::module &m)
         .def_readwrite("n_wells", &fs_cpr_solver_config::n_wells)
         .def_readwrite("u_amg_max_iters", &fs_cpr_solver_config::u_amg_max_iters)
         .def_readwrite("p_amg_max_iters", &fs_cpr_solver_config::p_amg_max_iters)
+        .def_readwrite("stage_growth_cap", &fs_cpr_solver_config::stage_growth_cap,
+            "Max-norm amplification a single FS-CPR stage apply may show before "
+            "the solve is failed (default 1e12; non-positive disables). Catches a "
+            "diverging BoomerAMG V-cycle, which otherwise returns a finite but "
+            "useless vector and stalls the Newton loop silently.")
+        .def_readwrite("p_stage_type", &fs_cpr_solver_config::p_stage_type,
+            "Flow-block stage when NE = N_VARS - 3 > 1 (ignored for NE == 1): "
+            "2 (default) = systems BoomerAMG on the block-diagonal-decoupled "
+            "block; 1 = nested block CPR (proprietary FS-CPR parity); "
+            "0 = systems BoomerAMG on the raw block, diagnostic only -- its "
+            "point-wise smoother diverges on advection-dominated flow.")
         // Variable-layout overrides (-1 = use engine_super_elastic_cpu
         // convention default). engine_pm_cpu wires through p_var/u_var/
         // z_var/nc explicitly.

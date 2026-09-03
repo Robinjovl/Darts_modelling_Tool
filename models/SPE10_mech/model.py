@@ -64,15 +64,16 @@ class Model(THMCModel):
         # below, so the platform default is never materialized.
         self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
-            # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
-            # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()
-            # with sim_params (defaults 1e-5 / 50, globals.h:117), so the spec's numbers were
-            # decorative. The spec is authoritative now, so state the values this model has
-            # really been running -- keeping behaviour unchanged. FS-CPR does not reach 1e-8 here
-            # anyway: asking for it only burns the iteration budget -- 22 of 48 solves exhaust the
-            # 200-iteration cap (99 vs 41 linear iterations per Newton).
-            tolerance=1e-5,
-            max_iterations=50,
+            # Pre-!280 this model solved at tolerance_linear=1e-8 with
+            # max_i_linear=5000 (THMCModel's mech_discretizer params, tightened
+            # here). Until !280 the engine overwrote a spec's tolerance /
+            # max_iterations at init() with sim_params, so those params -- not
+            # the spec -- were what the model actually ran. The spec owns them
+            # now, so it must carry the same values: at the 1e-5 / 50 sim_params
+            # default every solve exits at ~0.7 relative residual and the
+            # dead-oil physics never advance.
+            tolerance=1e-8,
+            max_iterations=5000,
             restart=50,
             proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
         )

@@ -460,6 +460,9 @@ class DartsModel:
                 stationary_point_tolerance=1e-3,  # residual-stagnation detection
                 norm=Norm.L2,  # residual norm
                 coupled_well_res_norm_method=1,  # DFM coupled well-res norm (1 or 2)
+                on_linear_nonconvergence="accept",  # non-converged linear solve with a
+                # usable iterate: 'accept' the inexact-Newton step (historical
+                # FGMRES+CPR behaviour) or 'cut' the timestep (historical MGR)
                 chop=ChopSpec(
                     mode="local",  # 'local' | 'global' | None
                     factor=0.1,  # max composition change per iteration

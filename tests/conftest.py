@@ -31,7 +31,8 @@ class FakeEngine:
     Scripted inputs:
       * ``res_seq``   -- reservoir residuals returned per Newton iteration
       * ``well_seq``  -- well residuals returned per iteration
-      * ``solve_rcs`` -- linear-solve return codes returned per solve (0/1/2)
+      * ``solve_rcs`` -- linear-solve return codes returned per solve
+        (0 ok / 1 setup fail / 2 solve fail / 3 not-converged-usable)
       * ``dev_seq``   -- deviatoric per-component residual tuples for the
                          mechanics driver: ``(dev_p, dev_u)`` or
                          ``(dev_p, dev_u, dev_third)`` per iteration

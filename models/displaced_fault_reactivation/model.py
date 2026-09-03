@@ -66,6 +66,8 @@ class Model(THMCModel):
         self.depletion_value = config['depletion']['value']
         self.friction_law = config['friction_law']
         self.mesh_file = config['mesh_file']
+        # enable Pardiso (pypardiso / Intel MKL) direct linear solver if it was set in config.
+        self.use_pardiso = config.get('use_pardiso', False)
         if 'cache_discretizer' in config:
             self.cache_discretizer = config['cache_discretizer']
         else:
@@ -171,7 +173,13 @@ class Model(THMCModel):
         # it, at ~20% more wall time. The static case is insensitive (constant mu) and
         # passes either way. main.py tightens this further (1e-12 / 500) for the dynamic
         # rupture stage via update_solver().
-        self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-10, max_iterations=500, restart=50)
+        # Optional Pardiso (pypardiso / Intel MKL) sparse direct solve,
+        # requires the optional pypardiso dependency (install darts with [linear_solvers])
+        if self.use_pardiso:
+            from darts.linear_solvers.specs import PardisoSolverSpec
+            self.linear_solver.spec = PardisoSolverSpec()
+        else:
+            self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-10, max_iterations=500, restart=50)
         self.solver_phase = 'static'  # main.py flips to 'dynamic' at rupture
 
         # Mechanics model: the LINEAR solver comes from params.linear_type /

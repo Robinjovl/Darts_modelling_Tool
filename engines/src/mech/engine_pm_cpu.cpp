@@ -47,6 +47,9 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	active_linear_solver_id = 0;
 
 	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
+	// publish the assembled Jacobian to Python (as engine_super_elastic_cpu does),
+	// so the Python-resident solvers (PETSc / Pardiso) can read the block-CSR arrays
+	this->expose_jacobian();
 	return 0;
 }
 
@@ -160,10 +163,10 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	  case sim_params::GPU_GMRES_CPR_AMG:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
-		linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+		linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 		cpr->set_prec(new linsolv_bos_amg<1>);
 		linear_solvers.back()->set_prec(cpr);
 		break;
@@ -172,10 +175,10 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	  case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
-		linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+		linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 		int n_json = 0;
 
@@ -1784,6 +1787,10 @@ int engine_pm_cpu::solve_linear_equation()
 	  }
 	}*/
 
+	// Unified solve() convention: a POSITIVE code is "budget exhausted, iterate
+	// usable" -- reported as engine status 3 for the nonlinear policy to act on.
+	if (const int nc = classify_linear_solve_status(r_code); nc == 3)
+		return 3;
 	if (r_code)
 	{
 		sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);

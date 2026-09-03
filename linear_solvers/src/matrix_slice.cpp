@@ -452,13 +452,28 @@ namespace opendarts
       mat_float *vals = M.get_values();
       constexpr int block_vars = static_cast<int>(NE) * NE;
 
+      // The fixed-stress augmentation lands in COLUMN 0 (pressure) of every
+      // flow row: the Schur probe that produced r_p / r_s multiplies A_UP by
+      // the constant -1 vector, so it lumps the pressure column only.
+      //
+      // r_p is one scalar per cell (stride 1), but r_s carries the NE - 1
+      // non-pressure flow rows per cell and is written by block_vector_product
+      // at stride SU_.sizes[0] == NE - 1. Reading it at stride 1 and
+      // augmenting only block row 1 is correct for NE == 2 purely because the
+      // two strides coincide there; for NE >= 3 it mixed a neighbouring cell's
+      // value into the composition row and left the energy row with no
+      // augmentation at all.
       for (index_t i = 0; i < n_rows; ++i)
       {
         const index_t jd = diags[i];
         vals[jd * block_vars] +=
             mults[static_cast<index_t>(NE) * i] * r_p[i];
-        vals[jd * block_vars + NE] +=
-            mults[static_cast<index_t>(NE) * i + 1] * r_s[i];
+        for (int k = 0; k + 1 < static_cast<int>(NE); ++k)
+        {
+          vals[jd * block_vars + (k + 1) * NE] +=
+              mults[static_cast<index_t>(NE) * i + k + 1]
+              * r_s[static_cast<index_t>(NE - 1) * i + k];
+        }
       }
     }
 

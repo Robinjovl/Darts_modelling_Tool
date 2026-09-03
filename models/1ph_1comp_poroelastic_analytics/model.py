@@ -63,10 +63,11 @@ class Model(THMCModel):
                 nc=engine.N_VARS - 3,
             )
         fs_cpr = FSCPRSolverSpec(**fs_cpr_kwargs)
+
         if self.discretizer_name == 'mech_discretizer':
             lin_tol, lin_max_it = 1e-10, 5000
         else:
-            lin_tol, lin_max_it = 1e-5, 50
+            lin_tol, lin_max_it = 1e-12, 500
         self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
             tolerance=lin_tol,

@@ -1067,7 +1067,7 @@ int engine_super_gpu<NC, NP, THERMAL>::set_adjoint_solver_cpra_gpu(int restart)
     // plus the transposed entry points: a SECOND AMGX instance for the
     // transposed pressure system (AMGX has no transpose-solve API) and the
     // transposed cuSPARSE ILU(0) application on the shared factors.
-    auto *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
+    auto *cpr = new linsolv_cpr_gpu<N_VARS>;
     cpr->p_solver_setup_gpu = 1;
     cpr->p_solver_solve_gpu = 1;
     cpr->p_solver_requires_diag_first = 0;

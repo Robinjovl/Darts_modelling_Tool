@@ -779,8 +779,10 @@ class LinearSolver:
         solver (:meth:`darts.nonlinear_solvers.NonlinearSolver._solve_linear`).
 
         Returns ``(rc, n_iters, residual)`` for every backend -- ``rc`` is ``0``
-        on success, ``1`` on setup failure, ``2`` on solve failure -- so the
-        nonlinear driver stays backend-agnostic (!327 contract).
+        on success, ``1`` on setup failure, ``2`` on a hard solve failure, and
+        ``3`` when the solver exhausted its budget on a usable iterate. The
+        nonlinear ``on_linear_nonconvergence`` policy decides whether code ``3``
+        is accepted or cuts the timestep, keeping the driver backend-agnostic.
 
         Two solver kinds are dispatched here (!280 spec-driven routing, which
         replaced the former ``ts_control.linear_type`` enum dispatch):
@@ -792,9 +794,8 @@ class LinearSolver:
         """
         if self.python_solver is not None:
             # Python-resident solver (PETSc / Pardiso); stateful, it performs
-            # its one-time setup on the first call. A nonzero rc means a hard
-            # failure (non-finite solution) -- the nonlinear solver records it
-            # in NonlinearStatus.linear_solver_rc and aborts the Newton loop.
+            # its one-time setup on the first call. The nonlinear solver records
+            # and applies the common return-code policy described above.
             return self.python_solver.solve_system(self.model.physics.engine)
         # C++ linear solver held by the engine
         engine = self.model.physics.engine

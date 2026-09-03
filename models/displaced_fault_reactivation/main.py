@@ -552,6 +552,8 @@ def run_tests():
               'friction_law': 'static',
               'mesh_file': 'meshes/new_setup_coarse.geo',
               'cache_discretizer': False}
+    # optional: Pardiso (pypardiso / Intel MKL) direct solve instead of the default GMRES + FS-CPR
+    #config['use_pardiso'] = True
     config[0] = config['friction_law']  # to make work arg[0] in for_each_model
     test_args_fault += [config]
     config = {'mode': 'quasi_static',

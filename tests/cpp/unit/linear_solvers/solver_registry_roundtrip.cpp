@@ -184,6 +184,157 @@ namespace
     return report("FGMRES+CPR forward solve", ok);
   }
 
+  int test_gmres_not_converged_code()
+  {
+    // Unified solve() convention: an exhausted iteration budget on a finite,
+    // non-regressing iterate must report solve_result::not_converged (+1) --
+    // NOT 0 (the legacy silent accept) and NOT a hard failure. A single Krylov
+    // iteration at an unreachable tolerance guarantees exhaustion; GMRES's
+    // per-cycle residual minimisation guarantees the iterate did not regress.
+    auto A = make_system();
+    opendarts::linear_solvers::gmres_solver_config gmres_cfg;
+    gmres_cfg.restart = 30;
+    opendarts::linear_solvers::cpr_solver_config cpr_cfg;
+    auto gmres = opendarts::linear_solvers::create_linear_solver("gmres", gmres_cfg, BS);
+    auto cpr = opendarts::linear_solvers::create_linear_solver("cpr", cpr_cfg, BS);
+    gmres->set_prec(cpr.get());
+
+    const int rc_init = gmres->init(A.get(), /*max_iters=*/1, /*tol=*/1e-30);
+    const int rc_setup = gmres->setup(A.get());
+
+    std::vector<mat_float> b(N), x(N, 0.0);
+    for (index_t i = 0; i < N; ++i)
+      b[i] = 1.0 + 0.1 * i;
+    const int rc_solve = gmres->solve(b.data(), x.data());
+    const mat_float res = residual_norm(*A, x, b);
+    bool finite = true;
+    for (index_t i = 0; i < N; ++i)
+      finite = finite && std::isfinite(static_cast<double>(x[i]));
+    const auto st = gmres->stats();
+    const bool ok = rc_init == 0 && rc_setup == 0 &&
+        rc_solve == opendarts::linear_solvers::solve_result::not_converged &&
+        finite && res <= 1.0 + 1e-12 && !st.converged && st.iterations >= 1;
+    if (!ok)
+      std::cout << "  [diag] init=" << rc_init << " setup=" << rc_setup
+                << " solve=" << rc_solve << " rel_resid=" << res
+                << " stats.converged=" << st.converged
+                << " stats.iters=" << st.iterations << std::endl;
+    return report("FGMRES+CPR not-converged status (+1, usable iterate)", ok);
+  }
+
+  // A system whose second equation is CELL-LOCAL: the off-diagonal blocks carry
+  // no entries in row 1, so unknown 1 can be Schur-eliminated without forming a
+  // multi-level chain. This mirrors the intended use (cell-local mineral
+  // balances) -- make_system()'s generic tridiagonal cannot be eliminated at
+  // BS=2, since column 0 is the reserved pressure column.
+  std::shared_ptr<block_csr_matrix> make_schur_system()
+  {
+    auto a = std::make_shared<block_csr_matrix>(make_tridiagonal(), BS);
+    mat_float *v = a->values();
+    const std::vector<index_t> row_ptr = {0, 2, 5, 8, 10};
+    const std::vector<index_t> col_ind = {0, 1, 0, 1, 2, 1, 2, 3, 2, 3};
+    for (index_t i = 0; i < NB; ++i)
+    {
+      for (index_t k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
+      {
+        mat_float *blk = v + static_cast<std::size_t>(k) * BS * BS;
+        if (col_ind[k] == i)
+        {
+          blk[0] = 10.0 + i; blk[1] = 1.0;
+          blk[2] = 0.5;      blk[3] = 12.0 + i;  // invertible local pivot
+        }
+        else
+        {
+          const mat_float s = (col_ind[k] > i) ? -1.0 : -2.0;
+          blk[0] = s;   blk[1] = 0.25;
+          blk[2] = 0.0; blk[3] = 0.0;  // row 1 is cell-local: no coupling
+        }
+      }
+    }
+    return a;
+  }
+
+  int test_schur_elim_propagates_usable_status()
+  {
+    // The wrapper must PROPAGATE a positive (usable) inner status AND still run
+    // its back-substitution -- returning early on a positive code would hand
+    // back an X whose eliminated unknowns were never written.
+    // Each phase uses a FRESH wrapper: linsolv_schur_elim records its
+    // elimination topology at setup and rejects a re-init against the same
+    // matrix, so reusing one instance would test that guard, not this contract.
+    auto A = make_schur_system();
+    std::vector<mat_float> b(N);
+    for (index_t i = 0; i < N; ++i)
+      b[i] = 1.0 + 0.1 * i;
+
+    auto build = [&](int max_iters, mat_float tol, std::vector<mat_float> &x, int &rc) {
+      opendarts::linear_solvers::schur_elim_solver_config se_cfg;
+      // Eliminate unknown 1 via its cell-local equation row 1 (column 0 is the
+      // reserved pressure column and may not be eliminated).
+      se_cfg.elim_rows = {1};
+      se_cfg.elim_cols = {1};
+      auto se = opendarts::linear_solvers::create_linear_solver("schur_elim", se_cfg, BS);
+      opendarts::linear_solvers::gmres_solver_config gmres_cfg;
+      gmres_cfg.restart = 30;
+      // The inner solver runs on the REDUCED system, so it must be built at the
+      // reduced block size BS - K (the engine's chain does the same). Building
+      // it at BS makes the inner size its workspace as n_rows * BS and write
+      // past the reduced vectors.
+      constexpr int K_ELIM = 1;
+      auto inner = opendarts::linear_solvers::create_linear_solver(
+          "gmres", gmres_cfg, BS - K_ELIM);
+      if (!se || !inner)
+        return false;
+      se->set_prec(inner.get());
+      if (se->init(A.get(), max_iters, tol) != 0 || se->setup(A.get()) != 0)
+        return false;
+      rc = se->solve(b.data(), x.data());
+      return true;
+    };
+
+    std::vector<mat_float> x_exh(N, 0.0), x_conv(N, 0.0);
+    int rc_exh = 0, rc_conv = 0;
+    const bool built_exh = build(/*max_iters=*/1, /*tol=*/1e-30, x_exh, rc_exh);
+    const bool built_conv = build(/*max_iters=*/200, /*tol=*/1e-10, x_conv, rc_conv);
+    // This target expects schur_elim to be available at BS with K=1; a factory,
+    // init or setup failure is a regression, not a reason to skip.
+    if (!built_exh || !built_conv)
+    {
+      std::cout << "  [diag] schur_elim construction/setup failed (exh=" << built_exh
+                << " conv=" << built_conv << ")" << std::endl;
+      return report("schur_elim wrapper propagates +1 and back-substitutes", false);
+    }
+
+    bool finite_exh = true;
+    for (index_t i = 0; i < N; ++i)
+      finite_exh = finite_exh && std::isfinite(static_cast<double>(x_exh[i]));
+    // back-substitution writes the eliminated unknowns; an early return on the
+    // positive inner status would leave every one of them at its initial 0.
+    bool elim_written = false;
+    for (index_t blk = 0; blk < N / BS; ++blk)
+      elim_written = elim_written || (x_exh[blk * BS + 1] != 0.0);
+
+    const mat_float res_conv = residual_norm(*A, x_conv, b);
+    const bool ok =
+        rc_exh == opendarts::linear_solvers::solve_result::not_converged &&
+        finite_exh && elim_written && rc_conv == 0 && res_conv < 1e-8;
+    if (!ok)
+      std::cout << "  [diag] rc_exhausted=" << rc_exh << " (expected +1)"
+                << " finite=" << finite_exh << " elim_written=" << elim_written
+                << " rc_converged=" << rc_conv << " res=" << res_conv << std::endl;
+    return report("schur_elim wrapper propagates +1 and back-substitutes", ok);
+  }
+
+  // NOTE: a synthetic real-HYPRE MGR *exhaustion* test is deliberately absent.
+  // MGR needs the pressure/composition block roles of a real physics matrix: on
+  // this 4-block harness it solves exactly in one iteration (residual ~5e-15, so
+  // no iteration limit is reachable), and on synthetic stiff or large
+  // tridiagonal systems its reduction degenerates and returns a non-finite
+  // iterate. The iteration-limit path is therefore covered by a real-model run
+  // (2ph_do with MGR at max_iterations=1) rather than fabricated here; see the
+  // MR discussion. What IS covered automatically is the equivalent CPU-GMRES
+  // path above, which shares the classification contract.
+
   int test_superlu_block_csr()
   {
     auto A = make_system();
@@ -251,6 +402,8 @@ int main()
   int errors = 0;
   errors += test_registry_roundtrip();
   errors += test_gmres_cpr_solve();
+  errors += test_gmres_not_converged_code();
+  errors += test_schur_elim_propagates_usable_status();
   errors += test_superlu_block_csr();
   errors += test_gmres_cpr_transposed();
 

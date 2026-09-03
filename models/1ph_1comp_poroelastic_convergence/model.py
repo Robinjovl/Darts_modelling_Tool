@@ -43,12 +43,25 @@ class Model(THMCModel):
         #   n_res  = n_matrix + n_fracs  (matrix + fracture cells treated as "reservoir")
         #   n_fracs= 0   (zero gap-DOF rows -- FS_UPG not yet supported)
         #   n_wells= n_blocks - n_res_blocks
-        fs_cpr = FSCPRSolverSpec(
+        fs_cpr_kwargs = dict(
             force_amg_asymmetric=True,
             n_res=n_matrix + n_fracs_mesh,
             n_fracs=0,
             n_wells=n_blocks - n_res_blks,
         )
+        if self.discretizer_name == 'pm_discretizer':
+            # engine_pm_cpu lays the block out as U_VAR=0, P_VAR=ND, Z_VAR=255 --
+            # not the spec's default (P_VAR=0, Z_VAR=1, U_VAR=NE). Without this
+            # FS-CPR splits the wrong subsystem and preconditions poorly (the
+            # analytics model passes the same four fields for the same reason).
+            engine = self.physics.engine
+            fs_cpr_kwargs.update(
+                p_var=engine.P_VAR,
+                z_var=engine.Z_VAR,
+                u_var=engine.U_VAR,
+                nc=engine.N_VARS - 3,
+            )
+        fs_cpr = FSCPRSolverSpec(**fs_cpr_kwargs)
         # Single solver declaration. The FS-CPR spec drives _apply_solver on the
         # open-source CPU build. On the proprietary build _apply_solver applies
         # proprietary_linear_type (bos_fs_cpr) to params.linear_type -- but only for

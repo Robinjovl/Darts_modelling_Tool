@@ -123,6 +123,33 @@ namespace opendarts
         u_amg_max_iters_ = u_amg_max_iters;
       }
 
+      // NE > 1 only: declare that the injected pressure(-flow) sub-
+      // preconditioner consumes the block-NE PPSS matrix DIRECTLY -- i.e. it
+      // is a nested block CPR (linsolv_cpr<NE>) rather than a block-size-1
+      // BoomerAMG fed the scalar (nb=1) expansion. See the P_scalar_ne_
+      // comment below and solver_factories::build_fs_cpr for why the nested
+      // CPR is required for NE > 1 flow.
+      void set_p_prec_takes_block(bool b) { p_prec_takes_block_ = b; }
+
+      // NE > 1 only: left-scale the extracted PPSS block by the inverse of its
+      // per-cell diagonal block before the flow preconditioner sees it (the
+      // Alternate Block Factorization / quasi-IMPES decoupling of Behie &
+      // Vinsome). Turns every cell's diagonal block into the identity, which
+      // is what makes a point-wise AMG smoother convergent on coupled flow
+      // equations. The RHS is scaled to match in run_FS_UP_solve_, so the
+      // preconditioner still approximates the same operator.
+      void set_p_decouple_block_diag(bool b) { p_decouple_block_diag_ = b; }
+
+      // Divergence guard on the sub-preconditioner stages. A BoomerAMG V-cycle
+      // whose iteration matrix has spectral radius >> 1 returns a FINITE,
+      // HYPRE-error-free, and completely useless vector; the outer Krylov then
+      // reports "budget exhausted, residual did not grow", which the default
+      // non-convergence policy accepts, so the Newton loop applies garbage
+      // steps indefinitely instead of cutting the timestep. Reject a stage
+      // whose output is non-finite or exceeds @p cap times its own input in
+      // max-norm. Non-positive disables the check.
+      void set_stage_growth_cap(mat_float cap) { stage_growth_cap_ = cap; }
+
       // ----------------------------------------------------------------
       // Polymorphic csr_matrix_base entry points. These bypass the UB
       // static_cast in linsolv_iface_bos<N> when A is a block_csr_matrix.
@@ -180,6 +207,20 @@ namespace opendarts
       // The G-row/col slices (UG, PG, GU, GP, GG, GS, SG) belonged to
       // the deprecated FS_UPG path and have been removed.
       opendarts::linear_solvers::MatrixSlice UU_, UP_, US_;
+      // Joint (P, S) COLUMN slice of the displacement rows: A_U,flow. Needed
+      // because the flow correction P_X_ is the JOINT PPSS vector, interleaved
+      // at stride NE, whereas UP_ / US_ declare column strides 1 and NE - 1 --
+      // strides that only make sense for a separate pressure vector and a
+      // separate composition vector. block_vector_product indexes its source
+      // with sizes[1], so using UP_ / US_ there reads the wrong entries of
+      // P_X_ for every NE > 1. Same column convention as PPSS_ (flow unknowns
+      // occupy block columns P_VAR .. P_VAR + NE - 1), and it never touches
+      // Z_VAR, so it is also well defined for engines that use the Z_VAR = 255
+      // "no composition" sentinel. UP_ and US_ are retained: UP_ is still the
+      // right slice for the stride-1 Schur probe (A_UP * xp_) and for the
+      // NE == 1 back-substitution, and both take part in the structural
+      // assertions that check the slice decomposition tiles the block.
+      opendarts::linear_solvers::MatrixSlice UPS_;
       opendarts::linear_solvers::MatrixSlice PU_, PP_, PS_;
       opendarts::linear_solvers::MatrixSlice SU_, SP_, SS_;
       opendarts::linear_solvers::MatrixSlice PPSS_;
@@ -214,6 +255,14 @@ namespace opendarts
       // NE == 1 path) and run the pressure preconditioner setup on it.
       int setup_p_prec_from_block_(opendarts::linear_solvers::csr_matrix_base *P_block);
 
+      // Left-scale P (a block-NE CSR) by the inverse of its per-cell diagonal
+      // block, caching those inverses in ps_decouple_inv_. Rows whose diagonal
+      // block is numerically singular are left untouched (their cached factor
+      // is the identity), so the decoupling degrades gracefully rather than
+      // producing a NaN preconditioner.
+      template <std::uint8_t NE_T>
+      void decouple_ppss_block_(opendarts::linear_solvers::csr_matrix<NE_T> &P);
+
       // Per-row sign flips from the positive-diagonal step.
       std::vector<mat_float> u_rhs_mults_;
       std::vector<mat_float> ps_rhs_mults_;
@@ -227,7 +276,7 @@ namespace opendarts
 
       std::vector<mat_float> P_B_, P_X_;    // NE * PP.n_rows
       std::vector<mat_float> U_B_, U_X_;    // ND * UU.n_rows
-      std::vector<mat_float> UP_B_, US_B_;  // ND * UU.n_rows (NE > 1 path)
+      std::vector<mat_float> UPS_B_;        // ND * UU.n_rows (NE > 1 path)
 
       // Sub-preconditioners (shared ownership).
       std::shared_ptr<opendarts::linear_solvers::linsolv_iface> p_system_preconditioner_;
@@ -238,6 +287,31 @@ namespace opendarts
       bool update_uu_ = true;
       bool force_amg_asymmetric_ = true;
       bool fs_cpr_debug_ = false;
+
+      // NE > 1: the pressure sub-preconditioner consumes the block-NE PPSS
+      // matrix directly (nested linsolv_cpr<NE>) instead of P_scalar_ne_.
+      bool p_prec_takes_block_ = false;
+
+      // Max-norm amplification a single stage apply may show before it is
+      // treated as divergent (see set_stage_growth_cap). The default leaves
+      // many orders of magnitude of headroom over any healthy apply -- a
+      // preconditioner legitimately returns ||A^-1 b|| >> ||b|| when the
+      // operator has small eigenvalues -- while still catching a genuinely
+      // divergent V-cycle, which overshoots by twenty-odd orders.
+      mat_float stage_growth_cap_ = 1.0e12;
+
+      // Report a stage as diverged: log once per solve and give the caller a
+      // hard-failure code. Returns true when @p out is unusable.
+      bool stage_diverged_(const char *stage,
+          const std::vector<mat_float> &in,
+          const std::vector<mat_float> &out) const;
+
+      // NE > 1: block-diagonal (ABF / quasi-IMPES) decoupling of the PPSS
+      // block. ps_decouple_inv_ holds the per-cell NE x NE inverse of the
+      // pre-scaling diagonal block, row-major, and is reused to scale the RHS
+      // on every apply. Empty while the decoupling is off.
+      bool p_decouple_block_diag_ = false;
+      std::vector<mat_float> ps_decouple_inv_;
 
       // Per-stage BoomerAMG V-cycle budgets (default 1 == previous hard-coded).
       int p_amg_max_iters_ = 1;

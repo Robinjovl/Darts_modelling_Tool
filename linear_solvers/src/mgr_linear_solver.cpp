@@ -9,6 +9,7 @@
 #include <iostream>
 #include <chrono>
 #include <cmath>
+#include "linear_solver.hpp"
 #include <limits>
 #include <algorithm>
 #include <string>
@@ -1571,6 +1572,59 @@ real_type LinearSolver::normalizeFinalResidual(real_type hypre_final_residual) c
   }
 
   return hypre_final_residual;
+}
+
+bool LinearSolver::recordKrylovOutcome( SolverResults& results,
+                                        HYPRE_Int setup_rc, HYPRE_Int solve_rc,
+                                        HYPRE_Int iters_rc, HYPRE_Int resid_rc,
+                                        int_t num_iterations, real_type final_res_norm,
+                                        const char* variant )
+{
+  // HYPRE_ERROR_CONV is NOT a malfunction: hypre_error(HYPRE_ERROR_CONV) is
+  // raised deliberately when GMRES/FlexGMRES stops at max_iter without reaching
+  // the tolerance (krylov/gmres.c, krylov/flexgmres.c). The statistics getters
+  // still write valid values -- they merely return the same latched flag. So
+  // mask that bit out and judge only the remaining ones; treating it as a
+  // backend error would discard a perfectly good iterate and make ordinary
+  // exhaustion unreachable for the +1 ("usable") status.
+  const HYPRE_Int hypre_err = HYPRE_GetError();
+  const HYPRE_Int conv_bit = static_cast< HYPRE_Int >( HYPRE_ERROR_CONV );
+  const HYPRE_Int real_err = ( setup_rc | solve_rc | iters_rc | resid_rc | hypre_err )
+                             & ~conv_bit;
+  // Consume the latched state either way, so it cannot leak into the next solve.
+  HYPRE_ClearAllErrors();
+
+  if( real_err )
+  {
+    std::cerr << "[MGR] " << variant
+              << ": HYPRE reported an error (setup=" << setup_rc
+              << ", solve=" << solve_rc << ", iters=" << iters_rc
+              << ", resid=" << resid_rc << ", hypre_error=" << hypre_err
+              << ", non-convergence bits=" << real_err
+              << "); solver statistics are not trustworthy" << std::endl;
+    results.iterations = 0;
+    results.finalResidual = std::numeric_limits< real_type >::infinity();
+    results.converged = false;
+    results.stopReason = SolverStopReason::backendError;
+    return false;
+  }
+
+  if( !std::isfinite( static_cast< double >( final_res_norm ) ) )
+  {
+    std::cerr << "[MGR] " << variant << ": non-finite final residual" << std::endl;
+    results.iterations = num_iterations;
+    results.finalResidual = std::numeric_limits< real_type >::infinity();
+    results.converged = false;
+    results.stopReason = SolverStopReason::breakdown;
+    return false;
+  }
+
+  results.iterations = num_iterations;
+  setConvergenceFromResidual( results, final_res_norm );
+  // Statistics are trustworthy; leave stopReason == unclassified so the wrapper
+  // assigns converged / iterationLimit / breakdown from them.
+  results.stopReason = SolverStopReason::unclassified;
+  return true;
 }
 
 void LinearSolver::setConvergenceFromResidual(SolverResults& results,
@@ -5618,13 +5672,16 @@ SolverResults LinearSolver::solveGMRES_MGR()
   // Setup and solve
   auto solve_start = std::chrono::high_resolution_clock::now();
 
+  // Capture every HYPRE return code: a failed setup/solve makes the
+  // statistics below meaningless (see recordKrylovOutcome).
+  HYPRE_Int setup_rc = 0, solve_rc = 0;
   {
     ScopedTimer timer( solveTimerNode( "GMRES", "GMRES setup" ) );
-    HYPRE_ParCSRGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    setup_rc = HYPRE_ParCSRGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
   {
     ScopedTimer timer( solveTimerNode( "GMRES", "GMRES solve" ) );
-    HYPRE_ParCSRGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    solve_rc = HYPRE_ParCSRGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
 
   auto solve_end = std::chrono::high_resolution_clock::now();
@@ -5632,13 +5689,13 @@ SolverResults LinearSolver::solveGMRES_MGR()
   m_solveTime = results.solveTime;  // Save to member for getSolveTime()
 
   // Get statistics
-  int_t num_iterations;
-  real_type final_res_norm;
-  HYPRE_GMRESGetNumIterations( gmres_solver, &num_iterations );
-  HYPRE_GMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
+  int_t num_iterations = 0;
+  real_type final_res_norm = std::numeric_limits< real_type >::infinity();
+  const HYPRE_Int iters_rc = HYPRE_GMRESGetNumIterations( gmres_solver, &num_iterations );
+  const HYPRE_Int resid_rc = HYPRE_GMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
 
-  results.iterations = num_iterations;
-  setConvergenceFromResidual( results, final_res_norm );
+  recordKrylovOutcome( results, setup_rc, solve_rc, iters_rc, resid_rc,
+                       num_iterations, final_res_norm, "HYPRE_GMRESGetNumIterations" );
 
   // Extract solution
   int_t num_rows = m_matrix.global_num_rows;
@@ -5780,13 +5837,16 @@ SolverResults LinearSolver::solveFlexGMRES_MGR()
   // Setup and solve
   auto solve_start = std::chrono::high_resolution_clock::now();
 
+  // Capture every HYPRE return code: a failed setup/solve makes the
+  // statistics below meaningless (see recordKrylovOutcome).
+  HYPRE_Int setup_rc = 0, solve_rc = 0;
   {
     ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES setup" ) );
-    HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    setup_rc = HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
   {
     ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES solve" ) );
-    HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    solve_rc = HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
 
   auto solve_end = std::chrono::high_resolution_clock::now();
@@ -5794,13 +5854,13 @@ SolverResults LinearSolver::solveFlexGMRES_MGR()
   m_solveTime = results.solveTime;  // Save to member for getSolveTime()
 
   // Get statistics
-  int_t num_iterations;
-  real_type final_res_norm;
-  HYPRE_ParCSRFlexGMRESGetNumIterations( gmres_solver, &num_iterations );
-  HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
+  int_t num_iterations = 0;
+  real_type final_res_norm = std::numeric_limits< real_type >::infinity();
+  const HYPRE_Int iters_rc = HYPRE_ParCSRFlexGMRESGetNumIterations( gmres_solver, &num_iterations );
+  const HYPRE_Int resid_rc = HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
 
-  results.iterations = num_iterations;
-  setConvergenceFromResidual( results, final_res_norm );
+  recordKrylovOutcome( results, setup_rc, solve_rc, iters_rc, resid_rc,
+                       num_iterations, final_res_norm, "HYPRE_ParCSRFlexGMRESGetNumIterations" );
 
   // Extract solution
   int_t num_rows = m_matrix.global_num_rows;
@@ -5880,25 +5940,30 @@ SolverResults LinearSolver::solveGMRES_BCSRCPR()
   m_setupTime = results.setupTime;
 
   const auto solve_start = std::chrono::high_resolution_clock::now();
+  // Capture every HYPRE return code: a failed setup/solve makes the
+  // statistics below meaningless (see recordKrylovOutcome).
+  HYPRE_Int setup_rc = 0, solve_rc = 0;
   {
     ScopedTimer timer( solveTimerNode( "GMRES", "GMRES setup" ) );
-    HYPRE_ParCSRGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    setup_rc = HYPRE_ParCSRGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
   {
     ScopedTimer timer( solveTimerNode( "GMRES", "GMRES solve" ) );
-    HYPRE_ParCSRGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    solve_rc = HYPRE_ParCSRGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
   const auto solve_end = std::chrono::high_resolution_clock::now();
   results.solveTime = std::chrono::duration<double>( solve_end - solve_start ).count();
   m_solveTime = results.solveTime;
 
   int_t num_iterations = 0;
-  real_type final_res_norm = 0.0;
-  HYPRE_GMRESGetNumIterations( gmres_solver, &num_iterations );
-  HYPRE_GMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
-  results.iterations = num_iterations;
-  setConvergenceFromResidual( results, final_res_norm );
-  recordBCSRCPRLinearIterations( num_iterations, results.converged );
+  real_type final_res_norm = std::numeric_limits< real_type >::infinity();
+  const HYPRE_Int iters_rc = HYPRE_GMRESGetNumIterations( gmres_solver, &num_iterations );
+  const HYPRE_Int resid_rc = HYPRE_GMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
+  if( recordKrylovOutcome( results, setup_rc, solve_rc, iters_rc, resid_rc,
+                           num_iterations, final_res_norm, "HYPRE_GMRESGetNumIterations" ) )
+  {
+    recordBCSRCPRLinearIterations( num_iterations, results.converged );
+  }
 
   const int_t num_rows = m_matrix.global_num_rows;
   m_solution.resize( num_rows );
@@ -5953,25 +6018,30 @@ SolverResults LinearSolver::solveFlexGMRES_BCSRCPR()
   m_setupTime = results.setupTime;
 
   const auto solve_start = std::chrono::high_resolution_clock::now();
+  // Capture every HYPRE return code: a failed setup/solve makes the
+  // statistics below meaningless (see recordKrylovOutcome).
+  HYPRE_Int setup_rc = 0, solve_rc = 0;
   {
     ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES setup" ) );
-    HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    setup_rc = HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
   {
     ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES solve" ) );
-    HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    solve_rc = HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
   const auto solve_end = std::chrono::high_resolution_clock::now();
   results.solveTime = std::chrono::duration<double>( solve_end - solve_start ).count();
   m_solveTime = results.solveTime;
 
   int_t num_iterations = 0;
-  real_type final_res_norm = 0.0;
-  HYPRE_ParCSRFlexGMRESGetNumIterations( gmres_solver, &num_iterations );
-  HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
-  results.iterations = num_iterations;
-  setConvergenceFromResidual( results, final_res_norm );
-  recordBCSRCPRLinearIterations( num_iterations, results.converged );
+  real_type final_res_norm = std::numeric_limits< real_type >::infinity();
+  const HYPRE_Int iters_rc = HYPRE_ParCSRFlexGMRESGetNumIterations( gmres_solver, &num_iterations );
+  const HYPRE_Int resid_rc = HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
+  if( recordKrylovOutcome( results, setup_rc, solve_rc, iters_rc, resid_rc,
+                           num_iterations, final_res_norm, "HYPRE_ParCSRFlexGMRESGetNumIterations" ) )
+  {
+    recordBCSRCPRLinearIterations( num_iterations, results.converged );
+  }
 
   const int_t num_rows = m_matrix.global_num_rows;
   m_solution.resize( num_rows );
@@ -6029,13 +6099,16 @@ SolverResults LinearSolver::solveGMRES_AMG()
   // Setup and solve
   auto solve_start = std::chrono::high_resolution_clock::now();
 
+  // Capture every HYPRE return code: a failed setup/solve makes the
+  // statistics below meaningless (see recordKrylovOutcome).
+  HYPRE_Int setup_rc = 0, solve_rc = 0;
   {
     ScopedTimer timer( solveTimerNode( "GMRES", "GMRES setup" ) );
-    HYPRE_ParCSRGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    setup_rc = HYPRE_ParCSRGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
   {
     ScopedTimer timer( solveTimerNode( "GMRES", "GMRES solve" ) );
-    HYPRE_ParCSRGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    solve_rc = HYPRE_ParCSRGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
 
   auto solve_end = std::chrono::high_resolution_clock::now();
@@ -6043,13 +6116,13 @@ SolverResults LinearSolver::solveGMRES_AMG()
   m_solveTime = results.solveTime;  // Save to member for getSolveTime()
 
   // Get statistics
-  int_t num_iterations;
-  real_type final_res_norm;
-  HYPRE_GMRESGetNumIterations( gmres_solver, &num_iterations );
-  HYPRE_GMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
+  int_t num_iterations = 0;
+  real_type final_res_norm = std::numeric_limits< real_type >::infinity();
+  const HYPRE_Int iters_rc = HYPRE_GMRESGetNumIterations( gmres_solver, &num_iterations );
+  const HYPRE_Int resid_rc = HYPRE_GMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
 
-  results.iterations = num_iterations;
-  setConvergenceFromResidual( results, final_res_norm );
+  recordKrylovOutcome( results, setup_rc, solve_rc, iters_rc, resid_rc,
+                       num_iterations, final_res_norm, "HYPRE_GMRESGetNumIterations" );
 
   // Extract solution
   int_t num_rows = m_matrix.global_num_rows;
@@ -6130,13 +6203,16 @@ SolverResults LinearSolver::solveFlexGMRES_AMG()
   // Setup and solve
   auto solve_start = std::chrono::high_resolution_clock::now();
 
+  // Capture every HYPRE return code: a failed setup/solve makes the
+  // statistics below meaningless (see recordKrylovOutcome).
+  HYPRE_Int setup_rc = 0, solve_rc = 0;
   {
     ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES setup" ) );
-    HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    setup_rc = HYPRE_ParCSRFlexGMRESSetup( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
   {
     ScopedTimer timer( solveTimerNode( "FlexGMRES", "GMRES solve" ) );
-    HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
+    solve_rc = HYPRE_ParCSRFlexGMRESSolve( gmres_solver, m_parMatrix, m_parRHS, m_parSol );
   }
 
   auto solve_end = std::chrono::high_resolution_clock::now();
@@ -6144,13 +6220,13 @@ SolverResults LinearSolver::solveFlexGMRES_AMG()
   m_solveTime = results.solveTime;  // Save to member for getSolveTime()
 
   // Get statistics
-  int_t num_iterations;
-  real_type final_res_norm;
-  HYPRE_ParCSRFlexGMRESGetNumIterations( gmres_solver, &num_iterations );
-  HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
+  int_t num_iterations = 0;
+  real_type final_res_norm = std::numeric_limits< real_type >::infinity();
+  const HYPRE_Int iters_rc = HYPRE_ParCSRFlexGMRESGetNumIterations( gmres_solver, &num_iterations );
+  const HYPRE_Int resid_rc = HYPRE_ParCSRFlexGMRESGetFinalRelativeResidualNorm( gmres_solver, &final_res_norm );
 
-  results.iterations = num_iterations;
-  setConvergenceFromResidual( results, final_res_norm );
+  recordKrylovOutcome( results, setup_rc, solve_rc, iters_rc, resid_rc,
+                       num_iterations, final_res_norm, "HYPRE_ParCSRFlexGMRESGetNumIterations" );
 
   // Extract solution
   int_t num_rows = m_matrix.global_num_rows;
@@ -6641,12 +6717,14 @@ int LinearSolver::solve(mat_float* B, mat_float* X)
   if( !m_matrixLoaded || !m_matrixAssembled )
   {
     std::cerr << "Error: Matrix not set up. Call setup() first." << std::endl;
+    m_lastResults.stopReason = SolverStopReason::backendError;
     return -1;
   }
 
   if( !B || !X )
   {
     std::cerr << "Error: Null pointer passed to solve()" << std::endl;
+    m_lastResults.stopReason = SolverStopReason::backendError;
     return -1;
   }
 
@@ -6713,6 +6791,41 @@ int LinearSolver::solve(mat_float* B, mat_float* X)
         X[i] *= m_colScaling[i];
       }
     }
+  }
+
+  // Classify WHY the solve ended. The sign of the value returned below cannot
+  // carry this: a preconditioner setup failure (iterations == 0) and an
+  // exhausted iteration budget both come out negative. Only an explicit
+  // iteration-limit exhaustion that left a finite, non-regressing residual
+  // yields a usable iterate; everything else is a hard failure. finalResidual
+  // is HYPRE's RELATIVE residual, so "no worse than the initial guess" is
+  // "<= 1" (with a small tolerance for round-off).
+  if( m_lastResults.stopReason == SolverStopReason::backendError
+      || m_lastResults.stopReason == SolverStopReason::breakdown )
+  {
+    // Already latched by recordKrylovOutcome: the statistics below are
+    // untrustworthy and must NOT be allowed to promote this to iterationLimit
+    // ("usable iterate").
+  }
+  else if( m_lastResults.converged )
+  {
+    m_lastResults.stopReason = SolverStopReason::converged;
+  }
+  else if( !std::isfinite( static_cast< double >( m_lastResults.finalResidual ) ) )
+  {
+    m_lastResults.stopReason = SolverStopReason::breakdown;
+  }
+  else if( m_lastResults.iterations >= m_params.maxIter
+           && opendarts::linear_solvers::solve_result::residual_did_not_regress(
+                  static_cast< double >( m_lastResults.finalResidual ), 1.0 ) )
+  {
+    m_lastResults.stopReason = SolverStopReason::iterationLimit;
+  }
+  else
+  {
+    // stalled/diverged before the budget, or the residual regressed past the
+    // initial guess -- either way the iterate must not be applied
+    m_lastResults.stopReason = SolverStopReason::breakdown;
   }
 
   // Return number of iterations (or negative error code). A failed
