@@ -4,6 +4,12 @@ workflow:
       when: never
     - when: always
 
+variables:
+  # Windows CI runs in containers built from .cicd/build-windows/Dockerfile.
+  # Override to pin a specific content-hash tag (e.g. ".../windows-builder:sha-abc123...")
+  # produced by the windows-image-builder job.
+  WINDOWS_BUILDER_IMAGE: "${CI_REGISTRY_IMAGE}/windows-builder:latest"
+
 stages:
     - pre_commit
     - build_images
@@ -17,9 +23,7 @@ include:
   - local: '.cicd/jobs/pre-commit.yml'
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
-  - local: '.cicd/jobs/cleanup-windows.yml'
-    rules:
-      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
+
   - local: '.cicd/jobs/build-images.yml'
   - local: '.cicd/jobs/build-linux.yml'
     rules:

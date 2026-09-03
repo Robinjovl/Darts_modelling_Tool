@@ -89,6 +89,102 @@ docker-image-builder:
     - if: $TEST_ALL_PYTHONS == "1"
     - if: $UPDATE_DOCKER_IMAGE == "1"
 
+windows-image-builder:
+  stage: build_images
+  # Windows container images cannot be built by kaniko: they need a Windows host
+  # with a Docker daemon in Windows-container mode. This job therefore runs on a
+  # shell runner (the only Windows job left that is not itself containerized).
+  tags:
+    - windows-shell
+  timeout: 6h
+  needs: []
+  variables:
+    # Files whose content determines the Docker image content hash.
+    # When any of these files change, the image will be rebuilt.
+    # Add semicolon-separated paths here to extend the hash scope.
+    DOCKER_HASH_FILES: >-
+      .cicd/build-windows/Dockerfile;.cicd/jobs/build-images.yml
+    IMAGE_NAME: "windows-builder"
+    # Python used only to build gmsh inside the image. gmsh's Python API is a
+    # ctypes wrapper over gmsh.dll, so this does not constrain the CI matrix
+    # (3.10-3.13); each job still creates its own conda env from $PY_VER.
+    # Deliberately NOT tied to $DEFAULT_PY_VER: that would force a full
+    # Windows image rebuild every time the default Python is bumped.
+    GMSH_PY_VER: "3.11"
+    DOCKER_BUILD_MEMORY: "10g"
+  before_script:
+    # Pipe the token instead of passing -p: an argument would be visible in the
+    # host process list. The shell runner shares a real machine, so this matters.
+    - $env:CI_REGISTRY_PASSWORD | docker login -u $env:CI_REGISTRY_USER --password-stdin $env:CI_REGISTRY
+  script:
+    # --- content-hash check (mirrors docker-image-builder above) ---
+    - |
+      $files = $env:DOCKER_HASH_FILES.Split(';') | Where-Object { $_ -ne '' } | ForEach-Object { $_.Trim() }
+      Write-Host "Files included in content hash: $($files -join ' ')"
+      $bytes = New-Object System.Collections.Generic.List[byte]
+      foreach ($f in $files) {
+        # throw, not $ErrorActionPreference: GitLab concatenates every script
+        # block into one PowerShell script, so setting the preference here would
+        # also turn the deliberate 'docker manifest inspect' miss below into a
+        # fatal error. A silently skipped input would yield a tag that no longer
+        # tracks image content, so this must still fail loudly.
+        try {
+          # Resolve to an absolute path: .NET methods resolve relative paths against
+          # [Environment]::CurrentDirectory, which PowerShell does not keep in sync
+          # with $PWD, so ReadAllBytes would look under the runner's start directory.
+          $full = (Resolve-Path -LiteralPath $f -ErrorAction Stop).Path
+          $bytes.AddRange([System.IO.File]::ReadAllBytes($full))
+        } catch {
+          throw "Hash input unreadable: $f - $($_.Exception.Message)"
+        }
+      }
+      # Build args affect image content too, so hash them alongside the files.
+      $bytes.AddRange([System.Text.Encoding]::UTF8.GetBytes("PY_VER=$env:GMSH_PY_VER"))
+      $sha = [System.BitConverter]::ToString(
+               [System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes.ToArray())
+             ).Replace('-','').ToLower()
+      $IMAGE_TAG = "sha-" + $sha.Substring(0,16)
+      $FULL_IMAGE = "$env:CI_REGISTRY_IMAGE/$env:IMAGE_NAME"
+      Write-Host "Docker context hash => $IMAGE_TAG"
+    # Check whether an image with this content hash is already in the registry.
+    - |
+      $NEEDS_BUILD = $true
+      if ($env:UPDATE_DOCKER_IMAGE -ne "1") {
+        docker manifest inspect "${FULL_IMAGE}:${IMAGE_TAG}" *> $null
+        if ($LASTEXITCODE -eq 0) {
+          Write-Host "Image ${FULL_IMAGE}:${IMAGE_TAG} already exists - skipping build"
+          $NEEDS_BUILD = $false
+        } else {
+          Write-Host "Image not found in registry - building..."
+        }
+      } else {
+        Write-Host "UPDATE_DOCKER_IMAGE=1 - forcing rebuild"
+      }
+    # --- build and push (only when needed) ---
+    - |
+      if ($NEEDS_BUILD) {
+        $tags = @("${FULL_IMAGE}:${IMAGE_TAG}")
+        if ($env:CI_COMMIT_REF_PROTECTED -eq "true") { $tags += "${FULL_IMAGE}:latest" }
+        if ($env:CI_COMMIT_TAG) { $tags += "${FULL_IMAGE}:$env:CI_COMMIT_TAG" }
+        $tagArgs = @()
+        foreach ($t in $tags) { $tagArgs += @("-t", $t) }
+        docker build -m $env:DOCKER_BUILD_MEMORY --build-arg PY_VER=$env:GMSH_PY_VER $tagArgs -f .cicd/build-windows/Dockerfile .cicd/build-windows
+        if ($LASTEXITCODE -ne 0) { throw "docker build failed" }
+        foreach ($t in $tags) {
+          docker push $t
+          if ($LASTEXITCODE -ne 0) { throw "docker push $t failed" }
+        }
+      }
+  after_script:
+    - docker logout $env:CI_REGISTRY
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == "true"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+    - if: $TEST_CUSTOM_BRANCH == "1"
+    - if: $TEST_ALL_PYTHONS == "1"
+    - if: $UPDATE_DOCKER_IMAGE == "1"
+
 .apptainer-image-builder-base:
   stage: build_images
   tags:
