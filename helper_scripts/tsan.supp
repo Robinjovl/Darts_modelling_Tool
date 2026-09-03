@@ -1,0 +1,99 @@
+# ThreadSanitizer suppressions for open-DARTS CI (helper_scripts/tsan_check.py).
+#
+# Every rule below suppresses a *proven* ThreadSanitizer+OpenMP runtime
+# limitation, not an application bug -- see each section's comment for the
+# evidence before adding to or removing from this list. Format reference:
+# https://github.com/google/sanitizers/wiki/ThreadSanitizerSuppressions
+#
+# Deliberately does NOT use a blanket "any OpenMP-outlined frame" pattern
+# (e.g. race:*_omp_fn* / race:*.omp_outlined*), even though that would catch
+# every barrier-crossing artifact in one rule: the confirmed, real
+# interpolator-cache bug this job exists to catch a regression of has its
+# flagged access inside exactly that kind of frame too (materialize_missing_
+# cache's Phase 2c, [clone ._omp_fn.0]) -- a wildcard broad enough to silence
+# the false positives would also silence a real regression of the bug that
+# motivated this CI job. Each rule below is scoped to a function or library
+# individually verified (empirically, with a standalone TSan repro, run
+# outside this codebase entirely -- see the GMRES section below) not to be
+# where that bug, or one like it, would show up.
+
+# --- OpenMP runtime internals: real function names, never application logic -
+# __kmp_* (libomp) / GOMP_parallel* (libgomp) are the runtime's own thread
+# pool / team dispatch code. A race entirely inside these (e.g. libomp's
+# lazy suspend-mutex init, __kmp_suspend_initialize_thread vs.
+# __kmp_lock_suspend_mx) is the runtime racing with itself, observed even in
+# a trivial "print my thread id" program with no application code at all.
+race:__kmp_*
+race:GOMP_parallel
+race:GOMP_parallel_start
+
+# --- GMRES vector kernels: individually proven, not pattern-matched --------
+# dot/axpy/scale (linear_solvers/src/linsolv_gmres.cpp) and block_csr_spmv_add
+# were the concrete case that led to a from-scratch minimal reproduction:
+# a single #pragma omp parallel region, writing into a per-thread slot of a
+# plain array and reading it back on the main thread immediately after the
+# region closes, reproduces under both GCC's libgomp and a standard
+# (non-TSan-built) LLVM libomp -- neither runtime annotates its barrier for
+# TSan -- in a ~15-line standalone program with no GMRES or engine code
+# involved at all. The repro compiles cleanly and prints the correct answer;
+# the "race" is real to TSan, not to the program.
+race:opendarts::linear_solvers::*dot*
+race:opendarts::linear_solvers::*axpy*
+race:opendarts::linear_solvers::*scale*
+race:opendarts::linear_solvers::*block_csr_spmv*
+
+# --- HYPRE's own internally-parallelized routines ---------------------------
+# HYPRE's AMG setup/solve chains many small OpenMP-parallelized utility
+# routines (coarsening, interpolation-operator construction, relaxation,
+# matvec, prefix sums) across sequential calls that reuse scratch
+# vectors/matrices between them -- the same barrier-crossing shape as above,
+# just inside HYPRE's own code. Traced representative examples across
+# several categories and found the identical shape in every one checked; a
+# smaller residual fraction was not individually verified either way.
+# Deliberately broad, and a real risk-acceptance (unlike the two rules
+# above, this one is NOT backed by a from-scratch proof that every possible
+# race here is an artifact): no confirmed genuine HYPRE thread-safety bug
+# exists as of this writing, and CI signal is better spent on open-DARTS's
+# own code. To get a firmer answer independent of this rule, build against
+# an LLVM libomp compiled *with* TSan support enabled (a non-default CMake
+# option) and see what, if anything, still reproduces.
+race:hypre_*
+race:HYPRE_*
+
+# --- init_jacobian_structure: first-touch zeroing at engine init, called once
+# engine_base::init_jacobian_structure's numa_set<T> calls (first-touch
+# zeroing of rows_ptr/diag_ind/cols_ind for NUMA locality) get fully inlined,
+# so "numa_set" never appears as its own frame in a report -- a rule matching
+# that symbol name (tried first) never fires. Scoped to this function by name
+# instead: it runs exactly once per engine.init(), does nothing but CSR
+# structure bookkeeping (no interpolation, no well logic), and was directly
+# traced (both with ThreadSanitizer and independently under Helgrind) to the
+# same barrier-crossing shape as everything else in this file -- a worker's
+# now-closed first-touch write vs. the main thread's next write, immediately
+# after, to the same buffer.
+#
+# NOT scoped this way: assemble_jacobian_array's own top-of-function
+# numa_set(Jac, ...) call. That function also does the actual Jacobian
+# assembly this job exists to catch a regression in, so it is not
+# blanket-suppressed by name -- see the "known gap" note at the bottom of
+# this file, which covers it.
+race:engine_base::init_jacobian_structure*
+
+# --- Known gap, not yet covered ---------------------------------------------
+# engine_super_cpu.tpp's assemble_jacobian_array has shown two distinct race
+# patterns under investigation:
+#   1. A self-race at its very first line (int id = omp_get_thread_num();)
+#      under GCC+libgomp, from two *different* calls reusing the same stack
+#      slot -- did not reproduce under Clang+libomp, consistent with the same
+#      barrier-crossing artifact as everything else in this file.
+#   2. Reads of op_vals_arr/op_ders_arr for a neighboring block, racing
+#      against the interpolator writing those same entries -- traced several
+#      examples that also looked like the barrier-crossing shape (heap reuse
+#      across sequential, non-overlapping calls), but not exhaustively, so
+#      this one is not yet fully resolved either way.
+# Neither is suppressed here: assemble_jacobian_array is exactly where a real
+# regression of either the interpolator-cache bug or a genuinely new race
+# would also show up, so this function is deliberately left uncovered rather
+# than guessed at. If a CI run reproduces one of these, add a rule scoped as
+# narrowly as possible (e.g. by exact source line, not the whole function)
+# after re-verifying it's still the same artifact.

@@ -1,0 +1,38 @@
+include:
+  - local: '.cicd/jobs/build-linux-base.yml'
+
+build-linux-tsan:
+    stage: build
+    tags:
+        - linux
+    rules:
+        # Skip on .pkl reference-upload runs, matching build-linux-valgrind:
+        # TSan instrumentation is irrelevant there.
+        - if: $UPLOAD_PKL == "1"
+          when: never
+        # Opt-in only: ThreadSanitizer is much slower than Valgrind (roughly
+        # 5-15x native, worse for HYPRE's AMG setup), so unlike
+        # build-linux-valgrind this does not run on every protected-branch
+        # push / MR by default -- only when explicitly requested.
+        - if: $CHECK_DATA_RACES == "1"
+    extends: .build-linux
+    variables:
+        # Open-source in-tree solvers, matching build-linux-valgrind's
+        # rationale: this instruments the solver stack that actually ships
+        # (and is what linsolv_gmres.cpp / the interpolator cache fix and the
+        # data-race investigation behind this job were about).
+        ODLS: ''
+        PY_VER: "$DEFAULT_PY_VER"
+    script:
+        - echo ">>> Starting ThreadSanitizer-instrumented build <<<"
+        # -m: MT (OpenMP) build -- required for a data race to be reachable
+        # at all. No -p (IPhreeqc/Reaktoro): tsan_check.py's model list
+        # doesn't touch chemistry models, so skip that dependency for a
+        # leaner, faster build.
+        - ./helper_scripts/build_darts_cmake.sh -c -w -m -j 8 -T $ODLS
+    artifacts:
+      paths:
+        - './dist/*.whl'
+        - '*.log'
+      expire_in: 1 day
+      when: always

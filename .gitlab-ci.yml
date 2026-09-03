@@ -53,6 +53,12 @@ include:
   - local: '.cicd/jobs/valgrind-check.yml'
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
+  - local: '.cicd/jobs/build-linux-tsan.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
+  - local: '.cicd/jobs/tsan-check.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   # - local: '.cicd/jobs/vtune-profile.yml'
     # rules:
     # - if: $MCP_TRIGGER_TAHITI_GPU != "1"
