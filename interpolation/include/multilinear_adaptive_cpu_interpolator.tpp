@@ -56,36 +56,50 @@ template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 const typename multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::point_data_t &
 multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::get_point_data(const key_t &point_key)
 {
-  auto item = point_data.find(point_key);
-  if (item != point_data.end())
-    return item->second;
+  {
+    std::shared_lock read_lock(point_data_mutex_);
+    auto item = point_data.find(point_key);
+    if (item != point_data.end())
+      return item->second;
+  }
 
   if (this->timer) this->timer->node["body generation"].node["point generation"].start();
+  // Local (not this->new_point_coords/new_operator_values): those are per-object
+  // scratch buffers on the base class, and this function is reachable from
+  // multiple threads (e.g. concurrent well-block evaluations), so sharing them
+  // would itself be a race independent of the point_data map below.
+  point_coordinates_t point_coords(N_DIMS);
+  std::vector<double> operator_values(N_OPS);
   point_data_t new_point;
-  this->get_point_coordinates_from_key(point_key, this->new_point_coords);
-  this->supporting_point_evaluator->evaluate(this->new_point_coords, this->new_operator_values);
+  this->get_point_coordinates_from_key(point_key, point_coords);
+  this->supporting_point_evaluator->evaluate(point_coords, operator_values);
   for (int op = 0; op < N_OPS; op++)
   {
-    new_point[op] = this->new_operator_values[op];
+    new_point[op] = operator_values[op];
     // isfinite (not just isnan): an inf operator (e.g. mobility kr/mu with an
     // underflowed viscosity) poisons every hypercube touching this point just
     // like a nan does -- inf * 0-weight = nan in the interpolated value/derivative.
-    if (!std::isfinite(this->new_operator_values[op]))
+    if (!std::isfinite(operator_values[op]))
     {
       printf("OBL generation warning: non-finite operator detected! Operator %d for point (", op);
       for (int a = 0; a < N_DIMS; a++)
       {
-        printf("%lf, ", this->new_point_coords[a]);
+        printf("%lf, ", point_coords[a]);
       }
-      printf(") is %lf\n", this->new_operator_values[op]);
+      printf(") is %lf\n", operator_values[op]);
     }
   }
+
+  std::unique_lock write_lock(point_data_mutex_);
   auto insert_result = point_data.emplace(point_key, new_point);
-  // Mark for append-only cache flush after this new point is materialized.
-  dirty_point_data.insert(point_key);
-  // Stamp the point with the current batch-interpolation (nonlinear-iteration) index.
-  dirty_point_epochs[point_key] = eval_index;
-  this->n_points_used++;
+  if (insert_result.second)
+  {
+    // Mark for append-only cache flush after this new point is materialized.
+    dirty_point_data.insert(point_key);
+    // Stamp the point with the current batch-interpolation (nonlinear-iteration) index.
+    dirty_point_epochs[point_key] = eval_index;
+    this->n_points_used++;
+  }
   if (this->timer) this->timer->node["body generation"].node["point generation"].stop();
   return insert_result.first->second;
 }
@@ -94,11 +108,21 @@ template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 const typename multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::hypercube_data_t &
 multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::get_hypercube_data(const key_t &hypercube_key)
 {
-  auto item = hypercube_data.find(hypercube_key);
-  if (item != hypercube_data.end())
   {
-    if (hypercube_cap != 0) hc_last_used[hypercube_key] = eval_index;
-    return item->second;
+    std::shared_lock read_lock(hypercube_data_mutex_);
+    auto item = hypercube_data.find(hypercube_key);
+    if (item != hypercube_data.end())
+    {
+      if (hypercube_cap != 0)
+      {
+        // Promote to a write lock to bump the LRU stamp: still cheap relative to
+        // the cache-miss path below, and keeps hc_last_used's mutation exclusive.
+        read_lock.unlock();
+        std::unique_lock write_lock(hypercube_data_mutex_);
+        hc_last_used[hypercube_key] = eval_index;
+      }
+      return item->second;
+    }
   }
 
   if (this->timer) this->timer->node["body generation"].start();
@@ -106,6 +130,9 @@ multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::get_hypercube_dat
   hypercube_data_t new_hypercube;
   this->get_hypercube_vertex_keys(hypercube_key, vertex_keys);
 
+  // get_point_data() takes point_data_mutex_ internally -- never held here, so
+  // this can't deadlock against the point_data_mutex_-then-hypercube_data_mutex_
+  // ordering used nowhere else in this class.
   static const uint32_t N_VERTS = (1u << N_DIMS);
   for (uint32_t i = 0; i < N_VERTS; ++i)
   {
@@ -115,6 +142,8 @@ multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::get_hypercube_dat
       new_hypercube[i * N_OPS + op] = p_data[op];
     }
   }
+
+  std::unique_lock write_lock(hypercube_data_mutex_);
   auto insert_result = hypercube_data.emplace(hypercube_key, new_hypercube);
   if (hypercube_cap != 0) hc_last_used[hypercube_key] = eval_index;
   if (this->timer) this->timer->node["body generation"].stop();
@@ -185,14 +214,17 @@ void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::materialize_
   all_point_keys.reserve(missing_hc.size() * N_VERTS);
 
   hypercube_vertex_keys_t hc_vertices;
-  for (size_t h = 0; h < missing_hc.size(); ++h)
   {
-    this->get_hypercube_vertex_keys(missing_hc[h], hc_vertices);
-    for (uint32_t v = 0; v < N_VERTS; ++v)
+    std::shared_lock read_lock(point_data_mutex_);
+    for (size_t h = 0; h < missing_hc.size(); ++h)
     {
-      if (point_data.find(hc_vertices[v]) == point_data.end())
+      this->get_hypercube_vertex_keys(missing_hc[h], hc_vertices);
+      for (uint32_t v = 0; v < N_VERTS; ++v)
       {
-        all_point_keys.push_back(hc_vertices[v]);
+        if (point_data.find(hc_vertices[v]) == point_data.end())
+        {
+          all_point_keys.push_back(hc_vertices[v]);
+        }
       }
     }
   }
@@ -222,33 +254,39 @@ void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::materialize_
     this->supporting_point_evaluator->evaluate_batch(
         batch_coords, static_cast<int>(n_missing), batch_values, N_OPS);
 
-    point_data.reserve(point_data.size() + n_missing);
-    for (size_t i = 0; i < n_missing; ++i)
     {
-      const key_t &pt_key = all_point_keys[i];
-      point_data_t new_point;
-      for (int op = 0; op < N_OPS; op++)
+      std::unique_lock write_lock(point_data_mutex_);
+      point_data.reserve(point_data.size() + n_missing);
+      for (size_t i = 0; i < n_missing; ++i)
       {
-        double val = batch_values[i * N_OPS + op];
-        new_point[op] = val;
-        // isfinite (not just isnan): an inf operator poisons every hypercube
-        // touching this point just like a nan does (inf * 0-weight = nan).
-        if (!std::isfinite(val))
+        const key_t &pt_key = all_point_keys[i];
+        point_data_t new_point;
+        for (int op = 0; op < N_OPS; op++)
         {
-          printf("OBL generation warning: non-finite operator detected! Operator %d for point (", op);
-          for (int a = 0; a < N_DIMS; a++)
+          double val = batch_values[i * N_OPS + op];
+          new_point[op] = val;
+          // isfinite (not just isnan): an inf operator poisons every hypercube
+          // touching this point just like a nan does (inf * 0-weight = nan).
+          if (!std::isfinite(val))
           {
-            printf("%lf, ", batch_coords[i * N_DIMS + a]);
+            printf("OBL generation warning: non-finite operator detected! Operator %d for point (", op);
+            for (int a = 0; a < N_DIMS; a++)
+            {
+              printf("%lf, ", batch_coords[i * N_DIMS + a]);
+            }
+            printf(") is %lf\n", val);
           }
-          printf(") is %lf\n", val);
+        }
+        auto insert_result = point_data.emplace(pt_key, new_point);
+        if (insert_result.second)
+        {
+          // Mark for append-only cache flush after this new point is materialized.
+          dirty_point_data.insert(pt_key);
+          // Stamp the point with the current batch-interpolation (nonlinear-iteration) index.
+          dirty_point_epochs[pt_key] = eval_index;
+          this->n_points_used++;
         }
       }
-      point_data.emplace(pt_key, new_point);
-      // Mark for append-only cache flush after this new point is materialized.
-      dirty_point_data.insert(pt_key);
-      // Stamp the point with the current batch-interpolation (nonlinear-iteration) index.
-      dirty_point_epochs[pt_key] = eval_index;
-      this->n_points_used++;
     }
 
     if (this->timer) this->timer->node["body generation"].node["point generation"].stop();
@@ -256,8 +294,11 @@ void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::materialize_
 
   // Phase 2c: assemble missing hypercube payloads in parallel from the now-complete
   // point cache. The serial Phase 2b insertion loop above is the last point_data
-  // mutation before this OpenMP region; keep Phase 2c read-only unless point_data
-  // synchronization is introduced.
+  // mutation *this call* makes before this OpenMP region, but a different thread
+  // can still be inside get_point_data()/get_hypercube_data() concurrently (e.g.
+  // a well-block evaluation) -- take a shared (reader) lock per hypercube so this
+  // stays race-free against that, while still letting every worker here proceed
+  // concurrently with each other.
   if (this->timer) this->timer->node["body generation"].node["hypercube generation"].start();
 
   std::vector<std::pair<key_t, hypercube_data_t>> new_hc_entries(missing_hc.size());
@@ -271,18 +312,22 @@ void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::materialize_
     this->get_hypercube_vertex_keys(missing_hc[h], vk);
 
     hypercube_data_t payload;
-    for (uint32_t v = 0; v < N_VERTS; ++v)
     {
-      const point_data_t &p_data = point_data.at(vk[v]);
-      for (int op = 0; op < N_OPS; op++)
+      std::shared_lock read_lock(point_data_mutex_);
+      for (uint32_t v = 0; v < N_VERTS; ++v)
       {
-        payload[v * N_OPS + op] = p_data[op];
+        const point_data_t &p_data = point_data.at(vk[v]);
+        for (int op = 0; op < N_OPS; op++)
+        {
+          payload[v * N_OPS + op] = p_data[op];
+        }
       }
     }
     new_hc_entries[h] = std::make_pair(missing_hc[h], std::move(payload));
   }
 
   // Serial commit
+  std::unique_lock hc_write_lock(hypercube_data_mutex_);
   hypercube_data.reserve(hypercube_data.size() + missing_hc.size());
   for (auto &entry : new_hc_entries)
   {
@@ -297,6 +342,7 @@ void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::materialize_
 template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::clear_hypercube_data()
 {
+  std::unique_lock write_lock(hypercube_data_mutex_);
   // Swap-with-empty so the 130 KiB payloads are actually returned to the allocator.
   // point_data and the on-disk cache are untouched.
   std::unordered_map<key_t, hypercube_data_t, key_hash_t>().swap(hypercube_data);
@@ -306,6 +352,7 @@ void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::clear_hyperc
 template <typename value_t, uint8_t N_DIMS, uint16_t N_OPS>
 void multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::evict_hypercubes()
 {
+  std::unique_lock write_lock(hypercube_data_mutex_);
   if (hypercube_cap == 0 || hypercube_data.size() <= hypercube_cap)
     return;
 
@@ -402,10 +449,13 @@ int multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::interpolate_w
 
   std::vector<key_t> missing_hc;
   missing_hc.reserve(unique_hc.size());
-  for (const auto &k : unique_hc)
   {
-    if (hypercube_data.find(k) == hypercube_data.end())
-      missing_hc.push_back(k);
+    std::shared_lock read_lock(hypercube_data_mutex_);
+    for (const auto &k : unique_hc)
+    {
+      if (hypercube_data.find(k) == hypercube_data.end())
+        missing_hc.push_back(k);
+    }
   }
 
   if (this->timer) this->timer->node["body generation"].node["cache lookup"].stop();
@@ -421,8 +471,11 @@ int multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::interpolate_w
   // Refresh LRU recency for every hypercube touched this batch (cached + just
   // materialized) so eviction below keeps the live working set. eval_index advanced above.
   if (hypercube_cap != 0)
+  {
+    std::unique_lock write_lock(hypercube_data_mutex_);
     for (const auto &k : unique_hc)
       hc_last_used[k] = eval_index;
+  }
 
   // Phase 3: parallel read-only interpolation with thread-local workspace.
   static const uint32_t N_VERTS = (1u << N_DIMS);
@@ -456,7 +509,17 @@ int multilinear_adaptive_cpu_interpolator<value_t, N_DIMS, N_OPS>::interpolate_w
             &axis_low[i], &mult[i]);
       }
 
-      const hypercube_data_t &hc = hypercube_data.at(hc_keys[p]);
+      // The reference returned here stays valid after the lock is released:
+      // hypercube_data is node-based (insertion never invalidates existing
+      // references) and nothing erases from it while this batch's Phase 3 is
+      // running -- evict_hypercubes() only runs after this parallel region
+      // has fully joined (see below).
+      const hypercube_data_t *hc_ptr;
+      {
+        std::shared_lock read_lock(hypercube_data_mutex_);
+        hc_ptr = &hypercube_data.at(hc_keys[p]);
+      }
+      const hypercube_data_t &hc = *hc_ptr;
 
       interpolate_point_with_derivatives_ws<value_t, N_DIMS, N_OPS>(
           point, hc.data(), axis_low, mult,
