@@ -73,9 +73,15 @@ def load_single_keyword(file_name, keyword, def_len=1000, cache=0):
                         flush=True,
                     )
                     continue
-                if s_line == 'INCLUDE':
+
+                if first_word == 'INCLUDE':
                     path = osp.abspath(osp.dirname(file_name))
-                    include = osp.join(path, f.readline().strip(' \\/\n'))
+                    # The filename follows on the next line as   'name.GRDECL' /
+                    # -- strip an optional trailing comment, the terminating slash
+                    # and the surrounding quotes, any of which may be absent.
+                    inc_line = f.readline().split('--')[0].strip()
+                    inc_line = inc_line.rstrip('/').strip().strip("'\"")
+                    include = osp.join(path, inc_line)
                     a = load_single_keyword(include, keyword, def_len)
                     if a.size > 0:
                         return a
