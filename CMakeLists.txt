@@ -36,10 +36,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)  # useful for code tools like clangd or ID
 # Turn off valgrind support by default
 option(ENABLE_VALGRIND "Enable Valgrind instrumentation (Debug build with symbols)" OFF)
 
+# Turn off ThreadSanitizer support by default
+option(ENABLE_TSAN "Enable ThreadSanitizer instrumentation (-fsanitize=thread)" OFF)
+
 # Set build type
 if(NOT CMAKE_BUILD_TYPE)
     if(ENABLE_VALGRIND)
         set(CMAKE_BUILD_TYPE Debug CACHE STRING "Default build type" FORCE)
+    elseif(ENABLE_TSAN)
+        # RelWithDebInfo, not Debug: TSan already runs the program 5-15x slower
+        # than native; -O0 on top of that makes even small models impractically
+        # slow, and -g here already gives usable stack traces.
+        set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Default build type" FORCE)
     else()
         set(CMAKE_BUILD_TYPE Release CACHE STRING "Default build type" FORCE)
     endif()
@@ -53,6 +61,36 @@ if(ENABLE_VALGRIND)
     # -march=x86-64-v2 targets SSE4.2 level (compatible with Valgrind)
     set(CMAKE_CXX_FLAGS_DEBUG          "${CMAKE_CXX_FLAGS_DEBUG} -g -O2 -march=x86-64-v2 -mno-avx512f")
     set(CMAKE_C_FLAGS_DEBUG            "${CMAKE_C_FLAGS_DEBUG}   -g -O2 -march=x86-64-v2 -mno-avx512f")
+endif()
+
+if(ENABLE_TSAN)
+    message(STATUS ">>> ThreadSanitizer build: adding -fsanitize=thread")
+    # -fno-omit-frame-pointer: TSan's stack unwinder needs real frame pointers
+    # for readable race reports. Applied to CMAKE_*_FLAGS (not a _DEBUG/
+    # _RELWITHDEBINFO variant) so it takes effect regardless of build type.
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread -fno-omit-frame-pointer")
+    set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -fsanitize=thread -fno-omit-frame-pointer")
+    set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=thread")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fsanitize=thread")
+    # Compile-time ignorelist for code proven (via a from-scratch minimal
+    # reproduction: a bare #pragma omp parallel region writing into a
+    # per-thread stack slot, read back on the main thread right after the
+    # region closes, flags under both GCC's libgomp and a standard LLVM
+    # libomp with no application code involved at all) to only ever trigger a
+    # known ThreadSanitizer+OpenMP false positive, never a real race. Skips
+    # instrumentation entirely for these functions rather than just hiding the
+    # report, so it costs nothing at runtime either.
+    # Clang-only: GCC has no file/function-pattern sanitizer ignorelist flag.
+    # The CI build uses GCC, so this list is enforced there via the runtime
+    # suppressions file (helper_scripts/tsan.supp) instead -- see that file
+    # for the matching entries.
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(TSAN_IGNORELIST "${CMAKE_SOURCE_DIR}/helper_scripts/tsan-ignorelist.list")
+        if(EXISTS "${TSAN_IGNORELIST}")
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize-ignorelist=${TSAN_IGNORELIST}")
+            set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -fsanitize-ignorelist=${TSAN_IGNORELIST}")
+        endif()
+    endif()
 endif()
 
 # Load cmake modules -----------------------------------------------------------
