@@ -26,9 +26,9 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix, --show-fixes]
-        files: ^(darts|tests|helper_scripts|\.cicd|\.agents)/.*\.py$
+        files: ^(darts|tests|helper_scripts|\.cicd|\.agents|workflows)/.*\.py$
       - id: ruff-format
-        files: ^(darts|tests|helper_scripts|\.cicd|\.agents)/.*\.py$
+        files: ^(darts|tests|helper_scripts|\.cicd|\.agents|workflows)/.*\.py$
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
