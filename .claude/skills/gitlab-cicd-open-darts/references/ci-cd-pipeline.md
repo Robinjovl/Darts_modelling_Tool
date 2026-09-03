@@ -182,6 +182,7 @@ cd docs && sphinx-build -b html . public
 
 | Variable | Purpose |
 |---|---|
+| `RUN_BOS_JOBS` | Run the proprietary BOS-solvers CI twins (`build`/`test-linux-BOS`, `build`/`test-windows-BOS`). Default `"1"` (declared in `.gitlab-ci.yml`); set to anything else to skip all four. Override per-pipeline from a schedule or manual run. |
 | `TEST_ALL_PYTHONS` | Build/test all Python versions |
 | `TEST_CUSTOM_BRANCH` | Enable build/test for non-protected branches |
 | `TEST_GPU` | Enable GPU tests |

@@ -80,6 +80,12 @@ void copy_data_to_device(std::vector<T> &host_data, T *device_data)
 };
 
 template <typename T>
+void copy_data_to_device(const T *host_data, T *device_data, int data_size)
+{
+  CUDA_CHECK_RETURN(cudaMemcpy(device_data, host_data, sizeof(T) * data_size, cudaMemcpyHostToDevice));
+};
+
+template <typename T>
 void copy_data_to_host(std::vector<T> &host_data, T *device_data, int data_size = 0)
 {
   if (data_size)

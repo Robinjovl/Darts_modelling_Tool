@@ -4,15 +4,16 @@
 #include <string.h>
 #include <string>
 
-#include "openDARTS/config/version.hpp"
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/data_types.hpp"
+#include "version.hpp"
+#include "csr_matrix.hpp"
+#include "linear_solvers_data_types.hpp"
 
 #include "test_common.hpp"
 
 template <uint8_t N_BLOCK_SIZE> int test_block_size(std::string &output_filename, std::string &reference_filename);
 template <uint8_t N_BLOCK_SIZE> int test_pointer(std::string &output_filename, std::string &reference_filename);
 template <uint8_t N_BLOCK_SIZE> int test_to_nb_1(std::string &output_filename, std::string &reference_filename);
+template <uint8_t N_BLOCK_SIZE> int test_to_nb_1_base(std::string &output_filename, std::string &reference_filename);
 
 int main()
 {
@@ -25,7 +26,7 @@ int main()
   */
 
   int error_output = 0;
-  
+
   // Show information on the build
   std::cout << "Build date (var) : " << std::string(opendarts::config::LINSOLV_BUILD_DATE) << std::endl;
   std::cout << "Build date (func): " << opendarts::config::get_build_date() << std::endl;
@@ -47,6 +48,7 @@ int main()
   error_output = test_block_size<1>(output_filename, reference_filename);
   error_output += test_pointer<1>(output_filename, reference_filename);
   error_output += test_to_nb_1<1>(output_filename, reference_filename);
+  error_output += test_to_nb_1_base<1>(output_filename, reference_filename);
 
   // Test block size 4
   // The output file to save the matrix to
@@ -60,6 +62,7 @@ int main()
   error_output += test_block_size<4>(output_filename, reference_filename);
   error_output += test_pointer<4>(output_filename, reference_filename);
   error_output += test_to_nb_1<4>(output_filename, reference_filename);
+  error_output += test_to_nb_1_base<4>(output_filename, reference_filename);
 
   return error_output;
 }
@@ -160,9 +163,9 @@ template <uint8_t N_BLOCK_SIZE> int test_to_nb_1(std::string &output_filename, s
 
   // Generate the matrix with non 1 block size
   opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A = new opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE>;
-  opendarts::linear_solvers::testing::generate_tridiagonal_matrix(*A, n); // populate the matrix, in this 
-                                                                          // case a tridiagonal matrix with 
-                                                                          // the values -2, 1, 2 in the 
+  opendarts::linear_solvers::testing::generate_tridiagonal_matrix(*A, n); // populate the matrix, in this
+                                                                          // case a tridiagonal matrix with
+                                                                          // the values -2, 1, 2 in the
                                                                           // -2, 0, and 2 diagonals
 
   // Convert the matrix to block size 1 and store it in a pointer
@@ -170,7 +173,7 @@ template <uint8_t N_BLOCK_SIZE> int test_to_nb_1(std::string &output_filename, s
   //       is needed, i.e., A.n_block_size > 1, otherwise the pointer will point
   //       to A.
   opendarts::linear_solvers::csr_matrix<1> A_as_nb_1;
-  
+
   A_as_nb_1.to_nb_1(A);
 
   // Save the matrix in human readable format
@@ -191,6 +194,35 @@ template <uint8_t N_BLOCK_SIZE> int test_to_nb_1(std::string &output_filename, s
   {
     error_output = 1;
   }
+
+  delete A;
+
+  return error_output;
+}
+
+
+// Tests the polymorphic to_nb_1(csr_matrix_base*) overload: it must produce
+// the same scalar-CSR expansion as the templated to_nb_1(csr_matrix<M>*) when
+// driven through the csr_matrix_base accessor interface.
+template <uint8_t N_BLOCK_SIZE> int test_to_nb_1_base(std::string &output_filename, std::string &reference_filename)
+{
+  int error_output = 0;
+  opendarts::config::index_t n = 12;
+
+  opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> *A = new opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE>;
+  opendarts::linear_solvers::testing::generate_tridiagonal_matrix(*A, n);
+
+  // Drive the expansion through a csr_matrix_base* (as the engine adjoint code
+  // does for a block_csr_matrix Jacobian).
+  opendarts::linear_solvers::csr_matrix_base *A_base = A;
+  opendarts::linear_solvers::csr_matrix<1> A_as_nb_1;
+  A_as_nb_1.to_nb_1(A_base);
+
+  error_output = A_as_nb_1.export_matrix_to_file(output_filename,
+      opendarts::linear_solvers::sparse_matrix_export_format::human_readable);
+
+  bool files_are_equal = opendarts::linear_solvers::testing::compare_files(output_filename, reference_filename);
+  error_output = files_are_equal ? 0 : 1;
 
   delete A;
 

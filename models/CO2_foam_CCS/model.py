@@ -25,12 +25,18 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
-                                           chop=ChopSpec(mode='local', factor=0.25))
-        self.set_sim_params(first_ts=1e-4, mult_ts=1.5, max_ts=1, runtime=10, tol_linear=1e-4,
-                            it_linear=50)
+        # Solver/time-stepping config moved to set_solver() (called at top of reset()).
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=1e-4, mult_ts=1.5, max_ts=1, runtime=10  )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
+            chop=ChopSpec(mode='local', factor=0.25))
+        self.linear_solver.spec.tolerance = 1e-4
+        self.linear_solver.spec.max_iterations = 50
+        self.nonlinear_solver.spec.chop.factor = 0.25
 
     def set_reservoir(self):
         const_perm = 100

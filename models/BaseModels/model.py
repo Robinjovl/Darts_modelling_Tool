@@ -50,10 +50,16 @@ class Model(DartsModel):
             self.inj_temp = 300
             self.inj_comp = []
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-2)
-        self.set_sim_params(first_ts=1e-3, mult_ts=4, max_ts=dt_max)
+        self.dt_max = dt_max
+        # Time-stepping / linear-solver config lives in set_solver() (called from the
+        # base reset() before engine.init), per the unified set_solver pattern.
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=1e-3, mult_ts=4, max_ts=self.dt_max )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2)
 
     def set_reservoir(self):
         (nx, ny, nz) = (60, 60, 3)

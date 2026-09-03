@@ -88,7 +88,7 @@ Inspect changed files under:
 - `darts/`
 - `engines/`
 - `discretizer/`
-- `solvers/`
+- `linear_solvers/`
 - `models/`
 
 Look for:

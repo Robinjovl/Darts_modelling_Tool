@@ -14,21 +14,22 @@ Help_Info()
   echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13] [-p] [-v]"
   echo "   Script to install opendarts on unix (linux and macOS)."
   echo "USAGE: "
-  echo "   -h : displays this help menu."
-  echo "   -c : cleans up build to prepare a new fresh build. Default: don't clean"
-  echo "   -t : Enable testing: ctest of solvers and install open-darts[test]. Default: don't test"
-  echo "   -w : Enable generation of python wheel. Default: false"
-  echo "   -m : Enable Multi-thread MT (with OMP) build. Warning: Solvers is not MT. Default: true"
-  echo "   -G : Enable GPU build. Warning: Requires GPU bos solvers. Default: false"
-  echo "   -r : Skip building thirdparty libraries (if you have them already compiled). Default: false"
-  echo "   -a : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
-  echo "   -b SPATH  : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
-  echo "   -d MODE   : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo"
-  echo "   -j N      : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
-  echo "   -g g++VER : Specify a compiler (g++) version. Example: -g g++-13"
-  echo "   -p        : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
-  echo "   -v        : Enable build with valgrind support (OFF by default)"
+  echo "   -h               : displays this help menu."
+  echo "   -c               : clean rebuild of everything, including thirdparty (HYPRE/SuperLU). Default: reuse existing thirdparty build if present"
+  echo "   -t               : Enable testing: ctest of solvers and install open-darts[test]. Default: don't test"
+  echo "   -w               : Enable generation of python wheel. Default: false"
+  echo "   -m               : Enable Multi-thread MT (OpenMP) build. Engines, interpolators and the in-tree GMRES kernels run in parallel; HYPRE preconditioners (CPR/MGR) are sequential. Default: true"
+  echo "   -G               : Enable GPU build. Uses the in-tree open-source solvers unless -b is given. Default: false"
+  echo "   -r               : Skip building thirdparty libraries (if you have them already compiled). Default: false"
+  echo "   -a               : Update private artifacts bos_solvers (instead of openDARTS solvers). This is meant to be used by CI/CD. Default: false"
+  echo "   -b SPATH         : Path to bos_solvers (instead of openDARTS solvers), example: -b ./darts-linear-solvers containing lib/libdarts_linear_solvers.a (already compiled)."
+  echo "   -d MODE          : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo"
+  echo "   -j N             : Set number of threads (N) for compilation. Default: 8. Example: -j 4"
+  echo "   -g g++VER        : Specify a compiler (g++) version. Example: -g g++-13"
+  echo "   -p               : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
+  echo "   -v               : Enable build with valgrind support (OFF by default)"
   echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
+  echo "   HYPRE_OPENMP env : Build HYPRE with OpenMP (parallel BoomerAMG/ILU in CPR/MGR). Default: true; set HYPRE_OPENMP=0 to build HYPRE sequentially. Slightly changes solver numerics. Requires -c to (re)build HYPRE."
 }
 
 ensure_reaktoro_conda()
@@ -96,6 +97,7 @@ gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
 valgrind=false    # Whether support valgrind profiling or not
 CUDA_ARCH="${CUDA_ARCH:-}"
+HYPRE_OPENMP="${HYPRE_OPENMP:-true}" # Build HYPRE with its own OpenMP threading (on by default; HYPRE_OPENMP=0 opts out)
 
 while getopts ":chtwmrab:d:j:g:Gpv" option; do
     case "$option" in
@@ -135,6 +137,16 @@ while getopts ":chtwmrab:d:j:g:Gpv" option; do
     esac
 done
 
+# Thirdparty (HYPRE, SuperLU, IPhreeqc) builds run their own `cmake` invocation
+# and don't inherit CMAKE_CXX_COMPILER from the main project's cmake_options below
+# In macOS: without this they'd silently fall back to the system Apple Clang
+# even when -g gcc/g++ was requested for the main build.
+thirdparty_compiler_flags=""
+if [[ "$special_gpp" == true ]]; then
+    gcc_version="${gpp_version/g++/gcc}"
+    thirdparty_compiler_flags="-D CMAKE_C_COMPILER=${gcc_version} -D CMAKE_CXX_COMPILER=${gpp_version}"
+fi
+
 if [[ "$config" != "Release" && "$config" != "Debug" && "$config" != "RelWithDebInfo" ]]; then
     echo "Error: Invalid build configuration \"$config\". Valid options: Release, Debug, RelWithDebInfo."
     exit 1
@@ -146,13 +158,25 @@ if [ "$iter_solvers" == true ] && [ "$testing" == true ]; then
     testing=false
 fi
 
+# If valgrind requested, force Debug early (affects thirdparty builds)
+if [[ "$valgrind" = true ]]; then
+    config="Debug"
+fi
+
 if [ "$iter_solvers" == false ]; then
   if [ "$GPU" == true ]; then
-    echo GPU build requires GPU bos solvers. Specify the path with -b.
-    exit 1
+    # GPU builds default to the in-tree open-source solvers (darts.linear_solvers,
+    # including the GPU solver wrappers). Pass -b <path> to build against the
+    # proprietary bos_solvers instead.
+    echo -e '\n openDARTS GPU build using the in-tree open-source solvers (no bos_solvers).'
   elif [ "$MT" == true ]; then
-   echo -e '\n Warning: Open-DARTS linear solvers do not support multi-threading. Switched to the sequentional build.'
-   MT=false
+    # The in-tree open-source build now supports OpenMP: the engines assemble the
+    # block_csr_matrix Jacobian in parallel over a real multi-threaded row
+    # partition, the interpolators evaluate in parallel, and the in-tree GMRES
+    # Krylov kernels (SpMV, dot, axpy) run in parallel. The HYPRE-based
+    # preconditioner stages (CPR/MGR BoomerAMG/ILU) are threaded too, unless the
+    # build opted out with HYPRE_OPENMP=0.
+    echo -e '\n openDARTS multi-threaded (OpenMP) build using the in-tree open-source solvers (no bos_solvers).'
   fi
 fi
 #
@@ -166,14 +190,34 @@ if [[ "$(basename $PWD)" == "helper_scripts" ]]; then
 fi
 # ------------------------------------------------------------------------------
 
+rm -rf dist
+# Remove previously built Python extension modules and shared libraries.
+# Build artifacts live both directly under darts/ (engines, discretizer, ...)
+# and in subpackages such as darts/linear_solvers/ (the compiled linear_solvers module and
+# libopendarts_linear_solvers). A flat darts/*.so glob misses the latter, leaving a
+# stale solvers library that shadows the fresh build, so clean recursively.
+# Note: the unversioned *.so glob intentionally excludes the bundled
+# libstdc++.so.6 (a copied runtime dependency, re-installed by CMake).
+find darts -type f \( -name '*.so' -o -name '*.pyd' -o -name '*.dylib' \) -delete 2>/dev/null || true
 if [[ "$clean_mode" == true ]]; then
-    # Cleaning build to prepare a fresh build
+    # Cleaning build to prepare a fresh build: darts build/ plus the thirdparty
+    # HYPRE build tree and install prefix, so -c forces a complete rebuild from
+    # scratch (including thirdparty).
     echo -e '\n   Cleaning build folder'
     rm -rf build
-    rm -rf dist
-    rm -rf darts/*.so
-else
-    rm -rf dist
+    rm -rf thirdparty/hypre/src/cmbuild thirdparty/build thirdparty/install
+fi
+
+# Reuse an existing thirdparty build when one is present: if HYPRE is already
+# installed and this is not a clean (-c) rebuild, skip rebuilding the
+# requirements. -a (CI bos artifact) and -p (IPhreeqc) still run the full
+# requirements step. Use -c to force a fresh thirdparty rebuild.
+if [[ "$skip_req" == false && "$clean_mode" == false \
+      && "$bos_solvers_artifact" == false && "${phreeqc:-false}" != true ]]; then
+    if compgen -G "thirdparty/install/lib*/libHYPRE.*" >/dev/null 2>&1; then
+        echo -e "\n- Reusing existing thirdparty build (HYPRE found); use -c for a fresh rebuild."
+        skip_req=true
+    fi
 fi
 
 
@@ -181,6 +225,7 @@ fi
 if [[ "$skip_req" == false ]]; then
     # update submodules
     echo -e "\n- Update submodules: START \n"
+
     # clean-up previous versions.
     rm -rf thirdparty/pybind11 \
             thirdparty/MshIO \
@@ -191,9 +236,19 @@ if [[ "$skip_req" == false ]]; then
     git submodule update --init --recursive -- \
             thirdparty/pybind11 \
             thirdparty/MshIO \
-            thirdparty/hypre
+            thirdparty/hypre \
+            thirdparty/superlu
+
     if [[ $phreeqc == "true" ]]; then
         git submodule update --init --recursive thirdparty/iphreeqc
+    fi
+
+    # AMGX backs the default GPU solver (GPU_GMRES_CPR_AMGX_ILU) and is ON by
+    # default for GPU builds, so its submodule must be present. Init it here for
+    # GPU builds (CI already checks out submodules recursively; this makes a
+    # non-recursive local clone work too). Disable with WITH_AMGX=OFF / --no-amgx.
+    if [[ "$GPU" == true && "$OD_CMAKE_ARGS" != *"WITH_AMGX=OFF"* ]]; then
+        git submodule update --init --recursive thirdparty/AMGX
     fi
     # update submodules finished
     echo -e "\n- Update submodules: DONE! \n"
@@ -207,32 +262,83 @@ if [[ "$skip_req" == false ]]; then
     mkdir -p hypre/src/cmbuild
     cd hypre/src/cmbuild
     # Setup hypre build with no MPI support (we only use single processor)
+    # MGR support is enabled by default in HYPRE (no special flag needed)
+    # The MGR (Multiplicative Grid Reduction) solver is always built in HYPRE
     # Tests/examples are never run, only the library is used, so don't build them
     # (on Windows they also raced on CMake's generate.stamp under parallel MSBuild)
     # For debugging: -DHYPRE_ENABLE_PRINT
+    # NOTE: this branch pins a newer HYPRE (thirdparty/hypre 341f9089) whose CMake
+    # option is HYPRE_ENABLE_MPI (the pre-merge development tree used the older
+    # HYPRE_WITH_MPI spelling for its older pin).
+    # Build HYPRE with its own OpenMP threading (parallel BoomerAMG / HYPRE_ILU
+    # smoothers + SpMV). ON by default. Note it changes
+    # solver numerics -- HYPRE's hybrid smoothers go processor-local, so results
+    # are not identical to a sequential HYPRE and iteration counts may shift.
+    # Set HYPRE_OPENMP=0 to build HYPRE sequentially.
+    hypre_omp_flag="-D HYPRE_ENABLE_OPENMP=ON"
+    if [[ "$HYPRE_OPENMP" == "false" || "$HYPRE_OPENMP" == "0" || "$HYPRE_OPENMP" == "OFF" ]]; then
+        echo "-- HYPRE OpenMP disabled (HYPRE_OPENMP=$HYPRE_OPENMP)"
+        hypre_omp_flag=""
+    else
+        echo "-- HYPRE OpenMP enabled (HYPRE_ENABLE_OPENMP=ON)"
+    fi
     cmake -D HYPRE_BUILD_TESTS=OFF \
           -D HYPRE_BUILD_EXAMPLES=OFF \
           -D HYPRE_ENABLE_MPI=OFF \
+          ${hypre_omp_flag} \
+          ${thirdparty_compiler_flags} \
+          -D CMAKE_BUILD_TYPE=${config} \
+          -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
           -D CMAKE_INSTALL_PREFIX=../../../install \
           .. &> ../../../../make_hypre.log
-    make install -j $NT &>> ../../../../make_hypre.log
+    make install -j $NT >> ../../../../make_hypre.log 2>&1
     cd ../../../
     echo -e "\n--- Building Hypre: DONE!\n"
 
-    echo -e "\n-- Install SuperLU \n"
-    cd SuperLU_5.2.1
-
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        cp conf_gcc-11_macOS_m1.mk conf.mk
-        cp make_gcc-11_macOS_m1.inc make.inc
-    else
-        cp conf_gcc_linux.mk conf.mk
-        cp make_gcc_linux.inc make.inc
-    fi
-
-    make -j $NT &> ../../make_superlu.log
-    make install -j $NT &>> ../../make_superlu.log
-    cd ../../
+    echo -e "\n-- Install SuperLU: START\n"
+    # Build upstream SuperLU (pinned git submodule thirdparty/superlu) with its
+    # own CMake and install into thirdparty/install -- the same prefix and
+    # pattern as HYPRE above. Notes on the options:
+    #   * double precision only (enable_single/complex/complex16 OFF) -- matches
+    #     the previous vendored `make double` behaviour; the wrapper only calls
+    #     the d* routines.
+    #   * enable_internal_blaslib=ON builds SuperLU's bundled reference CBLAS, so
+    #     no system BLAS is required and the build stays self-contained/hermetic
+    #     (functionally identical to the old vendored libblas.a). enable_blaslib=ON
+    #     is the companion flag: SuperLU v7.0.1's superluConfig.cmake.in templates
+    #     @enable_blaslib@ but the build only defines enable_internal_blaslib, so
+    #     without this the installed CONFIG package wrongly takes the
+    #     find_dependency(BLAS) branch and find_package(superlu) fails on the
+    #     missing internal `blas` target.
+    #   * enable_fortran/tests/examples OFF -- SuperLU is pure C; we need none of
+    #     these (also keeps macOS/Apple Clang happy, no gfortran needed).
+    #   * XSDK_INDEX_SIZE=32 keeps int_t == int. The C++ wrapper allocates int[]
+    #     for perm_r/perm_c and passes opendarts::config::index_t (== int); 64-bit
+    #     indexing would silently break those call sites.
+    #   * PIC ON + static so the archive embeds into the shared opendarts_linear_solvers
+    #     Python extension.
+    rm -rf build/superlu
+    mkdir -p build/superlu
+    cd build/superlu
+    cmake -D enable_single=OFF \
+          -D enable_complex=OFF \
+          -D enable_complex16=OFF \
+          -D enable_double=ON \
+          -D enable_internal_blaslib=ON \
+          -D enable_blaslib=ON \
+          -D enable_fortran=OFF \
+          -D enable_tests=OFF \
+          -D enable_examples=OFF \
+          -D XSDK_INDEX_SIZE=32 \
+          -D BUILD_SHARED_LIBS=OFF \
+          ${thirdparty_compiler_flags} \
+          -D CMAKE_POSITION_INDEPENDENT_CODE=ON \
+          -D CMAKE_BUILD_TYPE=${config} \
+          -D CMAKE_INSTALL_PREFIX=../../install \
+          ../../superlu &> ../../../make_superlu.log
+    make install -j $NT >> ../../../make_superlu.log 2>&1
+    cd ../../../
+    echo -e "\n--- Building SuperLU: DONE!\n"
 
     if [[ "$bos_solvers_artifact" == true ]]; then
         cd engines
@@ -246,13 +352,17 @@ if [[ "$skip_req" == false ]]; then
     if [[ "$phreeqc" == true ]]; then
         echo -e "\n-- Install IPhreeqc: START\n"
         cd thirdparty
+        if [[ "$clean_mode" == true ]]; then
+            rm -rf build/iphreeqc
+        fi
         mkdir -p build/iphreeqc && cd build/iphreeqc
         cmake \
             -D CMAKE_INSTALL_PREFIX=../../install/iphreeqc \
             -D BUILD_TESTING=OFF \
             -D BUILD_SHARED_LIBS=ON \
+            ${thirdparty_compiler_flags} \
             ../../iphreeqc            &> ../../../make_iphreeqc.log
-        make install -j $NT           &>> ../../../make_iphreeqc.log
+        make install -j $NT           >> ../../../make_iphreeqc.log 2>&1
         cd ../../..
         echo -e "\n--- Building IPhreeqc: DONE!\n"
     fi
@@ -274,11 +384,6 @@ echo -e "=======================================================================
 mkdir -p build
 cd build
 
-# If valgrind requested, force Debug
-if [[ "$valgrind" = true ]]; then
-    config="Debug"
-fi
-
 # Setup build with cmake
 cmake_options="-D CMAKE_BUILD_TYPE=${config}"
 
@@ -289,7 +394,9 @@ if [[ "$testing" == true ]]; then
     cmake_options+=" -D ENABLE_TESTING=ON"
 fi
 if [[ "$special_gpp" == true ]]; then
-    cmake_options+=" -D CMAKE_CXX_COMPILER=${gpp_version}"
+    # gcc_version was derived from gpp_version earlier (e.g. g++-14 -> gcc-14),
+    # alongside thirdparty_compiler_flags used for the HYPRE/SuperLU/IPhreeqc builds.
+    cmake_options+=" -D CMAKE_CXX_COMPILER=${gpp_version} -D CMAKE_C_COMPILER=${gcc_version}"
 fi
 
 build=ST
@@ -301,7 +408,9 @@ fi
 cmake_options+=" -D OPENDARTS_CONFIG=$build"
 
 if [[ ! -z "$bos_solvers_dir" ]]; then
-    cmake_options+=" -D BOS_SOLVERS_DIR=${bos_solvers_dir}"
+    # ENABLE_BOS_SOLVERS is the CMake switch (default OFF -> in-tree
+    # open-source solvers); BOS_SOLVERS_DIR carries the library location.
+    cmake_options+=" -D ENABLE_BOS_SOLVERS=ON -D BOS_SOLVERS_DIR=${bos_solvers_dir}"
 fi
 
 # Pass WITH_PHREEQC to CMake to copy shared library
@@ -400,18 +509,12 @@ report_build_summary()
     "open-DARTS:make_darts.log"
   )
 
-  # Count warnings/errors before printing (avoid reading make_darts.log while appending)
-  local -A warn_counts err_counts
-  for entry in "${components[@]}"; do
-    local name="${entry%%:*}"
-    local logfile="${entry##*:}"
-    if [[ -f "$logfile" ]]; then
-      warn_counts[$name]=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
-      err_counts[$name]=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
-    fi
-  done
+  # Count warnings/errors and print the summary table in a single pass over
+  # components (avoid reading make_darts.log while appending). Bash 3.2 (the
+  # default /bin/bash on macOS) has no associative arrays, so counts are kept
+  # in plain scalars per iteration rather than a name-indexed map.
+  local darts_warnings=0
 
-  # Print to stdout and append to make_darts.log
   {
     echo ""
     echo "========================================="
@@ -422,18 +525,37 @@ report_build_summary()
 
     for entry in "${components[@]}"; do
       local name="${entry%%:*}"
-      if [[ -n "${warn_counts[$name]+x}" ]]; then
-        printf " %-14s | %8d | %6d\n" "$name" "${warn_counts[$name]}" "${err_counts[$name]}"
+      local logfile="${entry##*:}"
+      if [[ -f "$logfile" ]]; then
+        local warn_count err_count
+        if [[ "$name" == "open-DARTS" ]]; then
+          # make_darts.log also captures the thirdparty AMGX subdirectory build
+          # (add_subdirectory in the main CMake). AMGX's own deprecation warnings
+          # are NOT open-DARTS warnings and must not gate CI. Exclude them by two
+          # reliable markers: a 'thirdparty/' path (AMGX headers) and the amgx::
+          # namespace (AMGX compiles thrust/cub under THRUST_CUB_WRAPPED_NAMESPACE
+          # =amgx, so its template-instantiation warnings -- reported against nvcc
+          # intermediate stub files outside the source tree -- carry 'amgx::';
+          # open-DARTS uses plain thrust::, never amgx::).
+          local _amgx_re='thirdparty/|amgx::'
+          warn_count=$(grep -E "$warn_pattern" "$logfile" 2>/dev/null | grep -Ecv "$_amgx_re" || true)
+          err_count=$(grep -E "$err_pattern" "$logfile" 2>/dev/null | grep -Ecv "$_amgx_re" || true)
+          darts_warnings=$warn_count
+        else
+          warn_count=$(grep -cE "$warn_pattern" "$logfile" 2>/dev/null || true)
+          err_count=$(grep -cE "$err_pattern" "$logfile" 2>/dev/null || true)
+        fi
+        printf " %-14s | %8d | %6d\n" "$name" "$warn_count" "$err_count"
       fi
     done
 
     echo "========================================="
 
-    local darts_warnings=${warn_counts[open-DARTS]:-0}
     if [[ $darts_warnings -gt 0 ]]; then
       echo ""
       echo " open-DARTS unique warnings:"
-      grep -E "$warn_pattern" make_darts.log 2>/dev/null | sort -u | head -100
+      # Same AMGX exclusion as the count above (thirdparty/ paths + amgx:: stubs).
+      grep -E "$warn_pattern" make_darts.log 2>/dev/null | grep -Ev "thirdparty/|amgx::" | sort -u | head -100
     fi
 
     echo ""

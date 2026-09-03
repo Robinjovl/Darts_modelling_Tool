@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "openDARTS/config/data_types.hpp"
-#include "openDARTS/config/version.hpp"
-#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
+#include "data_types.hpp"
+#include "version.hpp"
+#include "linsolv_superlu.hpp"
 #include "test_common.hpp"
 
 // Tests the opendarts::linear_solvers::linsolv_superlu solver

@@ -13,23 +13,45 @@ from darts.engines import (
     value_vector,
 )
 from darts.engines import print_build_info as engines_pbi
-from darts.input.input_data import linear_solver_types
 from darts.interpolators import op_vector
+from darts.models.legacy_config import LegacyConfigShims
 from darts.models.output import Output
+from darts.models.solver_binding import LinearSolverBinding
 from darts.nonlinear_solvers import ChopSpec, NewtonSolver, Norm, OBLBoundsSpec
 from darts.pipes.add_lateral_heat_exchange import SemiAnalyticalWellLateralHeatTransfer
 from darts.print_build_info import print_build_info as package_pbi
 
+# set_solver() (the user-facing override hook kept on this module, below) constructs
+# the platform-default linear solver explicitly. The open-source spec classes are
+# absent in proprietary (-a / -b) builds, so the import is guarded exactly like the
+# full block in darts.models.solver_binding (which owns the registry plumbing).
+try:
+    from darts.linear_solvers import LinearSolver
+    from darts.linear_solvers.specs import (
+        AMGXCPRSolverSpec,
+        CPRSolverSpec,
+        GMRESSolverSpec,
+    )
+except ImportError:  # proprietary build without the open-source solvers
+    LinearSolver = None
+
 
 class DataTS:
-    """Timestep-control (and, transitionally, linear-solver) parameters.
+    """Timestep-control parameters.
 
     Holds ONLY the timestep controls (``dt_first``/``dt_min``/``dt_mult``/
-    ``dt_max``/``eta``) and the linear-solver settings (``linear_*``, plain
-    attributes until the linear-solver spec branch (MR280) is merged). The
-    nonlinear-solver settings are NOT mirrored here — they live at the single
-    source of truth ``DartsModel.nonlinear_solver.spec`` (a
-    :class:`darts.nonlinear_solvers.NonlinearSolverSpec`).
+    ``dt_max``/``eta``) plus the total ``runtime``. Neither solver's settings
+    are mirrored here — each lives at its own single source of truth:
+    ``DartsModel.nonlinear_solver.spec`` (a
+    :class:`darts.nonlinear_solvers.NonlinearSolverSpec`, !327) and
+    ``DartsModel.linear_solver.spec`` (a
+    :class:`darts.linear_solvers.LinearSolverSpec`, !280 — the transitional
+    ``linear_*`` attributes this structure carried are now removed).
+
+    This is the timestepping analogue of the validated, serializable nonlinear
+    and linear solver specs: :meth:`validate` and :meth:`to_dict` mirror
+    ``NonlinearSolverSpec``'s, so the effective timestepping configuration is
+    serializable and inspectable (see :meth:`DartsModel.print_config`).
     """
 
     _FIELDS = (
@@ -38,36 +60,64 @@ class DataTS:
         "dt_min",
         "dt_mult",
         "dt_max",
-        "linear_tol",
-        "linear_max_iter",
-        "linear_type",
-        "linear_print_level",
+        "runtime",
     )
 
-    def __init__(self, n_vars):
+    def __init__(self, n_vars=0):
         # timestep control (owned by this structure)
         self.eta = (
             1e20 * np.ones(n_vars)
         )  # controls the timestep by the variable change from the previous newton iteration
         # dX = Xn - X. Eta has a size of number of DOFs per cell. Set to a large value by default, so doesn't affect the timestep choice
         self.dt_first = 1.0  # initial timestep [days]
-        self.dt_min = 1e-12  # minimal allowed timestep [days]
+        # minimal allowed timestep [days] = the divergence-abort floor. NOTE: a
+        # known discrepancy remains -- set_sim_params(min_ts=) defaults to 1e-15,
+        # so a model configured through set_sim_params (without an explicit min_ts)
+        # floors lower than one that constructs DataTS directly. This value is left
+        # at 1e-12 deliberately (behaviour-preserving); the *effective* value is now
+        # surfaced by DartsModel.print_config(). Unifying the two paths is a follow-up
+        # that requires re-baselining the models that ride the abort floor.
+        self.dt_min = 1e-12
         self.dt_mult = 2.0  # timestep multiplier, affects the next timestep choice
         self.dt_max = 10.0  # maximal allowed timestep [days]
+        self.runtime = (
+            1000.0  # total runtime [days]; read by run() when days is not given
+        )
 
-        # linear solver settings (plain attributes until MR280 merge)
-        self.linear_tol = 1e-5
-        self.linear_max_iter = 50  # maximum linear iterations allowed
-        self.linear_type = None  # linear solver and preconditioner type
-        self.linear_print_level = None  # linear solver messages printing level (used only for PETSC option), 0 - no messages, 10 - all messages
+    def validate(self):
+        """Raise ``ValueError`` on an obviously-invalid timestepping configuration
+        (mirror of ``NonlinearSolverSpec.validate()``); called at ``init()``."""
+        if self.dt_first <= 0:
+            raise ValueError(f"data_ts.dt_first must be > 0, got {self.dt_first}")
+        if self.dt_min <= 0:
+            raise ValueError(f"data_ts.dt_min must be > 0, got {self.dt_min}")
+        if self.dt_max < self.dt_min:
+            raise ValueError(
+                f"data_ts.dt_max ({self.dt_max}) must be >= dt_min ({self.dt_min})"
+            )
+        if self.dt_mult < 1.0:
+            raise ValueError(f"data_ts.dt_mult must be >= 1, got {self.dt_mult}")
+        if self.runtime <= 0:
+            raise ValueError(f"data_ts.runtime must be > 0, got {self.runtime}")
+
+    def to_dict(self):
+        """Serializable snapshot (mirror of ``NonlinearSolverSpec.to_dict()``)."""
+        return {
+            "eta": np.asarray(self.eta).tolist(),
+            "dt_first": self.dt_first,
+            "dt_min": self.dt_min,
+            "dt_mult": self.dt_mult,
+            "dt_max": self.dt_max,
+            "runtime": self.runtime,
+        }
 
     def print(self):
-        print("Simulation parameters:")
+        print("Timestepping parameters:")
         for k in self._FIELDS:
             print("\t", k, "=", getattr(self, k))
 
 
-class DartsModel:
+class DartsModel(LinearSolverBinding, LegacyConfigShims):
     """
     This is a base class for creating a model in DARTS.
     A model is composed of a :class:`Reservoir` object and a :class:`Physics` object.
@@ -82,6 +132,15 @@ class DartsModel:
     :ivar params: Object to set simulation parameters
     :type params: :class:`darts.engines.sim_params`
     """
+
+    #: True when the model configures its LINEAR solver through the engine
+    #: factory (``params.linear_type`` / ``engine.ls_params``) instead of a
+    #: :class:`~darts.linear_solvers.LinearSolverSpec` -- the mechanics / THMC
+    #: path. :meth:`_apply_solver` then leaves the engine in charge *unless* the
+    #: model explicitly chose a spec. (Before !327 this was discriminated by
+    #: ``data_ts is None``; ``data_ts`` is now a lazy property that always
+    #: materializes, so the intent is stated explicitly here.)
+    linear_solver_from_engine_factory = False
 
     # Verbosity levels accepted by :meth:`run` (and other ``verbose`` switches).
     # ``verbose`` is an integer; legacy ``bool`` values map to 0/1 transparently
@@ -161,6 +220,27 @@ class DartsModel:
 
         # Create sim_params object to set simulation parameters
         self.params = sim_params()
+
+        # The single source of truth for the linear solver: a LinearSolverSpec
+        # (e.g. MGRSolverSpec / GMRESSolverSpec(prec=CPRSolverSpec()) / SuperLUSolverSpec
+        # / AdaptiveSolverSpec) set by set_solver(), which spells out the default explicitly.
+        # It owns ALL linear-solver settings -- solver + preconditioner choice,
+        # tolerance, max_iterations, print_level -- which _apply_solver() builds,
+        # injects and mirrors into sim_params before engine.init().
+        # The attribute is a normalizing property: it always HOLDS a runtime
+        # darts.linear_solvers.LinearSolver instance (mirror of
+        # DartsModel.nonlinear_solver holding a NewtonSolver, !327), while a model
+        # may ASSIGN the ergonomic forms -- a LinearSolverSpec (auto-wrapped), a
+        # LinearSolver instance, or a raw compiled handle (fine-control path).
+        self.linear_solver = None
+        # The spec object set_solver() materialised as the platform default (identity
+        # compared against self.linear_solver by _solver_is_default(), so that a model which
+        # calls super().set_solver() and then replaces self.linear_solver still counts as
+        # having *chosen* its solver).
+        self._default_solver_obj = None
+        self.solver_label = (
+            None  # optional short name for self.linear_solver (model-side, log)
+        )
 
         # Nonlinear solver instance (a NewtonSolver; see darts.nonlinear_solvers)
         # built from its declarative spec. Assigned lazily by set_solver() and
@@ -345,10 +425,11 @@ class DartsModel:
             init_timer.node["engine init"].stop()
             self.initialize_history_fields()
         self.data_ts.print()
-        if (
+        _solver_is_superlu = (
             self.params.linear_type == sim_params.linear_solver_t.cpu_superlu
-            and self.reservoir.mesh.n_res_blocks > 30000
-        ):
+            or type(self._resolve_solver_spec()).__name__ == "SuperLUSolverSpec"
+        )
+        if _solver_is_superlu and self.reservoir.mesh.n_res_blocks > 30000:
             warnings.warn(
                 "The number of cells looks too big to use a direct linear solver: "
                 + str(self.reservoir.mesh.n_res_blocks)
@@ -360,8 +441,23 @@ class DartsModel:
 
     def reset(self):
         """
-        Function to initialize the engine by calling 'engine.init()' method.
+        Configure the solver/time-stepping via set_solver(), then initialize the engine.
+
+        set_solver() runs first -- the reservoir/mesh and the engine object already
+        exist (so block sizes and n_res_blocks are final), but engine.init() has not
+        run yet. So any timestepping/Newton/linear params it sets feed engine.init().
+
+        The linear solver (``self.linear_solver``, a runtime
+        :class:`darts.linear_solvers.LinearSolver` instance whose declarative spec is
+        ``linear_solver.spec``; the default is constructed in :meth:`set_solver`) is then bound,
+        built and injected by :meth:`_apply_solver` before ``engine.init``, so the
+        engine adopts its ``handle`` and bypasses its own factory -- the mirror of
+        ``nonlinear_solver.bind(self)`` in the !327 design. In proprietary / GPU builds
+        no backend is built and the engine factory selects the solver from
+        ``params.linear_type``.
         """
+        self.set_solver()
+        self._apply_solver()
         self.physics.engine.init(
             self.reservoir.mesh,
             ms_well_vector(self.reservoir.wells),
@@ -370,6 +466,165 @@ class DartsModel:
             self.params,
             self.timer.node["simulation"],
         )
+
+    def set_solver(self):
+        """Configure the model's solvers and time-stepping (override hook).
+
+        This is the single per-model place to declare all time-stepping,
+        nonlinear-solver and linear-solver settings. It is called at the start of
+        :meth:`reset` (after the reservoir/mesh and engine object exist, before
+        ``engine.init``), so it may freely:
+
+        * call ``self.set_sim_params(...)`` (time-stepping only);
+        * set ``self.nonlinear_solver = <NonlinearSolver>`` (a
+          :class:`~darts.nonlinear_solvers.NewtonSolver`, which accepts a
+          ``NewtonSpec`` positionally or its keyword arguments);
+        * set ``self.linear_solver = <LinearSolverSpec>`` -- the **build-safe** way to
+          pick a solver (``SuperLUSolverSpec``, ``GMRESSolverSpec(prec=CPRSolverSpec())``,
+          ``MGRSolverSpec``, ``AdaptiveSolverSpec([...])``, ...). The assignment is
+          normalizing: the attribute stores a runtime
+          :class:`darts.linear_solvers.LinearSolver` instance wrapping the spec
+          (``linear_solver.spec``), mirroring ``nonlinear_solver`` holding a
+          ``NewtonSolver``. A ``LinearSolver`` instance is accepted directly too. In
+          proprietary / GPU builds no backend is built and the engine factory uses
+          ``params.linear_type``, so a spec is safe in any build;
+        * for fine control a model may still build a raw C++ solver object into
+          ``self.linear_solver`` (e.g. ``linear_solvers.create_mgr_solver_for_block_size(...)``),
+          valid only in the open-source build (guard with
+          :meth:`open_source_solvers_available`); ``self.solver_label`` names it in the log.
+
+        The default implementation is idempotent and lazy: it keeps any solver a
+        subclass already assigned and otherwise materializes the defaults below --
+        which spell out **every** default parameter explicitly, so the effective
+        configuration of a model that does not override it is readable here instead
+        of being hidden in the spec dataclass defaults.
+
+        Override in a model either by replacing a solver -- both attributes hold a
+        runtime instance (``NewtonSolver`` / ``LinearSolver``); a linear spec is
+        auto-wrapped for convenience, so these two linear forms are equivalent::
+
+            def set_solver(self):
+                super().set_solver()
+                self.nonlinear_solver = NewtonSolver(tolerance=1e-4,
+                                                     chop=ChopSpec(mode='global'))
+                self.linear_solver = MGRSolverSpec(tolerance=1e-4)          # spec (auto-wrapped)
+                self.linear_solver = LinearSolver(MGRSolverSpec(tolerance=1e-4))  # explicit instance
+
+        or by tuning the spec of the default::
+
+            def set_solver(self):
+                self.set_sim_params(first_ts=..., max_ts=...)   # time-stepping
+                super().set_solver()                            # default solvers
+                self.nonlinear_solver.spec.tolerance = 1e-4
+                self.linear_solver.spec.tolerance = 1e-6
+        """
+        # ------------------------------------------------------------ nonlinear
+        if getattr(self, "nonlinear_solver", None) is None:
+            # Default nonlinear solver, with every parameter stated explicitly.
+            # These values mirror the NewtonSpec/NonlinearSolverSpec field
+            # defaults — keep the two in sync when changing a default.
+            self.nonlinear_solver = NewtonSolver(
+                tolerance=1e-3,  # reservoir-block residual tolerance
+                well_tolerance_multiplier=100.0,  # well tol = tolerance * this
+                max_iterations=20,  # max Newton iterations per timestep
+                stationary_point_tolerance=1e-3,  # residual-stagnation detection
+                norm=Norm.L2,  # residual norm
+                coupled_well_res_norm_method=1,  # DFM coupled well-res norm (1 or 2)
+                on_linear_nonconvergence="accept",  # non-converged linear solve with a
+                # usable iterate: 'accept' the inexact-Newton step (historical
+                # FGMRES+CPR behaviour) or 'cut' the timestep (historical MGR)
+                chop=ChopSpec(
+                    mode="local",  # 'local' | 'global' | None
+                    factor=0.1,  # max composition change per iteration
+                    log_transform=False,  # solve in log-composition variables
+                ),
+                obl_bounds=OBLBoundsSpec(
+                    mode=None,  # None (off) | 'obl_axes'
+                    axis_min=None,  # per-state-variable lower bounds
+                    axis_max=None,  # per-state-variable upper bounds
+                ),
+            )
+            # pre_routines / post_routines / fallbacks default to empty lists
+
+        # --------------------------------------------------------------- linear
+        # Platform default with every parameter stated explicitly (mirrors the spec
+        # dataclass field defaults — keep the two in sync).
+        # _default_solver_obj marks this solver as unchosen, so _apply_solver()
+        # leaves the engine factory in charge for proprietary builds and models with
+        # linear_solver_from_engine_factory = True (mechanics / THMC).
+        if getattr(self, "linear_solver", None) is None and LinearSolver is not None:
+            if getattr(self, "platform", "cpu") == "gpu":
+                # GPU default: GMRES + AMGX-CPR (AMGX on the pressure subsystem +
+                # ILU on the full system). A GPUSolverSpec builds no C++ solver: it
+                # names the params.linear_type enum (gpu_gmres_cpr_amgx_ilu) the GPU
+                # engine factory consumes. The AMG configuration lives in the engine
+                # factory / AMGX JSON, so the only Python knobs are the ones below.
+                spec = AMGXCPRSolverSpec(
+                    tolerance=1e-5,  # linear residual tolerance
+                    max_iterations=50,  # max Krylov iterations per solve
+                    print_level=0,  # solver verbosity
+                    proprietary_linear_type=None,  # enum for non-registry builds
+                    schur_elim_count=0,  # cell-local equations to Schur-eliminate (0 = off)
+                    schur_elim_rows=None,  # eliminated equation rows (len == count)
+                    schur_elim_cols=None,  # eliminated unknown columns (len == count)
+                )
+            else:
+                # CPU default: FGMRES around the two-stage CPR preconditioner
+                # (HYPRE BoomerAMG on the pressure subsystem + ILU(0) on the full
+                # system). Unlike the GPU spec, CPR is built from Python through the
+                # solver registry, so every BoomerAMG knob is a settable field below.
+                spec = GMRESSolverSpec(
+                    tolerance=1e-5,  # linear residual tolerance
+                    max_iterations=50,  # max Krylov iterations per solve
+                    print_level=0,  # solver verbosity
+                    proprietary_linear_type=None,  # enum for non-registry builds
+                    restart=50,  # FGMRES restart (Krylov subspace dimension)
+                    prec=CPRSolverSpec(
+                        tolerance=1e-5,  # unused: CPR runs as a preconditioner
+                        max_iterations=50,  # unused: single application per solve
+                        print_level=0,  # preconditioner verbosity
+                        proprietary_linear_type=None,
+                        amg_max_iters=1,  # AMG V-cycles on the pressure stage
+                        ilu_fill_level=0,  # ILU(0) on the full system (stage 2)
+                        weight_scheme=1,  # 1 = True-IMPES pressure weights
+                        stage2_type=1,  # 1 = ILU second stage
+                        eager_adjoint=False,  # build the transpose stack up front
+                        # --- HYPRE BoomerAMG configuration of the pressure stage ---
+                        amg_coarsen_type=8,  # PMIS coarsening
+                        amg_interp_type=8,  # extended+i interpolation
+                        amg_relax_type=3,  # hybrid Gauss-Seidel smoother
+                        amg_relax_order=1,  # C/F relaxation ordering
+                        amg_num_sweeps=1,  # smoother sweeps per level
+                        amg_strong_threshold=0.75,  # strength-of-connection threshold
+                        amg_agg_num_levels=0,  # aggressive-coarsening levels
+                        amg_agg_interp_type=6,  # interpolation on aggressive levels
+                        amg_agg_pmax_elmts=20,  # max elements/row, aggressive levels
+                        amg_pmax_elmts=0,  # max elements/row (0 = unlimited)
+                        amg_trunc_factor=0.0,  # interpolation truncation factor
+                        amg_max_levels=-1,  # max levels (-1 = HYPRE default)
+                        amg_cycle_type=-1,  # cycle type (-1 = HYPRE default, V)
+                        amg_max_coarse_size=100,  # stop coarsening below this size
+                        amg_coarse_relax_type=9,  # Gaussian elimination on the coarsest level
+                        amg_relax_wt=-1.0,  # relaxation weight (-1 = HYPRE default)
+                        # --- hierarchy reuse across Newton iterations ---
+                        reuse_amg_hierarchy=False,  # reuse the AMG setup
+                        adaptive_amg_rebuild=False,  # rebuild when iterations degrade
+                        adaptive_iter_threshold=15,  # LI above which to rebuild
+                        adaptive_consecutive_bad=2,  # bad solves before rebuilding
+                    ),
+                )
+            # Assign the runtime LinearSolver instance, not the bare spec, to mirror
+            # the nonlinear default holding a NewtonSolver. (The setter would wrap a
+            # bare spec too; being explicit keeps the two families symmetric.)
+            self.linear_solver = LinearSolver(spec)
+            self._default_solver_obj = self.linear_solver
+
+        # Deprecated set_sim_params(tol_newton=/tol_linear=...) kwargs deferred from
+        # before the solvers existed: apply them now that both specs are materialized.
+        # Model tuning after super().set_solver() runs later and still wins.
+        pending = self.__dict__.pop("_pending_legacy_solver_kwargs", None)
+        if pending:
+            self._migrate_legacy_solver_kwargs(pending)
 
     def initialize_history_fields(self):
         """Seed ``engine.Xhistory`` with the per-field default value for every reservoir cell.
@@ -587,59 +842,6 @@ class DartsModel:
         self.op_num = np.array(self.reservoir.mesh.op_num, copy=False)
         self.op_num[self.reservoir.mesh.n_res_blocks :] = len(self.op_list) - 1
 
-    def set_solver(self):
-        """Hook to specify the solvers of the model (consistent with the
-        linear-solver ``set_solver()`` of MR280 — after the merge both the
-        linear and the nonlinear solver are specified here).
-
-        ``self.nonlinear_solver`` holds the solver *instance* built from its
-        declarative spec; the input spec stays retrievable as
-        ``self.nonlinear_solver.spec`` (serializable via ``.to_dict()``, for tracing).
-
-        The default implementation is idempotent and lazy: it keeps any solver a
-        subclass already assigned and otherwise materializes the default below —
-        which spells out **every** default parameter explicitly, so the effective
-        configuration of a model that does not override it is readable here
-        instead of being hidden in the spec dataclass defaults.
-        Override in a model to select/tune the nonlinear solver, either by
-        replacing it::
-
-            def set_solver(self):
-                super().set_solver()
-                self.nonlinear_solver = NewtonSolver(tolerance=1e-4,
-                                                     chop=ChopSpec(mode='global'))
-
-        or by tuning the spec of the default::
-
-            def set_solver(self):
-                super().set_solver()
-                self.nonlinear_solver.spec.tolerance = 1e-4
-                self.nonlinear_solver.spec.chop.factor = 0.2
-        """
-        if getattr(self, "nonlinear_solver", None) is None:
-            # Default nonlinear solver, with every parameter stated explicitly.
-            # These values mirror the NewtonSpec/NonlinearSolverSpec field
-            # defaults — keep the two in sync when changing a default.
-            self.nonlinear_solver = NewtonSolver(
-                tolerance=1e-3,  # reservoir-block residual tolerance
-                well_tolerance_multiplier=100.0,  # well tol = tolerance * this
-                max_iterations=20,  # max Newton iterations per timestep
-                stationary_point_tolerance=1e-3,  # residual-stagnation detection
-                norm=Norm.L2,  # residual norm
-                coupled_well_res_norm_method=1,  # DFM coupled well-res norm (1 or 2)
-                chop=ChopSpec(
-                    mode="local",  # 'local' | 'global' | None
-                    factor=0.1,  # max composition change per iteration
-                    log_transform=False,  # solve in log-composition variables
-                ),
-                obl_bounds=OBLBoundsSpec(
-                    mode=None,  # None (off) | 'obl_axes'
-                    axis_min=None,  # per-state-variable lower bounds
-                    axis_max=None,  # per-state-variable upper bounds
-                ),
-            )
-            # pre_routines / post_routines / fallbacks default to empty lists
-
     @property
     def data_ts(self):
         """Timestep-control (and transitional linear-solver) structure, see
@@ -655,250 +857,68 @@ class DartsModel:
     def data_ts(self, value):
         self._data_ts = value
 
+    @property
+    def runtime(self):
+        """Total simulation time in days, read by :meth:`run` when ``days`` is not
+        given. Single-sourced on ``data_ts.runtime`` — reading it before any
+        assignment returns the default (1000.0) instead of raising ``AttributeError``."""
+        return self.data_ts.runtime
+
+    @runtime.setter
+    def runtime(self, value):
+        self.data_ts.runtime = value
+
+    def print_config(self):
+        """Print the effective solver configuration in one place — timestepping
+        (``data_ts``) + nonlinear (``nonlinear_solver.spec``) + linear
+        (``linear_solver.spec``) — using the same ``to_dict()`` serialization each
+        family exposes. Available after ``set_solver()`` / ``init()``."""
+        print("=== Effective configuration ===")
+        print("Timestepping (data_ts):")
+        for k, v in self.data_ts.to_dict().items():
+            print(f"\t{k} = {v}")
+        ns = getattr(self, "nonlinear_solver", None)
+        ns_spec = getattr(ns, "spec", None) if ns is not None else None
+        if ns_spec is not None and hasattr(ns_spec, "to_dict"):
+            print("Nonlinear solver (nonlinear_solver.spec):")
+            for k, v in ns_spec.to_dict().items():
+                print(f"\t{k} = {v}")
+        ls = getattr(self, "linear_solver", None)
+        ls_spec = getattr(ls, "spec", None) if ls is not None else None
+        if ls_spec is not None and hasattr(ls_spec, "to_dict"):
+            print("Linear solver (linear_solver.spec):")
+            for k, v in ls_spec.to_dict().items():
+                print(f"\t{k} = {v}")
+
     def _apply_nonlinear(self):
-        """Bind the nonlinear solver to this model and make sure
-        ``data_ts``/``sim_params`` exist. Called from init()."""
+        """Bind the nonlinear solver to this model and make sure ``data_ts``
+        exists. Called from init()."""
         self.set_solver()
         if self._data_ts is None:
             self.data_ts = DataTS(self.physics.n_vars)
         # the structure may have been created pre-init with n_vars=0: size eta now
         if len(self._data_ts.eta) < self.physics.n_vars:
             self._data_ts.eta = 1e20 * np.ones(self.physics.n_vars)
-        # ALWAYS mirror the (possibly user-set) linear settings into sim_params —
-        # not only when data_ts was just created. Reading model.data_ts before
-        # init() materializes _data_ts, which previously skipped this copy and
-        # silently dropped a user's data_ts.linear_tol/linear_max_iter.
-        self.copy_data_ts_to_sim_params()
+        # fail loudly on an obviously-broken timestepping config, matching the
+        # per-timestep spec.validate() the Newton loop already does
+        self._data_ts.validate()
         # bind the (possibly detached) solver to this model
         self.nonlinear_solver.bind(self)
 
-    def set_sim_params_data_ts(self, data_ts):
-        """Deprecated: assign ``nonlinear_solver`` and set timestep controls on
-        ``data_ts`` instead."""
-        warnings.warn(
-            "set_sim_params_data_ts() is deprecated; specify DartsModel.nonlinear_solver "
-            "in set_solver() and set timestep controls on DartsModel.data_ts instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.set_solver()
-        self.data_ts = DataTS(self.physics.n_vars)
-        # copy attributes except eta
-        for k in DataTS._FIELDS:
-            if k == "eta":
-                continue
-            setattr(self.data_ts, k, getattr(data_ts, k))
-        self.copy_data_ts_to_sim_params()
+    def run_simple(self, physics, data_ts, days, restart_dt=0.0):
+        """Removed. Use :meth:`run` after configuring the model normally.
 
-    def set_sim_params(
-        self,
-        first_ts: float = None,
-        mult_ts: float = None,
-        min_ts=1e-15,
-        max_ts: float = None,
-        runtime: float = 1000,
-        tol_linear: float = None,
-        it_linear: int = None,
-        **legacy,
-    ):
-        """
-        Function to set the timestep and linear solver parameters.
-
-        The nonlinear solver parameters are NOT set here anymore — specify them
-        on ``self.nonlinear_solver`` (a :class:`darts.nonlinear_solvers.NewtonSolver`),
-        typically in a ``set_solver()`` override::
-
-            self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
-                                                 chop=ChopSpec(mode='local', factor=0.2))
-
-        For one deprecation cycle the removed nonlinear keyword arguments
-        (``tol_newton``, ``it_newton``, ``newton_type``, ``newton_params``,
-        ``coupled_well_res_norm_method``) are still accepted:
-        they emit a :class:`DeprecationWarning` and are mapped onto
-        ``self.nonlinear_solver.spec``. Any other unexpected keyword still raises
-        :class:`TypeError`.
-
-        :param first_ts: First timestep
-        :type first_ts: float
-        :param mult_ts: Timestep multiplier
-        :type mult_ts: float
-        :param max_ts: Maximum timestep
-        :type max_ts: float
-        :param runtime: Total runtime in days, default is 1000
-        :type runtime: float
-        :param tol_linear: Tolerance for linear iterations
-        :type tol_linear: float
-        :param it_linear: Maximum number of linear iterations
-        :type it_linear: int
+        ``run_simple()`` re-assigned ``self.physics`` / ``self.data_ts`` from its
+        arguments, which a run method must not do. Configure the model (physics,
+        ``data_ts``, ``set_solver()``) and call ``run(days)`` instead.
 
         .. deprecated::
-            Set timestep controls on ``self.data_ts`` and the linear solver via
-            the linear-solver spec (MR280) instead.
+            Scheduled for deletion after one deprecation cycle.
         """
-        warnings.warn(
-            "set_sim_params() is deprecated; set timestep controls on "
-            "DartsModel.data_ts and specify DartsModel.nonlinear_solver in set_solver()",
-            DeprecationWarning,
-            stacklevel=2,
+        raise NotImplementedError(
+            "DartsModel.run_simple() was removed: it re-wired the model from its "
+            "arguments. Configure the model and call run(days) instead."
         )
-        # nonlinear settings are NOT set here — they live on self.nonlinear_solver
-        self.set_solver()
-
-        # one-cycle migration: route any legacy nonlinear kwargs onto the spec
-        if legacy:
-            self._migrate_legacy_nonlinear_kwargs(legacy)
-
-        # fresh timestep-control structure
-        self.data_ts = DataTS(self.physics.n_vars)
-        ts = self.data_ts
-
-        # Time stepping parameters. if None, default value will be used
-        ts.dt_first = first_ts if first_ts is not None else ts.dt_first
-        ts.dt_min = min_ts if min_ts is not None else ts.dt_min
-        ts.dt_max = max_ts if max_ts is not None else ts.dt_max
-        ts.dt_mult = mult_ts if mult_ts is not None else ts.dt_mult
-
-        # Linear solver parameters. if None, default value will be used
-        ts.linear_tol = tol_linear if tol_linear is not None else 1e-5
-        ts.linear_max_iter = it_linear if it_linear is not None else 50
-
-        self.runtime = runtime
-
-        self.copy_data_ts_to_sim_params()
-
-    def _migrate_legacy_nonlinear_kwargs(self, legacy: dict):
-        """One-deprecation-cycle shim: map removed ``set_sim_params`` nonlinear
-        keyword arguments onto ``self.nonlinear_solver.spec`` and warn. Unknown
-        keys raise TypeError so genuine typos still fail loudly."""
-        from darts.nonlinear_solvers.newton import _ENUM_TO_CHOP_MODE
-
-        spec = self.nonlinear_solver.spec
-        handled = []
-        if "tol_newton" in legacy:
-            spec.tolerance = legacy.pop("tol_newton")
-            handled.append("tol_newton -> nonlinear_solver.spec.tolerance")
-        if "it_newton" in legacy:
-            spec.max_iterations = legacy.pop("it_newton")
-            handled.append("it_newton -> nonlinear_solver.spec.max_iterations")
-        if "coupled_well_res_norm_method" in legacy:
-            spec.coupled_well_res_norm_method = legacy.pop(
-                "coupled_well_res_norm_method"
-            )
-            handled.append(
-                "coupled_well_res_norm_method -> "
-                "nonlinear_solver.spec.coupled_well_res_norm_method"
-            )
-        if "newton_type" in legacy:
-            nt = legacy.pop("newton_type")
-            # accept the legacy int (0/1/2), the mode string, or None
-            spec.chop.mode = (
-                _ENUM_TO_CHOP_MODE.get(nt, nt) if isinstance(nt, int) else nt
-            )
-            spec.chop.__post_init__()  # validate the mapped mode
-            handled.append("newton_type -> nonlinear_solver.spec.chop.mode")
-        if "newton_params" in legacy:
-            np_val = legacy.pop("newton_params")
-            spec.chop.factor = np_val[0] if isinstance(np_val, list | tuple) else np_val
-            handled.append("newton_params[0] -> nonlinear_solver.spec.chop.factor")
-        if legacy:
-            raise TypeError(
-                f"set_sim_params() got unexpected keyword argument(s) {sorted(legacy)}"
-            )
-        warnings.warn(
-            "set_sim_params() nonlinear keyword arguments are removed; mapped for "
-            "this release only (" + "; ".join(handled) + "). Migrate to "
-            "self.nonlinear_solver = NewtonSolver(...) in set_solver().",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-
-    def copy_data_ts_to_sim_params(self):
-        """Transitional: mirror the linear solver settings into the C++
-        ``sim_params`` fields the engine still reads. The nonlinear controls
-        are synced directly into the engine by the nonlinear solver."""
-        self.params.tolerance_linear = self.data_ts.linear_tol
-        self.params.max_i_linear = self.data_ts.linear_max_iter
-        if self.data_ts.linear_type is not None:
-            if (
-                type(self.data_ts.linear_type) is not linear_solver_types
-            ):  # it's not needed to copy it to params for PETSC option
-                self.params.linear_type = self.data_ts.linear_type
-
-    def run_simple(self, physics, data_ts, days, restart_dt=0.0):
-        """
-        Run simulation for specified time. Optional argument to specify dt to restart simulation with.
-
-        :param physics:
-        :param data_ts:
-        :param days: Time increment [days]
-        :type days: float
-        :param restart_dt: Restart value for timestep size [days, optional]
-        :type restart_dt: float
-        """
-        self.physics = physics
-        self.data_ts = data_ts
-        # bind the model's nonlinear solver (its spec is the single config source)
-        self.set_solver()
-        self.nonlinear_solver.bind(self)
-
-        days = days if days is not None else self.runtime
-        assert days > 0, "Time must be a positive value!"
-
-        verbose = False
-
-        # get current engine time
-        t = self.physics.engine.t
-        stop_time = t + days
-
-        # same logic as in engine.run
-        if fabs(t) < 1e-15:
-            dt = self.data_ts.dt_first
-        elif restart_dt > 0.0:
-            dt = restart_dt
-        else:
-            dt = min(self.prev_dt * self.data_ts.dt_mult, self.data_ts.dt_max)
-        self.prev_dt = dt
-
-        ts = 0
-
-        while t < stop_time:
-            converged = self.run_timestep(dt, t, verbose)
-
-            if converged:
-                t += dt
-                ts += 1
-                self.after_converged_timestep()
-                if verbose:
-                    print(
-                        f"# {ts:d}\tT = {t:3g}\tDT = {dt:2g}\tNI = {self.nonlinear_solver.status.n_newton:d}\tLI={self.nonlinear_solver.status.n_linear:d}"
-                    )
-
-                dt = min(dt * self.data_ts.dt_mult, self.data_ts.dt_max)
-
-                # if the current dt almost covers the rest time amount needed to reach the stop_time, add the rest
-                # to not allow the next time step be smaller than min_ts
-                if np.fabs(t + dt - stop_time) < self.data_ts.dt_min:
-                    dt = stop_time - t
-
-                if t + dt > stop_time:
-                    dt = stop_time - t
-                else:
-                    self.prev_dt = dt
-
-            else:
-                dt /= self.data_ts.dt_mult
-                if verbose:
-                    print(f"Cut timestep to {dt:2.10f}")
-                if dt < self.data_ts.dt_min:
-                    break
-
-        # update current engine time
-        self.physics.engine.t = stop_time
-
-        if verbose:
-            print(
-                f"TS = {self.nonlinear_solver.stats.n_timesteps_total:d}({self.nonlinear_solver.stats.n_timesteps_wasted:d}), NI = {self.nonlinear_solver.stats.n_newton_total:d}({self.nonlinear_solver.stats.n_newton_wasted:d}), LI = {self.nonlinear_solver.stats.n_linear_total:d}({self.nonlinear_solver.stats.n_linear_wasted:d})"
-            )
 
     def run(
         self,
@@ -991,6 +1011,7 @@ class DartsModel:
             xn = np.array(self.physics.engine.Xn, copy=True)[: nb * nc]
             overhead.stop()
             converged = self.run_timestep(dt, t, verbose)
+            self._maybe_switch_linear_solver(converged, dt=dt)
 
             overhead.start()
             if converged:
@@ -1152,6 +1173,20 @@ class DartsModel:
         self.timer.node["simulation"].node["dfm_well_velocity_calculation"].stop()
 
     def apply_dfm_well_lateral_heat_flux(self, dt, t):
+        """
+        Add the lateral (well-to-formation) heat exchange of DFM wells to the RHS
+
+        For every DFM well carrying a ``lateral_heat_rate_eval``, evaluate the
+        heat rate from the current segment temperatures and subtract its
+        contribution over the timestep from the energy equations of the well
+        segments. Segment temperatures come straight from the state for a PT
+        formulation, or from the property container for a PH one.
+
+        :param dt: Time step size [day]
+        :type dt: float
+        :param t: Simulation time [day]
+        :type t: float
+        """
         for well in self.reservoir.wells:
             if (
                 well.ms_type == ms_well.MS_Type.DFM
@@ -1203,18 +1238,35 @@ class DartsModel:
 
     def do_after_step(self):
         """
-        can be overrided by an user to be executed in the 'run_simulation()'
+        Hook for per-report-step actions (e.g. reporting, saving); can be
+        overridden by a user to be executed in run_simulation().
         """
         pass
 
     def run_simulation(self):
+        """
+        Run the reporting loop over idata.sim.time_steps: for every report
+        step, apply the idata well controls (well control switch can be defined in idata),
+        and invoke the do_after_step hook.
+
+        :return: 0 on success, 1 if :meth:`run` failed on some step
+        :rtype: int
+        """
+        # simulation time at the START of the current report step, [days]
         time = 0.0
+        # idata.sim.time_steps holds report-step LENGTHS, not absolute times
         for ith_step, dt in enumerate(self.idata.sim.time_steps):
+            # apply the well controls scheduled for this point in time
             self.set_well_controls_idata(time=time)
+
+            # advance by one report step -- run() drives its own adaptive
+            # timestepping inside dt and returns non-zero if it could not finish
             ret = self.run(dt)
             if ret != 0:
                 print("run() failed for the step=", ith_step, "dt=", dt)
                 return 1
+
+            # per-report-step user hook (reporting, saving, ...)
             self.do_after_step()
             time += dt
         return 0
@@ -1463,230 +1515,3 @@ class DartsModel:
                 and "rate" in w.control.get_well_control_type_str()
             ):
                 print('A constraint for the well ' + w.name + ' is not initialized!')
-
-    def get_linear_system(self):
-        # returns scipy sparse matrix and pointers to RHS and dX
-        from scipy.sparse import bsr_matrix
-
-        # get current jacobian and rhs from the engine
-        indptr = np.asarray(self.physics.engine.jac_rows)
-        indices = np.asarray(self.physics.engine.jac_cols)
-        data = np.asarray(self.physics.engine.jac_vals)
-
-        rhs = np.array(self.physics.engine.RHS, copy=False)
-        sol = np.array(self.physics.engine.dX, copy=False)
-
-        nonzeros = indices.size
-
-        if nonzeros == 0:
-            print(f'linear solver type is {self.data_ts.linear_type}')
-
-        assert nonzeros > 0, (
-            'Jacobian is not exposed to python! Probably superlu set as a linear solver!'
-        )
-
-        b = int(np.sqrt(data.size / nonzeros))
-        data = data.reshape(nonzeros, b, b)
-
-        mat = bsr_matrix((data, indices, indptr))
-
-        mat_csr = mat.tocsr()  # TODO  avoid this conversion to non-blocked matrix
-
-        # print('mat', mat)
-        # print('mat_csr', mat_csr)
-
-        return mat_csr, rhs, sol
-
-    def _solve_linear_equation(self):
-        """Backend-neutral linear-solve dispatch funnel used by the nonlinear
-        solver (:meth:`darts.nonlinear_solvers.NonlinearSolver._solve_linear`).
-
-        Returns ``(rc, n_iters, residual)`` for every backend — ``rc`` is ``0``
-        on success, ``1`` on setup failure, ``2`` on solve failure. Centralizing
-        the dispatch here (rather than in the nonlinear solver) is also the seam
-        the linear-solver refactoring (MR280) replaces wholesale with
-        spec-driven routing, keeping the nonlinear driver backend-agnostic."""
-        from darts.input.input_data import linear_solver_types
-
-        linear_type = self.data_ts.linear_type
-        if isinstance(linear_type, linear_solver_types):
-            # Python-resident solvers
-            if linear_type in (
-                linear_solver_types.CPU_PETSC_CPR,
-                linear_solver_types.CPU_PETSC_FS,
-            ):
-                return self.petsc_solve_linear_equation()
-            elif linear_type in (linear_solver_types.CPU_PARDISO,):
-                return self.pardiso_solve_linear_equation()
-            raise Exception("Unknown linear solver type", linear_type)
-        # compile-time C++ linear solvers
-        engine = self.physics.engine
-        rc = engine.solve_linear_equation()
-        return rc, engine.get_last_linear_iters(), engine.get_last_linear_residual()
-
-    def petsc_solve_linear_equation(self):
-        print_level = self.data_ts.linear_print_level
-
-        mat, rhs, sol = self.get_linear_system()
-
-        # TODO the variable might be used somewhere, but could not set it here since it was not exposed to python
-        # self.physics.engine.linear_solver_error_last_dt = 0
-
-        import petsc4py
-
-        # Petsc Command-Line arguments, there are different ways to pass them as well
-        args = ""
-        # Monitor residual
-        if print_level >= 2:
-            args += "-ksp_monitor_short "
-        if print_level >= 5:
-            args += "-omp_view "  # print number of OpenMP threads
-        # Right preconditioner
-        args += "-ksp_pc_side right "
-        # Iteration limit and tolerance
-        args += "-ksp_max_it " + str(self.data_ts.linear_max_iter) + " "
-        args += "-ksp_rtol " + str(self.data_ts.linear_tol) + " "
-
-        if self.data_ts.linear_type == linear_solver_types.CPU_PETSC_CPR:
-            # Setting up CPR as a composite pc. 1st stage - fieldsplit, 2nd stage - ilu
-            args += "-pc_type composite -pc_composite_type multiplicative -pc_composite_pcs fieldsplit,ilu "
-            # 1st stage will do AMG on pressure block and "nothing" on transport block
-            args += "-sub_0_pc_fieldsplit_type schur -sub_0_pc_fieldsplit_schur_fact_type upper "
-            # We build a schur complement diagonal approximation to "decouple" pressure from transport
-            args += "-sub_0_pc_fieldsplit_schur_precondition selfp "
-            # transport subsolver (for some reason "do nothing" does not work, so do one jacobi iteration)
-            args += "-sub_0_fieldsplit_transport_ksp_type preonly "
-            args += "-sub_0_fieldsplit_transport_pc_type jacobi "
-            # # pressure subsolver (do AMG)
-            args += "-sub_0_fieldsplit_pressure_ksp_type preonly "
-            args += "-sub_0_fieldsplit_pressure_pc_type gamg "
-        elif self.data_ts.linear_type == linear_solver_types.CPU_PETSC_FS:
-            # Use U^-1 D^-1 as a preconditioner in block LDU factorization
-            args += "-pc_type fieldsplit -pc_fieldsplit_type schur -pc_fieldsplit_schur_fact_type upper "
-            # Use diagonal to approximate S. This should be replaced by the fixed stress approx.
-            args += "-pc_fieldsplit_schur_precondition selfp "
-            # displacement subsolver
-            args += "-fieldsplit_displacement_ksp_type preonly "
-            args += "-fieldsplit_displacement_pc_type gamg "
-            # pressure subsolver
-            args += "-fieldsplit_pressure_ksp_type preonly "
-            args += "-fieldsplit_pressure_pc_type gamg "
-        else:
-            raise AssertionError('Unknown linear solver type for PETSC')
-
-        petsc4py.init(args)
-        # Important to import PETSc after petsc4py.init
-        from petsc4py import PETSc
-
-        # Create matrix
-        petsc_mat = PETSc.Mat().createAIJ(
-            size=mat.shape, csr=(mat.indptr, mat.indices, mat.data)
-        )
-        petsc_mat.setFromOptions()
-        petsc_mat.setUp()
-
-        # Create rhs
-        petsc_rhs = PETSc.Vec().createWithArray(rhs, rhs.size)
-        petsc_rhs.setFromOptions()
-        petsc_rhs.setUp()
-
-        # Create sol
-        petsc_sol = PETSc.Vec().createWithArray(sol, sol.size)
-        petsc_sol.setFromOptions()
-        petsc_sol.setUp()
-
-        # Create petsc linear solver
-        petsc_ksp = PETSc.KSP().create()
-        petsc_ksp.setFromOptions()
-        petsc_ksp.setOperators(petsc_mat, petsc_mat)
-
-        # Inform petsc about our fields
-        if self.data_ts.linear_type == linear_solver_types.CPU_PETSC_CPR:
-            pressure_idx = np.arange(0, mat.shape[0], 2)
-            transport_idx = np.arange(1, mat.shape[0], 2)
-            petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
-            petsc_is_transport = PETSc.IS().createGeneral(transport_idx.astype("int32"))
-
-            # Getting Composite PC
-            petsc_pc = petsc_ksp.getPC()
-            petsc_pc.setUp()
-            # Getting the 1st stage (fieldsplit)
-            petsc_pc_1st_stage = petsc_pc.getCompositePC(0)
-            petsc_pc_1st_stage.setFieldSplitIS(
-                ("transport", petsc_is_transport), ("pressure", petsc_is_pressure)
-            )
-
-            # Here, AMG setup happens
-            petsc_pc_1st_stage.setOperators(petsc_mat, petsc_mat)
-            petsc_pc_1st_stage.setUp()
-            # ILU setup
-            petsc_pc_2nd_stage = petsc_pc.getCompositePC(1)
-            petsc_pc_2nd_stage.setUp()
-        elif self.data_ts.linear_type == linear_solver_types.CPU_PETSC_FS:
-            pressure_idx = np.arange(0, mat.shape[0], 4)
-            displacement_idx = np.stack(
-                [
-                    np.arange(1, mat.shape[0], 4),
-                    np.arange(2, mat.shape[0], 4),
-                    np.arange(3, mat.shape[0], 4),
-                ]
-            ).ravel(order="F")
-            petsc_is_pressure = PETSc.IS().createGeneral(pressure_idx.astype("int32"))
-            petsc_is_displacement = PETSc.IS().createGeneral(
-                displacement_idx.astype("int32")
-            )
-            # Displacement is a vector problem
-            petsc_is_displacement.setBlockSize(3)
-
-            # Setting fieldsplit fields
-            petsc_pc = petsc_ksp.getPC()
-            petsc_pc.setFromOptions()
-            petsc_pc.setFieldSplitIS(
-                ("displacement", petsc_is_displacement), ("pressure", petsc_is_pressure)
-            )
-
-        petsc_ksp.setUp()
-
-        # This prints the solver information to stdout
-        if print_level >= 4:
-            petsc_ksp.view()
-
-        if print_level >= 1:
-            print("PETSC: start solving")
-
-        petsc_ksp.solve(petsc_rhs, petsc_sol)
-
-        reason = petsc_ksp.getConvergedReason()  # >0 converged, <0 diverged
-        n_iters = petsc_ksp.getIterationNumber()
-        residual = petsc_ksp.getResidualNorm()
-
-        if print_level >= 1:
-            print('PETSC: True residual =', np.linalg.norm(mat.dot(sol) - rhs))
-
-        # Treat only hard breakdowns / non-finite / preconditioner failures as
-        # a solver failure (rc=2 -> abort Newton / trigger fallback). Max-iter
-        # exhaustion (DIVERGED_ITS) is deliberately NOT fatal, mirroring the C++
-        # GMRES BOS-parity convention where a partial solve is accepted and the
-        # Newton residual gate decides.
-        fatal = {
-            PETSc.KSP.ConvergedReason.DIVERGED_NANORINF,
-            PETSc.KSP.ConvergedReason.DIVERGED_BREAKDOWN,
-            PETSc.KSP.ConvergedReason.DIVERGED_BREAKDOWN_BICG,
-            PETSc.KSP.ConvergedReason.DIVERGED_PC_FAILED,
-        }
-        rc = 2 if (reason in fatal or not np.isfinite(sol).all()) else 0
-        return rc, int(n_iters), float(residual)
-
-    def pardiso_solve_linear_equation(self):
-        import pypardiso
-
-        mat, rhs, sol = self.get_linear_system()
-        try:
-            sol[:] = pypardiso.spsolve(mat, rhs)
-        except Exception:
-            sol[:] = 0.0
-            return 2, 0, np.inf
-        # direct solve: count as one "iteration"; guard against a non-finite result
-        if not np.isfinite(sol).all():
-            return 2, 0, np.inf
-        return 0, 1, float(np.linalg.norm(mat.dot(sol) - rhs))
