@@ -147,6 +147,15 @@ class NonlinearSolverSpec:
     :ivar post_routines: user routines run in ``post_iteration`` after the update.
     :ivar fallbacks: ordered :class:`FallbackSpec` list tried when the timestep
         solve diverges, before the timestep is cut.
+    :ivar on_linear_nonconvergence: policy for a linear solve that exhausted its
+        iteration budget on a *usable* iterate (finite, non-regressing residual;
+        the unified ``linear_solver::solve()`` convention reports it as a
+        positive code). ``'accept'`` (default) applies the inexact-Newton step
+        and lets the Newton residual gate decide -- the historical behaviour of
+        the default FGMRES+CPR solver; ``'cut'`` treats it as a failed solve and
+        cuts the timestep -- the historical behaviour of MGR. A hard linear
+        failure (non-finite or growing residual) always cuts, regardless of
+        this policy.
     """
 
     tolerance: float = 1e-3
@@ -158,6 +167,10 @@ class NonlinearSolverSpec:
     pre_routines: list = field(default_factory=list)
     post_routines: list = field(default_factory=list)
     fallbacks: list = field(default_factory=list)
+    # keyword-only: appending a positional field to this base would shift every
+    # positional argument the subclasses inherit (NewtonSpec's `chop` was the
+    # 10th), silently rebinding existing call sites.
+    on_linear_nonconvergence: str = field(default="accept", kw_only=True)
 
     def __post_init__(self):
         self.validate()
@@ -186,6 +199,11 @@ class NonlinearSolverSpec:
             raise ValueError(
                 "coupled_well_res_norm_method must be 1 or 2, got "
                 f"{self.coupled_well_res_norm_method}"
+            )
+        if self.on_linear_nonconvergence not in ("accept", "cut"):
+            raise ValueError(
+                "on_linear_nonconvergence must be 'accept' or 'cut', got "
+                f"{self.on_linear_nonconvergence!r}"
             )
 
     def make_solver(self, model) -> "NonlinearSolver":
@@ -236,6 +254,7 @@ class NonlinearStatus:
         self.newton_residual = np.inf
         self.well_residual = np.inf
         self.linear_solver_rc = 0
+        self.n_linear_nonconverged = 0
         self.residual_history = []
 
     def reset(self):
@@ -458,6 +477,8 @@ class NonlinearSolver:
             reason = "linear solver setup failed"
         elif status.linear_solver_rc == 2:
             reason = "linear solver solve failed"
+        elif status.linear_solver_rc == 3:
+            reason = "linear solver did not converge (on_linear_nonconvergence='cut')"
         elif not (
             np.isfinite(status.newton_residual) and np.isfinite(status.well_residual)
         ):
@@ -480,10 +501,21 @@ class NonlinearSolver:
         is the seam the linear-solver refactoring (MR280) later replaces
         wholesale, so the accounting stays backend-agnostic here."""
         rc, n_iters, residual = self.model._solve_linear_equation()
-        if rc == 0:
+        if rc in (0, 3):
             status = self.status
             status.n_linear += n_iters
+            nc_marker = ""
+            if rc == 3:
+                # Unified solve() convention: the linear solver exhausted its
+                # budget on a USABLE iterate (finite, non-regressing residual).
+                # Count and mark it, then apply the spec policy: 'accept'
+                # (default) takes the inexact-Newton step and lets the Newton
+                # residual gate decide; 'cut' fails the step like a hard error.
+                status.n_linear_nonconverged += 1
+                nc_marker = " NC"
             write_to_log(
-                f"\t #{status.n_newton + 1:d} ({status.newton_residual:.4e}, {status.well_residual:.4e}): lin {n_iters:d} ({residual:.1e})\n"
+                f"\t #{status.n_newton + 1:d} ({status.newton_residual:.4e}, {status.well_residual:.4e}): lin {n_iters:d} ({residual:.1e}){nc_marker}\n"
             )
+            if rc == 3 and self.spec.on_linear_nonconvergence == "accept":
+                return 0
         return rc

@@ -5,6 +5,9 @@
 darts/*.so*
 darts/*.pyd
 darts/*.dll
+darts/linear_solvers/*.so*
+darts/linear_solvers/*.pyd
+darts/linear_solvers/*.dll
 dist/
 sdist/
 eggs/
@@ -26,6 +29,9 @@ models/__pycache__/
 
 # building info
 darts/build_info.txt
+# copied into the package by the wheel build (pyproject package-data); the
+# authoritative CHANGELOG.md is the one in the repository root
+darts/CHANGELOG.md
 
 # simulation results
 results_*/**
@@ -48,6 +54,11 @@ solution.pvd
 *.nc
 *.h5
 *.vim
+*.sol
+*.csr
+*.rhs
 *.vtu
-*.txt
 *.vtk
+*.txt
+*.pvd
+*.vtp

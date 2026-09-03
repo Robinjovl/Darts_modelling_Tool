@@ -96,10 +96,9 @@ def build_model(config: CaseConfig, platform: str = "cpu") -> Model:
         first_ts=config.first_ts,
         mult_ts=config.mult_ts,
         max_ts=config.max_ts,
-        runtime=config.total_days,
-        tol_linear=config.tol_linear,
-        it_linear=config.it_linear,
-    )
+        runtime=config.total_days)
+    # Linear-solver settings (tolerance / max_iterations) are owned by
+    # Model.set_solver() -> self.linear_solver; it runs at init() and is authoritative.
     model.data_ts.eta[-1] = config.dt_eta
     model.init(platform=platform)
     model.set_output(output_folder=config.output_folder, all_phase_props=True)

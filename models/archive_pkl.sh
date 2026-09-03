@@ -1,4 +1,7 @@
 # create an archive with .pkl files
+# NB: the caller MUST quote both arguments (./archive_pkl.sh "$ODLS" "$TEST_GPU").
+# Unquoted, an empty ODLS is dropped by word splitting and TEST_GPU slides into $1,
+# so a GPU job silently archives the CPU (_odls) references instead of the _gpu ones.
 odls=$1
 gpu=$2
 
@@ -21,6 +24,10 @@ then
     pklname=$pklnamebase"_gpu"
     wellpklname=$wellpklnamebase"_gpu"
 fi
+
+# Echo the resolved basenames: if the caller mangles the arguments this is the only
+# place the mismatch is observable, and archiving the wrong references is silent.
+echo "archive_pkl: odls='$odls' gpu='$gpu' -> $pklname*.pkl, $wellpklname*.pkl"
 
 rm -f $fname # delete pkls from previous pipeline run
 

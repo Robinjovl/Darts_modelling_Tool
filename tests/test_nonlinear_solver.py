@@ -104,6 +104,73 @@ def test_linear_failure_aborts_and_marks_wasted(make_newton, rc, reason):
     assert solver.stats.n_timesteps_wasted == 1
 
 
+def test_linear_nonconvergence_accepted_by_default(make_newton):
+    # rc 3 = "budget exhausted, iterate usable" (unified solve() convention).
+    # Default policy 'accept': the step is applied, iterations are counted, the
+    # occurrence is recorded, and the timestep converges on the Newton gate.
+    solver, model, engine, _ = make_newton(res_seq=[1.0, 1e-12], solve_rcs=[3])
+    converged = solver.run_timestep(1.0, 0.0)
+    assert converged is True
+    assert solver.status.linear_solver_rc == 0  # accepted: not a failure
+    assert solver.status.n_linear_nonconverged == 1
+    assert solver.status.n_linear == engine.get_last_linear_iters()
+    assert engine.n_apply_update >= 1  # the inexact step WAS applied
+
+
+def test_linear_nonconvergence_cut_policy(make_newton):
+    spec = NewtonSpec()
+    spec.on_linear_nonconvergence = "cut"
+    solver, model, engine, _ = make_newton(spec=spec, res_seq=[1.0, 1.0], solve_rcs=[3])
+    converged = solver.run_timestep(1.0, 0.0)
+    assert converged is False
+    assert solver.status.linear_solver_rc == 3
+    assert solver.status.n_linear_nonconverged == 1
+    assert engine.n_apply_update == 0  # never applied
+    assert "did not converge" in solver._failure_message(1.0)
+
+
+def test_on_linear_nonconvergence_validation():
+    assert NewtonSpec().on_linear_nonconvergence == "accept"
+    spec = NewtonSpec()
+    spec.on_linear_nonconvergence = "abort"  # invalid
+    with pytest.raises(ValueError, match="on_linear_nonconvergence"):
+        spec.validate()
+
+
+def test_on_linear_nonconvergence_is_keyword_only():
+    # The field was appended to the BASE spec; making it positional would shift
+    # every inherited positional argument (NewtonSpec.chop was the 10th) and
+    # silently rebind existing call sites.
+    spec = NewtonSpec(1e-3, 100.0, 20, 1e-3, Norm.L2, 1, [], [], [], ChopSpec())
+    assert isinstance(spec.chop, ChopSpec)
+    assert spec.on_linear_nonconvergence == "accept"
+    assert NewtonSpec(on_linear_nonconvergence="cut").on_linear_nonconvergence == "cut"
+
+
+@pytest.mark.parametrize("rc", [1, 2])
+def test_hard_failure_ignores_accept_policy(make_newton, rc):
+    # 'accept' must apply ONLY to the usable-iterate status (3). A setup (1) or
+    # hard solve (2) failure still aborts, whatever the policy says.
+    spec = NewtonSpec()
+    spec.on_linear_nonconvergence = "accept"
+    solver, model, engine, _ = make_newton(
+        spec=spec, res_seq=[1.0, 1.0], solve_rcs=[rc]
+    )
+    assert solver.run_timestep(1.0, 0.0) is False
+    assert solver.status.linear_solver_rc == rc
+    assert engine.n_apply_update == 0
+    assert solver.status.n_linear_nonconverged == 0
+
+
+def test_nonconvergence_then_success_counts_both(make_newton):
+    # A non-converged solve followed by a converged one: iterations from both
+    # are accounted, and only the first is counted as non-converged.
+    solver, model, engine, _ = make_newton(res_seq=[1.0, 1.0, 1e-12], solve_rcs=[3, 0])
+    assert solver.run_timestep(1.0, 0.0) is True
+    assert solver.status.n_linear_nonconverged == 1
+    assert solver.status.n_linear == 2 * engine.get_last_linear_iters()
+
+
 # -------------------------------------------------------------- F2 OBL modes
 def test_build_corrections_obl_modes(make_newton):
     # mode=None (default): no OBL step at all
@@ -215,19 +282,27 @@ def test_sync_to_engine_uses_canonical_enum_ints(make_newton):
     assert engine.newton_chop_mode == int(sim_params.newton_global_chop)
 
 
-# -------------------------------------------------------- F1 DataTS propagation
-def test_datats_linear_settings_reach_params():
-    import types
-
+# ------------------------------------------- F1 linear-spec -> sim_params (!280)
+def test_linear_spec_settings_reach_params():
+    """After !280 the linear settings are owned by ``linear_solver.spec`` (they
+    were transitional ``data_ts.linear_*`` attributes before) and are mirrored
+    into sim_params by ``_sync_solver_to_sim_params``."""
     from darts.engines import sim_params
-    from darts.models.darts_model import DartsModel, DataTS
+    from darts.linear_solvers import GMRESSolverSpec, LinearSolver
+    from darts.models.darts_model import DartsModel
 
-    fake = types.SimpleNamespace(params=sim_params(), data_ts=DataTS(2))
-    fake.data_ts.linear_tol = 7.5e-9
-    fake.data_ts.linear_max_iter = 777
-    DartsModel.copy_data_ts_to_sim_params(fake)
-    assert fake.params.tolerance_linear == 7.5e-9
-    assert fake.params.max_i_linear == 777
+    # a real (uninitialized) instance: the sync path uses DartsModel methods
+    # (_resolve_solver_spec / _solver_is_default), not just attributes
+    m = object.__new__(DartsModel)
+    m.params = sim_params()
+    m.linear_solver = LinearSolver(
+        GMRESSolverSpec(tolerance=7.5e-9, max_iterations=777)
+    )
+    m._default_solver_obj = None
+    m._adaptive_solver_index = 0
+    m._sync_solver_to_sim_params()
+    assert m.params.tolerance_linear == 7.5e-9
+    assert m.params.max_i_linear == 777
 
 
 # --------------------------------------------------------- F10 legacy shim
@@ -238,7 +313,7 @@ def test_set_sim_params_legacy_kwargs_map_and_warn():
 
     m = types.SimpleNamespace(nonlinear_solver=NewtonSolver(NewtonSpec()))
     with pytest.warns(DeprecationWarning):
-        DartsModel._migrate_legacy_nonlinear_kwargs(
+        DartsModel._migrate_legacy_solver_kwargs(
             m,
             {
                 "tol_newton": 1e-4,
@@ -256,7 +331,7 @@ def test_set_sim_params_legacy_kwargs_map_and_warn():
     assert s.coupled_well_res_norm_method == 2
     # a genuine typo still fails loudly
     with pytest.raises(TypeError):
-        DartsModel._migrate_legacy_nonlinear_kwargs(m, {"bogus": 1})
+        DartsModel._migrate_legacy_solver_kwargs(m, {"bogus": 1})
 
 
 # --------------------------------------------- MechanicsNewtonSolver (F4 Tier2)

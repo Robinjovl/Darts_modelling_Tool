@@ -2,6 +2,7 @@
 #define ENGINE_BASE_HPP
 
 #include <vector>
+#include <stdexcept>
 #include <unordered_map>
 #include <cmath>
 #include <iostream>
@@ -24,14 +25,11 @@ inline py::array_t<T> get_raw_array(T* arr, size_t size) {
 }
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/data_types.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_fs_cpr.hpp"
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
-#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
+#include "linear_solvers_data_types.hpp"
+#include "csr_matrix.hpp"
+#include "block_csr_matrix.hpp"
+#include "linsolv_superlu.hpp"
+#include "linsolv_mgr.hpp"
 using namespace opendarts::linear_solvers;
 #else
 #include "linsolv_bos_gmres.h"
@@ -46,22 +44,33 @@ using namespace opendarts::linear_solvers;
 #endif // OPENDARTS_LINEAR_SOLVERS
 
 #ifdef WITH_GPU
-#include "linsolv_bos_cpr_gpu.h"
+#ifdef OPENDARTS_LINEAR_SOLVERS
+// Open-source GPU solver wrappers. aips has no open-source counterpart and
+// is intentionally not included here.
+#include "linsolv_cpr_gpu.hpp"
+#include "linsolv_cusparse_ilu.hpp"
+#include "linsolv_cusolv.hpp"
+#include "linsolv_bicgstab.hpp"
+#ifdef WITH_AMGX
+#include "linsolv_amgx.hpp"
+#endif
+#else
+#include "linsolv_cpr_gpu.h"
 #include "linsolv_aips.h"
 #include "linsolv_amgx.h"
-#include "linsolv_adgprs_nf.h"
 #include "linsolv_cusparse_ilu.h"
 #include "linsolv_cusolver.h"
+#endif // OPENDARTS_LINEAR_SOLVERS
+// AMGX solver availability: bos_solvers always ships AMGX; with the
+// open-source solvers it is opt-in via the CMake option WITH_AMGX.
+#if !defined(OPENDARTS_LINEAR_SOLVERS) || defined(WITH_AMGX)
+#define OPENDARTS_GPU_HAS_AMGX
 #endif
+#endif // WITH_GPU
 
 #ifdef WITH_SAMG
 #include "linsolv_samg.h"
 #endif
-
-#ifdef OPENDARTS_LINEAR_SOLVERS
-using namespace opendarts::linear_solvers;
-#endif // OPENDARTS_LINEAR_SOLVERS
-
 
 class ms_well;
 class operator_set_gradient_evaluator_iface;
@@ -88,6 +97,8 @@ public:
 
 		//adjoint method
 		linear_solver_ad = 0;
+		linear_solver_ad_owned = true;
+		linear_solver_ad_uses_jacobian_transpose = false;
 		dg_dx_n_temp = 0;
 
         dg_dx_T = 0;
@@ -101,6 +112,7 @@ public:
 		is_fickian_energy_transport_on = true;
 		newton_update_coefficient = 1.0;
 		n_solid = 0;
+		linear_solver_owned = true;  // By default, we own the solver
 		newton_chop_mode = sim_params::NEWTON_LOCAL_CHOP;
 		newton_chop_factor = 0.1;
 		log_transform = 0;
@@ -109,13 +121,14 @@ public:
 
 	~engine_base()
 	{
-		if (linear_solver != nullptr)
+		if (linear_solver != nullptr && linear_solver_owned)
 			delete linear_solver;
 		if (Jacobian != nullptr)
 			delete Jacobian;
 
 		//adjoint method
-		delete linear_solver_ad;
+		if (linear_solver_ad != nullptr && linear_solver_ad_owned)
+			delete linear_solver_ad;
 		delete dg_dx_n_temp;
 
         delete dg_dx_T;
@@ -172,8 +185,76 @@ public:
 	virtual int init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_) = 0;
 
 	template <uint8_t N_VARS>
-	int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_,
-	              operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_);
+	int init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_, std::vector<operator_set_gradient_evaluator_iface *> &acc_flux_op_set_list_, operator_set_gradient_evaluator_iface* thermal_var_etor_, sim_params *params, timer_node *timer_);
+
+	// Set external linear solver (from Python). The optional name is a
+	// human-readable label (e.g. the LinearSolverSpec registry name) used for
+	// the "Linear solver type is ..." log line in the open-source build, where
+	// the solver is injected rather than selected by the linear_type enum.
+	void set_linear_solver(std::shared_ptr<linsolv_iface> solver, const std::string &name = "")
+	{
+		// If we previously owned a solver, delete it
+		if (linear_solver != nullptr && linear_solver_owned)
+		{
+			delete linear_solver;
+		}
+
+		// Store the external solver
+		linear_solver_external = solver;
+		linear_solver = solver.get();
+		linear_solver_owned = false;  // We don't own it, Python does
+		external_solver_name = name;
+
+		// If engine is already initialized, wire timers and initialize solver
+		if (linear_solver != nullptr && Jacobian != nullptr && params != nullptr)
+		{
+			if (timer != nullptr)
+			{
+				linear_solver->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
+			}
+			linear_solver->init(Jacobian, params->max_i_linear, params->tolerance_linear);
+			// The engine was already initialised, so this call replaces the
+			// solver selected at init time (e.g. a model that swaps in MGR after
+			// init()). Report the new type so the log reflects the solver that
+			// is actually used.
+			if (!name.empty())
+				std::cout << "Linear solver type is " << name << std::endl;
+		}
+	}
+
+	// Set external adjoint linear solver (from Python).
+	// The legacy adjoint path assembles a scalar transposed matrix dg_dx_T.
+	// MGR/CPR-style adjoint solvers can instead keep the simulator block
+	// structure and solve Jacobian^T x = b through solve_transposed().
+	void set_adjoint_linear_solver(std::shared_ptr<linsolv_iface> solver, bool use_jacobian_transpose = false)
+	{
+		if (linear_solver_ad != nullptr && linear_solver_ad_owned)
+		{
+			delete linear_solver_ad;
+		}
+
+		linear_solver_ad_external = solver;
+		linear_solver_ad = solver.get();
+		linear_solver_ad_owned = false;
+		linear_solver_ad_uses_jacobian_transpose = use_jacobian_transpose;
+
+		csr_matrix_base *adjoint_matrix = linear_solver_ad_uses_jacobian_transpose ? Jacobian : dg_dx_T;
+		if (linear_solver_ad != nullptr && adjoint_matrix != nullptr && params != nullptr)
+		{
+			if (timer != nullptr)
+			{
+				linear_solver_ad->init_timer_nodes(&timer->node["linear solver for adjoint method - setup"],
+				                                   &timer->node["linear solver for adjoint method - solve"]);
+			}
+			linear_solver_ad->init(adjoint_matrix, params->max_i_linear, params->tolerance_linear);
+		}
+	}
+
+	/** Build and attach the native GPU CPRA adjoint stack (device GMRES +
+	 *  CPR with AMGX pressure solves on P and P^T + cuSPARSE block-ILU(0)),
+	 *  with use_jacobian_transpose = true. Overridden by the GPU super engine
+	 *  when AMGX is built; the base returns -1 ("unsupported"). */
+	virtual int set_adjoint_solver_cpra_gpu(int /*restart*/ = 150) { return -1; }
 
 	virtual int init_jacobian_structure(csr_matrix_base *jacobian);
 
@@ -217,11 +298,6 @@ public:
 	void correct_chop_global();
 	void correct_chop_local();
 	void correct_obl_axes();
-	/// @brief populate op_axis_min/op_axis_max (broadcast to every operator
-	/// region) from the per-variable bounds prescribed by the nonlinear solver
-	/// spec (OBLBoundsSpec.axis_min/axis_max; +/-inf entries leave an axis
-	/// unbounded) and run the per-axis clamp kernel
-	void correct_obl_axes(const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max);
 	void correct_thermal();
 	/// @brief plain Newton update X -= newton_update_coefficient * dX (resets the coefficient)
 	virtual int apply_update(value_t dt);
@@ -232,6 +308,21 @@ public:
 	// Here we make the same thing as inside interpolation, but during Newton update
 	// It is correct from architectural point of view - X should be changed by engine, not inside interpolator
 	virtual void apply_obl_axis_local_correction(std::vector<value_t> &X, std::vector<value_t> &dX);
+	/// @brief Install persistent per-variable OBL axis bounds and clamp the current solution once.
+	///
+	/// Populates every region's op_axis_min/op_axis_max with the given bounds and applies
+	/// apply_obl_axis_local_correction immediately. The bounds PERSIST, so the size()>0 gate
+	/// in apply_newton_update keeps clamping the solution after every subsequent Newton update
+	/// (CPU and GPU -- the GPU engine reuses the host composite). Signature-compatible with the
+	/// nonlinear_refactoring (MR327) overload -- both branches implemented this
+	/// identically, so the merge keeps a single virtual definition; it is the one
+	/// the spec-driven pipeline calls (OBLBoundsSpec.axis_min/axis_max, where
+	/// +/-inf entries leave an axis unbounded). If either vector's size differs
+	/// from n_vars, a warning is printed and nothing is installed.
+	///
+	/// @param axis_min lower bound per state variable, size n_vars
+	/// @param axis_max upper bound per state variable, size n_vars
+	virtual void correct_obl_axes(const std::vector<value_t> &axis_min, const std::vector<value_t> &axis_max);
 
 	// output routines
 
@@ -404,6 +495,9 @@ public:
 	/// @} // end of Parameters
 
 	linsolv_iface *linear_solver;
+	std::shared_ptr<linsolv_iface> linear_solver_external;  // For externally provided solvers (Python)
+	std::string external_solver_name;  // human-readable label for an injected solver (open-source build)
+	bool linear_solver_owned;  // True if we own the solver (need to delete), false if external
 
 	// operator interfaces
 	std::vector<operator_set_gradient_evaluator_iface*> acc_flux_op_set_list;
@@ -436,6 +530,15 @@ public:
 	std::vector<value_t> op_vals_arr;	// [N_OPS * n_blocks] array of values of operators
 	std::vector<value_t> op_ders_arr;	// [N_OPS * N_VARS * n_blocks] array of dedrivatives of operators
 	std::vector<value_t> op_vals_arr_n; // [N_OPS * n_blocks] array of values of operators from the last timestep
+	// GPU engines keep op_vals_arr_n on the device (op_vals_arr_n_d) and skip the
+	// 260MB-class host mirror assignment in post_newtonloop.
+	bool keep_host_op_vals_n_mirror = true;
+	// Called at the start of the accepted-timestep path, before host op_vals_arr
+	// consumers (ms_well::calc_rates, FIPS). GPU engines refresh the host mirror
+	// here; keeping the hook inside the converged branch makes it follow the
+	// convergence verdict wherever that logic lives (C++ or the Python
+	// NonlinearSolver of the nonlinear refactoring).
+	virtual void sync_host_data_for_accepted_step() {}
 
 	std::vector<value_t> darcy_velocities;	// [NP * n_res_blocks * ND] array of phase (Darcy) velocities for every reservoir cell
 	std::vector<value_t> molar_weights;		// [n_regions * NC] molar weights of components
@@ -473,6 +576,28 @@ public:
 
 	index_t get_last_linear_iters() const { return last_linear_iters; }
 	value_t get_last_linear_residual() const { return last_linear_residual; }
+
+	/// @brief Translate a linear_solver::solve() status into the engine status
+	/// every solve_linear_equation() override reports to the Python nonlinear
+	/// solver. Single point of truth for the mapping, shared by all engines:
+	///   0  -> 0  converged
+	///  >0  -> 3  budget exhausted on a usable iterate; the nonlinear
+	///            on_linear_nonconvergence policy decides accept-vs-cut
+	///  <0  -> 2  hard failure; never apply the iterate
+	/// In a proprietary (BOS) build the solvers do not implement the unified
+	/// convention, so any nonzero stays a conservative hard failure.
+	int classify_linear_solve_status(int r_code)
+	{
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		if (r_code > 0)
+		{
+			last_linear_iters = linear_solver->get_n_iters();
+			last_linear_residual = linear_solver->get_residual();
+			return 3;
+		}
+#endif // OPENDARTS_LINEAR_SOLVERS
+		return r_code ? 2 : 0;
+	}
 
 	value_t newton_update_coefficient; // Newton update coefficient for line search
 
@@ -516,11 +641,23 @@ public:
 
 	// initialize dg_dT_general, which is similar to the jacobian initialization
 	int init_adjoint_structure(csr_matrix_base* init_adjoint);
+	/// Allocates the adjoint matrices/solver (host side). Shared by the CPU
+	/// (engine_base::init_base) and GPU (engine_base_gpu::init_base) engines.
+	void init_adjoint_base();
+	/// Allocates the customized-operator arrays/block lists (host side).
+	/// Shared by the CPU and GPU init_base, like init_adjoint_base().
+	void init_customized_operator_base();
 
 	// assemble dg_dx_n, dg_dT, dj_dx. This is similar to "init_jacobian_structure" in the forward simulation
 	virtual int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) = 0;
 
 	bool opt_history_matching = false;
+	/// Selects the adjoint-gradient assembly implementation on the GPU super
+	/// engine: true (default) = device kernel (adjoint_gradient_assembly_kernel);
+	/// false = the host reference loop (super_engine_adjoint_assembly). The CPU
+	/// engine ignores this and always assembles on the host. Exposed to Python
+	/// for testing/benchmarking the two implementations against each other.
+	bool adjoint_assembly_on_gpu = true;
 	bool optimize_component_rate = false;
 	bool optimize_phase_rate = false;
 
@@ -561,6 +698,9 @@ public:
 	index_t upstream_index, downstream_index;
 
 	linsolv_iface* linear_solver_ad;
+	std::shared_ptr<linsolv_iface> linear_solver_ad_external;
+	bool linear_solver_ad_owned;
+	bool linear_solver_ad_uses_jacobian_transpose;
 
 	// the total number of the cell interfaces,
     // including 1. res to res (trans), 2. res to well_body (WI), 3. well_body to well_head
@@ -735,36 +875,54 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	// Instantiate Jacobian
 	if (!Jacobian)
 	{
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		Jacobian = new block_csr_matrix; // unified block-CSR matrix (section 12)
+#else
 		Jacobian = new csr_matrix<N_VARS>;
 		Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+#endif
 	}
 
-	// figure out if this is GPU engine from its name.
-	int is_gpu_engine = engine_name.find(" GPU ") != std::string::npos;
-
-	// allocate Jacobian
-	// if (!is_gpu_engine)
-	{
-		// for CPU engines we need full init
-		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
-	}
-	// else
-	// {
-	//   // for GPU engines we need only structure - rows_ptr and cols_ind
-	//   // they are filled on CPU and later copied to GPU
-	//   (static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_struct(mesh_->n_blocks, mesh_->n_blocks, mesh_->n_conns + mesh_->n_blocks);
-	// }
+	// allocate Jacobian: the structure arrays are filled in place afterwards
+	// by init_jacobian_structure().
+#ifdef OPENDARTS_LINEAR_SOLVERS
+	(static_cast<block_csr_matrix *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
+	Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE; // set after init() (init resets type)
+#else
+	(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
+#endif
 #ifdef WITH_GPU
 	if (params->linear_type >= params->GPU_GMRES_CPR_AMG)
 	{
+#ifndef OPENDARTS_LINEAR_SOLVERS
 		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_device(mesh_->n_blocks, mesh_->n_conns + mesh_->n_blocks);
+#endif
+		// block_csr_matrix allocates device storage lazily (dual_array) -- no init_device.
 	}
 #endif
 
 	std::string linear_solver_type_str;
 	// create linear solver
-	if (!linear_solver)
+	// Check if external solver was provided (from Python) - if so, use it instead of creating new one
+	if (!linear_solver && !linear_solver_external)
 	{
+		// Everything the factory allocates below is engine-owned and deleted in
+		// ~engine_base; re-establish the flag that set_linear_solver() clears.
+		linear_solver_owned = true;
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		// Open-source build: the enum-driven factory below builds the
+		// proprietary bos solvers, which are not available here. The linear
+		// solver must be injected from Python -- built from a LinearSolverSpec
+		// via the open-source registry; see darts_model._apply_linear_solver_spec().
+		// Throw instead of exit(1): engine init is entered through pybind11,
+		// which translates the exception into a Python RuntimeError -- the
+		// previous exit killed the host process (including Jupyter kernels).
+		throw std::runtime_error(
+		    "no linear solver was provided for " + engine_name +
+		    ". The open-source build requires a linear solver injected via "
+		    "set_linear_solver() (a LinearSolverSpec built through the "
+		    "darts.solvers registry).");
+#else
 		switch (params->linear_type)
 		{
 		case sim_params::CPU_GMRES_CPR_AMG:
@@ -812,6 +970,14 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			linear_solver_type_str = "CPU_SUPERLU";
 			break;
 		}
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		case sim_params::CPU_GMRES_MGR:
+		{
+			// MGR solver is provided externally (Python) via set_linear_solver.
+			linear_solver_type_str = "CPU_GMRES_MGR (external pending)";
+			break;
+		}
+#endif
 
 #ifdef WITH_GPU
 		case sim_params::GPU_GMRES_CPR_AMG:
@@ -819,10 +985,10 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			if constexpr (N_VARS > 1)
 			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
 			linear_solver_type_str = "GPU_GMRES_CPR_AMG";
@@ -842,10 +1008,10 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			if constexpr (N_VARS > 1)
 			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			int n_terms = 10;
 			bool print_radius = false;
@@ -874,15 +1040,16 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			break;
 		}
 #endif //WITH_AIPS
+#ifdef OPENDARTS_GPU_HAS_AMGX
 		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 		{
 			if constexpr (N_VARS > 1)
 			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
 			// set full system prec
@@ -899,56 +1066,7 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			}
 			break;
 		}
-#ifdef WITH_ADGPRS_NF
-		case sim_params::GPU_GMRES_CPR_NF:
-		{
-			if constexpr (N_VARS > 1)
-			{
-			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			// NF was initially created for CPU-based solver, so keeping unnesessary GPU->CPU->GPU copies so far for simplicity
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
-
-			int nx, ny, nz;
-			int n_colors = 4;
-			int coloring_scheme = 3;
-			bool is_ordering_reversed = true;
-			bool is_factorization_twisted = true;
-			if (params->linear_params.size() < 3)
-			{
-				printf("Error: Missing nx, ny, nz parameters, required for NF solver\n");
-				exit(-3);
-			}
-
-			nx = params->linear_params[0];
-			ny = params->linear_params[1];
-			nz = params->linear_params[2];
-			if (params->linear_params.size() > 3)
-			{
-				n_colors = params->linear_params[3];
-				if (params->linear_params.size() > 4)
-				{
-					coloring_scheme = params->linear_params[4];
-					if (params->linear_params.size() > 5)
-					{
-						is_ordering_reversed = params->linear_params[5];
-						if (params->linear_params.size() > 6)
-						{
-							is_factorization_twisted = params->linear_params[6];
-						}
-					}
-				}
-			}
-
-			cpr->set_prec(new linsolv_adgprs_nf<1>(nx, ny, nz, params->global_actnum, n_colors, coloring_scheme, is_ordering_reversed, is_factorization_twisted));
-			linear_solver->set_prec(cpr);
-			}
-			linear_solver_type_str = "GPU_GMRES_CPR_NF";
-			break;
-		}
-#endif //WITH_ADGPRS_NF
+#endif // OPENDARTS_GPU_HAS_AMGX
 		case sim_params::GPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
@@ -958,13 +1076,25 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 #endif
 		default:
 		{
-		    std::cerr << "Linear solver type " << params->linear_type << " is not supported for " << engine_name << std::endl << std::flush;
-		    exit(1);
+		    throw std::runtime_error("Linear solver type " +
+		        std::to_string(static_cast<int>(params->linear_type)) +
+		        " is not supported for " + engine_name);
 		}
 
 		}
+#endif // OPENDARTS_LINEAR_SOLVERS
 	}
 
+	// In the open-source build the solver is injected via set_linear_solver()
+	// (built from data_ts.linear_solver through the darts.solvers registry), so
+	// the enum-based naming above never ran and linear_solver_type_str is empty.
+	// Fall back to the injected label, or a generic note if none was provided.
+	if (linear_solver_type_str.empty())
+	{
+		linear_solver_type_str = external_solver_name.empty()
+		    ? std::string("external (injected via set_linear_solver)")
+		    : external_solver_name;
+	}
 	std::cout << "Linear solver type is " << linear_solver_type_str << std::endl;
 
 	n_vars = get_n_vars();
@@ -1032,9 +1162,17 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	}
 #endif
 
-	linear_solver->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
-	// initialize linear solver
-	linear_solver->init(Jacobian, params->max_i_linear, params->tolerance_linear);
+	if (linear_solver)
+	{
+		linear_solver->init_timer_nodes(&timer->node["linear solver setup"], &timer->node["linear solver solve"]);
+		// initialize linear solver
+		linear_solver->init(Jacobian, params->max_i_linear, params->tolerance_linear);
+	}
+	else
+	{
+		std::cerr << "WARNING: Linear solver not set yet; call engine.set_linear_solver(...) before run."
+		          << std::endl;
+	}
 
 	//Xn.resize (n_vars * mesh->n_blocks);
 	RHS.resize(n_vars * mesh->n_blocks);
@@ -1101,90 +1239,13 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 
 	if (opt_history_matching)
 	{
-		n_interfaces = mesh->n_conns / 2;
-
-		// prepare dg_dx_n_temp
-		init_adjoint_structure(dg_dx_n_temp);
-
-		// here we remove wells.size() transmissibility between well head and well body (i.e. well_transmissibility)
-		// because there is no need to optimize well_transmissibility, which is usually a large value of 100000
-		std::vector<int> Temp_1(n_interfaces - wells.size(), 0);
-		col_dT_du = Temp_1;
-
-
-		// initialization of linear solver
-		if (!linear_solver_ad)
-		{
-			if (0)
-			{
-				// so far these preconditioner and the linear solver can't be applied to adjoint for some reason
-				linear_solver_ad = new linsolv_bos_gmres<1>;
-				linear_solver_ad->set_prec(new linsolv_bos_bilu0<1>);
-
-			}
-			else
-				linear_solver_ad = new linsolv_superlu<1>;
-		}
-		linear_solver_ad->init_timer_nodes(&timer->node["linear solver for adjoint method - setup"], &timer->node["linear solver for adjoint method - solve"]);
-
-		well_head_idx_collection.clear();
-		for (ms_well* w : wells)
-		{
-			well_head_idx_collection.push_back(w->well_head_idx);
-		}
-
-		dg_dx_T = new csr_matrix<1>;
-		dg_dx_T->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-
-		dg_dx_n = new csr_matrix<1>;
-		dg_dx_n->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-
-		//dg_dT = new csr_matrix<1>;
-		//dg_dT->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-
-		dg_dT_general = new csr_matrix<1>;
-		dg_dT_general->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-
-		(static_cast<csr_matrix<1>*>(dg_dx_T))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, (mesh->n_conns + mesh->n_blocks) * n_vars * n_vars);
-		(static_cast<csr_matrix<1>*>(dg_dx_n))->init(mesh->n_blocks * n_vars, mesh->n_blocks * n_vars, 1, (mesh->n_conns + mesh->n_blocks) * n_vars * n_vars);
-		//(static_cast<csr_matrix<1>*>(dg_dT))->init(mesh->n_blocks * n_vars, n_interfaces - wells.size(), 1, ((mesh->n_blocks) * 2 - 2 * wells.size()) * n_vars);
-		(static_cast<csr_matrix<1>*>(dg_dT_general))->init(mesh->n_blocks * n_vars, n_interfaces, 1, (mesh->n_conns) * n_vars);
-		//init_adjoint_structure(dg_dT);
-		init_adjoint_structure(dg_dT_general);
-
-
-		dT_du = new csr_matrix<1>;
-		dT_du->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
-
-		//(static_cast<csr_matrix<1>*>(dT_du))->init(n_interfaces - wells.size(), n_control_vars, 1, n_interfaces - wells.size());
-		(static_cast<csr_matrix<1>*>(dT_du))->init(n_interfaces - wells.size(), n_interfaces - wells.size(), 1, n_interfaces - wells.size());
-
+		init_adjoint_base();
 	}
 
 
 	if (customize_operator)
 	{
-		time_data_report_customized.clear();
-		time_data_customized.clear();
-
-		// WARNING: this variable shadows a member variable of a different type
-        index_t n_ops = 1;  // here '1' is to distinguish the size of the customized operator with the ordinary operator
-
-		op_vals_arr_customized.resize(n_ops * mesh->n_blocks);   // [1 * n_blocks] array of values of operators
-		op_ders_arr_customized.resize(n_ops * n_vars * mesh->n_blocks);   // [1 * N_VARS * n_blocks] array of dedrivatives of operators
-
-		// create a block list for the customized operator
-		customize_block_idxs.resize(acc_flux_op_set_list.size());
-		for (auto op_region : customize_op_num)
-		{
-			customize_block_idxs[op_region].clear();
-		}
-
-		index_t idx = 0;
-		for (auto op_region : customize_op_num)
-		{
-			customize_block_idxs[op_region].emplace_back(idx++);
-		}
+		init_customized_operator_base();
 	}
 
 	well_control_arr.clear();

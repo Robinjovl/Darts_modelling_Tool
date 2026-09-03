@@ -1,5 +1,6 @@
 #ifdef PYBIND11_ENABLED
 #include <pybind11/stl_bind.h>
+#include <algorithm>
 #include "py_globals.h"
 #include "globals.h"
 #include "engines_build_info.h"
@@ -8,7 +9,7 @@
 #include <fstream>
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/config/version.hpp"
+#include "version.hpp"
 #else
 #include "linsolv_build_info.h"
 #endif // OPENDARTS_LINEAR_SOLVERS
@@ -107,10 +108,18 @@ void pybind_globals(py::module &m)
     .def_readwrite("linear_params", &sim_params::linear_params)
     .def_readwrite("enable_permporo", &sim_params::enable_permporo)
     .def_readwrite("sim_eps", &sim_params::sim_eps)
-    .def_readwrite("global_actnum", &sim_params::global_actnum)
     .def_readwrite("assembly_kernel", &sim_params::assembly_kernel)
+    .def_readwrite("schur_elim_count", &sim_params::schur_elim_count,
+        "K = number of cell-local (diagonal-block-only) equation/unknown pairs the GPU "
+        "solver Schur-eliminates before preconditioning (0 = off; CPU chains use "
+        "SchurEliminationSpec)")
+    .def_readwrite("schur_elim_rows", &sim_params::schur_elim_rows,
+        "Preferred eliminated equation rows (length K) for GPU local Schur elimination")
+    .def_readwrite("schur_elim_cols", &sim_params::schur_elim_cols,
+        "Eliminated unknown columns (length K) for GPU local Schur elimination")
     .def_readwrite("finalize_mpi", &sim_params::finalize_mpi)
-    .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance);
+    .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance)
+    .def_readwrite("linear_print_level", &sim_params::linear_print_level);
 
 
   py::class_<linear_solver_params>(m, "linear_solver_params", "Class linear solver parameters") \
@@ -129,6 +138,7 @@ void pybind_globals(py::module &m)
   py::enum_<sim_params::linear_solver_t>(sim_params, "linear_solver_t", "Available types of linear solvers")
     .value("cpu_gmres_cpr_amg", sim_params::linear_solver_t::CPU_GMRES_CPR_AMG)
     .value("cpu_gmres_ilu0", sim_params::linear_solver_t::CPU_GMRES_ILU0)
+    .value("cpu_gmres_mgr", sim_params::linear_solver_t::CPU_GMRES_MGR)
     .value("cpu_superlu", sim_params::linear_solver_t::CPU_SUPERLU)
     .value("cpu_gmres_cpr_amg1r5", sim_params::linear_solver_t::CPU_GMRES_CPR_AMG1R5)
     .value("cpu_gmres_fs_cpr", sim_params::linear_solver_t::CPU_GMRES_FS_CPR)
@@ -141,9 +151,9 @@ void pybind_globals(py::module &m)
     .value("gpu_gmres_cpr_amgx_amgx", sim_params::linear_solver_t::GPU_GMRES_CPR_AMGX_AMGX)
     .value("gpu_gmres_amgx", sim_params::linear_solver_t::GPU_GMRES_AMGX)
     .value("gpu_amgx", sim_params::linear_solver_t::GPU_AMGX)
-    .value("gpu_gmres_cpr_nf", sim_params::linear_solver_t::GPU_GMRES_CPR_NF)
     .value("gpu_bicgstab_cpr_amgx", sim_params::linear_solver_t::GPU_BICGSTAB_CPR_AMGX)
     .value("gpu_cusolver", sim_params::linear_solver_t::GPU_CUSOLVER)
+    .value("gpu_cudss", sim_params::linear_solver_t::GPU_CUDSS)
     .export_values();
 
   py::enum_<sim_params::nonlinear_norm_t>(sim_params, "nonlinear_norm_t", "Available types of nonlinear norm")
@@ -152,7 +162,101 @@ void pybind_globals(py::module &m)
     .value("LINF", sim_params::nonlinear_norm_t::LINF)
     .export_values();
 
-    // timer_node is registered by darts.interpolators (imported at module init).
+  // HYPRE MGR strategy constants exposed on sim_params for Python-side solver setup.
+  // These are plain integer constants because the MGR solver module consumes HYPRE's
+  // numeric option values directly. Keep the names category-qualified so a value is
+  // not accidentally passed to the wrong HYPRE MGR option family.
+  sim_params.attr("mgrWellEliminateBlock") = py::int_(0);
+  sim_params.attr("mgrWellKeepPrimary") = py::int_(1);
+
+  sim_params.attr("mgrBilu0FallbackIdentity") = py::int_(0);
+  sim_params.attr("mgrBilu0FallbackShiftedDense") = py::int_(1);
+  sim_params.attr("mgrBilu0FallbackBoundedDiagonal") = py::int_(2);
+  sim_params.attr("mgrBilu0FallbackShiftedDenseThenDiagonal") = py::int_(3);
+
+  sim_params.attr("mgrLocalSolverNone") = py::int_(0);
+  sim_params.attr("mgrLocalSolverBlockJacobi") = py::int_(1);
+  sim_params.attr("mgrLocalSolverBlockILU0") = py::int_(2);
+  sim_params.attr("mgrLocalSolverBlockILU1") = py::int_(3);
+
+  sim_params.attr("mgrCprReductionPressureRow") = py::int_(0);
+  sim_params.attr("mgrCprReductionTrueIMPES") = py::int_(1);
+  sim_params.attr("mgrCprReductionTrueIMPESWellElim") = py::int_(2);
+
+  sim_params.attr("mgrVarPressure") = py::int_(0);
+  sim_params.attr("mgrVarComposition") = py::int_(1);
+  sim_params.attr("mgrVarSaturation") = py::int_(2);
+  sim_params.attr("mgrVarTemperature") = py::int_(3);
+  sim_params.attr("mgrVarVolumeConstraint") = py::int_(4);
+  sim_params.attr("mgrVarWellPressure") = py::int_(100);
+  sim_params.attr("mgrVarWellSecondary") = py::int_(101);
+  sim_params.attr("mgrVarFacility") = py::int_(200);
+  sim_params.attr("mgrVarRockMechanics") = py::int_(300);
+  sim_params.attr("mgrVarDisplacement") = py::int_(301);
+  sim_params.attr("mgrVarStress") = py::int_(302);
+  sim_params.attr("mgrVarOther") = py::int_(999);
+
+  sim_params.attr("mgrFRelaxNone") = py::int_(-1);
+  sim_params.attr("mgrFRelaxWeightedJacobi") = py::int_(0);
+  sim_params.attr("mgrFRelaxSingleVCycle") = py::int_(1);
+  sim_params.attr("mgrFRelaxAMG") = py::int_(2);
+  sim_params.attr("mgrFRelaxHybridGaussSeidelForward") = py::int_(3);
+  sim_params.attr("mgrFRelaxHybridGaussSeidelBackward") = py::int_(4);
+  sim_params.attr("mgrFRelaxHybridChaoticGaussSeidel") = py::int_(5);
+  sim_params.attr("mgrFRelaxHybridSymmetricGaussSeidel") = py::int_(6);
+  sim_params.attr("mgrFRelaxJacobi") = py::int_(7);
+  sim_params.attr("mgrFRelaxL1HybridSymmetricGaussSeidel") = py::int_(8);
+  sim_params.attr("mgrFRelaxGaussianElimination") = py::int_(9);
+  sim_params.attr("mgrFRelaxL1GaussSeidelForward") = py::int_(13);
+  sim_params.attr("mgrFRelaxL1GaussSeidelBackward") = py::int_(14);
+  sim_params.attr("mgrFRelaxFCFJacobi") = py::int_(17);
+  sim_params.attr("mgrFRelaxL1Jacobi") = py::int_(18);
+  sim_params.attr("mgrFRelaxSparseDirectSolver") = py::int_(29);
+  sim_params.attr("mgrFRelaxILU") = py::int_(32);
+  sim_params.attr("mgrFRelaxGaussianEliminationWithPivoting") = py::int_(99);
+  sim_params.attr("mgrFRelaxDirectInverse") = py::int_(199);
+
+  sim_params.attr("mgrInterpInjection") = py::int_(0);
+  sim_params.attr("mgrInterpL1Jacobi") = py::int_(1);
+  sim_params.attr("mgrInterpJacobi") = py::int_(2);
+  sim_params.attr("mgrInterpClassicalModified") = py::int_(3);
+  sim_params.attr("mgrInterpApproximateInverse") = py::int_(4);
+  sim_params.attr("mgrInterpBlockJacobi") = py::int_(12);
+  sim_params.attr("mgrInterpBlockRowSum") = py::int_(13);
+  sim_params.attr("mgrInterpBlockRowSumAbs") = py::int_(14);
+
+  sim_params.attr("mgrRestrictInjection") = py::int_(0);
+  sim_params.attr("mgrRestrictUnscaled") = py::int_(1);
+  sim_params.attr("mgrRestrictJacobi") = py::int_(2);
+  sim_params.attr("mgrRestrictApproximateInverse") = py::int_(3);
+  sim_params.attr("mgrRestrictPAIRDistance1") = py::int_(4);
+  sim_params.attr("mgrRestrictPAIRDistance2") = py::int_(5);
+  sim_params.attr("mgrRestrictBlockJacobi") = py::int_(12);
+  sim_params.attr("mgrRestrictCPRLike") = py::int_(13);
+  sim_params.attr("mgrRestrictBlockColLumped") = py::int_(14);
+  sim_params.attr("mgrRestrictPartialColLumped") = py::int_(15);
+
+  sim_params.attr("mgrCoarseGalerkin") = py::int_(0);
+  sim_params.attr("mgrCoarseNonGalerkinBlockDiag") = py::int_(1);
+  sim_params.attr("mgrCoarseNonGalerkinCPRDiag") = py::int_(2);
+  sim_params.attr("mgrCoarseNonGalerkinCPRBlockDiag") = py::int_(3);
+  sim_params.attr("mgrCoarseNonGalerkinSparseApproxInv") = py::int_(4);
+  sim_params.attr("mgrCoarseNonGalerkinA_CC") = py::int_(5);
+
+  sim_params.attr("mgrSmootherNone") = py::int_(-1);
+  sim_params.attr("mgrSmootherBlockJacobi") = py::int_(0);
+  sim_params.attr("mgrSmootherBlockGaussSeidel") = py::int_(1);
+  sim_params.attr("mgrSmootherJacobi") = py::int_(2);
+  sim_params.attr("mgrSmootherGaussSeidelSequential") = py::int_(3);
+  sim_params.attr("mgrSmootherGaussSeidelParallel") = py::int_(4);
+  sim_params.attr("mgrSmootherHybridGaussSeidelForward") = py::int_(5);
+  sim_params.attr("mgrSmootherHybridGaussSeidelBackward") = py::int_(6);
+  sim_params.attr("mgrSmootherEuclidILU") = py::int_(8);
+  sim_params.attr("mgrSmootherHypreILU") = py::int_(16);
+  sim_params.attr("mgrSmootherL1Jacobi") = py::int_(18);
+
+
+  // timer_node is registered by darts.interpolators (imported at module init).
   // Re-export it so that `from darts.engines import timer_node` still works.
   m.attr("timer_node") = py::module_::import("darts.interpolators").attr("timer_node");
 
@@ -169,12 +273,18 @@ void pybind_globals(py::module &m)
 
 
 #ifdef _OPENMP
-  m.def("get_num_threads", &omp_get_num_threads, "Get the number of OpenMP threads to be used");
+  // omp_get_max_threads() is the configured team size ("threads to be used");
+  // omp_get_num_threads() returns 1 outside a parallel region, which made
+  // every Python-side thread-count check (e.g. the THMCModel no-OpenMP guard)
+  // dead code.
+  m.def("get_num_threads", &omp_get_max_threads, "Get the number of OpenMP threads to be used");
   m.def("set_num_threads", &omp_set_num_threads, "Set the number of OpenMP threads to be used", "num_threads"_a);
   // if the amount of threads is not defined explicitly, use a half of available threads
   if (!std::getenv("OMP_NUM_THREADS"))
     {
-      omp_set_num_threads(omp_get_max_threads() / 2);
+      // std::max keeps single-core hosts at 1 (omp_set_num_threads(0) is
+      // non-conforming and silently mutates the ICV on some runtimes).
+      omp_set_num_threads(std::max(1, omp_get_max_threads() / 2));
     }
 #endif
 

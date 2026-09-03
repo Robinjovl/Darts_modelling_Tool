@@ -33,7 +33,7 @@ set(INTERPOLATION_PUBLIC_HEADER_FILES
 # Define the library as OBJECT (same pattern as the old engines_interpolator)
 add_library(darts_interpolation OBJECT "")
 
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(darts_interpolation PUBLIC OPENDARTS_LINEAR_SOLVERS)
 endif()
 

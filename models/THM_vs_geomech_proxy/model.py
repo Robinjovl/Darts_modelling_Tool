@@ -48,11 +48,44 @@ class Model(THMCModel):
         super().__init__()
 
 
-    def set_solver_params(self):
-        super().set_solver_params()
-        self.params.linear_type = sim_params.cpu_gmres_fs_cpr
-        #self.params.linear_type = sim_params.cpu_superlu
-        self.set_solver()
+    def set_solver(self):
+        super().set_solver()
+
+        # Open-source FS-CPR by default (mech_discretizer / engine_super_elastic_cpu).
+        # The spec drives _apply_solver in the open-source build; in the proprietary
+        # build it is ignored and the engine factory uses params.linear_type
+        # (bos_fs_cpr).
+        from darts.models.darts_model import DataTS
+        from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        if not hasattr(self, 'data_ts') or self.data_ts is None:
+            self.data_ts = DataTS(self.physics.n_vars)
+        mesh = self.reservoir.mesh
+        n_res_blks = mesh.n_res_blocks
+        n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
+        n_fracs_mesh = getattr(self.reservoir, 'n_fracs', 0)
+        fs_cpr = FSCPRSolverSpec(
+            force_amg_asymmetric=True,
+            n_res=n_matrix + n_fracs_mesh,
+            n_fracs=0,
+            n_wells=mesh.n_blocks - n_res_blks,
+        )
+        # Single solver declaration: the spec drives _apply_solver on the open-source
+        # CPU build; on the proprietary build _apply_solver applies
+        # proprietary_linear_type (bos_fs_cpr) to params.linear_type. No model-level
+        # params.linear_type needed (its open-source value was the engine default).
+        # 1e-5 / 50 is what this model has always effectively run with: until !280 the
+        # engine overwrote a spec's tolerance/max_iterations at init() with sim_params
+        # (defaults 1e-5 / 50), so the spec's numbers were decorative. The spec is
+        # authoritative now, so state the values this model has really been running -- keeping
+        # behaviour unchanged. FS-CPR does not reach 1e-8 on these systems anyway: asking for it
+        # only burns the iteration budget (on SPE10_mech 22 of 48 solves exhaust the 200-iter cap).
+        # Pre-!280 this model solved at tolerance_linear=1e-8 / max_i_linear=5000.
+        # The spec owns params now, so the `self.params.tolerance_linear = 1e-8`
+        # below is applied BEFORE _sync_solver_to_sim_params copies the spec over
+        # it -- the value has to live in the spec to survive.
+        self.linear_solver = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-8, max_iterations=5000,
+                                             restart=50,
+                                             proprietary_linear_type=sim_params.cpu_gmres_fs_cpr)
         self.data_ts.dt_first = 0.0001
         self.data_ts.dt_mult = 2
         self.data_ts.dt_max = 5

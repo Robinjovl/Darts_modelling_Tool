@@ -12,9 +12,9 @@ foreach(CPPFILE ${CPPFILES})
 
 	# Extract the filename minus the cpp. This will be the name of target
 	get_filename_component(TARGETNAME_BASE ${CPPFILE} NAME_WE)
-	
-	# To distinguish tests from different components we add a prefix 
-	set(TARGETNAME "solvers_${TARGETNAME_BASE}")
+
+	# To distinguish tests from different components we add a prefix
+	set(TARGETNAME "linear_solvers_${TARGETNAME_BASE}")
 
 	# Make the target
 	add_executable(${TARGETNAME} ${FILENAME})
@@ -26,7 +26,7 @@ foreach(CPPFILE ${CPPFILES})
   )
 
   # Place the target test in the tests folder and rename the source folder to src
-  set_property(TARGET ${TARGETNAME} PROPERTY FOLDER "tests//unit//solvers")
+  set_property(TARGET ${TARGETNAME} PROPERTY FOLDER "tests//unit//linear_solvers")
   source_group(src FILES ${FILENAME})
 
 	# Add the test

@@ -6,6 +6,7 @@
 #include <limits>
 #include <algorithm>
 #include <climits>
+#include <cmath>
 #include <thrust/unique.h>
 #include <thrust/copy.h>
 #include <thrust/execution_policy.h>
@@ -130,9 +131,10 @@ multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::get_point_data(co
   for (int op = 0; op < N_OPS; op++)
   {
     new_point[op] = this->new_operator_values[op];
-    if (isnan(this->new_operator_values[op]))
+    // isfinite (not just isnan): an inf operator poisons interpolation like a nan
+    if (!std::isfinite(this->new_operator_values[op]))
     {
-      printf("OBL generation warning: nan operator detected! Operator %d for point (", op);
+      printf("OBL generation warning: non-finite operator detected! Operator %d for point (", op);
       for (int a = 0; a < N_DIMS; a++)
         printf("%lf, ", this->new_point_coords[a]);
       printf(") is %lf\n", this->new_operator_values[op]);
@@ -303,8 +305,9 @@ int multilinear_adaptive_gpu_interpolator<value_t, N_DIMS, N_OPS>::evaluate_with
         for (int op = 0; op < N_OPS; op++)
         {
           np[op] = batch_values[k * N_OPS + op];
-          if (isnan(batch_values[k * N_OPS + op]))
-            printf("OBL generation warning: nan operator %d in batch-generated point\n", op);
+          // isfinite (not just isnan): an inf operator poisons interpolation like a nan
+          if (!std::isfinite(batch_values[k * N_OPS + op]))
+            printf("OBL generation warning: non-finite operator %d in batch-generated point\n", op);
         }
         point_data.emplace(missing_pts[k], np);
         dirty_point_data.insert(missing_pts[k]);

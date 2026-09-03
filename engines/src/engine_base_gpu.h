@@ -2,20 +2,121 @@
 #define ENGINE_BASE_GPU_H
 
 #include <vector>
+#include <stdexcept>
 #include <unordered_map>
 #include <cmath>
+#include <cstdlib>
+#include <string>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 
 #include "engine_base.h"
+#ifdef OPENDARTS_LINEAR_SOLVERS
+#include "block_csr_matrix.hpp"
+#include "csr_matrix.hpp"
+#else
 #include "csr_matrix.h"
-#include "gpu_tools.h"
+#endif
+#include "gpu_tools.h"  // engine-local GPU kernel-launch helpers (engines/src)
 #ifdef WITH_GPU
+#ifdef OPENDARTS_LINEAR_SOLVERS
+#include "linsolv_bicgstab.hpp"
+#include "linsolv_gmres_gpu.hpp"
+#include "linsolv_cusparse_ilu.hpp"
+#include "linsolv_cusolv.hpp"
+#ifdef WITH_CUDSS
+#include "linsolv_cudss.hpp"
+#endif
+#include "linsolv_mcsgs.hpp"
+#include "linsolv_schur_elim.hpp"
+#ifdef OPENDARTS_GPU_HAS_AMGX
+#include "linsolv_amgx.hpp"
+#include "linsolv_cpr_gpu.hpp"
+#endif
+#else
 #include "linsolv_bicgstab.h"
+#endif
 #define KERNEL_BLOCK_SIZE 128
+
+#if defined(OPENDARTS_LINEAR_SOLVERS) && defined(OPENDARTS_GPU_HAS_AMGX)
+/// Build the in-tree GPU AMGX-CPR chain for block size NV: Krylov outer
+/// (GMRES or BiCGStab) around linsolv_cpr_gpu with AMGX on the pressure
+/// system and cuSPARSE block-ILU(0) (or a DARTS_CPR_STAGE2 experiment hook)
+/// as the full-system stage. Factored out of engine_base_gpu::init_base so
+/// the local-elimination wrapper can build the same chain one block size
+/// smaller (see params->schur_elim_count).
+template <uint8_t NV>
+inline opendarts::linear_solvers::linsolv_iface *make_gpu_amgx_cpr_chain(
+    int device_num, bool use_bicgstab, std::string &linear_solver_type_str,
+    int amgx_reuse_override = -1)
+{
+  using namespace opendarts::linear_solvers;
+  auto *cpr = new linsolv_cpr_gpu<NV>;
+  cpr->p_solver_setup_gpu = 1;
+  cpr->p_solver_solve_gpu = 1;
+  cpr->p_solver_requires_diag_first = 0;
+  cpr->set_p_system_prec(new linsolv_amgx<1>(device_num, 1, amgx_reuse_override));
+  // Stage-2 experiment hook: DARTS_CPR_STAGE2=amgx swaps the exact
+  // (latency-bound) block-ILU(0) for a second AMGX instance on the full
+  // system; configure it via amgx_config_bs<NV>.json in the run directory.
+  const char *stage2_env = std::getenv("DARTS_CPR_STAGE2");
+  if (stage2_env && std::string(stage2_env) == std::string("amgx"))
+    cpr->set_prec(new linsolv_amgx<NV>(device_num, 1, amgx_reuse_override));
+  else if (stage2_env && std::string(stage2_env) == std::string("amgx_bs1"))
+    // scalar-expanded full system: well-row diagonals become invertible
+    // scalars, which D^-1-based smoothers (Jacobi/DILU) require
+    cpr->set_prec(new linsolv_amgx<NV>(device_num, 1, amgx_reuse_override));
+  else if (stage2_env && std::string(stage2_env) == std::string("mcsgs"))
+    // opendarts multicolor symmetric block-Gauss-Seidel: latency-friendly
+    // stage-2 with identity fallback on singular (well-row) diagonals
+    cpr->set_prec(new linsolv_mcsgs<NV>());
+  else
+    cpr->set_prec(new linsolv_cusparse_ilu<NV>());
+  if (use_bicgstab)
+  {
+    auto *bicgstab = new linsolv_bicgstab<NV>();
+    bicgstab->set_prec(cpr);
+    linear_solver_type_str = "GPU_BICGSTAB_CPR_AMGX_ILU";
+    return bicgstab;
+  }
+  auto *gmres = new linsolv_gmres_gpu<NV>();
+  gmres->set_prec(cpr);
+  linear_solver_type_str = "GPU_GMRES_CPR_AMGX_ILU";
+  return gmres;
+}
+
+/// Wrap the AMGX-CPR chain in the exact K-pair local (block-Schur) elimination
+/// (linsolv_schur_elim<NV, KELIM>): the inner chain is built at the reduced
+/// block size NV-KELIM. The eliminated (row, column) pairs are explicit.
+template <uint8_t NV, uint8_t KELIM>
+inline opendarts::linear_solvers::linsolv_iface *make_gpu_schur_elim_chain(
+    int device_num, bool use_bicgstab, const std::vector<int> &erows,
+    const std::vector<int> &ecols, std::string &tag)
+{
+  auto *wrap = new opendarts::linear_solvers::linsolv_schur_elim<NV, KELIM>(
+      /*on_device=*/true, erows, ecols, 0.0);
+  // The reduced pressure system's coefficients change every Newton/timestep
+  // (condensation folds in the evolving cell-local dynamics), which invalidates a
+  // reused AMGX hierarchy (measured: setup failures, wasted Newtons). Disable
+  // adaptive hierarchy reuse for THIS chain's AMGX instances only -- other
+  // AMGX instances in the process keep the default behaviour.
+  wrap->set_prec(make_gpu_amgx_cpr_chain<NV - KELIM>(device_num, use_bicgstab, tag,
+      /*amgx_reuse_override=*/0));
+  wrap->set_inner_owned(true);  // engine deletes only the top-level solver
+  tag += " + SCHUR_ELIM(K=" + std::to_string((int)KELIM) + ")";
+  return wrap;
+}
+#endif // OPENDARTS_LINEAR_SOLVERS && OPENDARTS_GPU_HAS_AMGX
 
 #endif
 
 /// This class defines infrastructure for simulation
+// The GPU engine has-a Jacobian (engine_base::Jacobian) and also IS-a
+// csr_matrix_base: the matrix-free path (assembly_kernel == 13) passes the
+// engine itself to linear_solver->setup() as the system matrix. The
+// csr_matrix_base storage-accessor virtuals delegate to the owned Jacobian.
 class engine_base_gpu : public engine_base, public csr_matrix_base
 {
   // methods
@@ -64,6 +165,18 @@ public:
   virtual int solve_linear_equation() override;
   virtual int post_newtonloop(value_t deltat, value_t time, index_t converged) override;
 
+  // Device-resident residual norms: the per-assembly host mirror of op_vals_arr
+  // is gone, so the default (L2) norms reduce on the device. L1/Linf fall back
+  // to the host implementation after an explicit refresh.
+  virtual double calc_newton_residual_L2() override;
+  virtual double calc_newton_residual_L1() override;
+  virtual double calc_newton_residual_Linf() override;
+  virtual void average_operator(std::vector<value_t> &av_op) override;
+  /// refresh the host op_vals_arr mirror from the device (lazy consumers)
+  void sync_op_vals_to_host();
+  /// accepted-step hook from engine_base::post_newtonloop's converged branch
+  void sync_host_data_for_accepted_step() override;
+
   virtual int test_assembly(int n_times, int kernel_number = 0, int dump_jacobian_rhs = 0) override;
 
   virtual int test_spmv(int n_times, int kernel_number = 0, int dump_result = 0) override;
@@ -88,6 +201,74 @@ public:
   virtual int convert_to_ELL() { return 0; };
   virtual csr_matrix_base *get_csr_matrix() { return Jacobian; };
 
+#ifdef OPENDARTS_LINEAR_SOLVERS
+  // csr_matrix_base pure-virtual interface. The matrix-free GPU path passes
+  // the engine itself as the system matrix, so the storage accessors simply
+  // forward to the owned Jacobian.
+  value_t *get_values() override { return Jacobian->get_values(); }
+  index_t *get_rows_ptr() override { return Jacobian->get_rows_ptr(); }
+  index_t *get_cols_ind() override { return Jacobian->get_cols_ind(); }
+  index_t *get_diag_ind() override { return Jacobian->get_diag_ind(); }
+  index_t *get_row_thread_starts() override { return Jacobian->get_row_thread_starts(); }
+  int export_matrix_to_file(const std::string &filename,
+      opendarts::linear_solvers::sparse_matrix_export_format export_format) override
+  {
+    return Jacobian->export_matrix_to_file(filename, export_format);
+  }
+  int import_matrix_from_file(const std::string &filename,
+      opendarts::linear_solvers::sparse_matrix_import_format import_format) override
+  {
+    return Jacobian->import_matrix_from_file(filename, import_format);
+  }
+#ifdef WITH_GPU
+  value_t *get_values_d() override { return Jacobian->get_values_d(); }
+  index_t *get_rows_ptr_d() override { return Jacobian->get_rows_ptr_d(); }
+  index_t *get_cols_ind_d() override { return Jacobian->get_cols_ind_d(); }
+  index_t *get_diag_ind_d() override { return Jacobian->get_diag_ind_d(); }
+#endif
+#endif
+
+  // Jacobian device/host pointer accessors -- bridge the open-source
+  // csr_matrix_base device-pointer virtuals (OPENDARTS_LINEAR_SOLVERS) and
+  // the legacy/bos csr_matrix members, so the *_gpu.cu kernels stay free of
+  // #ifdef branching.
+  value_t *jac_values_d()
+  {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    return Jacobian->get_values_d();
+#else
+    return Jacobian->values_d;
+#endif
+  }
+  index_t *jac_rows_ptr_d()
+  {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    return Jacobian->get_rows_ptr_d();
+#else
+    return Jacobian->rows_ptr_d;
+#endif
+  }
+  index_t *jac_cols_ind_d()
+  {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    return Jacobian->get_cols_ind_d();
+#else
+    return Jacobian->cols_ind_d;
+#endif
+  }
+  index_t *jac_diag_ind_d()
+  {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    return Jacobian->get_diag_ind_d();
+#else
+    return Jacobian->diag_ind_d;
+#endif
+  }
+  // Host structure / values -- the get_*() accessors are csr_matrix_base
+  // virtuals available in both builds.
+  index_t *jac_rows_ptr() { return Jacobian->get_rows_ptr(); }
+  value_t *jac_values() { return Jacobian->get_values(); }
+
   // GPU-specific data (_d postfix means device data)
   // All device pointers are default-initialized to nullptr so the destructor
   // can safely free_device_data() even when init() didn't run (e.g. model
@@ -96,7 +277,8 @@ public:
   // linear system
   value_t *X_d = nullptr, *Xn_d = nullptr, *dX_d = nullptr, *RHS_d = nullptr;      // [N_VARS * n_blocks] arrays for solution, previous timestep solution, update, and right hand side
   value_t *Xop_d = nullptr;                          // [(N_VARS + n_history) * n_blocks] extended OBL state for history-aware interpolation
-  value_t *RHS_wells_d = nullptr;                    // [N_VARS * n_blocks] temporary device storage for RHS_wells copied async from host while main assembly is done
+  value_t *residual_scratch_d = nullptr;             // [2 * NORM_MAX_VARS] accumulator for device-side residual norms / operator averages
+  std::vector<void *> pinned_host_ptrs;              // host buffers registered with cudaHostRegister (unpinned in the destructor)
   std::vector<value_t> jac_wells;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary host storage for well equations
   value_t *jac_wells_d = nullptr;                    // [n_wells * 2 * N_VARS * N_VARS ] temporary device storage for well equations
   std::vector<index_t> jac_well_head_idxs;           // [n_wells] well head indexes in jacobian values array
@@ -133,6 +315,16 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   struct tm *timeinfo;
   char buffer[1024];
 
+#ifdef _OPENMP
+  // Mirror the CPU engine contract (engine_base::print_header): the
+  // Jacobian's row_thread_starts partition is sized for
+  // omp_get_max_threads() at allocate/init time, so dynamic team sizing must
+  // be off BEFORE init_jacobian_structure's first-touch / assembly regions
+  // run. The GPU engine reaches print_header() only after structure init,
+  // hence the explicit early call here.
+  omp_set_dynamic(0);
+#endif
+
   mesh = mesh_;
   wells = well_list_;
   acc_flux_op_set_list = acc_flux_op_set_list_;
@@ -140,18 +332,33 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   params = params_;
   timer = timer_;
 
-  // Instantiate Jacobian
+  // Instantiate Jacobian. With the unified matrix layout (plan §12, phase B
+  // for CPU; phase C1 for GPU), the open-source build uses the new
+  // block_csr_matrix on GPU as well as on CPU -- its device storage is
+  // allocated lazily through dual_array (no init_device call needed), and
+  // the cuSPARSE BSR SpMV adapter (gpu_bsr_spmv) services
+  // csr_matrix_base::matrix_vector_product_d on the device pointers exposed
+  // through get_*_d(). The legacy csr_matrix<N> + init_device path is kept
+  // for the proprietary build, which still ships its own GPU device layer.
   if (!Jacobian)
   {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    Jacobian = new block_csr_matrix;
+#else
     Jacobian = new csr_matrix<N_VARS>;
     Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+#endif
   }
   // for GPU engines we need only structure - rows_ptr and cols_ind
   // they are filled on CPU and later copied to GPU
-  //(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_struct(mesh_->n_blocks, mesh_->n_blocks, mesh_->n_conns + mesh_->n_blocks);
 
   // may need full init to be able to dump csr matrix from device
+#ifdef OPENDARTS_LINEAR_SOLVERS
+  (static_cast<block_csr_matrix *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
+  Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;  // init() resets type
+#else
   (static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_conns + mesh_->n_blocks);
+#endif
 
   int matrix_free = 0;
   if (params->assembly_kernel == 13)
@@ -160,17 +367,143 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     matrix_free = 1;
   }
 
+#ifndef OPENDARTS_LINEAR_SOLVERS
+  // Legacy GPU path: pre-allocate the cuSPARSE-backed device buffers
+  // (values_d, rows_ptr_d, cols_ind_d, diag_ind_d). The open-source
+  // block_csr_matrix path allocates these lazily on first access via
+  // dual_array::ensure_device_allocated().
   (static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_device(mesh_->n_blocks, mesh_->n_conns + mesh_->n_blocks);
+#endif
   // create linear solver
   // if default CPU solver is used, silently change to default GPU solver
   if (params->linear_type == 0)
   {
+#ifdef OPENDARTS_GPU_HAS_AMGX
     params->linear_type = sim_params::GPU_GMRES_CPR_AMGX_ILU;
+#else
+    // AMGX not built; fall back to the CPR + AMG GPU solver.
+    params->linear_type = sim_params::GPU_GMRES_CPR_AMG;
+#endif
   }
 
-  std::string linear_solver_type_str;
-  if (!linear_solver)
+#ifndef OPENDARTS_GPU_HAS_AMGX
+  // AMGX not built into this (open-source) configuration: redirect any
+  // explicitly requested AMGX-based GPU solver to the AMG-based CPR GPU
+  // solver so the build stays runnable instead of aborting in the switch.
+  switch (params->linear_type)
   {
+  case sim_params::GPU_GMRES_CPR_AMGX_ILU:
+  case sim_params::GPU_GMRES_CPR_AMGX_ILU_SP:
+  case sim_params::GPU_GMRES_CPR_AMGX_AMGX:
+  case sim_params::GPU_GMRES_AMGX:
+  case sim_params::GPU_AMGX:
+  case sim_params::GPU_BICGSTAB_CPR_AMGX:
+    std::cout << "AMGX not available; using GPU_GMRES_CPR_AMG instead of linear solver type "
+              << params->linear_type << std::endl;
+    params->linear_type = sim_params::GPU_GMRES_CPR_AMG;
+    break;
+  default:
+    break;
+  }
+#endif
+
+  std::string linear_solver_type_str;
+  // Guard on the injected solver too, matching the CPU factory: an injected
+  // solver must never be shadowed by a freshly built one.
+  if (!linear_solver && !linear_solver_external)
+  {
+    // Factory-allocated solvers are engine-owned and deleted in ~engine_base.
+    linear_solver_owned = true;
+#ifdef OPENDARTS_LINEAR_SOLVERS
+    // Open-source GPU build: the proprietary bos GMRES/CPR/AMG solvers are
+    // stubbed out, so the full linear_type-driven factory below cannot run.
+    // Honor the explicitly requested in-tree GPU solvers (direct solvers:
+    // cuDSS when built, cuSOLVER QR always); otherwise fall back to the
+    // open-source GPU BiCGStab Krylov solver with a cuSPARSE block-ILU(0)
+    // preconditioner. AMGX-based linear_type values were already redirected
+    // above when AMGX is absent.
+    if (params->linear_type == sim_params::GPU_CUDSS)
+    {
+#ifdef WITH_CUDSS
+      linear_solver = new linsolv_cudss<N_VARS>();
+      linear_solver_type_str = "GPU_CUDSS";
+#else
+      std::cout << "cuDSS not built (WITH_CUDSS=OFF); using the BiCGStab + "
+                   "cuSPARSE-ILU(0) GPU solver instead." << std::endl;
+#endif
+    }
+    else if (params->linear_type == sim_params::GPU_CUSOLVER)
+    {
+      linear_solver = new linsolv_cusolv<N_VARS>();
+      linear_solver_type_str = "GPU_CUSOLVER";
+    }
+#ifdef OPENDARTS_GPU_HAS_AMGX
+    else if (params->linear_type == sim_params::GPU_BICGSTAB_CPR_AMGX
+             || params->linear_type == sim_params::GPU_GMRES_CPR_AMGX_ILU)
+    {
+      // In-tree AMGX-CPR stack on the open-source block_csr_matrix Jacobian:
+      // GPU-resident GMRES (linsolv_gmres_gpu) around the two-stage CPR
+      // (linsolv_cpr_gpu: True-IMPES pressure reduction on device, AMGX
+      // AMG on the scalar pressure system, cuSPARSE block-ILU(0) on the full
+      // system). Mirrors the proprietary GPU_GMRES_CPR_AMGX_ILU wiring.
+      if constexpr (N_VARS > 1)
+      {
+        const bool use_bicgstab = (params->linear_type == sim_params::GPU_BICGSTAB_CPR_AMGX);
+        if (params->schur_elim_count > 0)
+        {
+          // Mineral-equation Schur elimination: exact per-cell condensation of K
+          // cell-local (diagonal-block-only) equations, with the SAME AMGX-CPR chain built at the
+          // reduced block size (N_VARS-K) as the inner solver. The reduced block
+          // must stay >= 2 for the CPR split, so K <= N_VARS-2.
+          const int Kelim = params->schur_elim_count;
+          const std::vector<int> &er = params->schur_elim_rows;
+          const std::vector<int> &ec = params->schur_elim_cols;
+          if ((int)er.size() != Kelim || (int)ec.size() != Kelim)
+            throw std::runtime_error("schur_elim: schur_elim_rows/cols length must equal "
+                "schur_elim_count (K)");
+          linear_solver = nullptr;
+          if constexpr (N_VARS >= 3)
+          {
+            switch (Kelim)
+            {
+              case 1: if constexpr (N_VARS >= 3) linear_solver = make_gpu_schur_elim_chain<N_VARS, 1>(device_num, use_bicgstab, er, ec, linear_solver_type_str); break;
+              case 2: if constexpr (N_VARS >= 4) linear_solver = make_gpu_schur_elim_chain<N_VARS, 2>(device_num, use_bicgstab, er, ec, linear_solver_type_str); break;
+              case 3: if constexpr (N_VARS >= 5) linear_solver = make_gpu_schur_elim_chain<N_VARS, 3>(device_num, use_bicgstab, er, ec, linear_solver_type_str); break;
+              case 4: if constexpr (N_VARS >= 6) linear_solver = make_gpu_schur_elim_chain<N_VARS, 4>(device_num, use_bicgstab, er, ec, linear_solver_type_str); break;
+              default: break;
+            }
+          }
+          if (!linear_solver)
+            // An EXPLICIT solver request must fail rather than silently running a
+            // different algorithm than the user configured.
+            throw std::runtime_error("schur_elim_count=" + std::to_string(Kelim) +
+                " unsupported for block size " + std::to_string((int)N_VARS) +
+                " (need 1 <= K <= N_VARS-2, K <= 4); disable local (Schur) elimination "
+                "or adjust K");
+        }
+        else
+        {
+          linear_solver = make_gpu_amgx_cpr_chain<N_VARS>(device_num, use_bicgstab,
+              linear_solver_type_str);
+        }
+      }
+      else
+      {
+        auto *gmres = new linsolv_gmres_gpu<1>();
+        gmres->set_prec(new linsolv_amgx<1>(device_num));
+        linear_solver = gmres;
+        linear_solver_type_str = "GPU_GMRES_AMGX";
+      }
+    }
+#endif // OPENDARTS_GPU_HAS_AMGX
+    if (!linear_solver)
+    {
+      linsolv_bicgstab<N_VARS> *bicgstab = new linsolv_bicgstab<N_VARS>();
+      bicgstab->set_prec(new linsolv_cusparse_ilu<N_VARS>());
+      linear_solver = bicgstab;
+      linear_solver_type_str = "GPU_BICGSTAB_CUSPARSE_ILU";
+    }
+#else
     switch (params->linear_type)
     {
     case sim_params::GPU_GMRES_CPR_AMG:
@@ -178,10 +511,10 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
       if constexpr (N_VARS > 1)
       {
-        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+        linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
         cpr->set_prec(new linsolv_bos_amg<1>);
         linear_solver->set_prec(cpr);
         linear_solver_type_str = "GPU_GMRES_CPR_AMG";
@@ -198,10 +531,10 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
     case sim_params::GPU_GMRES_CPR_AIPS:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-      linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+      linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+      ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+      ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+      ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
       int n_terms = 10;
       bool print_radius = false;
@@ -229,15 +562,16 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
       break;
     }
 #endif //WITH_AIPS
+#ifdef OPENDARTS_GPU_HAS_AMGX
     case sim_params::GPU_GMRES_CPR_AMGX_ILU:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
       if constexpr (N_VARS > 1)
       {
-        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+        linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
         // set p system prec
         cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
@@ -259,10 +593,10 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
       if constexpr (N_VARS > 1)
       {
-        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+        linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
         // set p system prec
         cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
@@ -284,10 +618,10 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
       if constexpr (N_VARS > 1)
       {
-        linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-        ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+        linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+        ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
         int convert_to_bs1 = 0;
         if (params->linear_params.size() > 0)
@@ -333,81 +667,46 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 	  linear_solver_type_str = "GPU_AMGX";
       break;
     }
-#ifdef WITH_ADGPRS_NF
-    case sim_params::GPU_GMRES_CPR_NF:
-    {
-      linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-      linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-      // NF was initially created for CPU-based solver, so keeping unnesessary GPU->CPU->GPU copies so far for simplicity
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
-
-      int nx, ny, nz;
-      int n_colors = 4;
-      int coloring_scheme = 3;
-      bool is_ordering_reversed = true;
-      bool is_factorization_twisted = true;
-      if (params->linear_params.size() < 3)
-      {
-        printf("Error: Missing nx, ny, nz parameters, required for NF solver\n");
-        exit(-3);
-      }
-
-      nx = params->linear_params[0];
-      ny = params->linear_params[1];
-      nz = params->linear_params[2];
-      if (params->linear_params.size() > 3)
-      {
-        n_colors = params->linear_params[3];
-        if (params->linear_params.size() > 4)
-        {
-          coloring_scheme = params->linear_params[4];
-          if (params->linear_params.size() > 5)
-          {
-            is_ordering_reversed = params->linear_params[5];
-            if (params->linear_params.size() > 6)
-            {
-              is_factorization_twisted = params->linear_params[6];
-            }
-          }
-        }
-      }
-
-      cpr->set_prec(new linsolv_adgprs_nf<1>(nx, ny, nz, params->global_actnum, n_colors, coloring_scheme, is_ordering_reversed, is_factorization_twisted));
-      linear_solver->set_prec(cpr);
-	  linear_solver_type_str = "GPU_GMRES_CPR_NF";
-      break;
-    }
-#endif //WITH_ADGPRS_NF
+#endif // OPENDARTS_GPU_HAS_AMGX
     case sim_params::GPU_GMRES_ILU0:
     {
       linear_solver = new linsolv_bos_gmres<N_VARS>(1);
 	  linear_solver_type_str = "GPU_GMRES_ILU0";
       break;
     }
+#ifdef OPENDARTS_GPU_HAS_AMGX
     case sim_params::GPU_BICGSTAB_CPR_AMGX:
     {
       linear_solver = new linsolv_bicgstab<N_VARS>();
-      linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-      ((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+      linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+      ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+      ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+      ((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
       cpr->set_prec(new linsolv_amgx<1>(device_num));
       linear_solver->set_prec(cpr);
 	  linear_solver_type_str = "GPU_BICGSTAB_CPR_AMGX";
       break;
     }
+#endif // OPENDARTS_GPU_HAS_AMGX
     default:
     {
-      std::cerr << "Linear solver type " << params->linear_type << " is not supported for " << engine_name << std::endl << std::flush;
-      exit(1);
+      throw std::runtime_error("Linear solver type " +
+          std::to_string(static_cast<int>(params->linear_type)) +
+          " is not supported for " + engine_name);
     }
     }
+#endif // OPENDARTS_LINEAR_SOLVERS
   }
 
-  std::cout << "Linear solver type is " << params->linear_type << std::endl;
+  // Print the solver name
+  if (linear_solver_type_str.empty())
+  {
+    linear_solver_type_str = external_solver_name.empty()
+        ? std::string("external (injected via set_linear_solver)")
+        : external_solver_name;
+  }
+  std::cout << "Linear solver type is " << linear_solver_type_str << std::endl;
 
   // *** allocate host data ***
 
@@ -451,7 +750,6 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   allocate_device_data(Xn, &Xn_d);
   allocate_device_data(Xn, &dX_d);
   allocate_device_data(RHS, &RHS_d);
-  allocate_device_data(RHS, &RHS_wells_d);
 
   allocate_device_data(PV, &PV_d);
   allocate_device_data(mesh->tran, &mesh_tran_d);
@@ -460,6 +758,48 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
 
   allocate_device_data(op_vals_arr, &op_vals_arr_d);
   allocate_device_data(op_vals_arr, &op_vals_arr_n_d);
+  // previous-timestep operator values live on the device; skip the host mirror
+  keep_host_op_vals_n_mirror = false;
+
+  // Pin the per-Newton host transfer buffers: pageable copies run ~9 GB/s on
+  // this host class vs ~26 GB/s pinned. Registration is best-effort.
+  // Reserve before registering so recording a successful registration cannot
+  // itself allocate and throw, which would lose the pointer needed to unpin.
+  pinned_host_ptrs.reserve(pinned_host_ptrs.size() + 4);
+  auto pin_host_buffer = [this](std::vector<value_t> &v)
+  {
+    if (v.empty())
+      return;
+
+    const cudaError_t pin_status =
+      cudaHostRegister(v.data(), v.size() * sizeof(value_t), cudaHostRegisterDefault);
+    if (pin_status == cudaSuccess)
+    {
+      pinned_host_ptrs.push_back(v.data());
+    }
+    else
+    {
+      // Registration is deliberately best-effort: separate std::vector
+      // allocations can occupy overlapping host pages, and systems can reject
+      // or run out of page-lockable memory. Report unexpected failures, but in
+      // every case clear the ignored sticky CUDA status so a later AMGX
+      // cudaCheckError() does not attribute it to AMGX_matrix_destroy and skip
+      // the actual matrix destruction.
+      if (pin_status != cudaErrorHostMemoryAlreadyRegistered &&
+          pin_status != cudaErrorMemoryAllocation &&
+          pin_status != cudaErrorNotSupported)
+      {
+        std::cerr << "WARNING: cudaHostRegister failed: "
+                  << cudaGetErrorString(pin_status) << " (" << pin_status
+                  << "); continuing with pageable host memory" << std::endl;
+      }
+      (void)cudaGetLastError();
+    }
+  };
+  pin_host_buffer(X);
+  pin_host_buffer(dX);
+  pin_host_buffer(RHS);
+  pin_host_buffer(op_vals_arr);
   allocate_device_data(&op_ders_arr_d, n_ops * n_vars * mesh->n_blocks);
   if (get_n_history() > 0)
   {
@@ -492,7 +832,13 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   n_rows = Jacobian->n_rows;
 
 #ifdef WITH_GPU
+#ifdef OPENDARTS_LINEAR_SOLVERS
+  // Open-source GPU engine always solves on device -> always mirror the
+  // block-CSR structure to the device.
+  if (true)
+#else
   if (params->linear_type >= sim_params::GPU_GMRES_CPR_AMG)
+#endif
   {
     timer->node["jacobian assembly"].node["send_to_device"].start();
     Jacobian->copy_struct_to_device();
@@ -562,6 +908,23 @@ int engine_base_gpu::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_li
   copy_data_to_device(PV, PV_d);
   copy_data_to_device(mesh->tran, mesh_tran_d);
   copy_data_to_device(jac_well_head_idxs, jac_well_head_idxs_d);
+
+  // Adjoint gradients: the backward driver and all its matrices are
+  // host-resident -- reuse the engine_base allocation path (same blocks that
+  // engine_base::init_base runs on the CPU engines).
+  if (opt_history_matching)
+  {
+    init_adjoint_base();
+  }
+
+  // Customized operators are evaluated host-side too (post_newtonloop / the
+  // adjoint driver via customize_block_idxs).
+  if (customize_operator)
+  {
+    init_customized_operator_base();
+  }
+
+  well_control_arr.clear();
 
   print_header();
 

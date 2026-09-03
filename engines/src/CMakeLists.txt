@@ -32,7 +32,7 @@ add_library(engines_global OBJECT "")
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(engines_global PUBLIC OPENDARTS_LINEAR_SOLVERS)
 endif()
 
@@ -120,7 +120,7 @@ add_library(engines_build_info OBJECT "")
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(engines_build_info PUBLIC OPENDARTS_LINEAR_SOLVERS)
 endif()
 
@@ -185,7 +185,7 @@ add_library(engines_conn_mesh OBJECT "")
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(engines_conn_mesh PUBLIC OPENDARTS_LINEAR_SOLVERS)
 endif()
 
@@ -260,7 +260,7 @@ add_library(engines_wells OBJECT "")
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(engines_wells PUBLIC OPENDARTS_LINEAR_SOLVERS)
 endif()
 
@@ -352,7 +352,7 @@ endif()
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(engines_engines PUBLIC OPENDARTS_LINEAR_SOLVERS)
 endif()
 
