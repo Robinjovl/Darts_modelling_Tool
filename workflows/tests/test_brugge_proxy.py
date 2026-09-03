@@ -128,3 +128,66 @@ class BruggeProxyAdapterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(
+    os.environ.get("WORKFLOWS_RUN_DARTS") == "1", "set WORKFLOWS_RUN_DARTS=1"
+)
+class BruggeProxyEnsembleTests(unittest.TestCase):
+    def test_small_lhs_ensemble_runs_resumes_and_analyzes(self):
+        from workflows.ensemble import analyze, run_study
+        from workflows.spec import ModelRef, ParameterSpec, StudySpec
+
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = StudySpec(
+                name="ens-smoke",
+                workflow="ensemble",
+                model=ModelRef(model_dir=str(MODEL_DIR), adapter=ADAPTER),
+                parameters=[
+                    ParameterSpec(
+                        name="tm",
+                        family="LogScalarParam",
+                        args={"low": 0.5, "high": 2.0},
+                    ),
+                    ParameterSpec(
+                        name="k",
+                        family="LogPermField",
+                        args={"n_components": 3, "range_m": 1500.0},
+                    ),
+                ],
+                seed_root=11,
+                observations=ObservationSpec(
+                    wells=["P1"], quantities=["oil_rate"], report_times=[10.0]
+                ),
+                design={"method": "lhs", "n": 3},
+            )
+            spec.compute.max_workers = 3
+            spec.compute.walltime_s = 300
+            study = Path(tmp) / "study"
+            first = run_study(
+                spec,
+                study,
+                executor=IsolatedExecutor(n_workers=3, timeout_s=300, retries=0),
+            )
+            self.assertEqual(first["n_ok"], 3)
+            second = run_study(
+                spec,
+                study,
+                executor=IsolatedExecutor(n_workers=3, timeout_s=300, retries=0),
+            )
+            self.assertEqual(second["n_run"], 0)
+            analysis = analyze(study)
+            entry = analysis["quantities"]["P1:oil_rate"]
+            self.assertIn("P50", entry["percentiles"])
+            manifest = StudyStore(study).read_manifest()
+            self.assertEqual(manifest["n_members"], 3)
+            self.assertEqual(len(manifest["labels"]), 4)
+            self.assertIn("truth_generation_hash", manifest["identities"])
+            self.assertTrue(
+                (
+                    Path(
+                        manifest["provenance"]["engine_fingerprint"]
+                        and study / "inputs" / "geometry.json"
+                    )
+                ).exists()
+            )

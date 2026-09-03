@@ -69,10 +69,18 @@ def snapshot_inputs(
     snapshot_dir = Path(snapshot_dir).resolve()
     snapshot_dir.mkdir(parents=True, exist_ok=True)
     files = {}
+    if (snapshot_dir / SNAPSHOT_NAME).exists():
+        # keep generated inputs registered by an earlier snapshot (e.g. a mesh) if unchanged
+        previous = InputSnapshot.load(snapshot_dir)
+        for rel, digest in previous.files.items():
+            path = snapshot_dir / rel
+            if path.is_file() and file_sha256(path) == digest:
+                files[rel] = digest
     for source in _matching_files(model_dir, patterns):
         rel = source.relative_to(model_dir).as_posix()
         target = snapshot_dir / rel
         digest = file_sha256(source)
+        files.pop(rel, None)
         if not (target.exists() and file_sha256(target) == digest):
             target.parent.mkdir(parents=True, exist_ok=True)
             if target.exists():

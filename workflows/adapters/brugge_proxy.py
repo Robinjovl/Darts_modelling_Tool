@@ -1,19 +1,23 @@
 """Adapter for the CI coarse Brugge proxy (``models/Uniform_Brugge``).
 
 Cheap knobs: transmissibility multipliers (per interface or scalar), well-index multipliers (per
-well or scalar), per-cell porosity, per-well BHP targets. The gmsh mesh is generated once per study
-into the input snapshot and reused by every member (``regenerate_mesh=False``). Members write no
-VTK or spreadsheet files.
+well or scalar), per-cell porosity, per-well BHP targets. Rebuild (geometry) scope: a per-cell
+permeability array passed to the model constructor, which recomputes transmissibilities and
+well indices exactly from the staged mesh. The gmsh mesh is generated once per study into the
+input snapshot and reused by every member (``regenerate_mesh=False``). Members write no VTK or
+spreadsheet files.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
 import numpy as np
 
 from workflows.adapter import InputSnapshot, ModelAdapter, add_generated_input
+from workflows.journal import atomic_write_json
 from workflows.spec import ObservationSpec
 
 MESH_NAME = "Brugge_model.msh"
@@ -41,8 +45,8 @@ class Adapter(ModelAdapter):
         "wi_multiplier": "cheap",
         "poro": "cheap",
         "bhp": "cheap",
+        "permx": "geometry",
         "relperm": "physics",
-        "logperm": "geometry",
     }
     member_seconds = (8.0, 12.0)
 
@@ -56,13 +60,35 @@ class Adapter(ModelAdapter):
             snapshot = add_generated_input(snapshot, mesh)
         return snapshot
 
+    def geometry(self, snapshot: InputSnapshot) -> dict:
+        """Cell centroids and count of the discretized proxy (cached as ``geometry.json``)."""
+        cache = Path(snapshot.root) / "geometry.json"
+        if cache.exists():
+            with open(cache, encoding="utf-8") as handle:
+                return json.load(handle)
+        model_cls = _import_model(self.model_dir)
+        root = Path(snapshot.root)
+        model = model_cls(
+            input_dir=str(root), mesh_file=str(root / MESH_NAME), regenerate_mesh=False
+        )
+        model.reservoir.init_reservoir()
+        n_cells = int(model.reservoir.mesh.n_res_blocks)
+        centroids = np.asarray(
+            model.reservoir.discretizer.centroids_all_cells, dtype=float
+        )[:n_cells]
+        geometry = {"n_cells": n_cells, "centroids": centroids.tolist()}
+        atomic_write_json(cache, geometry)
+        return geometry
+
     def build(self, paths: dict, realization: dict):
         model_cls = _import_model(self.model_dir)
         inputs = Path(paths["inputs"])
+        perm = realization.get("permx")
         model = model_cls(
             input_dir=str(inputs),
             mesh_file=str(inputs / MESH_NAME),
             regenerate_mesh=False,
+            perm=None if perm is None else np.asarray(perm, dtype=float),
         )
         model.init()
         model.set_output(
@@ -79,18 +105,16 @@ class Adapter(ModelAdapter):
             tran, tran_d = value_vector([]), value_vector([])
             mesh.get_res_tran(tran, tran_d)
             factor = np.asarray(realization["tran_multiplier"], dtype=float)
-            new_tran = np.array(tran) * factor
-            new_tran_d = np.array(tran_d) * factor
-            mesh.set_res_tran(value_vector(new_tran), value_vector(new_tran_d))
+            mesh.set_res_tran(
+                value_vector(np.array(tran) * factor),
+                value_vector(np.array(tran_d) * factor),
+            )
             touched = True
         if "wi_multiplier" in realization:
             wi = value_vector([])
             mesh.get_wells_tran(wi)
-            mesh.set_wells_tran(
-                value_vector(
-                    np.array(wi) * np.asarray(realization["wi_multiplier"], dtype=float)
-                )
-            )
+            factor = np.asarray(realization["wi_multiplier"], dtype=float)
+            mesh.set_wells_tran(value_vector(np.array(wi) * factor))
             touched = True
         if "poro" in realization:
             np.array(mesh.poro, copy=False)[: mesh.n_res_blocks] = np.asarray(

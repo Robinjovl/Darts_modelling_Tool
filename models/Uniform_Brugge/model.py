@@ -14,17 +14,19 @@ from darts.physics.properties.black_oil import *
 
 
 class Model(DartsModel):
-    def __init__(self, input_dir=None, mesh_file=None, regenerate_mesh=True):
+    def __init__(self, input_dir=None, mesh_file=None, regenerate_mesh=True, perm=None):
         """
         :param input_dir: directory holding ``Brugge_struct/`` (default: the current directory)
         :param mesh_file: path of the gmsh mesh to write/read (default: ``Brugge_model.msh``)
         :param regenerate_mesh: regenerate the mesh with gmsh even if ``mesh_file`` exists (default True)
+        :param perm: matrix permeability [mD], scalar or per-cell array (default 500)
         """
         # Call base class constructor
         super().__init__()
         self.input_dir = '.' if input_dir is None else os.fspath(input_dir)
         self.mesh_file = 'Brugge_model.msh' if mesh_file is None else os.fspath(mesh_file)
         self.regenerate_mesh = regenerate_mesh
+        self.perm = 500 if perm is None else perm
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -68,7 +70,7 @@ class Model(DartsModel):
                          depth_path, mesh_file, well_coord_path)
 
         # Some permeability input data for the simulation
-        const_perm = 500
+        const_perm = self.perm
         permx = const_perm  # Matrix permeability in the x-direction [mD]
         permy = const_perm  # Matrix permeability in the y-direction [mD]
         permz = const_perm  # Matrix permeability in the z-direction [mD]

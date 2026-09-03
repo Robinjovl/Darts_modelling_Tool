@@ -57,6 +57,13 @@ class SnapshotTests(unittest.TestCase):
             with_mesh = add_generated_input(changed, generated)
             self.assertIn("mesh.msh", with_mesh.files)
             self.assertEqual(InputSnapshot.load(snap_dir).files, with_mesh.files)
+            resnapshot = snapshot_inputs(
+                model_dir, FakeAdapter.input_patterns, snap_dir
+            )
+            self.assertIn(
+                "mesh.msh", resnapshot.files, "generated inputs survive a re-snapshot"
+            )
+            self.assertEqual(resnapshot.hash, with_mesh.hash)
 
     def test_stage_symlink_and_copy_and_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmp:
