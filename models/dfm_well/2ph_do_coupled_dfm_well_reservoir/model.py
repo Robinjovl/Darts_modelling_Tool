@@ -28,10 +28,15 @@ class Model(CICDModel):
         self.zero = 1e-13
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, coupled_well_res_norm_method=2)
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=0.2, runtime=300, tol_linear=1e-6)
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=0.2, runtime=300 )
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, coupled_well_res_norm_method=2)
+        self.linear_solver.spec.tolerance = 1e-6
 
     def set_initial_conditions(self):
         input_distribution = {self.physics.vars[0]: 89.22660,

@@ -30,13 +30,57 @@ class Model(THMCModel):
             self.thermal = False
 
         # call base class constructor
+        # NOTE: solver / time-stepping / Newton / linear-solver configuration moved
+        # to set_solver() (called at the top of reset()) per the new convention.
         super().__init__()
 
-    def set_solver_params(self):
-        super().set_solver_params()
-        self.params.linear_type = sim_params.cpu_gmres_fs_cpr
-        #self.params.linear_type = sim_params.cpu_superlu
-        self.set_solver()
+    def set_solver(self):
+        super().set_solver()
+
+        # Open-source FS-CPR by default -- inject the spec; the engine bypasses
+        # sim_params.linear_type. FS-CPR is a PRECONDITIONER (single application),
+        # not an outer Krylov loop -- wrap it in GMRES to mirror the proprietary
+        # path (bos_gmres + bos_fs_cpr).
+        from darts.models.darts_model import DataTS
+        from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        if not hasattr(self, 'data_ts') or self.data_ts is None:
+            self.data_ts = DataTS(self.physics.n_vars)
+        mesh = self.reservoir.mesh
+        n_blocks = mesh.n_blocks
+        n_res_blks = mesh.n_res_blocks
+        n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
+        n_fracs_mesh = getattr(self.reservoir, 'n_fracs', 0)
+        # Match proprietary engine_pm_cpu.cpp:136 convention:
+        #   n_res  = n_matrix + n_fracs  (matrix + fracture cells treated as "reservoir")
+        #   n_fracs= 0   (zero gap-DOF rows -- FS_UPG not yet supported)
+        #   n_wells= n_blocks - n_res_blocks
+        fs_cpr = FSCPRSolverSpec(
+            force_amg_asymmetric=True,
+            n_res=n_matrix + n_fracs_mesh,
+            n_fracs=0,
+            n_wells=n_blocks - n_res_blks,
+        )
+        # Single solver declaration: the FS-CPR spec drives _apply_solver on the
+        # open-source CPU build; on the proprietary build _apply_solver applies
+        # proprietary_linear_type (bos_fs_cpr) to params.linear_type. No model-level
+        # params.linear_type needed -- its open-source value was the engine default
+        # (cpu_superlu) anyway.
+        self.linear_solver = GMRESSolverSpec(
+            prec=fs_cpr,
+            # Pre-!280 this model solved at tolerance_linear=1e-8 with
+            # max_i_linear=5000 (THMCModel's mech_discretizer params, tightened
+            # here). Until !280 the engine overwrote a spec's tolerance /
+            # max_iterations at init() with sim_params, so those params -- not
+            # the spec -- were what the model actually ran. The spec owns them
+            # now, so it must carry the same values: at the 1e-5 / 50 sim_params
+            # default every solve exits at ~0.7 relative residual and the
+            # dead-oil physics never advance.
+            tolerance=1e-8,
+            max_iterations=5000,
+            restart=50,
+            proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
+        )
+
         self.data_ts.dt_first = 0.0001
         self.data_ts.dt_mult = 2
         self.data_ts.dt_max = 5

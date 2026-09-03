@@ -1,6 +1,13 @@
 #ifndef MATRIX_H_
 #define MATRIX_H_
 
+// <cstdlib>/<cmath> supply the floating-point std::abs overloads.
+// These were previously reaching this file only transitively through
+// <Eigen/Dense>; when that include was dropped, unqualified abs() bound
+// to ::abs(int) and silently TRUNCATED distances/singular values to
+// integers. Keep both the includes and the std:: qualification.
+#include <cstdlib>
+#include <cmath>
 #include <vector>
 #include <type_traits>
 #include <algorithm>
@@ -239,7 +246,7 @@ namespace linalg
   template <class T>
   inline T sign(T a, T b)
   {
-	return (b >= T(0) ? abs(a) : -abs(a));
+	return (b >= T(0) ? std::abs(a) : -std::abs(a));
   }
   template <typename T>
   bool Matrix<T>::inv()
@@ -257,11 +264,11 @@ namespace linalg
 	{
 	  // looking for a maximum in each column
 	  i_flat = i * this->N;
-	  max_column = abs(ptr[i_flat + i]);
+	  max_column = std::abs(ptr[i_flat + i]);
 	  i_max = i;
 	  for (j = i + 1; j < this->M; j++)
 	  {
-		tmp = abs(ptr[j * this->N + i]);
+		tmp = std::abs(ptr[j * this->N + i]);
 		if (tmp > max_column)
 		{
 		  i_max = j;
@@ -350,7 +357,7 @@ namespace linalg
 	  if (i < m)
 	  {
 		for (k = i; k < m; k++)
-		  scale += abs(a[k * n + i]);
+		  scale += std::abs(a[k * n + i]);
 
 		if (scale > epsilon(scale))
 		{
@@ -381,7 +388,7 @@ namespace linalg
 	  if (i < m && i != n - 1)
 	  {
 		for (k = l; k < n; k++)
-		  scale += abs(a[i * n + k]);
+		  scale += std::abs(a[i * n + k]);
 
 		if (scale > epsilon(scale))
 		{
@@ -409,14 +416,14 @@ namespace linalg
 			a[i * n + k] *= scale;
 		}
 	  }
-	  anorm = std::max(anorm, abs(w[i]) + abs(rv1[i]));
+	  anorm = std::max(anorm, std::abs(w[i]) + std::abs(rv1[i]));
 	}
 
 	for (i = n - 1; ; i--)
 	{
 	  if (i < n - 1)
 	  {
-		if (abs(g) > epsilon(g))
+		if (std::abs(g) > epsilon(g))
 		{
 		  for (j = l; j < n; j++)
 			v[j * n + i] = (a[i * n + j] / a[i * n + l]) / g;
@@ -445,7 +452,7 @@ namespace linalg
 	  g = w[i];
 	  for (j = l; j < n; j++)
 		a[i * n + j] = T(0);
-	  if (abs(g) > epsilon(g))
+	  if (std::abs(g) > epsilon(g))
 	  {
 		g = T(1) / g;
 		for (j = l; j < n; j++)
@@ -480,12 +487,12 @@ namespace linalg
 		for (l = k; ; l--)
 		{
 		  nm = l - 1;
-		  if (abs(rv1[l]) < epsilon(rv1[l]))
+		  if (std::abs(rv1[l]) < epsilon(rv1[l]))
 		  {
 			flag = 0;
 			break;
 		  }
-		  if (abs(w[nm]) < epsilon(w[nm]))
+		  if (std::abs(w[nm]) < epsilon(w[nm]))
 			break;
 		  if (l == 0)
 			break;
@@ -498,7 +505,7 @@ namespace linalg
 		  {
 			f = s * rv1[i];
 			rv1[i] = c * rv1[i];
-			if (abs(f) < epsilon(f))
+			if (std::abs(f) < epsilon(f))
 			  break;
 			g = w[i];
 			h = hypot(f, g);
@@ -563,7 +570,7 @@ namespace linalg
 		  }
 		  z = hypot(f, h);
 		  w[j] = z;
-		  if (abs(z) > epsilon(z))
+		  if (std::abs(z) > epsilon(z))
 		  {
 			z = 1.0 / z;
 			c = f * z;

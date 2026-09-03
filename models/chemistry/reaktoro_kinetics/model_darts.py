@@ -5,6 +5,7 @@ import warnings
 from darts.models.output import Output
 from darts.models.cicd_model import CICDModel
 from darts.engines import value_vector, sim_params, well_control_iface, timer_node
+from darts.engines import copy_data_to_device
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.chemistry.property_container import (
@@ -14,7 +15,7 @@ from darts.physics.chemistry.property_container import (
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
 from darts.nonlinear_solvers import NewtonSolver
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.input.input_data import linear_solver_types
+from darts.linear_solvers import SuperLUSolverSpec
 from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
@@ -118,12 +119,22 @@ class Model(CICDModel):
         self.timer.node["initialization"].start()
         self.set_reservoir()
         self.set_physics()
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=15)
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_linear=1e-6, it_linear=200)
-        self.params.linear_type = sim_params.cpu_superlu
-
+        # Time-stepping and the linear solver are configured in set_solver()
+        # (the unified self.linear_solver = <LinearSolverSpec> pattern), which the base
+        # reset() calls before engine.init.
         self.runtime = 1
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=15)
+        # SuperLU direct solve for this small, stiff chemistry system, declared solely
+        # through self.linear_solver (replaces the params.linear_type = cpu_superlu carrier,
+        # which the base FGMRES+CPR default had been shadowing). proprietary_linear_type
+        # carries the same enum for the proprietary build's engine factory.
+        self.linear_solver = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200,
+                                        proprietary_linear_type=sim_params.cpu_superlu)
 
     def set_reservoir(self):
 
@@ -338,29 +349,19 @@ class Model(CICDModel):
                 if i > 0:  # min_i_newton
                     break
 
-            if (
-                type(self.data_ts.linear_type) is linear_solver_types
-            ):  # solvers via Python interface
-                if self.data_ts.linear_type in [
-                    linear_solver_types.CPU_PETSC_CPR,
-                    linear_solver_types.CPU_PETSC_FS,
-                ]:
-                    self.petsc_solve_linear_equation()
-                elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                    self.pardiso_solve_linear_equation()
-                else:
-                    raise Exception(
-                        "Unknown linear solver type", self.data_ts.linear_type
-                    )
-            else:  # compile-tyme C++ linear solvers
-                rc = self.physics.engine.solve_linear_equation()
-                status.linear_solver_rc = rc
-                if rc != 0:
-                    # failed linear solve: do NOT apply a stale update; the
-                    # post-loop verdict reads status.linear_solver_rc -> fail
-                    self._linear_solver_rc_last = rc
-                    break
-                status.n_linear += self.physics.engine.get_last_linear_iters()
+            # Unified spec-driven dispatch (!280) + (rc, n_iters, residual) contract (!327)
+
+            r_code, n_lin, _ = self._solve_linear_equation()
+
+            status.linear_solver_rc = r_code
+
+            if r_code != 0:
+
+                self._linear_solver_rc_last = r_code
+
+                break
+
+            status.n_linear += n_lin
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()

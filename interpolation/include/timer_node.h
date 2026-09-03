@@ -26,8 +26,21 @@
 #endif
 
 #ifdef WITH_GPU
+  #include <cstdlib>
   #include <cuda_runtime.h>
-  #define clock_sync cudaDeviceSynchronize()
+// Per-timer cudaDeviceSynchronize is opt-in (DARTS_TIMER_SYNC=1): it makes
+// per-node GPU attribution exact but costs a hard sync on every start/stop.
+static inline bool darts_timer_sync_enabled()
+{
+  static const bool enabled = []() {
+    const char *v = std::getenv("DARTS_TIMER_SYNC");
+    return v && v[0] && v[0] != '0';
+  }();
+  return enabled;
+}
+  #define clock_sync             \
+    if (darts_timer_sync_enabled()) \
+    cudaDeviceSynchronize()
 #else
   #define clock_sync
 #endif

@@ -25,7 +25,10 @@ void pybind_engine_base (py::module &m)
 	   .def("correct_chop_global", &engine_base::correct_chop_global, py::call_guard<py::gil_scoped_release>())  \
 	   .def("correct_chop_local", &engine_base::correct_chop_local, py::call_guard<py::gil_scoped_release>())  \
 	   .def("correct_obl_axes", py::overload_cast<>(&engine_base::correct_obl_axes), py::call_guard<py::gil_scoped_release>())  \
-	   .def("correct_obl_axes", py::overload_cast<const std::vector<value_t> &, const std::vector<value_t> &>(&engine_base::correct_obl_axes), py::arg("axis_min"), py::arg("axis_max"), py::call_guard<py::gil_scoped_release>())  \
+	   .def("correct_obl_axes", py::overload_cast<const std::vector<value_t> &, const std::vector<value_t> &>(&engine_base::correct_obl_axes), \
+			py::arg("axis_min"), py::arg("axis_max"), py::call_guard<py::gil_scoped_release>(), \
+			"Install persistent per-variable OBL axis bounds (size n_vars each) and clamp the current solution; " \
+			"subsequent Newton updates keep clamping against them (CPU and GPU)")  \
 	   .def("correct_thermal", &engine_base::correct_thermal, py::call_guard<py::gil_scoped_release>())  \
 	   .def("apply_update", &engine_base::apply_update, py::call_guard<py::gil_scoped_release>())  \
 	   .def("post_newtonloop", &engine_base::post_newtonloop, py::call_guard<py::gil_scoped_release>())  \
@@ -33,6 +36,9 @@ void pybind_engine_base (py::module &m)
 	   .def("get_last_linear_iters", &engine_base::get_last_linear_iters)  \
 	   .def("get_last_linear_residual", &engine_base::get_last_linear_residual)  \
 	   .def("solve_linear_equation", &engine_base::solve_linear_equation, py::call_guard<py::gil_scoped_release>())  \
+	   .def("set_linear_solver", &engine_base::set_linear_solver, "Set external linear solver (from Python)", py::arg("solver"), py::arg("name") = "")  \
+	   .def("set_adjoint_linear_solver", &engine_base::set_adjoint_linear_solver, "Set external adjoint linear solver (from Python)", py::arg("solver"), py::arg("use_jacobian_transpose") = false)  \
+	   .def("set_adjoint_solver_cpra_gpu", &engine_base::set_adjoint_solver_cpra_gpu, "Attach the native GPU CPRA adjoint stack (GPU engines with AMGX; returns -1 when unsupported)", py::arg("restart") = 150)  \
 	   .def_readwrite("X", &engine_base::X) \
 	   .def_readwrite("dX", &engine_base::dX) \
 	   .def_readwrite("Xn", &engine_base::Xn) \
@@ -157,6 +163,7 @@ void pybind_engine_base (py::module &m)
 	   .def_readwrite("cov_mat_inv", &engine_base::cov_mat_inv) \
 	   .def_readwrite("phase_relative_density", &engine_base::phase_relative_density) \
 	   .def_readwrite("opt_history_matching", &engine_base::opt_history_matching) \
+	   .def_readwrite("adjoint_assembly_on_gpu", &engine_base::adjoint_assembly_on_gpu) \
 	   .def_readwrite("optimize_component_rate", &engine_base::optimize_component_rate) \
 	   .def_readwrite("objfun_prod_phase_rate", &engine_base::objfun_prod_phase_rate) \
 	   .def_readwrite("objfun_inj_phase_rate", &engine_base::objfun_inj_phase_rate) \

@@ -9,8 +9,13 @@
 #include "globals.h"
 #include "ms_well.h"
 #include "engine_base_gpu.h"
+#ifdef OPENDARTS_LINEAR_SOLVERS
+#include "csr_matrix.hpp"
+#include "linsolv_iface.hpp"
+#else
 #include "csr_matrix.h"
 #include "linsolv_iface.h"
+#endif
 #include "evaluator_iface.h"
 
 template <uint8_t NC, uint8_t NP, bool THERMAL>
@@ -66,7 +71,20 @@ public:
   // for some reason destructor is not picked up by recursive instantiator when defined in cu file, so put it here
   ~engine_super_gpu()
   {
+    // Device arrays allocated in engine_super_gpu::init (always) ...
+    free_device_data(RV_d);
+    free_device_data(mesh_tranD_d);
+    free_device_data(mesh_hcap_d);
+    free_device_data(mesh_rcond_d);
+    free_device_data(mesh_poro_d);
+    free_device_data(mesh_kin_factor_d);
     free_device_data(mesh_grav_coef_d);
+    free_device_data(mesh_cell_spe_d);
+    // ... and the adjoint-assembly buffers (only under opt_history_matching;
+    // nullptr-initialised, so freeing when unused is a safe no-op).
+    free_device_data(dg_dx_n_temp_values_d);
+    free_device_data(dg_dT_general_values_d);
+    free_device_data(conn_index_to_one_way_d);
   }
 
   uint8_t get_n_vars() const override { return N_VARS; };
@@ -96,6 +114,11 @@ public:
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) override;
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS) override;
 
+  // Native GPU CPRA adjoint stack (device GMRES + CPR with a second AMGX
+  // instance on P^T + transposed cuSPARSE block-ILU(0)); available when AMGX
+  // is built, otherwise returns -1 like the base.
+  int set_adjoint_solver_cpra_gpu(int restart = 150) override;
+
 public:
   // Default-initialized so the destructor can free_device_data() safely even
   // when init() did not run. cudaFree(nullptr) is a documented no-op.
@@ -107,6 +130,12 @@ public:
   value_t *mesh_kin_factor_d = nullptr; // [n_blocks] kin factor for each block
   value_t *mesh_grav_coef_d = nullptr;  // [n_conns] porosity for each block
   value_t *mesh_cell_spe_d = nullptr;   // [n_blocks] specific potential energy for each block
+
+  // Device-side adjoint assembly buffers (allocated under opt_history_matching,
+  // used by adjoint_gradient_assembly_kernel; see engine_super_gpu.tpp).
+  value_t *dg_dx_n_temp_values_d = nullptr; // [(n_conns+n_blocks)*N_VARS^2] block values of dg/dx^n
+  value_t *dg_dT_general_values_d = nullptr; // [n_conns*N_VARS] scalar values of dg/dT
+  index_t *conn_index_to_one_way_d = nullptr; // [n_conns] connection -> one-way (interface) index
 };
 
 #include "engine_super_gpu.tpp"

@@ -6,7 +6,7 @@
 #include "conn_mesh.h"
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/linsolv_iface.hpp"
+#include "linsolv_iface.hpp"
 #else
 #include "linsolv_iface.h"
 #endif // OPENDARTS_LINEAR_SOLVERS

@@ -27,6 +27,7 @@ All top-level classes and worker functions pickle correctly under both ``fork`` 
 """
 
 import contextlib
+import hashlib
 import multiprocessing
 import os
 import pickle
@@ -162,14 +163,56 @@ def _stdout_to_log():
         os.close(saved_fd)
 
 
+# Keeps the threadpoolctl limiter alive for the worker's lifetime; dropping the
+# returned object would let threadpoolctl restore the original BLAS limits.
+_worker_threadpool_limits = None
+
+
+def _pin_worker_threads():
+    """Pin this worker process to a single compute thread, at runtime.
+
+    Setting ``OMP_NUM_THREADS`` alone is inert here: libgomp and OpenBLAS latch
+    their thread count when the runtime initialises. Under ``fork`` that happened
+    in the parent; under ``spawn`` it happens while unpickling this initializer
+    imports numpy / ``darts.engines`` -- both strictly before a pool initializer
+    runs. Only the runtime setters take effect, so call them explicitly; the env
+    var is still exported for lazily-initialised libraries and grandchildren.
+    """
+    global _worker_threadpool_limits
+    os.environ["OMP_NUM_THREADS"] = "1"
+    try:
+        from darts.engines import set_num_threads  # omp_set_num_threads
+
+        set_num_threads(1)
+    except Exception:
+        pass  # engines built without OpenMP: nothing to pin
+    try:
+        from threadpoolctl import threadpool_limits  # OpenBLAS / MKL
+
+        _worker_threadpool_limits = threadpool_limits(limits=1)
+    except Exception:
+        pass  # threadpoolctl optional
+
+
 def _worker_init_multi(factories: dict, silence_workers: bool = True):
     """Build one evaluator per wrap key in this worker process.
+
+    Also pins the worker's OpenMP/BLAS threading to a single thread (see the
+    comment below) before any evaluator is constructed.
 
     When ``silence_workers`` (the default) the worker is muted so the model's console /
     log shows only one evaluator's output; pass ``False`` (e.g. at the highest DartsModel
     verbosity) to let every worker print — routed to the run log only, never to stdout.
+
+    :param factories: Mapping ``key -> picklable factory`` producing the worker-local
+        evaluator for each wrap target served by this pool.
+    :param silence_workers: Mute worker stdout (default ``True``).
     """
     global _worker_evaluators
+    # Pin worker BLAS/OpenMP threading to 1 before any evaluator is built: the
+    # pool typically runs dozens of workers, and inheriting the parent's thread
+    # count would oversubscribe the host by an order of magnitude.
+    _pin_worker_threads()
     if silence_workers:
         _silence_worker_process()
     else:
@@ -219,9 +262,13 @@ class ModelEvaluatorFactory:
     This is the default mechanism behind :meth:`DartsModel.get_evaluator_factory`.
     It stores the model class and the (plain-data) constructor arguments captured
     at construction time, plus the attribute name to fetch and an optional region
-    key. On every call it reconstructs the model, runs ``physics.set_operators()``,
-    and returns either ``physics.<attribute>`` (singular) or
-    ``physics.<attribute>[region]`` (per-region). Because it reuses the model's own
+    key. On first call in a process it reconstructs the model and runs
+    ``physics.set_operators()``; the reconstructed model is memoized in the
+    process-wide :attr:`_model_cache` (keyed by :meth:`_model_key`), so factories
+    for other attribute/region targets of the same model reuse it instead of
+    paying the full rebuild per target. Every call returns either
+    ``physics.<attribute>`` (singular) or ``physics.<attribute>[region]``
+    (per-region). Because it reuses the model's own
     ``set_physics``/``PropertyContainer`` build, there is no per-model duplication
     of the property/flash/kinetics stack.
 
@@ -255,13 +302,71 @@ class ModelEvaluatorFactory:
         self.attribute = attribute
         self.region = region
 
+    # Per-process cache of reconstructed models: a worker (or the main process)
+    # asking for several wrap targets of the SAME model must not pay the full
+    # set_reservoir/set_physics reconstruction once per target -- at 60k+ cells
+    # the mesh discretization alone is tens of seconds per rebuild.
+    _model_cache: dict = {}
+
+    @classmethod
+    def clear_model_cache(cls):
+        """Drop every reconstructed model cached in this process.
+
+        The cache is process-wide and unbounded: each entry holds a full mesh and
+        physics stack, so a long-lived process that builds several distinct models
+        (a parameter sweep, an optimisation loop, a notebook session) would retain
+        all of them. Called from :meth:`SharedEvaluatorPool.shutdown`.
+        """
+        cls._model_cache.clear()
+
+    def _model_key(self):
+        """Cache key identifying the model reconstruction this factory performs.
+
+        Two factories that would rebuild an identical model (same class, same
+        constructor arguments) map to the same key regardless of which physics
+        ``attribute``/``region`` they fetch, so they share one cached model.
+
+        :return: Hashable ``(class, content-digest)`` tuple, or ``None`` when the
+            arguments cannot be digested (the model is then simply not cached).
+        """
+        # repr() must NOT be used here: an argument without __repr__ falls back to
+        # object.__repr__, which embeds its memory address -- equivalent models
+        # then miss the cache, and a recycled address can make two DIFFERENT
+        # models collide on one key. numpy also abbreviates repr() of arrays
+        # larger than 1000 elements, so distinct fields collide deterministically.
+        # Digest the pickled payload instead; the factory must be picklable to
+        # reach a worker at all.
+        try:
+            payload = pickle.dumps(
+                (self.init_args, sorted(self.init_kwargs.items())),
+                protocol=pickle.HIGHEST_PROTOCOL,
+            )
+        except Exception:
+            return None
+        return (self.model_cls, hashlib.blake2b(payload, digest_size=16).digest())
+
     def __call__(self):
-        # Reconstruct the model: runs the model's own set_reservoir/set_physics.
-        # init() is intentionally NOT called -- no engine, no nested worker pool.
-        model = self.model_cls(*self.init_args, **self.init_kwargs)
-        # reservoir_operators are normally populated by init_physics(); build just
-        # the operator objects here from the property containers set in set_physics.
-        model.physics.set_operators()
+        """Return the evaluator object this factory targets.
+
+        Reconstructs the model (``set_reservoir``/``set_physics`` +
+        ``physics.set_operators()``; ``init()`` is intentionally NOT called — no
+        engine, no nested worker pool) on first use in this process, then serves
+        every subsequent call — including other attribute/region targets of the
+        same model — from :attr:`_model_cache`.
+
+        :return: ``model.physics.<attribute>`` (indexed by ``region`` when set).
+        """
+        key = self._model_key()
+        model = None if key is None else ModelEvaluatorFactory._model_cache.get(key)
+        if model is None:
+            # Reconstruct the model: runs the model's own set_reservoir/set_physics.
+            # init() is intentionally NOT called -- no engine, no nested worker pool.
+            model = self.model_cls(*self.init_args, **self.init_kwargs)
+            # reservoir_operators are normally populated by init_physics(); build just
+            # the operator objects here from the property containers set in set_physics.
+            model.physics.set_operators()
+            if key is not None:
+                ModelEvaluatorFactory._model_cache[key] = model
         obj = getattr(model.physics, self.attribute)
         return obj[self.region] if self.region is not None else obj
 
@@ -430,6 +535,8 @@ class SharedEvaluatorPool:
             pool.terminate()
             pool.join()
             self._pool = None
+            # Release the worker-model cache with the pool that populated it.
+            ModelEvaluatorFactory.clear_model_cache()
 
     def __del__(self):
         try:
@@ -455,12 +562,13 @@ class ParallelEvaluator(operator_set_evaluator_iface):
       to route batches through a pool that several wraps share. The wrapper does
       not own the pool and does not shut it down.
 
-    Single-point ``evaluate()`` always delegates to a local serial evaluator
-    instance constructed from ``evaluator_factory``.
+    Single-point ``evaluate()`` always delegates to a local serial evaluator:
+    either the instance injected via ``serial_evaluator``, or one constructed
+    from ``evaluator_factory``.
 
     :param evaluator_factory: Picklable callable ``() -> operator_set_evaluator_iface``.
-        Required (used to build the local serial evaluator and, in owned-pool
-        mode, the worker evaluators).
+        Required (used to build the worker evaluators in owned-pool mode, and the
+        local serial evaluator when ``serial_evaluator`` is not given).
     :param n_workers: Number of worker processes when owning a pool
         (default: ``os.cpu_count()``). Ignored when ``shared_pool`` is provided.
     :param start_method: Optional multiprocessing start method when owning a
@@ -469,6 +577,15 @@ class ParallelEvaluator(operator_set_evaluator_iface):
         through. Must already contain ``key``.
     :param key: Hashable wrap key used by the shared pool to pick the right
         worker evaluator. Required when ``shared_pool`` is provided.
+    :param silence: Suppress stdout while the factory builds the local serial
+        evaluator (default ``True``; the owning model already printed the same
+        construction output). With ``False`` the output is routed to the run
+        log. Unused when ``serial_evaluator`` is injected.
+    :param serial_evaluator: Optional already-constructed evaluator to use for
+        single-point ``evaluate()`` calls. Pass it when the caller owns the
+        object being wrapped (the physics wrap path does) to avoid the factory
+        reconstructing the entire model — mesh discretization included — once
+        per wrap target.
     """
 
     def __init__(
@@ -480,6 +597,7 @@ class ParallelEvaluator(operator_set_evaluator_iface):
         shared_pool: SharedEvaluatorPool = None,
         key=None,
         silence=True,
+        serial_evaluator=None,
     ):
         super().__init__()
 
@@ -487,13 +605,20 @@ class ParallelEvaluator(operator_set_evaluator_iface):
         _check_picklable(evaluator_factory)
 
         self._factory = evaluator_factory
-        # Local serial evaluator for single-point evaluate() calls. By default its
-        # construction is suppressed (the real model already printed the same thing, so it
-        # would be duplicate noise). When ``silence=False`` (highest DartsModel verbosity)
-        # the construction is shown, but routed to the run log only — never to stdout.
-        ctx = _suppress_stdout() if silence else _stdout_to_log()
-        with ctx:
-            self._serial_evaluator = evaluator_factory()
+        # Local serial evaluator for single-point evaluate() calls. When the caller
+        # already owns the evaluator being wrapped (the physics wrap path), it is
+        # injected directly -- rebuilding it through the factory would reconstruct
+        # the entire model (mesh discretization included) once per wrap target.
+        if serial_evaluator is not None:
+            self._serial_evaluator = serial_evaluator
+        else:
+            # By default the construction is suppressed (the real model already printed
+            # the same thing, so it would be duplicate noise). When ``silence=False``
+            # (highest DartsModel verbosity) the construction is shown, but routed to
+            # the run log only — never to stdout.
+            ctx = _suppress_stdout() if silence else _stdout_to_log()
+            with ctx:
+                self._serial_evaluator = evaluator_factory()
 
         if shared_pool is not None:
             if key is None:

@@ -828,6 +828,11 @@ class PhysicsBase:
         backed by a single shared :class:`SharedEvaluatorPool`. The pool is stored on
         ``self._shared_evaluator_pool`` so it lives as long as the physics object.
 
+        The evaluator object currently held by each target attribute is handed to
+        its wrapper as the serial evaluator (single-point ``evaluate()`` path), so
+        wrapping never triggers factory-side model reconstruction in the main
+        process; the factories are only exercised inside pool workers.
+
         :param targets: list of ``(attribute_name, region_or_None)`` tuples
         :param evaluator_factory_hook: callable ``(attribute, region) -> factory``
             producing a picklable factory that returns a fresh evaluator.
@@ -863,11 +868,22 @@ class PhysicsBase:
 
         for attr, region in targets:
             key = (attr, region)
+            # The wrap target already exists on the physics -- hand it to the
+            # wrapper as its serial evaluator instead of letting the factory
+            # reconstruct the whole model once per target.
+            existing = getattr(self, attr, None)
+            if region is not None and existing is not None:
+                existing = (
+                    existing.get(region)
+                    if hasattr(existing, "get")
+                    else existing[region]
+                )
             wrapped = ParallelEvaluator(
                 evaluator_factory=factories[key],
                 shared_pool=self._shared_evaluator_pool,
                 key=key,
                 silence=silence,
+                serial_evaluator=existing,
             )
             if region is None:
                 setattr(self, attr, wrapped)
@@ -1369,6 +1385,11 @@ class PhysicsBase:
         only the ``static`` mode adds a finite per-axis point count
         (:attr:`STATIC_GRID_N_POINTS`) for its dense storage.
 
+        When point-data caching is enabled (``self.cache``), the cache file name is
+        derived from the evaluator's class name among other shape parameters; a
+        :class:`ParallelEvaluator` wrapper is unwrapped to its serial evaluator
+        first, so serial and parallel runs of identical physics share one cache.
+
         :param evaluator: Operator-set evaluator used to materialize supporting points.
         :param timer_name: Name of the timer subnode for this interpolator.
         :param n_ops: Number of operators.
@@ -1527,7 +1548,14 @@ class PhysicsBase:
 
         if self.cache:
             # create unique signature for interpolator
-            itor_cache_signature = f"{type(evaluator).__name__}_{mode}_{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
+            # Unwrap a ParallelEvaluator so the cache identity follows the REAL
+            # evaluator class: otherwise every wrapped target hashes as
+            # 'ParallelEvaluator', which (a) splits the cache between serial and
+            # parallel runs of identical physics and (b) collides distinct
+            # same-shape targets (e.g. ConversionOperators vs ThermalVarOperator)
+            # onto one cache file.
+            signature_evaluator = getattr(evaluator, "_serial_evaluator", evaluator)
+            itor_cache_signature = f"{type(signature_evaluator).__name__}_{mode}_{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
             # geenral itor has a different point_data format
             if general:
                 itor_cache_signature += "_general_"
