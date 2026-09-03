@@ -236,11 +236,17 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 
   # Linker flags
   # Reasons:
-  #   -Wl,-no_compact: used because in Clang compilers we get linker warning of
-  #                    being unable to create compact unwinding. This is relevant
-  #                    for efficient exceptions, but this comes from SuperLU, so
-  #                    we deactivate compact unwinding warnings.
-  set(opendarts_cxx_linker_flags "-Wl,-no_compact_unwind")
+  #   -Wl,-no_compact_unwind: used because on Apple's linker (ld64) Clang builds
+  #                    get a warning about being unable to create compact
+  #                    unwinding. This is relevant for efficient exceptions, but
+  #                    this comes from SuperLU, so we deactivate compact
+  #                    unwinding warnings. -no_compact_unwind is an ld64-only
+  #                    flag (Apple's linker); GNU ld/lld (used by Clang on
+  #                    Linux) reject it, so only pass it on Apple platforms.
+  set(opendarts_cxx_linker_flags "")
+  if(APPLE)
+    list(APPEND opendarts_cxx_linker_flags "-Wl,-no_compact_unwind")
+  endif()
 
   if(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
     # Same MT-or-GPU OpenMP policy as the GNU block above.

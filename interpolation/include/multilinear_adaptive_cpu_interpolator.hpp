@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+#include <shared_mutex>
 
 #include "multi_index_key.hpp"
 #include "multilinear_interpolator_base.hpp"
@@ -87,6 +88,26 @@ public:
     * Keyed on signed multi-index — same conventions as point_data.
     */
    std::unordered_map<key_t, hypercube_data_t, key_hash_t> hypercube_data;
+
+   /**
+    * @brief Guards point_data (+ dirty_point_data / dirty_point_epochs, which are
+    * always mutated alongside it) against concurrent mutation. The batched
+    * interpolate_with_derivatives()/materialize_missing_cache() path relies on its
+    * own internal phase ordering (serial materialize, then parallel read) to stay
+    * race-free *by itself*, but get_point_data() is also reachable directly (e.g.
+    * well-block evaluation via interpolate()) with no coordination against that
+    * batched path or against other concurrent get_point_data() calls. Lookups take
+    * a shared (reader) lock; insertion takes an exclusive lock.
+    */
+   mutable std::shared_mutex point_data_mutex_;
+
+   /**
+    * @brief Same role as point_data_mutex_, for hypercube_data (+ hc_last_used).
+    * Always acquired *after* point_data_mutex_ when both are needed in the same
+    * call (get_hypercube_data() locks this, then calls get_point_data() which
+    * locks that) -- never the other way around, so the two can't deadlock.
+    */
+   mutable std::shared_mutex hypercube_data_mutex_;
 
    /**
     * @brief Optional cap on the number of cached hypercube payloads (0 = unbounded; default).
