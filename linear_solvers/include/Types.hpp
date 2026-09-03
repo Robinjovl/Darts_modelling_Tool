@@ -15,9 +15,13 @@
 #include <cstdint>
 
 // HYPRE types
-extern "C" {
+// Note: _hypre_utilities.h already guards its own declarations with
+// `#ifdef __cplusplus / extern "C"` internally. Wrapping the #include itself
+// in an outer extern "C" block also pulls in HYPRE's own `#include <omp.h>`
+// (which precedes HYPRE's internal guard) under C linkage. Newer libgomp
+// omp.h (GCC 15+) declares C++ template overloads there, which is illegal
+// under extern "C" ("template with C linkage").
 #include <_hypre_utilities.h>
-}
 
 namespace mgr {
 
