@@ -255,8 +255,8 @@ namespace dis
       }()...
     };
 
-    constexpr index_t nb1 = ap1.n_block;
-    constexpr index_t nb2 = ap2.n_block;
+    constexpr index_t nb1 = LinearApproximation<VarNames1...>::n_block;
+    constexpr index_t nb2 = LinearApproximation<VarNames2...>::n_block;
     constexpr index_t nb = res.n_block;
 
     constexpr auto var_sizes2 = std::array{ var_block_size<VarNames2>... };

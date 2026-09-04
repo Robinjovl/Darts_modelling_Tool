@@ -14,8 +14,13 @@ using std::fill_n;
 using std::copy_n;
 using utils::get_valarray_from_array;
 
+// Computed directly (rather than via the N_UNKNOWNS lookup table) because this
+// initializer runs during static/dynamic initialization: nothing in the
+// standard guarantees N_UNKNOWNS (a separate static object) is constructed
+// before this explicit-instantiation-triggered initializer, so looking it up
+// here is a static-initialization-order hazard.
 template <MechDiscretizerMode MODE>
-const uint8_t MechDiscretizer<MODE>::n_unknowns = N_UNKNOWNS.at(MODE);
+const uint8_t MechDiscretizer<MODE>::n_unknowns = (MODE == THERMOPOROELASTIC) ? (ND + 2) : (ND + 1);
 
 // this matrix W helps to translate elasticity operator to simpler form
 template <MechDiscretizerMode MODE>
@@ -1036,5 +1041,8 @@ void MechDiscretizer<MODE>::calc_cell_centered_stress_velocity_approximations()
 }
 
 
+namespace dis
+{
 template class MechDiscretizer<POROELASTIC>;
 template class MechDiscretizer<THERMOPOROELASTIC>;
+}
