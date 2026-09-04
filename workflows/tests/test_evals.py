@@ -331,5 +331,28 @@ class ReportTests(unittest.TestCase):
             self.assertIn("c1", report.format_table(table, ["case", "pass"]))
 
 
+class CodexUsageTests(unittest.TestCase):
+    def test_events_fold_into_claude_shape(self):
+        from workflows.evals.controller import codex_usage
+
+        with tempfile.TemporaryDirectory() as tmp:
+            last = Path(tmp) / "last.txt"
+            last.write_text("OK")
+            stdout = "\n".join(
+                [
+                    '{"type":"thread.started","thread_id":"x"}',
+                    '{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":4,"output_tokens":2}}',
+                    "not json",
+                    '{"type":"turn.completed","usage":{"input_tokens":5,"cached_input_tokens":0,"output_tokens":3}}',
+                ]
+            )
+            usage = codex_usage(stdout, last)
+            self.assertEqual(usage["num_turns"], 2)
+            self.assertEqual(usage["usage"]["input_tokens"], 15)
+            self.assertEqual(usage["usage"]["cache_read_input_tokens"], 4)
+            self.assertEqual(usage["result"], "OK")
+            self.assertIsNone(usage["total_cost_usd"])
+
+
 if __name__ == "__main__":
     unittest.main()

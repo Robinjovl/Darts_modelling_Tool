@@ -24,7 +24,8 @@ is deployed, and every run record says so.
 
 Fast tests: `workflows/tests/test_evals.py` (skips when `bwrap` is absent).
 
-Run one hidden case (parent side, writes `runs/<case>/<utc>-<model>.json`):
+Run one hidden case (parent side, writes `runs/<case>/<utc>-<model>.json`; add
+`--runner codex --model <codex model>` to evaluate Codex CLI instead of Claude Code):
 
 ```bash
 PYTHONPATH=<repo> <env>/bin/python -m workflows.evals.controller \

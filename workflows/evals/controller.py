@@ -142,6 +142,89 @@ class ClaudeCliRunner:
         )
 
 
+class CodexCliRunner:
+    """Headless Codex CLI (``codex exec --json``) inside the sandbox.
+
+    Codex reads ``AGENTS.md`` and the repository skills from the working directory, so the
+    working directory is the repository. Codex's own sandbox is disabled because ``bwrap`` is
+    the boundary. Usage comes from the ``turn.completed`` events (tokens only; Codex reports no
+    cost), the final answer from ``--output-last-message``.
+    """
+
+    def __init__(self, model_id: str, max_turns: int = 200, timeout_s: float = 3600.0):
+        self.model_id, self.max_turns, self.timeout_s = model_id, max_turns, timeout_s
+
+    def run(
+        self, prompt: str, sandbox: SandboxSpec, env: dict, budget: dict
+    ) -> AgentRun:
+        run_dir = Path(sandbox.run_dir)
+        last = run_dir / "last.txt"
+        argv = [
+            "codex",
+            "exec",
+            "--json",
+            "-o",
+            str(last),
+            "-s",
+            "danger-full-access",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "-C",
+            str(sandbox.repo),
+            "-m",
+            self.model_id,
+            prompt,
+        ]
+        sandbox.extra_ro_binds = tuple(sandbox.extra_ro_binds) + tool_prefixes(
+            "codex", "node"
+        )
+        codex_home = Path.home() / ".codex"
+        sandbox.home_ro_binds = tuple(sandbox.home_ro_binds) + tuple(
+            (codex_home / name, f".codex/{name}")
+            for name in ("auth.json", "config.toml")
+        )
+        sandbox.chdir = sandbox.repo
+        env = {**env, "PATH": os.environ.get("PATH", "")}
+        rusage_file = run_dir / "rusage.txt"
+        result = _timed(
+            sandbox.command(time_wrap(argv, rusage_file), env),
+            run_dir,
+            self.timeout_s,
+            rusage_file,
+        )
+        result.usage = codex_usage(result.stdout, last)
+        return result
+
+
+def codex_usage(stdout: str, last_message: Path) -> dict:
+    """Fold ``codex exec --json`` events into the same shape ``claude -p`` returns."""
+    totals = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0}
+    turns = 0
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if event.get("type") == "turn.completed":
+            turns += 1
+            for key in totals:
+                totals[key] += int((event.get("usage") or {}).get(key, 0))
+    usage = {
+        "input_tokens": totals["input_tokens"],
+        "output_tokens": totals["output_tokens"],
+        "cache_read_input_tokens": totals["cached_input_tokens"],
+        "cache_creation_input_tokens": 0,
+    }
+    return {
+        "usage": usage,
+        "num_turns": turns,
+        "total_cost_usd": None,
+        "result": last_message.read_text(encoding="utf-8")
+        if last_message.exists()
+        else "",
+    }
+
+
 class ShellRunner:
     """Runs an arbitrary command inside the sandbox (tests and non-Claude harnesses)."""
 
@@ -334,10 +417,12 @@ def main(argv: list | None = None) -> int:
     parser.add_argument("--run-root", required=True)
     parser.add_argument("--timeout-s", type=float, default=3600.0)
     parser.add_argument("--no-record", action="store_true")
+    parser.add_argument("--runner", default="claude", choices=("claude", "codex"))
     args = parser.parse_args(argv)
     with open(args.case, encoding="utf-8") as handle:
         case = json.load(handle)
-    runner = ClaudeCliRunner(args.model, timeout_s=args.timeout_s)
+    runner_cls = CodexCliRunner if args.runner == "codex" else ClaudeCliRunner
+    runner = runner_cls(args.model, timeout_s=args.timeout_s)
     started = time.time()
     record = run_case(case, runner, args.run_root)
     record["started"] = started

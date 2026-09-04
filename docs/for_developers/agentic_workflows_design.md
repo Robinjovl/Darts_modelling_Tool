@@ -4,6 +4,9 @@ orphan: true
 
 # Agentic workflow skills: ensemble modeling, history matching, optimization
 
+User guide: `agentic_workflows_user_guide.md` (how to run the workflows, hosts, evaluation,
+improvement loop).
+
 Design draft, version 4 (2026-09-03). Baseline revision analyzed: `59bda10b` on branch
 `avnovikov/skills_and_workflows`; the commit introducing this document supersedes that
 baseline. Status: **draft for review, not accepted**. The page is kept out of the documentation

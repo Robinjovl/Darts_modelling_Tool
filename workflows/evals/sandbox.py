@@ -38,6 +38,7 @@ class SandboxSpec:
     extra_binds: tuple = ()  # read-write (path, path) binds, e.g. the broker socket dir
     extra_ro_binds: tuple = ()  # read-only (path, path) binds, e.g. tool prefixes
     chdir: Path | None = None  # working directory inside the sandbox (default: run_dir)
+    home_ro_binds: tuple = ()  # (source path, path relative to the scratch HOME), read-only
 
     def command(self, argv: list, env: dict | None = None) -> list:
         """Full ``bwrap`` argument list wrapping ``argv``."""
@@ -85,6 +86,10 @@ class SandboxSpec:
                 str(self.credentials),
                 str(home / ".claude" / self.credentials.name),
             ]
+        for source, rel in self.home_ro_binds:
+            if Path(source).exists():
+                (home / rel).parent.mkdir(parents=True, exist_ok=True)
+                cmd += ["--ro-bind", str(source), str(home / rel)]
         cmd += ["--setenv", "HOME", str(home), "--chdir", str(self.chdir or run_dir)]
         for key, value in (env or {}).items():
             cmd += ["--setenv", key, str(value)]

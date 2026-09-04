@@ -27,3 +27,5 @@ drivers, surrogates, robust objectives, full-field Brugge bed, packaging.
   to `.claude/skills`; `helper_scripts/validate_skills.py` checks them).
 - Evaluation harness (developer tool, hidden references): `workflows/evals/README.md`.
 - Design and evidence: `docs/for_developers/agentic_workflows_design.md`.
+- User guide (workflows, hosts, evaluation, improvement loop):
+  `docs/for_developers/agentic_workflows_user_guide.md`.
