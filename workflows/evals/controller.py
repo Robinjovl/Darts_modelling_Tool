@@ -197,18 +197,28 @@ class CodexCliRunner:
 
 
 def codex_usage(stdout: str, last_message: Path) -> dict:
-    """Fold ``codex exec --json`` events into the same shape ``claude -p`` returns."""
+    """Fold ``codex exec --json`` events into the shape ``claude -p`` returns.
+
+    Codex emits one ``turn.completed`` per user message, so ``num_turns`` counts completed
+    non-reasoning items (messages, commands, file changes) to stay comparable with the Claude
+    runner's per-step count; ``codex_turns`` keeps Codex's own number.
+    """
     totals = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0}
-    turns = 0
+    codex_turns = 0
+    items = 0
     for line in stdout.splitlines():
         try:
             event = json.loads(line)
         except ValueError:
             continue
-        if event.get("type") == "turn.completed":
-            turns += 1
+        kind = event.get("type")
+        if kind == "turn.completed":
+            codex_turns += 1
             for key in totals:
                 totals[key] += int((event.get("usage") or {}).get(key, 0))
+        elif kind == "item.completed":
+            if (event.get("item") or {}).get("type") != "reasoning":
+                items += 1
     usage = {
         "input_tokens": totals["input_tokens"],
         "output_tokens": totals["output_tokens"],
@@ -217,7 +227,8 @@ def codex_usage(stdout: str, last_message: Path) -> dict:
     }
     return {
         "usage": usage,
-        "num_turns": turns,
+        "num_turns": items,
+        "codex_turns": codex_turns,
         "total_cost_usd": None,
         "result": last_message.read_text(encoding="utf-8")
         if last_message.exists()

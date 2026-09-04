@@ -341,13 +341,17 @@ class CodexUsageTests(unittest.TestCase):
             stdout = "\n".join(
                 [
                     '{"type":"thread.started","thread_id":"x"}',
+                    '{"type":"item.completed","item":{"type":"reasoning"}}',
+                    '{"type":"item.completed","item":{"type":"command_execution"}}',
+                    '{"type":"item.completed","item":{"type":"agent_message","text":"OK"}}',
                     '{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":4,"output_tokens":2}}',
                     "not json",
                     '{"type":"turn.completed","usage":{"input_tokens":5,"cached_input_tokens":0,"output_tokens":3}}',
                 ]
             )
             usage = codex_usage(stdout, last)
-            self.assertEqual(usage["num_turns"], 2)
+            self.assertEqual(usage["num_turns"], 2)  # command + message, not reasoning
+            self.assertEqual(usage["codex_turns"], 2)
             self.assertEqual(usage["usage"]["input_tokens"], 15)
             self.assertEqual(usage["usage"]["cache_read_input_tokens"], 4)
             self.assertEqual(usage["result"], "OK")

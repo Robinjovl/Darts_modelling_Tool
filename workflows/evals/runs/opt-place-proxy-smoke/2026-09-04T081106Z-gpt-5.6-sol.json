@@ -1,0 +1,40 @@
+{
+ "broker_requests": [
+  {
+   "command": "estimate",
+   "spec_hash": "d04a06f4f7518a3e02cc7fa90543ad2fe1a7a5414d1365db81e877a9a741cd6e",
+   "study": "opt-place-proxy-smoke"
+  },
+  {
+   "command": "run",
+   "spec_hash": "d04a06f4f7518a3e02cc7fa90543ad2fe1a7a5414d1365db81e877a9a741cd6e",
+   "study": "opt-place-proxy-smoke"
+  }
+ ],
+ "case": "opt-place-proxy-smoke",
+ "cpu_s": 6.7,
+ "exit_code": 0,
+ "git_head": "62c70fdd",
+ "model": "gpt-5.6-sol",
+ "num_turns": 1,
+ "peak_rss_mb": 209.6,
+ "result_text": "Study completed via the broker.\n\n- Best sampled cell: **326**\n- Centroid: `[11559.1443, 5163.0802, 36.0]` m\n- Cumulative oil objective: **64,533.7617 m\u00b3**\n- Baseline objective: **60,251.7155 m\u00b3**\n- Baseline normalized regret: **1.0**\n- Feasibility: all 4 candidates feasible; 5 total simulations including baseline\n\nStudy specification: [study.json](/oahu/data/avnovikov/tmp/claude-515366/-oahu-data-avnovikov/a5eddba3-6202-4b1d-b0d3-01fd12a0b649/scratchpad/eval4_codex_opt/agent/study.json)",
+ "run_root": "/oahu/data/avnovikov/tmp/claude-515366/-oahu-data-avnovikov/a5eddba3-6202-4b1d-b0d3-01fd12a0b649/scratchpad/eval4_codex_opt",
+ "score": {
+  "case": "opt-place-proxy-smoke",
+  "gates_version": "0.1.0",
+  "passed": true,
+  "regret": 0.0,
+  "score_version": "0.1.0",
+  "uninformative": false
+ },
+ "started_utc": "2026-09-04T08:11:06Z",
+ "tokens": {
+  "cache_creation_input_tokens": 0,
+  "cache_read_input_tokens": 296448,
+  "input_tokens": 326292,
+  "output_tokens": 4434
+ },
+ "total_cost_usd": null,
+ "wall_s": 136.3
+}

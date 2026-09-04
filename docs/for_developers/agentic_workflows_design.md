@@ -390,6 +390,7 @@ Run records: `workflows/evals/runs/<case>/`; table via `python -m workflows.eval
 | 3 | ens-proxy-smoke | 9238b286 | yes (9/9 percentile checks) | 25 | 0.30 | 163 | rates 0.3 % off the reference with identical design: the agent rounded `mean_log10` to 2.7 (default log10(500)); engine shown deterministic across processes; realization hash added to the journal; defaults stated in the skill |
 | 3 | opt-place-proxy-smoke | 9238b286 | yes (regret 0.0) | 24 | 0.28 | 108 | repeat run; agrees with round 2 |
 | 3 | hm-proxy-twin-smoke | 9238b286 | yes (gates bit-identical) | 26 | 0.37 | 190 | repeat run |
+| 4 | opt-place-proxy-smoke (Codex CLI 0.153, `gpt-5.6-sol`) | 62c70fdd | yes (regret 0.0) | 1 Codex turn | n/a (no cost reported) | 136 | same skills read from `.agents/skills`; 326k input tokens (296k cached), 4.4k output; two broker requests |
 
 The ES-MDA reference itself exposed a substrate defect before any agent ran: the noise used the
 per-well time-series spread instead of the observed value (chi² about 1e5 to 1e7 on the twin);
