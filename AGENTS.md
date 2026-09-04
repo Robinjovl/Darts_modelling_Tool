@@ -29,6 +29,9 @@
 - Use `$gitlab-cicd-open-darts` when touching `.gitlab-ci.yml`, `.cicd/jobs/`, release/deploy rules, or CI artifact flow.
 - Use `$debug-profile-open-darts` when investigating crashes, leaks, memory issues, slowdowns, or profiling data.
 - Use `$release-readiness-open-darts` when preparing a release, reviewing a version bump or tag, or assessing whether user-visible compatibility, packaging, or deployment changes are safe to ship.
+- Use `$ensemble-study-open-darts` for ensemble, sensitivity, or uncertainty-quantification studies (many realizations of one model) driven through `workflows/`.
+- Use `$history-matching-open-darts` when calibrating a model to well data (rates, BHP, temperature) with ES-MDA or adjoint gradients.
+- Use `$optimization-open-darts` for well placement or control optimization, surrogate-assisted search, or robust objectives.
 
 ### Compatibility rules
 

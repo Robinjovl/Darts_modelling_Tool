@@ -58,10 +58,10 @@ class FormulaTests(unittest.TestCase):
             planned_simulations(spec("hm-adjoint", {"max_iterations": 30})), 60
         )
         exhaustive = spec("optimize", {"driver": "exhaustive", "n_candidates": 431})
-        self.assertEqual(planned_simulations(exhaustive), 431)
+        self.assertEqual(planned_simulations(exhaustive), 432)
         robust = spec("optimize", {"driver": "robust", "n_candidates": 431, "ne": 20})
-        self.assertEqual(planned_simulations(robust), 8620)
-        self.assertEqual(planned_simulation_range(robust), (8620, 8620))
+        self.assertEqual(planned_simulations(robust), 8640)  # + baseline per member
+        self.assertEqual(planned_simulation_range(robust), (8640, 8640))
         fd = spec(
             "optimize",
             {"driver": "fd_controls", "n_controls": 40, "max_iterations": 20},
@@ -94,6 +94,36 @@ class FormulaTests(unittest.TestCase):
         self.assertGreaterEqual(usable_workers(), 1)
         self.assertEqual(usable_workers(max_workers=3), min(3, usable_workers()))
         self.assertGreaterEqual(usable_workers(memory_per_member_gb=1e6), 1)
+
+
+class ExhaustiveEstimateTests(unittest.TestCase):
+    def _spec(self, design):
+        from workflows.spec import ModelRef, ParameterSpec, StudySpec
+
+        return StudySpec(
+            name="x",
+            workflow="optimize",
+            model=ModelRef(model_dir=".", adapter="a"),
+            parameters=[
+                ParameterSpec(
+                    name="I1", family="ScalarParam", args={"target": "well_xyz"}
+                )
+            ],
+            seed_root=1,
+            design=design,
+        )
+
+    def test_max_candidates_counts_baseline(self):
+        from workflows.cost import planned_simulations
+
+        spec = self._spec({"driver": "exhaustive", "max_candidates": 4})
+        self.assertEqual(planned_simulations(spec), 5)
+
+    def test_missing_candidate_count_is_an_error(self):
+        from workflows.cost import planned_simulations
+
+        with self.assertRaises(ValueError):
+            planned_simulations(self._spec({"driver": "exhaustive"}))
 
 
 if __name__ == "__main__":

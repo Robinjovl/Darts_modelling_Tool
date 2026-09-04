@@ -19,6 +19,9 @@ This repository stores project skills in `.agents/skills/` and mirrors them to
 | `debug-profile-open-darts` | `.agents/skills/debug-profile-open-darts` | Debug, Valgrind, VTune, timer diagnostics |
 | `docs-open-darts` | `.agents/skills/docs-open-darts` | Sphinx and API docs maintenance |
 | `gitlab-cicd-open-darts` | `.agents/skills/gitlab-cicd-open-darts` | GitLab CI/CD structure and troubleshooting |
+| `ensemble-study-open-darts` | `.agents/skills/ensemble-study-open-darts` | Ensemble, sensitivity and UQ studies via `workflows/` |
+| `history-matching-open-darts` | `.agents/skills/history-matching-open-darts` | ES-MDA and adjoint history matching via `workflows/` |
+| `optimization-open-darts` | `.agents/skills/optimization-open-darts` | Well placement and control optimization via `workflows/` |
 
 ## Maintenance Commands
 

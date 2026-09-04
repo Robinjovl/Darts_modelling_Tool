@@ -84,7 +84,15 @@ def planned_simulations(spec: StudySpec) -> int:
     if spec.workflow == "optimize":
         driver = d.get("driver", "exhaustive")
         if driver in ("exhaustive", "robust"):
-            return robust_runs(int(d["n_candidates"]), int(d.get("ne", 1)))
+            n_candidates = d.get("n_candidates", d.get("max_candidates"))
+            if n_candidates is None:
+                raise ValueError(
+                    "exhaustive estimate needs design.max_candidates or design.n_candidates "
+                    "(the feasible set is only known after the adapter geometry is built)"
+                )
+            ne = int(d.get("ne", 1))
+            # the driver always simulates the baseline configuration as well
+            return robust_runs(int(n_candidates), ne) + ne
         if driver == "fd_controls":
             _, high = d.get("line_search_runs", LINE_SEARCH_RUNS_DEFAULT)
             per_iteration = fd_gradient_runs(int(d["n_controls"])) + int(high)
