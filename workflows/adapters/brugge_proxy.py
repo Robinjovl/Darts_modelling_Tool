@@ -46,6 +46,7 @@ class Adapter(ModelAdapter):
         "poro": "cheap",
         "bhp": "cheap",
         "permx": "geometry",
+        "well_xyz": "geometry",
         "relperm": "physics",
     }
     member_seconds = (8.0, 12.0)
@@ -97,6 +98,7 @@ class Adapter(ModelAdapter):
             mesh_file=str(inputs / MESH_NAME),
             regenerate_mesh=False,
             perm=None if perm is None else np.asarray(perm, dtype=float),
+            well_coords=realization.get("well_xyz"),
         )
         model.init()
         model.set_output(

@@ -243,3 +243,53 @@ class BruggeProxyEsmdaTests(unittest.TestCase):
                 e for e in StudyStore(study).events() if e.get("stage") == "member"
             ]
             self.assertEqual(len(events), 1 + 6 * 3)
+
+
+@unittest.skipUnless(
+    os.environ.get("WORKFLOWS_RUN_DARTS") == "1", "set WORKFLOWS_RUN_DARTS=1"
+)
+class BruggeProxyPlacementTests(unittest.TestCase):
+    def test_exhaustive_placement_smoke(self):
+        from workflows.optimize import run_exhaustive
+        from workflows.spec import ModelRef, ParameterSpec, StudySpec
+
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = StudySpec(
+                name="opt-smoke",
+                workflow="optimize",
+                model=ModelRef(model_dir=str(MODEL_DIR), adapter=ADAPTER),
+                parameters=[
+                    ParameterSpec(
+                        name="I1", family="ScalarParam", args={"target": "well_xyz"}
+                    )
+                ],
+                seed_root=31,
+                observations=ObservationSpec(
+                    wells=["P1", "P2", "P3"],
+                    quantities=["oil_rate"],
+                    report_times=[20.0, 40.0, 60.0],
+                ),
+                design={
+                    "driver": "exhaustive",
+                    "well": "I1",
+                    "objective": "cumulative_oil",
+                    "min_spacing_m": 300.0,
+                    "max_candidates": 4,
+                },
+            )
+            study = Path(tmp) / "study"
+            summary = run_exhaustive(
+                spec,
+                study,
+                executor=IsolatedExecutor(n_workers=5, timeout_s=600, retries=0),
+            )
+            self.assertEqual(summary["n_candidates"], 4)
+            self.assertEqual(summary["n_infeasible"], 0)
+            self.assertIsNotNone(summary["baseline_objective"])
+            self.assertIsNotNone(summary["best"])
+            self.assertTrue((study / "candidates.json").exists())
+            events = [
+                e for e in StudyStore(study).events() if e.get("stage") == "member"
+            ]
+            self.assertEqual(len(events), 5)
+            self.assertTrue(all(e["status"] == "ok" for e in events))

@@ -44,6 +44,16 @@ def cmd_run(args) -> dict:
             "steps": len(summary["steps"]),
             "final": summary["steps"][-1],
         }
+    if spec.workflow == "optimize":
+        from workflows.optimize import run_exhaustive
+
+        summary = run_exhaustive(spec, args.study)
+        return {
+            "command": "run",
+            "study": args.study,
+            "n_candidates": summary["n_candidates"],
+            "best": summary["best"],
+        }
     raise SystemExit(f"workflow {spec.workflow!r} is not implemented yet")
 
 
