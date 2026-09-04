@@ -25,14 +25,31 @@ def cmd_estimate(args) -> dict:
     return {"command": "estimate", "planned_range": [low, high], **estimate.to_dict()}
 
 
+def _analysis_summary(analysis: dict) -> dict:
+    """Percentiles (value and 90 % bootstrap interval) per quantity plus failure count."""
+    return {
+        "n_failed": analysis.get("n_failed"),
+        "quantities": {
+            key: {
+                "final_time": entry.get("final_time"),
+                "percentiles": entry.get("percentiles"),
+            }
+            for key, entry in analysis.get("quantities", {}).items()
+        },
+    }
+
+
 def cmd_run(args) -> dict:
     spec = StudySpec.load(args.spec)
     if spec.workflow == "ensemble":
-        from workflows.ensemble import run_study
+        from workflows.ensemble import analyze, run_study
 
+        result = run_study(spec, args.study, resume=not args.no_resume)
+        analysis = analyze(args.study) if result.get("n_ok") else None
         return {
             "command": "run",
-            **run_study(spec, args.study, resume=not args.no_resume),
+            **result,
+            "analysis": _analysis_summary(analysis) if analysis else None,
         }
     if spec.workflow == "hm-esmda":
         from workflows.esmda import run_esmda
@@ -81,6 +98,7 @@ def cmd_analyze(args) -> dict:
     analysis = analyze(args.study)
     return {
         "command": "analyze",
+        "analysis": _analysis_summary(analysis),
         "study": args.study,
         "n_failed": analysis["n_failed"],
         "quantities": sorted(analysis["quantities"]),

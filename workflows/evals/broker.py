@@ -121,7 +121,7 @@ def main(argv: list | None = None) -> int:
     parser.add_argument("--spec", required=True)
     parser.add_argument("--study", required=True)
     parser.add_argument(
-        "--command", default="run", choices=("run", "estimate", "truth")
+        "--command", default="run", choices=("run", "estimate", "truth", "analyze")
     )
     parser.add_argument("--socket", default=os.environ.get("WORKFLOWS_BROKER"))
     args = parser.parse_args(argv)

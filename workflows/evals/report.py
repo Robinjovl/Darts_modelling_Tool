@@ -31,9 +31,9 @@ def gate_value(record: dict) -> str:
     if "regret" in score:
         return f"regret={score['regret']}"
     if "held_out_rmse" in score:
-        return (
-            f"rmse={score['held_out_rmse']:.2f} cov={score.get('coverage80_held_out')}"
-        )
+        cov = score.get("coverage80_held_out")
+        text = f"rmse={score['held_out_rmse']:.2f}"
+        return text + (f" cov={cov:.2f}" if cov is not None else "")
     checks = score.get("checks")
     if checks:
         return f"checks={sum(bool(v) for v in checks.values())}/{len(checks)}"
@@ -52,7 +52,11 @@ def rows(records: list) -> list:
                 "pass": bool((r.get("score") or {}).get("passed")),
                 "gate": gate_value(r),
                 "turns": r.get("num_turns"),
-                "usd": r.get("total_cost_usd"),
+                "usd": (
+                    round(r["total_cost_usd"], 3)
+                    if r.get("total_cost_usd") is not None
+                    else None
+                ),
                 "wall_s": r.get("wall_s"),
                 "cpu_s": r.get("cpu_s"),
                 "broker": len(r.get("broker_requests") or []),
