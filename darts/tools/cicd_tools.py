@@ -133,6 +133,13 @@ def compare_vtk_with_ref(
 
     eps_div = 1e-15  # to avoid division by zero
     ret_flag = 0
+    # the pass criterion is np.isclose: abs.diff <= abs_tolerance + rel_tolerance * |reference|
+    print(
+        'compare: tolerances: abs',
+        abs_tolerance,
+        'rel',
+        rel_tolerance,
+    )
     for n, r, c in zip(names, ref, cur, strict=True):
         if isinstance(r, dict):  # cell_data is a dict, so check each item there
             if len(r) == 0:  # point_data is empty, skip it
@@ -158,13 +165,46 @@ def compare_vtk_with_ref(
                 )
                 ret_flag = 1
                 continue
-            diff = np.fabs(r1 - c1) / (np.fabs(r1) + eps_div)  # relative difference
-            diff_max = diff.max() if diff.size else 0.0
-            if np.isclose(r1, c1, rtol=rel_tolerance, atol=abs_tolerance).all():
+            abs_diff = np.fabs(r1 - c1)  # absolute difference
+            rel_diff = abs_diff / (np.fabs(r1) + eps_div)  # relative difference
+            ok = np.isclose(r1, c1, rtol=rel_tolerance, atol=abs_tolerance)
+            # how many values exceed each tolerance on its own
+            n_abs = int((abs_diff > abs_tolerance).sum())
+            n_rel = int((rel_diff > rel_tolerance).sum())
+            counts = (
+                f'{n_abs} of {abs_diff.size} values over abs.tol, {n_rel} over rel.tol'
+            )
+            if ok.all():
                 if verbose:
-                    print('Comparing', ni, 'diff', diff_max)
+                    abs_max = abs_diff.max() if abs_diff.size else 0.0
+                    rel_max = rel_diff.max() if rel_diff.size else 0.0
+                    print(
+                        'Comparing',
+                        ni,
+                        'abs.diff',
+                        abs_max,
+                        'rel.diff',
+                        rel_max,
+                        '(' + counts + ')',
+                    )
             else:
                 ret_flag = 1
-                print('There is a rel.difference', diff_max, 'for', ni)
+                # report the difference over the failed values only,
+                # the maximum over all values can be dominated by near-zero references
+                bad = ~ok
+                print(
+                    'There is a difference for',
+                    ni,
+                    'abs.diff',
+                    abs_diff[bad].max(),
+                    'rel.diff',
+                    rel_diff[bad].max(),
+                    'in',
+                    int(bad.sum()),
+                    'of',
+                    bad.size,
+                    'values;',
+                    counts,
+                )
     print('compare:', 'OK' if ret_flag == 0 else 'FAILED')
     return ret_flag
