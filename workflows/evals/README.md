@@ -28,3 +28,19 @@ Run one hidden case (parent side, writes `runs/<case>/<utc>-<model>.json`):
 PYTHONPATH=<repo> <env>/bin/python -m workflows.evals.controller \
   --case workflows/evals/cases/opt-place-proxy-smoke.json --model claude-sonnet-4-6 --run-root <dir>
 ```
+
+## Pre-registered protocol (smoke tier)
+
+- Cases: `opt-place-proxy-smoke`, `ens-proxy-smoke`, `hm-proxy-twin-smoke` (Brugge proxy, seeds
+  31 / 11 / 21). Each has a hidden `truth/<case>/reference.json` produced by a controller-side
+  study through the same CLI, and a `tolerance` fixed before any agent run.
+- Runner: `ClaudeCliRunner` with an exact model id, `--max-turns` and `--max-budget-usd` from the
+  case budget, tools allow-listed, network unrestricted (recorded).
+- Recorded per run (`runs/<case>/<utc>-<model>.json`): pass/fail with the gate values, tokens by
+  kind, cost, turns, wall, CPU, peak RSS, broker requests (spec hashes), git head, result text.
+- A skill or harness edit is accepted only if, over the three smoke cases with the same seeds and
+  model, it does not lower the pass count and does not raise median cost or turns; ties are
+  broken by fewer broker requests (fewer wasted studies). Paired runs (before/after) use the same
+  case prompts; prompts are never edited to fit a model.
+- Full tier (design Section 9: precision-adaptive ensemble references, ten hidden truths,
+  exhaustive placement over all feasible cells) is not yet generated.
