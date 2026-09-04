@@ -1,0 +1,9 @@
+{
+ "name": "opt-place-proxy-smoke",
+ "workflow": "optimize",
+ "study": "opt-place-proxy-smoke",
+ "prompt": "Use the optimization-open-darts skill to relocate injector I1 of the Brugge proxy (models/Uniform_Brugge) for maximum cumulative oil over 60 days (report times 20, 40, 60), producers P1-P3, minimum spacing 300 m, at most 4 candidates. Submit the study spec to the broker at $WORKFLOWS_BROKER with study name opt-place-proxy-smoke and report the best cell.",
+ "budget": {"max_turns": 40, "simulations": 10},
+ "tolerance": 0.05,
+ "seeds": [31]
+}

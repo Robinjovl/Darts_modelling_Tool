@@ -1,0 +1,82 @@
+{
+ "baseline_objective": 60251.71549567378,
+ "best": {
+  "cell": 326,
+  "feasible": true,
+  "member": "c00326",
+  "objective": 64533.761658078016,
+  "status": "ok",
+  "xyz": [
+   11559.144304921674,
+   5163.080239280431,
+   36.0
+  ]
+ },
+ "case": "opt-place-proxy-smoke",
+ "generated_wall_s": 6.0,
+ "identities": {
+  "score_version": "0.1.0",
+  "truth_generation_hash": "f425063a532dcd4fdbebe4411e4b649e4b45e5ba0ab6ed878e1841768d791e54",
+  "workflow_run_hash": "51ca481a6a1f14df28adde68d9206f7cef576989b1e4899b19665bba39baca74"
+ },
+ "n_candidates": 4,
+ "objective": 64533.761658078016,
+ "study_spec": {
+  "compute": {
+   "max_workers": null,
+   "memory_per_member_gb": null,
+   "platform": "cpu",
+   "retries": 2,
+   "threads_per_member": 1,
+   "walltime_s": 1800.0
+  },
+  "design": {
+   "driver": "exhaustive",
+   "max_candidates": 4,
+   "min_spacing_m": 300.0,
+   "objective": "cumulative_oil",
+   "well": "I1"
+  },
+  "model": {
+   "adapter": "workflows.adapters.brugge_proxy",
+   "cls": "Model",
+   "kwargs": {},
+   "model_dir": "/oahu/data/avnovikov/open-darts-skills/models/Uniform_Brugge",
+   "module": "model"
+  },
+  "name": "opt-place-proxy-smoke",
+  "observations": {
+   "held_out_fraction": 0.2,
+   "quantities": [
+    "oil_rate"
+   ],
+   "report_times": [
+    20.0,
+    40.0,
+    60.0
+   ],
+   "sigma_abs": null,
+   "sigma_floor": 1e-12,
+   "sigma_rel": null,
+   "wells": [
+    "P1",
+    "P2",
+    "P3"
+   ]
+  },
+  "parameters": [
+   {
+    "args": {
+     "target": "well_xyz"
+    },
+    "family": "ScalarParam",
+    "name": "I1"
+   }
+  ],
+  "reference": {},
+  "seed_root": 31,
+  "spec_version": 1,
+  "workflow": "optimize"
+ },
+ "truth_generation_hash": "f425063a532dcd4fdbebe4411e4b649e4b45e5ba0ab6ed878e1841768d791e54"
+}
