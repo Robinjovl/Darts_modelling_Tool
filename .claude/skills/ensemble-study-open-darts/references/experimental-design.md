@@ -3,8 +3,8 @@
 | Goal | Design | Runs | Notes |
 |---|---|---|---|
 | Percentiles, distributions | `lhs` or `sobol` | `n` | Sobol: `n` a power of two; LHS is fine for n < 64 |
-| Screening of D inputs | `morris` | `r·(D+1)` (r trajectories, `n` = r) | four levels; rank by μ* and σ; cheap first pass at D ≥ 6 |
-| Variance decomposition | `saltelli` | `n·(D+2)` (`n·(2D+2)` with `second_order`) | `n` power of two ≥ 128 for stable S1/ST; expensive |
+| Screening of D inputs | `morris` | `r·(D+1)` (design key `n_trajectories` = r) | four levels; rank by μ* and σ; cheap first pass at D ≥ 6 |
+| Variance decomposition | `saltelli` | `n_base·(D+2)` (`n_base·(2D+2)` with `second_order`) | design key `n_base` (not `n`), a power of two ≥ 128 for stable S1/ST; expensive |
 
 Rules:
 - Size by budget first: `estimate` prints the planned range; a 10 s proxy member allows
