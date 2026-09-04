@@ -15,9 +15,7 @@
 #include <cstdint>
 
 // HYPRE types
-extern "C" {
 #include <_hypre_utilities.h>
-}
 
 namespace mgr {
 
