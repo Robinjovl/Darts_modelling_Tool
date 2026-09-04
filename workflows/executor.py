@@ -78,6 +78,14 @@ class MemberTask:
     stage_mode: str = "symlink"
 
 
+def realization_hash(realization: dict) -> str:
+    """sha256 of the canonical JSON of a realization (arrays included) for per-member provenance."""
+    from workflows.members import jsonable
+    from workflows.spec import canonical_json, sha256_text
+
+    return sha256_text(canonical_json(jsonable(realization)))
+
+
 def run_member(task: MemberTask) -> dict:
     """Worker entry point: stage, build, apply, run, observe; write ``result.json``."""
     from workflows.adapter import InputSnapshot, load_adapter
@@ -108,6 +116,7 @@ def run_member(task: MemberTask) -> dict:
         "observation": observed,
         "engine_stats": engine_stats,
         "output_hashes": output_hashes,
+        "realization_hash": realization_hash(task.realization),
         "spec_hash": task.spec_hash,
         "input_hash": task.input_hash,
         "binary_fingerprint": task.binary_fingerprint,
@@ -353,6 +362,7 @@ def run_members(store: StudyStore, tasks: list, executor) -> list:
                 equivalent=attempt.equivalent,
                 engine_stats=payload.get("engine_stats", {}),
                 output_hashes=payload.get("output_hashes", {}),
+                realization_hash=payload.get("realization_hash"),
             )
         )
 

@@ -99,5 +99,18 @@ class IsolatedExecutorTests(unittest.TestCase):
             StudyStore(tmp)
 
 
+class RealizationHashTests(unittest.TestCase):
+    def test_hash_changes_with_realization(self):
+        import numpy as np
+
+        from workflows.executor import realization_hash
+
+        a = realization_hash({"permx": np.array([1.0, 2.0]), "tm": 1.5})
+        b = realization_hash({"permx": np.array([1.0, 2.0]), "tm": 1.5})
+        c = realization_hash({"permx": np.array([1.0, 2.001]), "tm": 1.5})
+        self.assertEqual(a, b)
+        self.assertNotEqual(a, c)
+
+
 if __name__ == "__main__":
     unittest.main()

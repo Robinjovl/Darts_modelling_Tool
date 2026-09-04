@@ -149,6 +149,9 @@ class RunResult:
     equivalent: bool = True
     engine_stats: dict = field(default_factory=dict)
     output_hashes: dict = field(default_factory=dict)
+    realization_hash: str | None = (
+        None  # sha256 of the canonical realization (spec-level inputs)
+    )
 
 
 @dataclass
