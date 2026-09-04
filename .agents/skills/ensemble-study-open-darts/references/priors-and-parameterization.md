@@ -5,6 +5,10 @@ Families (`workflows/members.py`): `ScalarParam(low, high)`, `LogScalarParam(low
 `LogPermField(mean_log10, sigma_log10, range_m, n_components)` (Gaussian log-perm field on cell
 centroids, Karhunen–Loève truncated to `n_components`; `energy_fraction` is reported).
 
+Defaults: `LogPermField(mean_log10=log10(500)=2.69897, sigma_log10=0.3, range_m=1000, n_components=10)`.
+Leave a default implicit or copy it exactly; rounding it (2.7 for 2.69897) changes every
+realization by 0.2 % and breaks comparability with other studies of the same design.
+
 Targets and their cost on the Brugge proxy (`rebuild_scope`):
 
 | Target | Applies to | Cost |

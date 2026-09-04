@@ -384,6 +384,9 @@ Run records: `workflows/evals/runs/<case>/`; table via `python -m workflows.eval
 | 2 | opt-place-proxy-smoke | c4a8890c | yes (regret 0.0) | 27 | 0.31 | 109 | accepted under the README rule |
 | 2 | hm-proxy-twin-smoke | c4a8890c | yes (gates bit-identical) | 13 | 0.34 | 181 | chi² above the band read as over-fitting; reading added to the skill |
 | 2 | ens-proxy-smoke | 7b805737 | no (harness) | 34 | 0.52 | 223 | ensemble `run` never analyzed; broker had no `analyze`; the agent computed percentiles itself (correct up to sign) |
+| 3 | ens-proxy-smoke | 9238b286 | yes (9/9 percentile checks) | 25 | 0.30 | 163 | rates 0.3 % off the reference with identical design: the agent rounded `mean_log10` to 2.7 (default log10(500)); engine shown deterministic across processes; realization hash added to the journal; defaults stated in the skill |
+| 3 | opt-place-proxy-smoke | 9238b286 | yes (regret 0.0) | 24 | 0.28 | 108 | repeat run; agrees with round 2 |
+| 3 | hm-proxy-twin-smoke | 9238b286 | yes (gates bit-identical) | 26 | 0.37 | 190 | repeat run |
 
 The ES-MDA reference itself exposed a substrate defect before any agent ran: the noise used the
 per-well time-series spread instead of the observed value (chi² about 1e5 to 1e7 on the twin);
