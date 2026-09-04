@@ -2,7 +2,9 @@
 
 ## Multi-thread with openMP
 
-To set the number of threads (CPU cores) to be used, you must have had compiled open-darts with the multi-thread option. Also, `open-darts/linear_solvers` do not support multi-thread with openMP yet.
+To set the number of threads (CPU cores) to be used, you must have had compiled open-darts with the multi-thread option (`OPENDARTS_CONFIG=MT`, or a GPU build, which enables host-side OpenMP as well; the default is the single-thread `ST` configuration).
+
+In such a build OpenMP covers the in-tree `open-darts/linear_solvers` too: the iterative solvers (FGMRES, CPR/FS-CPR and the Schur elimination) run multi-threaded, and HYPRE contributes its own OpenMP parallelism when it was built with `HYPRE_ENABLE_OPENMP=ON`. The direct solvers are the exception -- SuperLU is not parallelized ([issue 40](https://gitlab.com/open-darts/open-darts/-/issues/40)).
 
 Then add to your python script:
 
@@ -16,6 +18,15 @@ Half of the cores available are used unless specified via `set_num_threads` or v
 <div class="warning">
 
 If the number of threads requested `NT` is larger than the available you might get a Segmentation fault or a BUS error.
+
+</div>
+
+<div class="warning">
+
+Results depend on the thread count. At a *fixed* `NT` a run is reproducible, but changing `NT` groups the
+parallel reductions differently, so the linear solver returns answers that differ at ULP level and the
+Newton path can amplify that. Pin the thread count whenever you compare against reference results -- the
+test suite runs with `OMP_NUM_THREADS=1` for exactly this reason.
 
 </div>
 

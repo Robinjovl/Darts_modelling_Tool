@@ -285,6 +285,20 @@ Two specs wrap another solver rather than being one:
 * `AdaptiveSolverSpec(candidates=[...], policy=..., on_timestep_failed=...)` — switches
   between candidate solvers during a run; `candidates[0]` is used first, and the policy
   decides per timestep from the previous step's state. At least one candidate is required.
+  Candidates must be **engine-resident CPU registry specs** (`MGRSolverSpec`,
+  `GMRESSolverSpec`, `CPRSolverSpec`, `SuperLUSolverSpec`, …): switching rebuilds the
+  candidate through the open-source registry and injects it into the live engine, which a
+  `GPUSolverSpec` (enum-selected by the engine factory) and a Python-resident solver
+  (`PETScSolverSpec`, `PardisoSolverSpec`, owned by the model) cannot support. Both raise
+  `TypeError` at construction rather than hours into a run. To retune the *current* solver
+  instead of replacing it, call `model.linear_solver.update_solver(...)`, which reconfigures
+  the injected solver in place without touching the Jacobian.
+
+So the two families are separated in both directions: HYPRE's MGR cannot serve as a
+preconditioner inside an in-tree Krylov driver (the `ValueError` above), and no in-tree
+component can be substituted into MGR's own cycle. Within a run you may switch between
+registry solvers or retune one, but you cannot hand the solve back and forth between a
+registry solver and a GPU or Python-resident one.
 
 ## Build availability
 
