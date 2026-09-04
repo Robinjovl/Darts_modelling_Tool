@@ -5,11 +5,11 @@ from numba import jit
 
 
 class Flash:
-    def __init__(self, nph, nc, ni=0):
+    def __init__(self, nph, nc, nsalt=0):
         self.nph = nph
         self.nc = nc
-        self.ni = ni
-        self.ns = nc + ni
+        self.nsalt = nsalt
+        self.ns = nc + nsalt
 
         self.nu = []
         self.X = []
@@ -101,46 +101,46 @@ def RR2(k, zc, eps):
     return [V, 1 - V], [y, x]
 
 
-class SolidFlash(Flash):
+class KineticsFlashWrapper(Flash):
     """
-    SolidFlash class is a wrapper around a flash of fluid components/phases and normalized solid that reacts kinetically
-    This is used in a formulation where the solid is a regular component with mole fractions, just does not flow
+    KineticsFlashWrapper class is a wrapper around a flash of equilibrium components/phases and normalized kinetic components/phases
+    This is used in a formulation where the kinetic components are regular components with mole fractions in z, just do not flow
     It is a composition of a Flash object.
-    During evaluate(), it normalizes fluid composition, evaluates Flash and renormalizes
+    During evaluate(), it normalizes equilibrium composition, evaluates Flash and renormalizes for kinetic components
     """
 
     def __init__(
         self,
         flash: Flash,
-        nc_fl: int,
-        np_fl: int,
-        ni: int = 0,
-        nc_sol: int = 0,
-        np_sol: int = 0,
+        nc_eq: int,
+        np_eq: int,
+        nsalt: int = 0,
+        nc_kin: int = 0,
+        np_kin: int = 0,
     ):
         """
-        Constructor of SolidFlash
+        Constructor of KineticsFlashWrapper
 
         :param flash: Flash object for fluid components/phases
-        :param nc_fl: Number of fluid components
-        :param np_fl: Number of fluid phases
-        :param ni: Number of ions
-        :param nc_sol: Number of solid components
-        :param np_sol: Number of solid phases
+        :param nc_eq: Number of equilibrium components
+        :param np_eq: Number of equilibrium phases
+        :param nsalt: Number of ions
+        :param nc_kin: Number of kinetic components
+        :param np_kin: Number of kinetic phases
         """
-        super().__init__(np_fl, nc_fl, ni)
+        super().__init__(np_eq, nc_eq, nsalt=nsalt)
         self.flash = flash
 
-        self.nc_fl = self.ns
-        self.np_fl = self.nph
-        self.nc_sol = nc_sol
-        self.np_sol = np_sol
+        self.nc_eq = self.ns
+        self.np_eq = self.nph
+        self.nc_kin = nc_kin
+        self.np_kin = np_kin
 
     def evaluate(self, pressure, temperature, zc):
-        """Evaluate flash normalized for solids.
+        """Evaluate flash normalized for kinetic components.
 
-        Normalizes the fluid part of ``zc`` (solids removed), evaluates the wrapped
-        fluid flash, then re-appends the solid phase fractions to ``nu``/``X``.
+        Normalizes the fluid part of ``zc`` (kinetic components removed), evaluates the wrapped
+        fluid flash, then re-appends the kinetic phase fractions to ``nu``/``X``.
 
         If the wrapped flash fails and leaves its phase compositions mis-shaped,
         the fluid part of ``X`` is filled with NaN and the error count is
@@ -153,34 +153,34 @@ class SolidFlash(Flash):
         :return: Number of flash errors encountered (0 on success).
         """
         # Normalize compositions
-        zc_sol = zc[self.nc_fl :]
-        zc_sol_tot = np.sum(zc_sol)
-        zc_norm = zc[: self.nc_fl] / (1.0 - zc_sol_tot)
+        zc_kin = zc[self.nc_eq :]
+        zc_kin_tot = np.sum(zc_kin)
+        zc_norm = zc[: self.nc_eq] / (1.0 - zc_kin_tot)
 
         # Evaluate flash for normalized composition
         error_output = self.flash.evaluate(pressure, temperature, zc_norm)
         flash_results = self.flash.get_flash_results()
         nu = np.array(flash_results.nu)
         try:
-            x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
+            x = np.array(flash_results.X).reshape(self.np_eq, self.nc_eq)
         except ValueError as e:
             print(e.args[0], pressure, temperature, zc)
             error_output += 1
             # failed flash left X mis-shaped; keep going with NaN phase
             # compositions so the error is detectable downstream instead of
             # crashing on the undefined local
-            x = np.full((self.np_fl, self.nc_fl), np.nan)
+            x = np.full((self.np_eq, self.nc_eq), np.nan)
 
-        # Re-normalize solids and append to nu, x
-        NU = np.zeros(self.np_fl + self.np_sol)
-        X = np.zeros((self.np_fl + self.np_sol, self.nc_fl + self.nc_sol))
-        for j in range(self.np_fl):
-            NU[j] = nu[j] * (1.0 - zc_sol_tot)
-            X[j, : self.nc_fl] = x[j, :]
+        # Re-normalize kinetic components and append to nu, x
+        NU = np.zeros(self.np_eq + self.np_kin)
+        X = np.zeros((self.np_eq + self.np_kin, self.nc_eq + self.nc_kin))
+        for j in range(self.np_eq):
+            NU[j] = nu[j] * (1.0 - zc_kin_tot)
+            X[j, : self.nc_eq] = x[j, :]
 
-        for j in range(self.np_sol):
-            NU[self.np_fl + j] = zc_sol[j]
-            X[self.np_fl + j, self.nc_fl + j] = 1.0
+        for j in range(self.np_kin):
+            NU[self.np_eq + j] = zc_kin[j]
+            X[self.np_eq + j, self.nc_eq + j] = 1.0
 
         self.nu = NU
         self.X = X
