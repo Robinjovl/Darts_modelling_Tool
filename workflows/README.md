@@ -14,3 +14,11 @@ ledger), `journal.py` (study directory, atomic manifests, journal, provenance), 
 (simulation counts, worker sizing, estimates), `requirements.txt`, the fast test lane, and the
 feasibility spike under `evals/spikes/`. Adapters, executor, drivers, CLI and the evaluation
 controller follow in later steps.
+
+## Where things are
+
+- Shared reference for the three study skills: `workflows/docs/study-substrate.md`.
+- Skills: `.agents/skills/{ensemble-study,history-matching,optimization}-open-darts` (mirrored
+  to `.claude/skills`; `helper_scripts/validate_skills.py` checks them).
+- Evaluation harness (developer tool, hidden references): `workflows/evals/README.md`.
+- Design and evidence: `docs/for_developers/agentic_workflows_design.md`.
