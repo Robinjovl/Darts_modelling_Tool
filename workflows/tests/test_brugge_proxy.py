@@ -191,3 +191,55 @@ class BruggeProxyEnsembleTests(unittest.TestCase):
                     )
                 ).exists()
             )
+
+
+@unittest.skipUnless(
+    os.environ.get("WORKFLOWS_RUN_DARTS") == "1", "set WORKFLOWS_RUN_DARTS=1"
+)
+class BruggeProxyEsmdaTests(unittest.TestCase):
+    def test_identical_twin_smoke(self):
+        try:
+            import dageo  # noqa: F401
+        except ImportError:
+            self.skipTest("dageo not installed")
+        from workflows.esmda import make_truth, run_esmda
+        from workflows.spec import ModelRef, ParameterSpec, StudySpec
+
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = StudySpec(
+                name="hm-smoke",
+                workflow="hm-esmda",
+                model=ModelRef(model_dir=str(MODEL_DIR), adapter=ADAPTER),
+                parameters=[
+                    ParameterSpec(
+                        name="k",
+                        family="LogPermField",
+                        args={"sigma_log10": 0.3, "range_m": 1500.0},
+                    )
+                ],
+                seed_root=21,
+                observations=ObservationSpec(
+                    wells=["P1", "P5", "P10"],
+                    quantities=["oil_rate"],
+                    report_times=[20.0, 40.0, 60.0, 80.0, 100.0],
+                    held_out_fraction=0.2,
+                    sigma_rel=0.05,
+                ),
+                design={"ne": 6, "n_steps": 2, "localization_length_m": 1500.0},
+            )
+            study = Path(tmp) / "study"
+            executor = IsolatedExecutor(n_workers=6, timeout_s=600, retries=0)
+            truth = make_truth(spec, study, executor=executor)
+            self.assertEqual(len(truth["d_obs"]), 15)
+            self.assertEqual(sum(truth["train_mask"]), 12)
+            summary = run_esmda(spec, study, executor=executor)
+            self.assertEqual(len(summary["steps"]), 3)
+            self.assertLess(
+                summary["steps"][-1]["chi2_train"], summary["steps"][0]["chi2_train"]
+            )
+            self.assertTrue((study / "params_step2.npy").exists())
+            self.assertTrue((study / "esmda_summary.json").exists())
+            events = [
+                e for e in StudyStore(study).events() if e.get("stage") == "member"
+            ]
+            self.assertEqual(len(events), 1 + 6 * 3)

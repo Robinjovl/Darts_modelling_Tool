@@ -61,7 +61,7 @@ class Adapter(ModelAdapter):
         return snapshot
 
     def geometry(self, snapshot: InputSnapshot) -> dict:
-        """Cell centroids and count of the discretized proxy (cached as ``geometry.json``)."""
+        """Cell centroids, cell count and well positions of the proxy (cached as ``geometry.json``)."""
         cache = Path(snapshot.root) / "geometry.json"
         if cache.exists():
             with open(cache, encoding="utf-8") as handle:
@@ -76,7 +76,15 @@ class Adapter(ModelAdapter):
         centroids = np.asarray(
             model.reservoir.discretizer.centroids_all_cells, dtype=float
         )[:n_cells]
-        geometry = {"n_cells": n_cells, "centroids": centroids.tolist()}
+        coords = np.genfromtxt(root / "Brugge_struct" / "well_coord_Brugge.txt")
+        wells = {}
+        for i, xyz in enumerate(coords):
+            name = f"I{i + 1}" if i < 10 else f"P{i + 1 - 10}"
+            wells[name] = {
+                "xyz": [float(v) for v in xyz],
+                "cell": int(model.reservoir.find_cell_index(xyz)),
+            }
+        geometry = {"n_cells": n_cells, "centroids": centroids.tolist(), "wells": wells}
         atomic_write_json(cache, geometry)
         return geometry
 

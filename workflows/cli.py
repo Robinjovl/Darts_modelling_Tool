@@ -27,11 +27,39 @@ def cmd_estimate(args) -> dict:
 
 def cmd_run(args) -> dict:
     spec = StudySpec.load(args.spec)
-    if spec.workflow != "ensemble":
-        raise SystemExit(f"workflow {spec.workflow!r} is not implemented yet")
-    from workflows.ensemble import run_study
+    if spec.workflow == "ensemble":
+        from workflows.ensemble import run_study
 
-    return {"command": "run", **run_study(spec, args.study, resume=not args.no_resume)}
+        return {
+            "command": "run",
+            **run_study(spec, args.study, resume=not args.no_resume),
+        }
+    if spec.workflow == "hm-esmda":
+        from workflows.esmda import run_esmda
+
+        summary = run_esmda(spec, args.study)
+        return {
+            "command": "run",
+            "study": args.study,
+            "steps": len(summary["steps"]),
+            "final": summary["steps"][-1],
+        }
+    raise SystemExit(f"workflow {spec.workflow!r} is not implemented yet")
+
+
+def cmd_truth(args) -> dict:
+    spec = StudySpec.load(args.spec)
+    if spec.workflow != "hm-esmda":
+        raise SystemExit("truth generation is implemented for hm-esmda specs")
+    from workflows.esmda import make_truth
+
+    truth = make_truth(spec, args.study)
+    return {
+        "command": "truth",
+        "study": args.study,
+        "nd": len(truth["d_obs"]),
+        "n_train": int(sum(truth["train_mask"])),
+    }
 
 
 def cmd_analyze(args) -> dict:
@@ -62,6 +90,12 @@ def main(argv=None) -> int:
     p.add_argument("--study", required=True, help="study directory")
     p.add_argument("--no-resume", action="store_true")
     p.set_defaults(func=cmd_run)
+    p = sub.add_parser(
+        "truth", help="generate an identical-twin truth for a history-matching study"
+    )
+    p.add_argument("--spec", required=True)
+    p.add_argument("--study", required=True)
+    p.set_defaults(func=cmd_truth)
     p = sub.add_parser("analyze", help="analyze a finished ensemble study")
     p.add_argument("--study", required=True)
     p.set_defaults(func=cmd_analyze)

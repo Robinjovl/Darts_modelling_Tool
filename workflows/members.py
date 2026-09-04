@@ -106,6 +106,8 @@ class LogPermField(Family):
     centroids: np.ndarray | None = field(default=None, repr=False)
     _basis: np.ndarray | None = field(default=None, repr=False)
     _scales: np.ndarray | None = field(default=None, repr=False)
+    _basis_full: np.ndarray | None = field(default=None, repr=False)
+    _scales_full: np.ndarray | None = field(default=None, repr=False)
 
     @property
     def dim(self) -> int:
@@ -120,10 +122,12 @@ class LogPermField(Family):
         d = np.sqrt(((xy[:, None, :] - xy[None, :, :]) ** 2).sum(axis=2))
         cov = (self.sigma_log10**2) * np.exp(-d / self.range_m)
         w, v = np.linalg.eigh(cov)
-        order = np.argsort(w)[::-1][: self.n_components]
+        order = np.argsort(w)[::-1]
         self.centroids = xy
-        self._scales = np.sqrt(np.clip(w[order], 0.0, None))
-        self._basis = v[:, order]
+        self._scales_full = np.sqrt(np.clip(w[order], 0.0, None))
+        self._basis_full = v[:, order]
+        self._scales = self._scales_full[: self.n_components]
+        self._basis = self._basis_full[:, : self.n_components]
 
     @property
     def energy_fraction(self) -> float:
@@ -138,6 +142,13 @@ class LogPermField(Family):
         z = stats.norm.ppf(np.clip(np.asarray(u, dtype=float), 1e-12, 1 - 1e-12))
         log10k = self.mean_log10 + self._basis @ (self._scales * z)
         return 10.0**log10k
+
+    def sample_log10(self, rng: np.random.Generator, n: int) -> np.ndarray:
+        """``n`` full-rank prior draws of the per-cell log10 permeability (all modes)."""
+        if self._basis_full is None:
+            raise RuntimeError("call set_centroids first")
+        z = rng.standard_normal((n, self._scales_full.size))
+        return self.mean_log10 + (z * self._scales_full) @ self._basis_full.T
 
     def contribute(self, realization, values):
         realization[self.target] = np.asarray(values, dtype=float)
