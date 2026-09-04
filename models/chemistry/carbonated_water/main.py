@@ -107,7 +107,7 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         rate = m.inj_rate
         m.inj_rate = 0.0
 
-        m.data_ts.dt_max = 5.0
+        m.ts_control.dt_max = 5.0
         _n_good_ts_saved = m.n_good_ts
         m.n_good_ts = 10**18      # disable dt_max growth -> hard 5-day ceiling during init
         m.run(days=init_days)
@@ -117,10 +117,10 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
         m.inj_rate = rate
         m.physics.engine.t = 0.0
         ith_step = 0
-        m.data_ts.dt_max = max_ts
+        m.ts_control.dt_max = max_ts
         if domain == '1D':
-            m.data_ts.dt_first = 1.e-6
-            m.data_ts.dt_mult = 1.5
+            m.ts_control.dt_first = 1.e-6
+            m.ts_control.dt_mult = 1.5
             fig_paths = []
             fig_paths.append(plot(m))
             m.run(days=0.002, restart_dt=max_ts)
@@ -131,21 +131,21 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             fig_paths.append(plot(m))
             m.run(days=0.02, restart_dt=max_ts)
             fig_paths.append(plot(m))
-            # m.data_ts.dt_max *= 3
-            m.data_ts.first_ts = m.data_ts.dt_max
+            # m.ts_control.dt_max *= 3
+            m.ts_control.first_ts = m.ts_control.dt_max
             m.run(days=0.1, restart_dt=max_ts)
-            # m.data_ts.dt_max *= 4
+            # m.ts_control.dt_max *= 4
             m.run(days=0.86)
             fig_paths.append(plot(m))
-            # m.data_ts.dt_max *= 5
-            m.data_ts.first_ts = m.data_ts.dt_max
+            # m.ts_control.dt_max *= 5
+            m.ts_control.first_ts = m.ts_control.dt_max
 
             for i in range(num_time_iterations):
                 dt = 2.0
                 m.run(days=dt)
                 if i < 1:
-                    # m.data_ts.dt_max *= 1.5
-                    m.data_ts.first_ts = m.data_ts.dt_max
+                    # m.ts_control.dt_max *= 1.5
+                    m.ts_control.first_ts = m.ts_control.dt_max
                 fig_paths.append(plot(m))
 
             # if output:
@@ -182,14 +182,14 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
                 dt_max_bump = 1.0
                 default_run = False
 
-            m.data_ts.dt_first = m.prev_dt = min(1.e-6 * 1e-3 / m.inj_rate, m.data_ts.dt_max)
-            m.data_ts.dt_mult = 1.5
+            m.ts_control.dt_first = m.prev_dt = min(1.e-6 * 1e-3 / m.inj_rate, m.ts_control.dt_max)
+            m.ts_control.dt_mult = 1.5
             ts_after_bt = 0
             max_snapshots_after_bt = 5
             for i, rts in enumerate(report_timesteps):
                 if i == n_fine and dt_max_bump != 1.0:
-                    m.data_ts.dt_max *= dt_max_bump
-                    m.data_ts.first_ts = m.data_ts.dt_max
+                    m.ts_control.dt_max *= dt_max_bump
+                    m.ts_control.first_ts = m.ts_control.dt_max
                 m.run(days=rts, restart_dt=m.prev_dt)
                 plot(m=m, ith_step=ith_step)
                 ith_step += 1

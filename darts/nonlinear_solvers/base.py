@@ -327,6 +327,9 @@ class NonlinearSolver:
         self.model = model
         self.status = NonlinearStatus()
         self.stats = SolverStats()
+        # per-timestep Newton-iteration-count history, one entry per accepted
+        # timestep (appended by run_timestep()); read back for post-run plotting/diagnostics
+        self.n_newton_iters = []
         # ordered dX-correction pipeline assembled from the spec by build_corrections()
         self._corrections = []
         # extra routines injected by a FallbackSpec retry (empty on the primary solver)
@@ -493,14 +496,14 @@ class NonlinearSolver:
         """Solve the linearized system via the model's backend-neutral dispatch
         funnel and account the result uniformly for every backend.
 
-        The backend selection lives in :meth:`DartsModel._solve_linear_equation`,
+        The backend selection lives in
+        :meth:`~darts.linear_solvers.LinearSolver._solve_linear_equation`,
         which returns ``(rc, n_iters, residual)`` — ``rc`` is ``0`` on success,
-        ``1`` on setup failure, ``2`` on solve failure (Python PETSc/Pardiso
-        report failure via this same code, so a divergent solve now aborts the
-        Newton loop / triggers a fallback exactly like the C++ path). This split
-        is the seam the linear-solver refactoring (MR280) later replaces
-        wholesale, so the accounting stays backend-agnostic here."""
-        rc, n_iters, residual = self.model._solve_linear_equation()
+        ``1`` on setup failure, ``2`` on hard solve failure, and ``3`` when the
+        iteration budget was exhausted with a usable iterate. Python PETSc/Pardiso
+        report through the same codes, so accounting and failure policy stay
+        backend-agnostic here."""
+        rc, n_iters, residual = self.model.linear_solver._solve_linear_equation()
         if rc in (0, 3):
             status = self.status
             status.n_linear += n_iters

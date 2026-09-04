@@ -18,15 +18,15 @@ max_ts = [1e-3, 0.01, 0.02, 0.5, 1., 5.] + [20] * 9
 
 for j, ts in enumerate(timesteps[:2]):
 
-    m.data_ts.dt_mult = 2
-    m.data_ts.dt_max = max_ts[j]
-    m.data_ts.eta[-1] = 100
+    m.ts_control.dt_mult = 2
+    m.ts_control.dt_max = max_ts[j]
+    m.ts_control.eta[-1] = 100
 
     if data_dt is not None:
         data_dt.dt_max = max_ts[j]
         m.run(data_dt, ts)
     else:
-        # m.set_sim_params(max_ts=max_ts[j])
+        # m.linear_solver.set_sim_params(max_ts=max_ts[j])
         m.run(ts)
 
 """ Define output """

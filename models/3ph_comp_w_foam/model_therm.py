@@ -1,6 +1,6 @@
 import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import sim_params
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
@@ -15,7 +15,7 @@ from darts.physics.properties.enthalpy import EnthalpyBasic
 
 import numpy as np
 
-class Model_therm(CICDModel):
+class Model_therm(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -26,7 +26,11 @@ class Model_therm(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=10, runtime=100  )
+        self.ts_control.dt_first = 0.001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 10
+        self.ts_control.runtime = 100
 
         self.timer.node["initialization"].stop()
 

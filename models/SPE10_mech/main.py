@@ -14,10 +14,10 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
     if days:
         runtime = days
     else:
-        runtime = m.runtime
+        runtime = m.ts_control.runtime
 
-    mult_dt = m.data_ts.dt_mult
-    max_dt = m.data_ts.dt_max
+    mult_dt = m.ts_control.dt_mult
+    max_dt = m.ts_control.dt_max
     m.e = m.physics.engine
 
     # get current engine time
@@ -25,11 +25,11 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
 
     # same logic as in engine.run
     if np.fabs(t) < 1e-15:
-        dt = m.data_ts.dt_first
+        dt = m.ts_control.dt_first
     elif restart_dt > 0:
         dt = restart_dt
     else:
-        dt = m.data_ts.dt_max
+        dt = m.ts_control.dt_max
 
     # evaluate end time
     runtime += t
@@ -87,7 +87,7 @@ def run(model_folder, physics_type, is_finalize=True):
     m.reservoir.set_equilibrium(zero_conduction=True)
     m.physics.engine.find_equilibrium = True
     dt_init = 1.e+8
-    m.data_ts.dt_first = dt_init
+    m.ts_control.dt_first = dt_init
     run_python(m, dt_init, init_step=True)
     m.reinit(zero_conduction=True)
     m.physics.engine.find_equilibrium = False
@@ -95,9 +95,9 @@ def run(model_folder, physics_type, is_finalize=True):
     size_report_step = 1
     max_dt = size_report_step
     m.max_dt = max_dt
-    m.data_ts.dt_max = max_dt
+    m.ts_control.dt_max = max_dt
     first_ts = size_report_step
-    m.data_ts.dt_first = first_ts
+    m.ts_control.dt_first = first_ts
     m.set_boundary_conditions_after_initialization()
 
     sim_time = 20 # days

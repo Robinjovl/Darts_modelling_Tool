@@ -3,6 +3,7 @@ from datetime import datetime
 from main_gen_mesh import generate_mesh
 from main_simulation import run_simulation
 from set_case import set_input_data
+from darts.tools.cicd_tools import check_performance, save_performance_data
 import os, sys
 
 def run_test(args: list = [], platform='cpu'):
@@ -63,10 +64,10 @@ def check_performance_local(m, case):
 
     is_plk_exist = os.path.isfile(file_name)
 
-    failed = m.check_performance(perf_file=file_name, overwrite=overwrite, pkl_suffix=pkl_suffix)
+    failed = check_performance(m, perf_file=file_name, overwrite=overwrite, pkl_suffix=pkl_suffix)
 
     if not is_plk_exist or overwrite == '1':
-        m.save_performance_data(file_name=file_name, pkl_suffix=pkl_suffix)
+        save_performance_data(m, file_name=file_name, pkl_suffix=pkl_suffix)
         return False, 0.0
 
     if is_plk_exist:

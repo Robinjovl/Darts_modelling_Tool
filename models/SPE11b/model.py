@@ -109,8 +109,12 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365  )
-        # self.data_ts.eta = np.ones(self.physics.n_vars)
+        self.ts_control.dt_first = 1e-6
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 365
+        self.ts_control.runtime = 1000
+        # self.ts_control.eta = np.ones(self.physics.n_vars)
 
         """ Define reservoir """
         self.set_reservoir()
@@ -802,9 +806,6 @@ class Model(DartsModel):
             # apply RHS flux
             self.apply_rhs_flux(dt, t)
 
-            if self.has_dfm_well:
-                self.apply_dfm_well_lateral_heat_flux(dt, t)
-
             if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
@@ -858,7 +859,7 @@ class Model(DartsModel):
             # Unified spec-driven dispatch (!280): routes to the Python-resident
             # solver (PETSc / Pardiso spec) or the C++ engine solver and returns
             # the (rc, n_iters, residual) contract of !327.
-            r_code, n_lin, _ = self._solve_linear_equation()
+            r_code, n_lin, _ = self.linear_solver._solve_linear_equation()
             status.linear_solver_rc = r_code
             if r_code != 0:
                 # failed linear solve: do NOT apply a stale update; the
@@ -880,9 +881,9 @@ class Model(DartsModel):
         converged = self.physics.engine.post_newtonloop(dt, t, converged)
         solver.stats.update(converged, status)
 
-        self.time.append(t)
-        self.n_newton_iters.append(status.n_newton)
-        self.time_step_size.append(dt)
+        self.ts_control.time.append(t)
+        solver.n_newton_iters.append(status.n_newton)
+        self.ts_control.time_step_size.append(dt)
 
         self.timer.node["simulation"].stop()
 

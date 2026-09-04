@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import DartsModel
+from darts.models.darts_model import DartsModel
 import numpy as np
 
 from darts.physics.base.physics import PhysicsBase
@@ -65,7 +65,11 @@ class Model(DartsModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-4, mult_ts=2, max_ts=1)
+        self.ts_control.dt_first = 1e-4
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 1
+        self.ts_control.runtime = 1000
 
 
     def set_wells(self):
