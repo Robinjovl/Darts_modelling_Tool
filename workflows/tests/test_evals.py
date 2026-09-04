@@ -295,5 +295,41 @@ class RecordRunTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text())["tokens"]["input_tokens"], 1)
 
 
+class ReportTests(unittest.TestCase):
+    def test_rows_and_aggregates(self):
+        from workflows.evals import report
+
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = Path(tmp) / "runs"
+            for i, passed in enumerate((True, False)):
+                (runs / "c1").mkdir(parents=True, exist_ok=True)
+                (runs / "c1" / f"r{i}.json").write_text(
+                    json.dumps(
+                        {
+                            "case": "c1",
+                            "model": "m",
+                            "git_head": "abc",
+                            "started_utc": f"2026-01-0{i + 1}T00:00:00Z",
+                            "score": {
+                                "passed": passed,
+                                "regret": 0.0 if passed else 0.3,
+                            },
+                            "num_turns": 10 + i,
+                            "total_cost_usd": 0.5,
+                            "wall_s": 1.0,
+                            "cpu_s": 0.1,
+                            "broker_requests": [{}],
+                        }
+                    )
+                )
+            table = report.rows(report.load_records(runs))
+            self.assertEqual([r["pass"] for r in table], [True, False])
+            self.assertEqual(table[0]["gate"], "regret=0.0")
+            agg = report.aggregates(table)
+            self.assertEqual(agg[0]["passes"], 1)
+            self.assertEqual(agg[0]["median_turns"], 10.5)
+            self.assertIn("c1", report.format_table(table, ["case", "pass"]))
+
+
 if __name__ == "__main__":
     unittest.main()

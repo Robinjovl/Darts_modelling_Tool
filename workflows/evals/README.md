@@ -16,6 +16,8 @@ Runs a skill-driven agent on hidden cases and scores it after exit (design secti
 - The agent submits studies with `python -m workflows.evals.broker --spec ... --study ...`
   (socket from `WORKFLOWS_BROKER`); case prompts may use `{repo}`, `{python}`, `{run_dir}`.
 - `scorer.py`: gates-based scoring against `truth/<case>/reference.json` (hidden).
+- `report.py`: `python -m workflows.evals.report` tabulates `runs/` (pass, gate, turns, cost, wall)
+  with per case/model/head aggregates for the acceptance rule below.
 
 Network: `bwrap` shares the network namespace; outbound traffic is unrestricted unless a proxy
 is deployed, and every run record says so.
