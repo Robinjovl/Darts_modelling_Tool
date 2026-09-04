@@ -47,8 +47,9 @@ write an adapter first and prove it with one member before designing a study.
 - Walltime kill + retries with distinct attempt ids; a retry with more threads is a
   non-equivalent attempt and is journaled as such.
 - `journal.jsonl` is append-only; `manifest.json` holds identities, provenance, seeds, design.
-- Observations: instantaneous well rows at report times (production positive after the
-  adapter's sign convention); `time_data_report` averages over intervals and is a different quantity.
+- Observations: instantaneous well rows at report times in the simulator's sign convention
+  (production rates are negative on the Brugge proxy; `cumulative_production` flips the sign);
+  `time_data_report` averages over intervals and is a different quantity.
 - Cost gate: run `estimate` and report planned simulations, wall time and disk before `run`.
 - Launch studies through the CLI or a script file, never from stdin or an interactive session:
   the executor spawns workers that re-import the main module.

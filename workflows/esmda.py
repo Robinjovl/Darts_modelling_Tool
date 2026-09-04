@@ -71,20 +71,11 @@ class ObservationLayout:
         )
 
     def sigma(self, clean: np.ndarray) -> np.ndarray:
+        """Per-entry noise ``max(sigma_abs, sigma_rel * |d|, sigma_floor)`` (documented convention)."""
         obs = self.observation
         sigma = np.full(clean.shape, obs.sigma_abs or 0.0, dtype=float)
         if obs.sigma_rel:
-            for w in obs.wells:
-                for q in obs.quantities:
-                    mask = np.array(
-                        [(ww, qq) == (w, q) for (ww, qq, _) in self.entries]
-                    )
-                    scale = (
-                        np.std(clean[mask])
-                        if mask.sum() > 1
-                        else abs(clean[mask]).mean()
-                    )
-                    sigma[mask] = np.maximum(sigma[mask], obs.sigma_rel * scale)
+            sigma = np.maximum(sigma, obs.sigma_rel * np.abs(clean))
         return np.maximum(sigma, obs.sigma_floor)
 
 

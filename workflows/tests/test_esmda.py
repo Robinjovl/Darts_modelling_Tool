@@ -58,7 +58,8 @@ class LayoutTests(unittest.TestCase):
         vec = layout.vector(observed)
         np.testing.assert_array_equal(vec, [1, 2, 3, 4, 5, 10, 20, 30, 40, 50])
         sigma = layout.sigma(vec)
-        self.assertAlmostEqual(sigma[0], 0.1 * np.std([1, 2, 3, 4, 5]))
+        self.assertAlmostEqual(sigma[0], 0.1 * 1.0)  # sigma_rel * |d|
+        self.assertAlmostEqual(sigma[9], 0.1 * 50.0)
         self.assertTrue((sigma >= 1e-3).all())
         geometry = {
             "wells": {

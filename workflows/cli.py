@@ -107,6 +107,11 @@ def main(argv=None) -> int:
     p.add_argument("--study", required=True)
     p.set_defaults(func=cmd_truth)
     p = sub.add_parser("analyze", help="analyze a finished ensemble study")
+    p.add_argument(
+        "--spec",
+        required=False,
+        help="accepted for symmetry; the study dir holds the spec",
+    )
     p.add_argument("--study", required=True)
     p.set_defaults(func=cmd_analyze)
     args = parser.parse_args(argv)

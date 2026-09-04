@@ -1,0 +1,159 @@
+{
+ "case": "ens-proxy-smoke",
+ "identities": {
+  "score_version": "0.1.0",
+  "truth_generation_hash": "b821801ddc1f9d14424466a500a372cb6cab0fa5a8ea065badeb64135eb1b2ce",
+  "workflow_run_hash": "43c2310c4963fd3c6434f9a6edb0a8416b4f8c4d78afe0fc574e7ba91ac297bc"
+ },
+ "n_members": 8,
+ "note": "same seed and design as the case; a correct agent study reproduces these percentiles bit-identically; tolerance covers only bootstrap CI + 5%",
+ "quantities": {
+  "P1:oil_rate": {
+   "P10": {
+    "ci90": [
+     -806.6579238496695,
+     -401.1527491778243
+    ],
+    "value": -657.7897504730706
+   },
+   "P50": {
+    "ci90": [
+     -496.7798122293288,
+     -272.5507928598621
+    ],
+    "value": -390.0652474256549
+   },
+   "P90": {
+    "ci90": [
+     -368.72690226863193,
+     -188.0365086211448
+    ],
+    "value": -199.20058334707073
+   },
+   "convention": "statistical percentiles (P10 = 10th percentile of the value)"
+  },
+  "P2:oil_rate": {
+   "P10": {
+    "ci90": [
+     -1175.767293478187,
+     -700.9743096804718
+    ],
+    "value": -1076.4234429060148
+   },
+   "P50": {
+    "ci90": [
+     -886.3050340143624,
+     -491.8529157640176
+    ],
+    "value": -652.874896140735
+   },
+   "P90": {
+    "ci90": [
+     -604.2520884099329,
+     -394.53236741341044
+    ],
+    "value": -411.2839835666531
+   },
+   "convention": "statistical percentiles (P10 = 10th percentile of the value)"
+  },
+  "P3:oil_rate": {
+   "P10": {
+    "ci90": [
+     -700.8767131692682,
+     -411.12370315871027
+    ],
+    "value": -621.2073271994643
+   },
+   "P50": {
+    "ci90": [
+     -530.1237701703549,
+     -284.0967311759141
+    ],
+    "value": -372.5783002408107
+   },
+   "P90": {
+    "ci90": [
+     -349.6378942812529,
+     -205.3003898874129
+    ],
+    "value": -232.5332256957173
+   },
+   "convention": "statistical percentiles (P10 = 10th percentile of the value)"
+  }
+ },
+ "study_spec": {
+  "compute": {
+   "max_workers": 8,
+   "memory_per_member_gb": null,
+   "platform": "cpu",
+   "retries": 2,
+   "threads_per_member": 1,
+   "walltime_s": 1800.0
+  },
+  "design": {
+   "method": "lhs",
+   "n": 8
+  },
+  "model": {
+   "adapter": "workflows.adapters.brugge_proxy",
+   "cls": "Model",
+   "kwargs": {},
+   "model_dir": "/oahu/data/avnovikov/open-darts-skills/models/Uniform_Brugge",
+   "module": "model"
+  },
+  "name": "ens-proxy-smoke",
+  "observations": {
+   "held_out_fraction": 0.2,
+   "quantities": [
+    "oil_rate"
+   ],
+   "report_times": [
+    20.0,
+    40.0,
+    60.0
+   ],
+   "sigma_abs": null,
+   "sigma_floor": 1e-12,
+   "sigma_rel": null,
+   "wells": [
+    "P1",
+    "P2",
+    "P3"
+   ]
+  },
+  "parameters": [
+   {
+    "args": {
+     "high": 2.0,
+     "low": 0.5,
+     "target": "tran_multiplier"
+    },
+    "family": "LogScalarParam",
+    "name": "tm"
+   },
+   {
+    "args": {
+     "high": 2.0,
+     "low": 0.5,
+     "target": "wi_multiplier"
+    },
+    "family": "LogScalarParam",
+    "name": "wi"
+   },
+   {
+    "args": {
+     "n_components": 3,
+     "range_m": 1500.0
+    },
+    "family": "LogPermField",
+    "name": "k"
+   }
+  ],
+  "reference": {},
+  "seed_root": 11,
+  "spec_version": 1,
+  "workflow": "ensemble"
+ },
+ "tier": "smoke",
+ "truth_generation_hash": "b821801ddc1f9d14424466a500a372cb6cab0fa5a8ea065badeb64135eb1b2ce"
+}

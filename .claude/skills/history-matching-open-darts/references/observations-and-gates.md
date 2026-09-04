@@ -2,7 +2,9 @@
 
 Observations (`observations` in the spec): `wells`, `quantities` (`oil_rate`, `wat_rate`,
 `gas_rate`, `bhp`, `bht`), `report_times` in days. Values are taken from the adapter's
-`observe` at the report times (instantaneous rows). Production rates are positive.
+`observe` at the report times (instantaneous rows) in the simulator's sign convention
+(production rates are negative on the Brugge proxy); the truth and the ensemble use the same
+convention, so no sign handling is needed in the spec.
 Noise: `sigma = max(sigma_abs, sigma_rel·|d|, sigma_floor)` per entry; declare it once.
 
 Identifiability:
