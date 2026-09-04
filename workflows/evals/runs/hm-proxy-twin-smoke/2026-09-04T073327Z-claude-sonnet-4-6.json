@@ -1,0 +1,54 @@
+{
+ "broker_requests": [
+  {
+   "command": "estimate",
+   "spec_hash": "a97b65cbba61622be9516380e3e6d3132314b4e4cab12c71e481eea3bad112ac",
+   "study": "hm-proxy-twin-smoke"
+  },
+  {
+   "command": "truth",
+   "spec_hash": "a97b65cbba61622be9516380e3e6d3132314b4e4cab12c71e481eea3bad112ac",
+   "study": "hm-proxy-twin-smoke"
+  },
+  {
+   "command": "run",
+   "spec_hash": "a97b65cbba61622be9516380e3e6d3132314b4e4cab12c71e481eea3bad112ac",
+   "study": "hm-proxy-twin-smoke"
+  }
+ ],
+ "case": "hm-proxy-twin-smoke",
+ "cpu_s": 5.4,
+ "exit_code": 0,
+ "git_head": "c4a8890c",
+ "model": "claude-sonnet-4-6",
+ "num_turns": 13,
+ "peak_rss_mb": 269.3,
+ "result_text": "Here are the results:\n\n---\n\n## ES-MDA Identical-Twin Results \u2014 `hm-proxy-twin-smoke`\n\n**Setup:** Brugge proxy, `ne=6`, `n_steps=2`, localization 1500 m, seed_root 21  \n**Observations:** oil rate at P1, P5, P10 \u00d7 5 times = 15 obs total; 12 training / 3 held-out (last 20%)\n\n### Per-step metrics\n\n| Step | chi\u00b2 (train) | Held-out RMSE (norm.) | Coverage 80% | Spread ratio | Gate pass? |\n|------|-------------|----------------------|--------------|--------------|------------|\n| 0 (prior) | 4023.0 | 50.96 | 0.00 | 1.00 | \u2014 (prior) |\n| 1 | 115.6 | 8.24 | 0.67 | 0.896 | No (chi\u00b2, RMSE) |\n| 2 (final) | **8.43** | **1.99** | **0.67** | **0.851** | Partial |\n\nGate thresholds: chi\u00b2 \u2208 [0.5, 2.0] \u00b7 pass; held-out RMSE \u2264 2.0 \u00b7 pass; coverage80 \u2265 0.60 \u00b7 pass; spread ratio \u2265 0.10 \u00b7 pass.\n\n### Gate verdicts (final step)\n\n| Gate | Value | Threshold | Pass? |\n|------|-------|-----------|-------|\n| chi\u00b2 (train) | 8.43 | [0.5, 2.0] | **FAIL** (over-fit training) |\n| Held-out RMSE | 1.99 | \u2264 2.0 | **PASS** (just) |\n| Coverage 80% | 0.667 | \u2265 0.60 | **PASS** |\n| Spread ratio | 0.851 | \u2265 0.10 | **PASS** |\n\n`\"final_chi2_in_band\": false` (confirmed by the summary).\n\n---\n\n### Verdict\n\n**The match partially passes but fails the chi\u00b2 gate** (8.43 vs. required [0.5, 2.0]). Three of four gates pass:\n- Held-out RMSE of 1.99 is at the limit but passes \u2014 the ensemble generalises to held-out times.\n- Coverage 0.67 > 0.60 \u2014 held-out observations are bracketed by the ensemble.\n- Spread ratio 0.85 \u2014 healthy, no ensemble collapse.\n\nThe elevated chi\u00b2 indicates the ensemble is fitting the training data **too aggressively** relative to the noise level, typical for a tiny ensemble (`ne=6`) with strong signal. This is expected for a smoke test; a production run would use `ne \u2265 50` with possible `bounds_sigma` tuning to relax the update.",
+ "run_root": "/oahu/data/avnovikov/tmp/claude-515366/-oahu-data-avnovikov/a5eddba3-6202-4b1d-b0d3-01fd12a0b649/scratchpad/eval2_hm",
+ "score": {
+  "case": "hm-proxy-twin-smoke",
+  "checks": {
+   "coverage80": true,
+   "held_out_rmse": true,
+   "spread_ratio": true
+  },
+  "chi2_train": 8.426081045041505,
+  "coverage80_held_out": 0.6666666666666666,
+  "gates_version": "0.1.0",
+  "held_out_rmse": 1.9893052328195657,
+  "passed": true,
+  "rmse_log10_vs_truth": 0.3805100543286374,
+  "score_version": "0.1.0",
+  "spread_ratio": 0.850521293589204,
+  "step": 2
+ },
+ "started_utc": "2026-09-04T07:33:27Z",
+ "tokens": {
+  "cache_creation_input_tokens": 15665,
+  "cache_read_input_tokens": 213025,
+  "input_tokens": 16,
+  "output_tokens": 3877
+ },
+ "total_cost_usd": 0.3408422000000001,
+ "wall_s": 180.7
+}

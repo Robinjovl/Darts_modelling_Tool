@@ -23,3 +23,8 @@ Gates (`workflows/gates.py`, reported per step in `esmda_summary.json`):
 | spread ratio (posterior/prior std) | ≥ 0.1 (collapse below) |
 
 Report all four; a match that fails coverage or spread is not accepted.
+
+Reading chi² (reduced, per datum): above the band means residuals are still larger than the
+declared noise (under-fit, too few members or steps, or noise declared too small), not
+over-fitting; below the band means the ensemble fits closer than the noise allows (over-fit, or
+noise declared too large). Low chi² with poor held-out RMSE is the over-fitting signature.

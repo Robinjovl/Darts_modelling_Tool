@@ -1,0 +1,45 @@
+{
+ "broker_requests": [
+  {
+   "command": "estimate",
+   "spec_hash": "729229c30cbd6d1ccc63a1a5929667218cfad0f9e63cbef95d6f60bea4cdcd4b",
+   "study": "opt-place-proxy-smoke"
+  },
+  {
+   "command": "estimate",
+   "spec_hash": "b56e349eef7e4b639ed2e2b19baf23b10bc0e4ad5e9901b3068c90bfcf33ed2d",
+   "study": "opt-place-proxy-smoke"
+  },
+  {
+   "command": "run",
+   "spec_hash": "b56e349eef7e4b639ed2e2b19baf23b10bc0e4ad5e9901b3068c90bfcf33ed2d",
+   "study": "opt-place-proxy-smoke"
+  }
+ ],
+ "case": "opt-place-proxy-smoke",
+ "cpu_s": 3.7,
+ "exit_code": 0,
+ "git_head": "c4a8890c",
+ "model": "claude-sonnet-4-6",
+ "num_turns": 27,
+ "peak_rss_mb": 266.3,
+ "result_text": "The optimization completed successfully. Here are the results:\n\n---\n\n**Estimate (pre-run)**\n- 5 simulations planned (1 baseline + 4 candidates from seed_root=31), 5% expected retries\n- ~8.5\u201314 s wall time, ~0.012\u20130.020 CPU-hours\n\n**Optimization results**\n\n| | |\n|---|---|\n| **Best cell** | **326** (member `c00326`) |\n| **Best cell centroid** | x = 11 559.1 m, y = 5 163.1 m, z = 36.0 m |\n| **Best objective** | **64 533.76 m\u00b3** cumulative oil (trapezoid over P1+P2+P3 oil rates at t = 20, 40, 60 d) |\n| **Baseline objective** | 60 251.72 m\u00b3 (I1 at its original location) |\n| **Regret of baseline** | **1.0** \u2014 the original I1 position captures 0% of the improvement; moving I1 to cell 326 improves cumulative oil by ~4 282 m\u00b3 (+7.1%) |\n\n**Feasibility:** 4 feasible / 0 infeasible / 0 failed (all 4 candidates passed the 300 m spacing constraint and simulated successfully)",
+ "run_root": "/oahu/data/avnovikov/tmp/claude-515366/-oahu-data-avnovikov/a5eddba3-6202-4b1d-b0d3-01fd12a0b649/scratchpad/eval2_opt",
+ "score": {
+  "case": "opt-place-proxy-smoke",
+  "gates_version": "0.1.0",
+  "passed": true,
+  "regret": 0.0,
+  "score_version": "0.1.0",
+  "uninformative": false
+ },
+ "started_utc": "2026-09-04T07:33:21Z",
+ "tokens": {
+  "cache_creation_input_tokens": 24725,
+  "cache_read_input_tokens": 496696,
+  "input_tokens": 23,
+  "output_tokens": 4227
+ },
+ "total_cost_usd": 0.30520155,
+ "wall_s": 109.3
+}
