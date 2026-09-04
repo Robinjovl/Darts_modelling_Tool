@@ -1,6 +1,7 @@
 # Problem formulation
 
-- Objective: `cumulative_oil` (implemented) = trapezoid of producer oil rate over report times;
+- Objective: `cumulative_oil` (implemented) = trapezoid of producer oil rate over report times
+  (open-DARTS rates are m3/day, so cumulative volumes are m3; never relabel them as STB);
   NPV, net energy, CO2 stored and gas utilization follow the same pattern once an adapter
   exposes the quantity. State units and sign (maximize).
 - Decision variables: `well_xyz` (placement by well name), BHP/rate controls, well index

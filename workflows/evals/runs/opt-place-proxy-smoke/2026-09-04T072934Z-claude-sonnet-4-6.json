@@ -1,0 +1,40 @@
+{
+ "broker_requests": [
+  {
+   "command": "estimate",
+   "spec_hash": "3992d052bac081997265e2c65b8f72af59a532d24143f3e17f2612497ef251a7",
+   "study": "opt-place-proxy-smoke"
+  },
+  {
+   "command": "run",
+   "spec_hash": "3992d052bac081997265e2c65b8f72af59a532d24143f3e17f2612497ef251a7",
+   "study": "opt-place-proxy-smoke"
+  }
+ ],
+ "case": "opt-place-proxy-smoke",
+ "cpu_s": 8.6,
+ "exit_code": 0,
+ "git_head": "6e28e421",
+ "model": "claude-sonnet-4-6",
+ "num_turns": 34,
+ "peak_rss_mb": 266.5,
+ "result_text": "The run completed. The CLI for `optimize` doesn't return `baseline_objective` or `regret_of_baseline` directly (see `cli.py:cmd_run`), but I can compute it from the `gates.regret` definition.\n\nFrom `optimize.py`, `regret_of_baseline` is computed as:\n```python\ngates.regret(baseline_obj, best[\"objective\"], baseline_obj)\n```\n\nFrom `gates.py`:\n```python\nreturn float(sign * (reference - objective) / gap)\n# = (best_obj - baseline_obj) / (best_obj - baseline_obj) = 1.0\n```\n\nWhen `objective = baseline`, this always equals **1.0** (provided the gap exceeds the floor `max(1e-9, 1e-3 * best_obj) \u2248 64.5 STB`), meaning the baseline captures none of the available improvement.\n\n---\n\n**Results**\n\n| | |\n|---|---|\n| **Best cell** | **326** (member `c00326`) |\n| **Best cell centroid** | x = 11 559.1 m, y = 5 163.1 m, z = 36.0 m |\n| **Best objective** | **64 533.76 STB** cumulative oil (60 days, trapezoid over P1+P2+P3 oil rates at t = 20, 40, 60 d) |\n| **Regret of baseline** | **1.0** \u2014 the baseline (I1 at its original location) captures 0 % of the improvement found by the 4-candidate exhaustive search; moving I1 to cell 326 is strictly better by more than the tolerance floor |\n\n**Estimate (pre-run):** 5 simulations planned (1 baseline + 4 candidates), 5 % expected retries, ~0.36\u20130.60 s wall time \u2014 all within budget before the run was submitted.",
+ "run_root": "/oahu/data/avnovikov/tmp/claude-515366/-oahu-data-avnovikov/a5eddba3-6202-4b1d-b0d3-01fd12a0b649/scratchpad/eval1",
+ "score": {
+  "case": "opt-place-proxy-smoke",
+  "gates_version": "0.1.0",
+  "passed": true,
+  "regret": 0.0,
+  "score_version": "0.1.0",
+  "uninformative": false
+ },
+ "started_utc": "2026-09-04T07:29:34Z",
+ "tokens": {
+  "cache_creation_input_tokens": 39476,
+  "cache_read_input_tokens": 766048,
+  "input_tokens": 30,
+  "output_tokens": 12216
+ },
+ "total_cost_usd": 0.5611794,
+ "wall_s": 284.9
+}

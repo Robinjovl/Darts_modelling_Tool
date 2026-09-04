@@ -194,6 +194,9 @@ def run_case(
         raise RuntimeError(f"sandbox canary failed: {canary}")
     # AF_UNIX paths are limited to 108 bytes: use a short private dir and bind it into
     # the sandbox (the run root may be deep).
+    results_dir.mkdir(parents=True, exist_ok=True)
+    # the agent reads finished studies read-only; only the broker writes there
+    sandbox.extra_ro_binds = tuple(sandbox.extra_ro_binds) + (results_dir,)
     socket_dir = Path(tempfile.mkdtemp(prefix="wfb-", dir="/tmp"))
     socket_path = socket_dir / "s"
     sandbox.extra_binds = (socket_dir,)
@@ -206,6 +209,7 @@ def run_case(
             "OMP_NUM_THREADS": "1",
             "PYTHONPATH": str(sandbox.repo),
             "WORKFLOWS_PYTHON": sys.executable,
+            "WORKFLOWS_RESULTS": str(results_dir),
         }
         prompt = case["prompt"].format(
             repo=sandbox.repo, python=sys.executable, run_dir=run_dir
@@ -296,6 +300,7 @@ def record_run(
         / case["name"]
         / f"{out['started_utc'].replace(':', '')}-{model_id}.json"
     )
+    path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(path, out)
     return path
 

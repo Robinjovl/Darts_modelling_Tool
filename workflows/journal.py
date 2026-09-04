@@ -33,6 +33,7 @@ def atomic_write_json(path: str | Path, payload: dict) -> None:
     tmp = path.with_name(path.name + ".tmp")
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=1, sort_keys=True)
+        handle.write("\n")
     os.replace(tmp, path)
 
 

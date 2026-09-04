@@ -126,5 +126,16 @@ class ExhaustiveEstimateTests(unittest.TestCase):
             planned_simulations(self._spec({"driver": "exhaustive"}))
 
 
+class WallEstimateTests(unittest.TestCase):
+    def test_wall_is_at_least_one_member_even_with_many_workers(self):
+        from workflows.cost import estimate
+
+        est = estimate(simulations=5, member_seconds=(8.0, 12.0), workers=120)
+        self.assertGreaterEqual(est.wall_s[0], 8.0)
+        self.assertGreaterEqual(est.wall_s[1], 12.0)
+        serial = estimate(simulations=5, member_seconds=(8.0, 12.0), workers=1)
+        self.assertGreaterEqual(serial.wall_s[0], 5 * 8.0)
+
+
 if __name__ == "__main__":
     unittest.main()

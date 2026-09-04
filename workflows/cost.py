@@ -8,6 +8,7 @@ posterior prediction; robust evaluation ``candidates x ne``.
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass, field
 
@@ -204,7 +205,12 @@ def estimate(
     lo = (member_seconds[0] + startup_seconds[0]) * expected_attempts
     hi = (member_seconds[1] + startup_seconds[1]) * expected_attempts
     cpu_hours = (lo / 3600.0, hi / 3600.0)
-    wall = (lo / workers, hi / workers)
+    # a wave cannot be shorter than one member: ceil(attempts / workers) waves
+    waves = max(1, math.ceil(expected_attempts / workers))
+    wall = (
+        waves * (member_seconds[0] + startup_seconds[0]),
+        waves * (member_seconds[1] + startup_seconds[1]),
+    )
     disk = (
         total * member_disk_mb / 1024.0,
         expected_attempts * member_disk_mb / 1024.0,

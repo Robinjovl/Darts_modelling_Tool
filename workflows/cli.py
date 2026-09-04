@@ -52,7 +52,10 @@ def cmd_run(args) -> dict:
             "command": "run",
             "study": args.study,
             "n_candidates": summary["n_candidates"],
+            "n_infeasible": summary.get("n_infeasible"),
+            "baseline_objective": summary.get("baseline_objective"),
             "best": summary["best"],
+            "regret_of_baseline": summary.get("regret_of_baseline"),
         }
     raise SystemExit(f"workflow {spec.workflow!r} is not implemented yet")
 

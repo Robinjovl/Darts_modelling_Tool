@@ -263,5 +263,37 @@ class BrokerCliTests(unittest.TestCase):
                 broker.server_close()
 
 
+class RecordRunTests(unittest.TestCase):
+    def test_record_creates_case_directory(self):
+        from workflows.evals import controller
+
+        with tempfile.TemporaryDirectory() as tmp:
+            record = {
+                "agent": {
+                    "exit_code": 0,
+                    "wall_s": 1.0,
+                    "cpu_s": 0.5,
+                    "peak_rss_mb": 10.0,
+                    "usage": {
+                        "num_turns": 2,
+                        "total_cost_usd": 0.1,
+                        "result": "done",
+                        "usage": {"input_tokens": 1, "output_tokens": 2},
+                    },
+                },
+                "broker_log": [],
+                "started": 0.0,
+            }
+            with unittest.mock.patch.object(
+                controller, "__file__", str(Path(tmp) / "controller.py")
+            ):
+                path = controller.record_run(
+                    {"name": "new-case"}, "model-x", Path(tmp), record, {"passed": True}
+                )
+            self.assertTrue(path.exists())
+            self.assertEqual(path.parent, Path(tmp) / "runs" / "new-case")
+            self.assertEqual(json.loads(path.read_text())["tokens"]["input_tokens"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
