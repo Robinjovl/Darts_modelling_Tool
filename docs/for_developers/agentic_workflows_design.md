@@ -374,6 +374,21 @@ the reviewer.
 Other measurements (scratch runs, not committed): proxy lean member 8-12 s wall; full-field
 Brugge dead-oil 39 s and geothermal 74 s wall; headless CLI JSON fields present.
 
+### C.2 Evaluation-loop evidence (2026-09-04, `claude-sonnet-4-6`, sandboxed and brokered)
+
+Run records: `workflows/evals/runs/<case>/`; table via `python -m workflows.evals.report`.
+
+| Round | Case | Head | Pass | Turns | Cost (USD) | Wall (s) | Finding acted on |
+|---|---|---|---|---|---|---|---|
+| 1 | opt-place-proxy-smoke | 6e28e421 | yes (regret 0.0) | 34 | 0.56 | 285 | optimize output lacked baseline and regret; estimate wall below one member; results not visible to the agent; units reported as STB |
+| 2 | opt-place-proxy-smoke | c4a8890c | yes (regret 0.0) | 27 | 0.31 | 109 | accepted under the README rule |
+| 2 | hm-proxy-twin-smoke | c4a8890c | yes (gates bit-identical) | 13 | 0.34 | 181 | chi² above the band read as over-fitting; reading added to the skill |
+| 2 | ens-proxy-smoke | 7b805737 | no (harness) | 34 | 0.52 | 223 | ensemble `run` never analyzed; broker had no `analyze`; the agent computed percentiles itself (correct up to sign) |
+
+The ES-MDA reference itself exposed a substrate defect before any agent ran: the noise used the
+per-well time-series spread instead of the observed value (chi² about 1e5 to 1e7 on the twin);
+fixed with tests, twin now at held-out normalized RMSE 2.0, coverage 0.67, spread 0.85.
+
 ## Appendix D: sources
 
 Cited through `docs/references.bib`: {cite}`Tian2022DiWA`, {cite}`Tian2023PhD`,
