@@ -215,7 +215,7 @@ class Model(THMCModel):
 
             property_container = ModelProperties(phases_name=phases, components_name=components,
                                                  Mw=np.ones(len(phases)), eps_z=self.idata.obl.epsilon_z,
-                                                 temperature=None)
+                                                 temperature=None if self.thermal else t_ref)
 
             # Define property evaluators based on custom properties
             property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
