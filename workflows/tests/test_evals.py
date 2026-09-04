@@ -131,10 +131,6 @@ class SandboxTests(unittest.TestCase):
             )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 @unittest.skipUnless(
     sb.available() and os.environ.get("WORKFLOWS_RUN_DARTS") == "1",
     "needs bwrap and WORKFLOWS_RUN_DARTS=1",
@@ -202,3 +198,70 @@ class SandboxDartsTests(unittest.TestCase):
                 result = scorer.score(case, Path(tmp) / "run")
             self.assertTrue(result["passed"], result)
             self.assertTrue(verify_after_exit(Path(tmp) / "run")["intact"])
+
+
+class ToolPrefixTests(unittest.TestCase):
+    def test_prefixes_follow_symlinks_and_skip_system_dirs(self):
+        from workflows.evals.sandbox import tool_prefixes
+
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "nvm" / "v1"
+            (prefix / "bin").mkdir(parents=True)
+            (prefix / "bin" / "fakenode").write_text("#!/bin/sh\n")
+            (prefix / "bin" / "fakenode").chmod(0o755)
+            npm = Path(tmp) / "npm"
+            (npm / "lib" / "node_modules" / "pkg").mkdir(parents=True)
+            (npm / "lib" / "node_modules" / "pkg" / "cli.js").write_text("")
+            (npm / "bin").mkdir()
+            (npm / "bin" / "fakecli").symlink_to(
+                npm / "lib" / "node_modules" / "pkg" / "cli.js"
+            )
+            (npm / "bin" / "fakecli").chmod(0o755)
+            with unittest.mock.patch.dict(
+                os.environ, {"PATH": f"{npm / 'bin'}:{prefix / 'bin'}:/usr/bin"}
+            ):
+                found = tool_prefixes("fakecli", "fakenode", "true")
+            self.assertIn(npm, found)
+            self.assertIn(prefix, found)
+            self.assertFalse(any(str(p).startswith("/usr") for p in found))
+
+
+class BrokerCliTests(unittest.TestCase):
+    def test_submit_command(self):
+        from workflows.evals.broker import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            broker = Broker(
+                Path(tmp) / "b.sock",
+                Path(tmp) / "results",
+                runner=lambda command, spec_path, study_dir: {
+                    "result": {"cmd": command}
+                },
+            )
+            broker.serve_in_thread()
+            try:
+                spec_path = Path(tmp) / "s.json"
+                spec_path.write_text(json.dumps(make_spec_dict()))
+                with unittest.mock.patch("sys.stdout") as out:
+                    rc = main(
+                        [
+                            "--spec",
+                            str(spec_path),
+                            "--study",
+                            "s1",
+                            "--command",
+                            "estimate",
+                            "--socket",
+                            str(Path(tmp) / "b.sock"),
+                        ]
+                    )
+                self.assertEqual(rc, 0)
+                printed = "".join(c.args[0] for c in out.write.call_args_list)
+                self.assertIn('"status": "ok"', printed)
+            finally:
+                broker.shutdown()
+                broker.server_close()
+
+
+if __name__ == "__main__":
+    unittest.main()

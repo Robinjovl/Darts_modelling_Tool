@@ -36,6 +36,8 @@ class SandboxSpec:
         default_factory=dict
     )  # relative path inside scratch HOME -> content
     extra_binds: tuple = ()  # read-write (path, path) binds, e.g. the broker socket dir
+    extra_ro_binds: tuple = ()  # read-only (path, path) binds, e.g. tool prefixes
+    chdir: Path | None = None  # working directory inside the sandbox (default: run_dir)
 
     def command(self, argv: list, env: dict | None = None) -> list:
         """Full ``bwrap`` argument list wrapping ``argv``."""
@@ -74,13 +76,16 @@ class SandboxSpec:
         cmd += ["--bind", str(run_dir), str(run_dir)]
         for path in self.extra_binds:
             cmd += ["--bind", str(path), str(path)]
+        for path in self.extra_ro_binds:
+            if Path(path).exists():
+                cmd += ["--ro-bind", str(path), str(path)]
         if self.credentials and Path(self.credentials).exists():
             cmd += [
                 "--ro-bind",
                 str(self.credentials),
                 str(home / ".claude" / self.credentials.name),
             ]
-        cmd += ["--setenv", "HOME", str(home), "--chdir", str(run_dir)]
+        cmd += ["--setenv", "HOME", str(home), "--chdir", str(self.chdir or run_dir)]
         for key, value in (env or {}).items():
             cmd += ["--setenv", key, str(value)]
         return cmd + argv
@@ -117,3 +122,25 @@ class SandboxSpec:
 
 def available() -> bool:
     return shutil.which("bwrap") is not None
+
+
+def tool_prefixes(*executables: str) -> tuple:
+    """Install prefixes (parent of ``bin``) of executables that live outside the base manifest,
+    resolved through symlinks (npm-global and nvm layouts), for read-only binding."""
+    prefixes = []
+    for name in executables:
+        found = shutil.which(name)
+        if not found:
+            continue
+        for path in (Path(found), Path(found).resolve()):
+            prefix = path.parent.parent if path.parent.name == "bin" else path.parent
+            for part in (path.parent, prefix):
+                # climb to the top of a node_modules tree so package symlinks resolve
+                while "node_modules" in part.parts[:-1]:
+                    part = part.parent
+                if (
+                    not str(part).startswith(("/usr", "/bin", "/opt", "/lib"))
+                    and part not in prefixes
+                ):
+                    prefixes.append(part)
+    return tuple(prefixes)

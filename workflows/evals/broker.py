@@ -109,3 +109,30 @@ def submit(
             if chunk.endswith(b"\n"):
                 break
     return json.loads(b"".join(chunks))
+
+
+def main(argv: list | None = None) -> int:
+    """``python -m workflows.evals.broker --spec study.json --study NAME [--command run]``
+    submits a study to the broker named by ``WORKFLOWS_BROKER`` and prints the reply."""
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(prog="python -m workflows.evals.broker")
+    parser.add_argument("--spec", required=True)
+    parser.add_argument("--study", required=True)
+    parser.add_argument(
+        "--command", default="run", choices=("run", "estimate", "truth")
+    )
+    parser.add_argument("--socket", default=os.environ.get("WORKFLOWS_BROKER"))
+    args = parser.parse_args(argv)
+    if not args.socket:
+        parser.error("no broker socket: pass --socket or set WORKFLOWS_BROKER")
+    with open(args.spec, encoding="utf-8") as handle:
+        spec = json.load(handle)
+    reply = submit(args.socket, spec, args.study, command=args.command)
+    print(json.dumps(reply, sort_keys=True))
+    return 0 if reply.get("status") == "ok" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
