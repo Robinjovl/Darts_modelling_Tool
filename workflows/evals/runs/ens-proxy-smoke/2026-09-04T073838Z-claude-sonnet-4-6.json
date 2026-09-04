@@ -1,0 +1,49 @@
+{
+ "broker_requests": [
+  {
+   "command": "estimate",
+   "spec_hash": "7afe840f0a3ef3274295862512408cf5705ef1144753fc14745f246c8ce1a9f1",
+   "study": "ens-proxy-smoke"
+  },
+  {
+   "command": "run",
+   "spec_hash": "7afe840f0a3ef3274295862512408cf5705ef1144753fc14745f246c8ce1a9f1",
+   "study": "ens-proxy-smoke"
+  }
+ ],
+ "case": "ens-proxy-smoke",
+ "cpu_s": 3.5,
+ "exit_code": 0,
+ "git_head": "9238b286",
+ "model": "claude-sonnet-4-6",
+ "num_turns": 25,
+ "peak_rss_mb": 261.5,
+ "result_text": "The study completed. Here are the results.\n\n---\n\n## Study: `ens-proxy-smoke` \u2014 LHS n=8, seed_root=11\n\n**Failed members: 0 / 8**\n\n**Sign convention:** production rates are negative in the simulator's convention; P10 (10th statistical percentile) = highest production (most negative), P90 = lowest production.\n\n---\n\n### Oil rate at 60 days \u2014 P10 / P50 / P90 with 90 % bootstrap CI\n\n| Well | P10 [m\u00b3/d] | CI\u2089\u2080 | P50 [m\u00b3/d] | CI\u2089\u2080 | P90 [m\u00b3/d] | CI\u2089\u2080 |\n|------|-----------|------|-----------|------|-----------|------|\n| **P1** | \u2212659.4 | [\u2212808.6, \u2212402.1] | \u2212391.0 | [\u2212498.0, \u2212273.2] | \u2212199.7 | [\u2212369.6, \u2212188.5] |\n| **P2** | \u22121079.0 | [\u22121178.5, \u2212702.6] | \u2212654.4 | [\u2212888.4, \u2212493.0] | \u2212412.3 | [\u2212605.7, \u2212395.5] |\n| **P3** | \u2212622.7 | [\u2212702.6, \u2212412.1] | \u2212373.5 | [\u2212531.4, \u2212284.8] | \u2212233.1 | [\u2212350.5, \u2212205.8] |\n\n---\n\n### Notes\n\n- **Design:** LHS, 8 members, 3 uncertain inputs (`tm`, `wi`, `k` with 3 KL components).\n- **Bootstrap CIs are wide** (n=8 is minimal): the P10/P90 intervals overlap substantially in all three wells \u2014 the percentile spread is not well resolved at this ensemble size.\n- P2 carries the highest production rate; all three wells show similar spread ratios (~3\u00d7 from P90 to P10 in absolute terms), dominated by the combined effect of the log-perm field and the two multipliers.\n- Wall time: ~8.5\u201314 s total; disk: ~0.023 GB.",
+ "run_root": "/oahu/data/avnovikov/tmp/claude-515366/-oahu-data-avnovikov/a5eddba3-6202-4b1d-b0d3-01fd12a0b649/scratchpad/eval3_ens",
+ "score": {
+  "case": "ens-proxy-smoke",
+  "checks": {
+   "P1:oil_rate:P10": true,
+   "P1:oil_rate:P50": true,
+   "P1:oil_rate:P90": true,
+   "P2:oil_rate:P10": true,
+   "P2:oil_rate:P50": true,
+   "P2:oil_rate:P90": true,
+   "P3:oil_rate:P10": true,
+   "P3:oil_rate:P50": true,
+   "P3:oil_rate:P90": true
+  },
+  "gates_version": "0.1.0",
+  "passed": true,
+  "score_version": "0.1.0"
+ },
+ "started_utc": "2026-09-04T07:38:38Z",
+ "tokens": {
+  "cache_creation_input_tokens": 27252,
+  "cache_read_input_tokens": 397283,
+  "input_tokens": 19,
+  "output_tokens": 5561
+ },
+ "total_cost_usd": 0.30485189999999995,
+ "wall_s": 163.1
+}
