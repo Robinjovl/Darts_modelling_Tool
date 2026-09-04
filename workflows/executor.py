@@ -9,6 +9,7 @@ loses the members that did complete. The parent records every attempt in the stu
 
 from __future__ import annotations
 
+import json
 import os
 import resource
 import sys
@@ -341,11 +342,43 @@ class IsolatedExecutor:
         return final
 
 
-def run_members(store: StudyStore, tasks: list, executor) -> list:
-    """Run member tasks through ``executor`` and journal every attempt as a ``RunResult``."""
+def run_members(store: StudyStore, tasks: list, executor, resume: bool = True) -> list:
+    """Run member tasks through ``executor`` and journal every attempt as a ``RunResult``.
+
+    With ``resume`` (default), a task whose member is already journaled ``ok`` under the same
+    ``spec_hash`` and whose ``result.json`` exists is not rerun: its payload is loaded and returned
+    as a zero-cost attempt. Member names are unique per driver (ensemble ``m<i>``, ES-MDA
+    ``w<wave>m<i>``, placement ``baseline``/``c<cell>``), so partial studies continue safely.
+    """
+    reusable = {}
+    if resume:
+        for event in store.events():
+            if event.get("stage") == "member" and event.get("status") == "ok":
+                reusable[event["member"]] = event.get("spec_hash")
+    results = [None] * len(tasks)
+    todo = []
+    for index, task in enumerate(tasks):
+        path = store.member_dir(task.member) / "result.json"
+        if resume and reusable.get(task.member) == task.spec_hash and path.exists():
+            with open(path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+            results[index] = Attempt(
+                index=index,
+                attempt=0,
+                status="ok",
+                threads=0,
+                equivalent=True,
+                wall_s=0.0,
+                payload=payload,
+            )
+        else:
+            todo.append(index)
+    if not todo:
+        return results
+    subset = [tasks[i] for i in todo]
 
     def journal(attempt: Attempt) -> None:
-        task = tasks[attempt.index]
+        task = subset[attempt.index]
         payload = attempt.payload if isinstance(attempt.payload, dict) else {}
         store.append_member_event(
             RunResult(
@@ -366,7 +399,9 @@ def run_members(store: StudyStore, tasks: list, executor) -> list:
             )
         )
 
-    return executor.map(run_member, tasks, on_attempt=journal)
+    for j, attempt in enumerate(executor.map(run_member, subset, on_attempt=journal)):
+        results[todo[j]] = attempt
+    return results
 
 
 def task_dict(task: MemberTask) -> dict:

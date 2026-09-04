@@ -62,7 +62,9 @@ def _executor(spec: StudySpec):
     )
 
 
-def run_exhaustive(spec: StudySpec, study_root, executor=None) -> dict:
+def run_exhaustive(
+    spec: StudySpec, study_root, executor=None, resume: bool = True
+) -> dict:
     d = spec.design
     well, objective = d["well"], d.get("objective", "cumulative_oil")
     quantity, producers = (
@@ -121,7 +123,7 @@ def run_exhaustive(spec: StudySpec, study_root, executor=None) -> dict:
             "well": well,
         }
     )
-    results = run_members(store, tasks, executor or _executor(spec))
+    results = run_members(store, tasks, executor or _executor(spec), resume=resume)
     rows = []
     for m, r in zip(members, results, strict=False):
         value = (

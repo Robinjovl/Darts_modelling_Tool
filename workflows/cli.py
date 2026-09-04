@@ -54,7 +54,7 @@ def cmd_run(args) -> dict:
     if spec.workflow == "hm-esmda":
         from workflows.esmda import run_esmda
 
-        summary = run_esmda(spec, args.study)
+        summary = run_esmda(spec, args.study, resume=not args.no_resume)
         return {
             "command": "run",
             "study": args.study,
@@ -64,7 +64,7 @@ def cmd_run(args) -> dict:
     if spec.workflow == "optimize":
         from workflows.optimize import run_exhaustive
 
-        summary = run_exhaustive(spec, args.study)
+        summary = run_exhaustive(spec, args.study, resume=not args.no_resume)
         return {
             "command": "run",
             "study": args.study,

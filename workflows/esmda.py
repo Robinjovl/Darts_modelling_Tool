@@ -103,7 +103,9 @@ def _prepare(spec: StudySpec, study_root):
     return store, adapter, snapshot, geometry, prov, identities
 
 
-def _forward_factory(spec, store, snapshot, identities, prov, layout, executor):
+def _forward_factory(
+    spec, store, snapshot, identities, prov, layout, executor, prefix="w", resume=True
+):
     counter = {"wave": 0}
 
     def forward(params: np.ndarray) -> np.ndarray:
@@ -111,7 +113,7 @@ def _forward_factory(spec, store, snapshot, identities, prov, layout, executor):
         counter["wave"] += 1
         tasks = [
             MemberTask(
-                member=f"w{wave:02d}m{i:04d}",
+                member=f"{prefix}{wave:02d}m{i:04d}",
                 study_root=str(store.root),
                 adapter=spec.model.adapter,
                 model_dir=spec.model.model_dir,
@@ -125,7 +127,7 @@ def _forward_factory(spec, store, snapshot, identities, prov, layout, executor):
             )
             for i, row in enumerate(params)
         ]
-        results = run_members(store, tasks, executor)
+        results = run_members(store, tasks, executor, resume=resume)
         failed = [
             t.member for t, r in zip(tasks, results, strict=False) if r.status != "ok"
         ]
@@ -147,7 +149,7 @@ def make_truth(spec: StudySpec, study_root, executor=None) -> dict:
     x_true = field.sample_log10(spec.seeds().generator("geology", truth_index), 1)[0]
     executor = executor or _executor(spec)
     forward = _forward_factory(
-        spec, store, snapshot, identities, prov, layout, executor
+        spec, store, snapshot, identities, prov, layout, executor, prefix="t"
     )
     clean = forward(x_true[None, :])[0]
     sigma = layout.sigma(clean)
@@ -192,7 +194,7 @@ def _executor(spec: StudySpec):
     )
 
 
-def run_esmda(spec: StudySpec, study_root, executor=None) -> dict:
+def run_esmda(spec: StudySpec, study_root, executor=None, resume: bool = True) -> dict:
     """Assimilate the training data with ES-MDA; gates and persistence after every step."""
     import dageo
 
@@ -219,7 +221,7 @@ def run_esmda(spec: StudySpec, study_root, executor=None) -> dict:
     prior = field.sample_log10(spec.seeds().generator("geology"), ne)
     executor = executor or _executor(spec)
     forward_all = _forward_factory(
-        spec, store, snapshot, identities, prov, layout, executor
+        spec, store, snapshot, identities, prov, layout, executor, resume=resume
     )
 
     history = {"data": [], "params": []}

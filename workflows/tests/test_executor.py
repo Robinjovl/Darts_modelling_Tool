@@ -112,5 +112,66 @@ class RealizationHashTests(unittest.TestCase):
         self.assertNotEqual(a, c)
 
 
+class ResumeTests(unittest.TestCase):
+    def test_completed_members_are_reused_when_spec_matches(self):
+        import json as _json
+        import tempfile
+        import unittest.mock as mock
+        from pathlib import Path
+
+        from workflows.executor import MemberTask, SerialExecutor, run_members
+        from workflows.journal import StudyStore
+
+        def fake_run_member(task):
+            payload = {
+                "member": task.member,
+                "observation": {"values": {}},
+                "engine_stats": {},
+                "output_hashes": {},
+            }
+            path = Path(task.study_root) / "members" / task.member / "result.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(_json.dumps(payload))
+            return payload
+
+        def task(name, spec_hash="h1"):
+            return MemberTask(
+                member=name,
+                study_root=str(root),
+                adapter="a",
+                model_dir=".",
+                snapshot={"root": ".", "files": {}},
+                realization={},
+                report_times=[1.0],
+                observation={},
+                spec_hash=spec_hash,
+                input_hash="i",
+                binary_fingerprint="b",
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "study"
+            store = StudyStore(root)
+            with mock.patch("workflows.executor.run_member", fake_run_member):
+                first = run_members(store, [task("m0"), task("m1")], SerialExecutor())
+                self.assertEqual([r.status for r in first], ["ok", "ok"])
+                n_events = len(
+                    [e for e in store.events() if e.get("stage") == "member"]
+                )
+                second = run_members(
+                    store, [task("m0"), task("m1"), task("m2")], SerialExecutor()
+                )
+                self.assertEqual([r.attempt for r in second], [0, 0, 1])
+                self.assertEqual(second[0].payload["member"], "m0")
+                n_after = len([e for e in store.events() if e.get("stage") == "member"])
+                self.assertEqual(n_after - n_events, 1)  # only m2 ran
+                changed = run_members(
+                    store, [task("m0", spec_hash="h2")], SerialExecutor()
+                )
+                self.assertEqual(changed[0].attempt, 1)  # different spec: rerun
+                fresh = run_members(store, [task("m0")], SerialExecutor(), resume=False)
+                self.assertEqual(fresh[0].attempt, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

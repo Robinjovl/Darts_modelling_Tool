@@ -365,6 +365,7 @@ def record_run(
     out = {
         "case": case["name"],
         "model": model_id,
+        "network": record.get("network"),
         "started_utc": time.strftime(
             "%Y-%m-%dT%H:%M:%SZ", time.gmtime(record["started"])
         ),
