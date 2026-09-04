@@ -5,13 +5,15 @@ Design keys: `ne` (ensemble size), `n_steps` (default 4), `alphas` (default equa
 cell-to-well distance; 0 disables), `bounds_sigma` (clip updates to mean ± k·σ in log10),
 `field` (the `LogPermField` parameter name).
 
-Cost: `(n_steps + 1)·ne` simulations (posterior wave included); estimate before running.
+Cost: `(n_steps + 1)·ne` simulations (posterior wave included) plus one for the twin `truth`;
+`estimate` reports the assimilation count only.
 
 Procedure implemented in `workflows/esmda.py`:
 1. Prior: `ne` log10-perm fields from the declared family (geology stream).
 2. For each step: forward ensemble (isolated processes), Kalman-like update with inflated
    noise `alpha_k·σ²`, localization on the P × nd taper, clipping to bounds.
-3. Posterior forward wave; gates per step; `esmda/step_<k>_{params,data}.npy`.
+3. Posterior forward wave; gates per step; `params_step<k>.npy` and `data_step<k>.npy` in the
+   study directory.
 
 Guidance:
 - `ne = 50–100` with localization for full-cell fields; `ne = 6–10` only for smoke tests.

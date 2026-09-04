@@ -61,7 +61,7 @@ write an adapter first and prove it with one member before designing a study.
 |---|---|
 | all | `spec.json`, `manifest.json`, `journal.jsonl`, `inputs/`, `members/<id>/result.json` |
 | ensemble | `design_points.npy`, `analysis.json` (percentiles with bootstrap CI, Morris/Sobol indices when designed) |
-| hm-esmda | `truth/truth.json` (twin only), `esmda/step_<k>_{params,data}.npy`, `esmda_summary.json` (per-step chi², held-out RMSE, coverage, spread ratio) |
+| hm-esmda | `truth/truth.json` (twin only), `params_step<k>.npy` and `data_step<k>.npy` per step (flat under the study directory), `esmda_summary.json` (per-step chi², held-out RMSE, coverage, spread ratio) |
 | optimize | `candidates.json`, `optimize_summary.json` (baseline, best, `regret_of_baseline`) |
 
 Fast tests: `PYTHONPATH=<repo> <env>/bin/python -m unittest discover -s workflows/tests -t .`;

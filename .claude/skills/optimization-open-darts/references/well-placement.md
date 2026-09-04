@@ -1,9 +1,11 @@
 # Well placement (`design.driver = "exhaustive"`)
 
-Design keys: `well` (name to relocate), `objective` (`cumulative_oil`), `min_spacing_m`,
-`max_candidates` (seeded subset; omit for all feasible cells). Parameters: one entry
-`{"name": "<well>", "family": "ScalarParam", "args": {"target": "well_xyz"}}`. Observations
-give producers, quantities and report times.
+Design keys: `well` (name to relocate), `objective` (only `cumulative_oil` is implemented; the
+key is echoed, not switched on), `min_spacing_m`, `max_candidates` (seeded subset; omit for all
+feasible cells). Parameters: one entry `{"name": "<well>", "family": "ScalarParam",
+"args": {"target": "well_xyz"}}` naming the relocated well (the schema requires a parameter; the
+driver takes the well from `design.well`). Observations give producers, quantities and report
+times.
 
 Procedure (`workflows/optimize.py`): candidates = all active cells at ≥ `min_spacing_m` from
 every other well; baseline + each candidate simulated in isolated processes; `candidates.json`
