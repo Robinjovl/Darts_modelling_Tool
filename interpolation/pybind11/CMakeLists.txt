@@ -59,7 +59,7 @@ if (CUDA)
     PROPERTIES LANGUAGE CUDA)
 endif()
 
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(interpolators
     PUBLIC
       OPENDARTS_LINEAR_SOLVERS

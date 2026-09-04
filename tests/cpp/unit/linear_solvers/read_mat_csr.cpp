@@ -4,9 +4,9 @@
 #include <string.h>
 #include <string>
 
-#include "openDARTS/config/version.hpp"
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/data_types.hpp"
+#include "version.hpp"
+#include "csr_matrix.hpp"
+#include "linear_solvers_data_types.hpp"
 
 #include "test_common.hpp"
 
@@ -18,11 +18,11 @@ int main()
     read_matrix_mat_csr
     Tests csr_matrix.import_matrix_from_file in csr format, therefore tests also
     csr_matrix.import_matrix_from_file_csr.
-    Reads a tridiagonal matrix with block size 3 from file and then saves it to file. 
+    Reads a tridiagonal matrix with block size 3 from file and then saves it to file.
     The output is compared to the original result.
   */
   int error_output = 0;
-  
+
   error_output += test_csr_format_string_input();
 
   return error_output;
@@ -46,12 +46,12 @@ int test_csr_format_string_input()
 
   // Generate the matrix and save it to file
   opendarts::linear_solvers::csr_matrix<3> A;
-  
-  // Import matrix from file 
-  error_output = A.import_matrix_from_file(reference_filename, 
+
+  // Import matrix from file
+  error_output = A.import_matrix_from_file(reference_filename,
     opendarts::linear_solvers::sparse_matrix_import_format::csr);
-  
-  // Export it again to check all if fine 
+
+  // Export it again to check all if fine
   error_output = A.export_matrix_to_file(output_filename,
       opendarts::linear_solvers::sparse_matrix_export_format::csr); // save the matrix to file
 

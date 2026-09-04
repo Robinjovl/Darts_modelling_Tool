@@ -331,6 +331,9 @@ class UnstructReservoir:
             self.mesh.add_wells(ms_well_vector(self.wells))
             self.mesh.reverse_and_sort()
         self.mesh.init_grav_coef()
+        # allocate cell_spe: the super-engine assembly reads it unconditionally;
+        # ReservoirBase does this in its init_wells, this class must do it itself
+        self.mesh.init_spe(grav_acceleration_for_spe=0.0)
         return 0
 
     def init_reservoir(self, verbose):

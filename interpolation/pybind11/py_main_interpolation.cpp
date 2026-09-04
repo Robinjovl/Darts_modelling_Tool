@@ -37,20 +37,20 @@ PYBIND11_MODULE(interpolators, m)
 
   py::bind_vector<std::vector<index_t>>(m, "index_vector", py::module_local(true), py::buffer_protocol())
       .def(py::pickle(
-          [](const std::vector<index_t>& p) { // __getstate__
+          [](const std::vector<index_t>& p) {
               py::tuple t(p.size());
               for (size_t i = 0; i < p.size(); i++)
                   t[i] = p[i];
               return t;
           },
-          [](py::tuple t) { // __setstate__
+          [](py::tuple t) {
               std::vector<index_t> p(t.size());
               for (size_t i = 0; i < p.size(); i++)
                   p[i] = t[i].cast<index_t>();
               return p;
           }))
       .def("resize",
-          (void (std::vector<index_t>::*) (size_t count)) & std::vector<index_t>::resize,
+          (void (std::vector<index_t>::*) (size_t count)) &std::vector<index_t>::resize,
           "changes the number of elements stored")
       .def("to_numpy", [](std::vector<index_t>& vec) {
           return to_numpy(vec);
@@ -58,13 +58,13 @@ PYBIND11_MODULE(interpolators, m)
 
   py::bind_vector<std::vector<value_t>>(m, "value_vector", py::module_local(true), py::buffer_protocol())
       .def(py::pickle(
-          [](const std::vector<value_t> &p) { // __getstate__
+          [](const std::vector<value_t> &p) {
             py::tuple t(p.size());
             for (size_t i = 0; i < p.size(); i++)
               t[i] = p[i];
             return t;
           },
-          [](py::tuple t) { // __setstate__
+          [](py::tuple t) {
             std::vector<value_t> p(t.size());
             for (size_t i = 0; i < p.size(); i++)
               p[i] = t[i].cast<value_t>();
@@ -100,6 +100,5 @@ void pybind_globals(py::module& m)
         .def("get_timer", &timer_node::get_timer)
         .def("print", &timer_node::print)
         .def("reset_recursive", &timer_node::reset_recursive)
-        //properties
         .def_readwrite("node", &timer_node::node);
 }

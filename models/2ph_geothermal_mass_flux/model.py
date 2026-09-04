@@ -25,8 +25,7 @@ class Model(CICDModel):
         self.wells_mode = mode
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1, tol_linear=1e-6)
+        # solver/time-stepping configuration moved to set_solver() (called by base reset())
 
         # add outflux to the middle cell
         self.inflow_cells = np.array([self.reservoir.nx // 2])
@@ -34,6 +33,12 @@ class Model(CICDModel):
         self.outflow = outflow if mode == 'rhs' else 0
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1 )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
+        self.linear_solver.spec.tolerance = 1e-6
 
     def set_reservoir(self):
         """Reservoir construction"""

@@ -19,7 +19,7 @@ readme = "README.md"
 keywords = ["energy transition", "modeling of CO2 sequestration", "geothermal energy production"]
 requires-python = ">=3.10"
 # Here we specify open-darts dependencies, at the moment we do not specify versions of each one of those, but that can be the case.
-dependencies = ['numba', 'scipy', 'pandas', 'meshio', 'gmsh<=4.13', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib',
+dependencies = ['numba', 'scipy', 'pandas==2.3.3', 'meshio', 'gmsh<=4.13', 'iapws', 'openpyxl', 'pyevtk', 'matplotlib',
     'shapely', 'igraph', 'sympy', 'opmcpg', 'xarray', 'netCDF4==1.7.2', 'h5py==3.14.0', 'open-darts-flash==0.13.0', 'phreeqpy']
 
 license = "GPL-3.0-or-later"
@@ -47,11 +47,11 @@ dev = ["ruff", "pre-commit"]
 # running the test suite (pytest):
 test = ["pytest"]
 # linear solver packages using python interface:
-solvers = ["pypardiso"]
+linear_solvers = ["pypardiso"]
 # 3D vizualization
 viz = ['vtk', 'pyvista']
 # install all user related modules
-all = ["open-darts[solvers,viz]"]
+all = ["open-darts[linear_solvers,viz]"]
 
 # add compiled binaries (shared libraries) and some other files
 [tool.setuptools]
@@ -60,10 +60,11 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["darts*"]
-exclude = ["discretizer", "engines", "models", "solvers", "docs", "thirdparty"]
+exclude = ["discretizer", "engines", "models", "linear_solvers", "docs", "thirdparty"]
 
 [tool.setuptools.package-data]
 darts = ['*.pyd', '*.so', '*.dll', 'CHANGELOG.md', 'build_info.txt', 'libstdc++.so.6']
+"darts.linear_solvers" = ['*.pyd', '*.so', '*.dll', 'libcudss.so*']
 "darts.physics.properties" = ["databases/*"]
 
 # include darts command line interface (cli.py)

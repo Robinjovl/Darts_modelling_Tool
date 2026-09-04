@@ -25,13 +25,18 @@ class Model(CICDModel, OptModuleSettings):
         self.iapws_physics = iapws_physics
         self.set_input_data()
         self.set_physics()
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1000, tol_linear=1e-6)
+        # solver/time-stepping config moved to set_solver() (called at top of reset())
 
         self.init_pressure = 200.
         self.init_temperature = 350.
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1000 )
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
+        self.linear_solver.spec.tolerance = 1e-6
 
     def set_reservoir(self, perm, poro):
         """Reservoir construction"""

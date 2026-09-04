@@ -25,7 +25,7 @@
 #include <string.h>
 #include <string>
 
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
+#include "csr_matrix.hpp"
 
 #include "test_common.hpp"
 
@@ -291,7 +291,7 @@ void opendarts::linear_solvers::testing::generate_tridiagonal_matrix(
         else
         {
           value_temp = is_index ? 100000 * (this_block_value_row_idx + 1) + 2 : 2;
-        }  
+        }
         for (opendarts::config::index_t this_block_value_col_idx = 0; this_block_value_col_idx < n_block_size;
              this_block_value_col_idx++)
         {

@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <algorithm>
 #include <time.h>
 #include <functional>
@@ -13,11 +14,7 @@
 
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
-#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
+#include "linsolv_superlu.hpp"
 #else
 #include "linsolv_bos_gmres.h"
 #include "linsolv_bos_bilu0.h"
@@ -77,37 +74,40 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	// Instantiate Jacobian
 	if (!Jacobian)
 	{
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		Jacobian = new block_csr_matrix; // unified block-CSR matrix (section 12)
+#else
 		Jacobian = new csr_matrix<N_VARS>;
 		Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+#endif
 	}
 
-	// figure out if this is GPU engine from its name.
-	int is_gpu_engine = engine_name.find(" GPU ") != std::string::npos;
-
-	// allocate Jacobian
-	// if (!is_gpu_engine)
-	{
-		// for CPU engines we need full init
-		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
-	}
-	// else
-	// {
-	//   // for GPU engines we need only structure - rows_ptr and cols_ind
-	//   // they are filled on CPU and later copied to GPU
-	//   (static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_struct(mesh_->n_blocks, mesh_->n_blocks, mesh_->n_conns + mesh_->n_blocks);
-	// }
+	// allocate Jacobian: the structure arrays are filled in place afterwards
+	// by init_jacobian_structure_mpfa().
+#ifdef OPENDARTS_LINEAR_SOLVERS
+	(static_cast<block_csr_matrix *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
+	Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE; // set after init() (init resets type)
+#else
+	(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
+#endif
 #ifdef WITH_GPU
 	if (params->linear_type >= params->GPU_GMRES_CPR_AMGX_ILU)
 	{
+#ifndef OPENDARTS_LINEAR_SOLVERS
 		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_device(mesh_->n_blocks, mesh_->n_links);
+#endif
+		// block_csr_matrix allocates device storage lazily (dual_array).
 	}
 #endif
 
 	// create linear solver
 	if (!linear_solver)
 	{
+		// Factory-allocated solvers are engine-owned and deleted in ~engine_base.
+		linear_solver_owned = true;
 		switch (params->linear_type)
 		{
+#ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS solvers; the open-source build injects via the registry
 		case sim_params::CPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
@@ -116,6 +116,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 			linear_solver->set_prec(cpr);
 			break;
 		}
+#endif // OPENDARTS_LINEAR_SOLVERS
 #ifndef __linux__
 #if 0
 		  // Can be enabled if amgdll.dll is available.
@@ -131,26 +132,30 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		}
 #endif
 #endif
+#ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS solver; open-source build injects via the registry
 		case sim_params::CPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
 			linear_solver->set_prec(new linsolv_bos_bilu0<N_VARS>);
 			break;
 		}
+#endif // OPENDARTS_LINEAR_SOLVERS
 		case sim_params::CPU_SUPERLU:
 		{
 			linear_solver = new linsolv_superlu<N_VARS>;
 			break;
 		}
 
-#ifdef WITH_GPU
+// The GPU BOS-enum cases use the proprietary linsolv_bos_* solvers; the open-source
+// GPU build runs through engine_super_gpu (registry / AMGX-CPR), not this factory.
+#if defined(WITH_GPU) && !defined(OPENDARTS_LINEAR_SOLVERS)
 		case sim_params::GPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
 			break;
@@ -159,10 +164,10 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		case sim_params::GPU_GMRES_CPR_AIPS:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			int n_terms = 10;
 			bool print_radius = false;
@@ -189,13 +194,14 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 			break;
 		}
 #endif //WITH_AIPS
+#ifdef OPENDARTS_GPU_HAS_AMGX
 		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			int n_json = 0;
 
@@ -207,52 +213,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 			linear_solver->set_prec(cpr);
 			break;
 		}
-#ifdef WITH_ADGPRS_NF
-		case sim_params::GPU_GMRES_CPR_NF:
-		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			// NF was initially created for CPU-based solver, so keeping unnesessary GPU->CPU->GPU copies so far for simplicity
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
-
-			int nx, ny, nz;
-			int n_colors = 4;
-			int coloring_scheme = 3;
-			bool is_ordering_reversed = true;
-			bool is_factorization_twisted = true;
-			if (params->linear_params.size() < 3)
-			{
-				printf("Error: Missing nx, ny, nz parameters, required for NF solver\n");
-				exit(-3);
-			}
-
-			nx = params->linear_params[0];
-			ny = params->linear_params[1];
-			nz = params->linear_params[2];
-			if (params->linear_params.size() > 3)
-			{
-				n_colors = params->linear_params[3];
-				if (params->linear_params.size() > 4)
-				{
-					coloring_scheme = params->linear_params[4];
-					if (params->linear_params.size() > 5)
-					{
-						is_ordering_reversed = params->linear_params[5];
-						if (params->linear_params.size() > 6)
-						{
-							is_factorization_twisted = params->linear_params[6];
-						}
-					}
-				}
-			}
-
-			cpr->set_prec(new linsolv_adgprs_nf<1>(nx, ny, nz, params->global_actnum, n_colors, coloring_scheme, is_ordering_reversed, is_factorization_twisted));
-			linear_solver->set_prec(cpr);
-			break;
-		}
-#endif //WITH_ADGPRS_NF
+#endif // OPENDARTS_GPU_HAS_AMGX
 		case sim_params::GPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
@@ -263,6 +224,12 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		default:
 			break;
 		}
+
+		if (!linear_solver)
+			throw std::runtime_error(
+				"engine_super_mp_cpu: linear solver type " +
+				std::to_string(static_cast<int>(params->linear_type)) +
+				" is not available in this build");
 	}
 
 	n_vars = get_n_vars();
@@ -456,6 +423,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		// initialization of linear solver
 		if (!linear_solver_ad)
 		{
+#ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS adjoint fallback (disabled by if(0)); open-source uses SuperLU
 			if (0)
 			{
 				// so far these preconditioner and the linear solver can't be applied to adjoint for some reason
@@ -464,6 +432,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 
 			}
 			else
+#endif // OPENDARTS_LINEAR_SOLVERS
 				linear_solver_ad = new linsolv_superlu<1>;
 		}
 		linear_solver_ad->init_timer_nodes(&timer->node["linear solver for adjoint method - setup"], &timer->node["linear solver for adjoint method - solve"]);
@@ -1424,36 +1393,42 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 		}
 	}
 
-	// we have to convert the csr matrix to the csr matrix with block size of 1
-    // because the function "build_transpose" is only applicable for the csr matrix with the block size of 1
-    // this is also required by the linear solver "linsolv_superlu<1>", as the preconditioner is not applicable to adjoint so far
-    // so this might be improved in the future
-	csr_matrix<1> Temp, T1, T2;
-	Temp.to_nb_1(static_cast<csr_matrix<N_VARS>*>(Jacobian));
-	T1.build_transpose(&Temp);
-
-	value_t* T1_values = T1.get_values();
-	index_t* T1_rows = T1.get_rows_ptr();
-	index_t* T1_cols = T1.get_cols_ind();
-	index_t* T1_diag = T1.get_diag_ind();
-
-	for (index_t i = 0; i <= n_blocks * N_VARS; i++)
+	csr_matrix<1> T2;
+	if (!linear_solver_ad_uses_jacobian_transpose)
 	{
-		//ad_diag[i] = i;  //so far using superlu, it may need to be fixed if using other linear solver
-		ad_rows[i] = T1_rows[i];
-	}
+		// Legacy adjoint solvers consume an assembled scalar dg_dx_T. The MGR
+		// adjoint path keeps the block Jacobian and calls solve_transposed().
+		csr_matrix<1> Temp, T1;
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		Temp.to_nb_1(Jacobian); // unified block_csr_matrix -> polymorphic scalar expansion
+#else
+		Temp.to_nb_1(static_cast<csr_matrix<N_VARS>*>(Jacobian));
+#endif
+		T1.build_transpose(&Temp);
+
+		value_t* T1_values = T1.get_values();
+		index_t* T1_rows = T1.get_rows_ptr();
+		index_t* T1_cols = T1.get_cols_ind();
+		index_t* T1_diag = T1.get_diag_ind();
+
+		for (index_t i = 0; i <= n_blocks * N_VARS; i++)
+		{
+			//ad_diag[i] = i;  //so far using superlu, it may need to be fixed if using other linear solver
+			ad_rows[i] = T1_rows[i];
+		}
 
 
-	index_t n_value = mesh->n_links * N_VARS * N_VARS;
-	//test_value_vec.clear();
-	//test_value_vec.insert(test_value_vec.end(), T1_values, T1_values + n_value);
-	for (index_t i = 0; i < n_value; i++)
-	{
-		//test_index = i;
-		//test_value = T1_values[i];
-		ad_values[i] = T1_values[i];
-		ad_cols[i] = T1_cols[i];
-		//test_value = ad_values[i];
+		index_t n_value = mesh->n_links * N_VARS * N_VARS;
+		//test_value_vec.clear();
+		//test_value_vec.insert(test_value_vec.end(), T1_values, T1_values + n_value);
+		for (index_t i = 0; i < n_value; i++)
+		{
+			//test_index = i;
+			//test_value = T1_values[i];
+			ad_values[i] = T1_values[i];
+			ad_cols[i] = T1_cols[i];
+			//test_value = ad_values[i];
+		}
 	}
 
 
@@ -1477,7 +1452,7 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::adjoint_gradient_assembly(value_t dt, 
 		ad_rows_n[i] = T2_rows[i];
 	}
 
-	n_value = mesh->n_links * N_VARS * N_VARS;
+	index_t n_value = mesh->n_links * N_VARS * N_VARS;
 	for (index_t i = 0; i < n_value; i++)
 	{
 		ad_values_n[i] = T2_values[i];
