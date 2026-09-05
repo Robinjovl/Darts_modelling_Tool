@@ -1,7 +1,33 @@
 from model import Model
 import numpy as np
 import os
+import sys
 from darts.engines import redirect_darts_output, timer_node
+
+
+def _pkl_suffix():
+    """Solver/platform suffix of the reference file: ``_odls`` / ``_iter`` / ``_gpu``.
+
+    Shares the suite-wide helper so the name matches what ``models/archive_pkl.sh``
+    collects into the CI artifact. This model used to compute the suffix itself and
+    returned an empty string on the open-source lane, where the rest of the suite
+    uses ``_odls`` -- those references fell outside the ``perf_lin_odls*.pkl`` glob
+    and never reached the artifact. Falls back to the same rule when ``main.py`` is
+    run standalone from this directory, where ``models/`` is not on ``sys.path``.
+
+    :returns: the suffix string
+    :rtype: str
+    """
+    models_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if models_dir not in sys.path:
+        sys.path.append(models_dir)
+    try:
+        from compare_well_time_series import get_pkl_suffix
+        return get_pkl_suffix()
+    except ImportError:
+        if os.getenv('TEST_GPU') == '1':
+            return '_gpu'
+        return '_iter' if os.getenv('ODLS') == '-a' else '_odls'
 
 try:
     # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
@@ -14,10 +40,10 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
     if days:
         runtime = days
     else:
-        runtime = m.runtime
+        runtime = m.ts_control.runtime
 
-    mult_dt = m.data_ts.dt_mult
-    max_dt = m.data_ts.dt_max
+    mult_dt = m.ts_control.dt_mult
+    max_dt = m.ts_control.dt_max
     m.e = m.physics.engine
 
     # get current engine time
@@ -25,11 +51,11 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
 
     # same logic as in engine.run
     if np.fabs(t) < 1e-15:
-        dt = m.data_ts.dt_first
+        dt = m.ts_control.dt_first
     elif restart_dt > 0:
         dt = restart_dt
     else:
-        dt = m.data_ts.dt_max
+        dt = m.ts_control.dt_max
 
     # evaluate end time
     runtime += t
@@ -87,7 +113,7 @@ def run(model_folder, physics_type, is_finalize=True):
     m.reservoir.set_equilibrium(zero_conduction=True)
     m.physics.engine.find_equilibrium = True
     dt_init = 1.e+8
-    m.data_ts.dt_first = dt_init
+    m.ts_control.dt_first = dt_init
     run_python(m, dt_init, init_step=True)
     m.reinit(zero_conduction=True)
     m.physics.engine.find_equilibrium = False
@@ -95,9 +121,9 @@ def run(model_folder, physics_type, is_finalize=True):
     size_report_step = 1
     max_dt = size_report_step
     m.max_dt = max_dt
-    m.data_ts.dt_max = max_dt
+    m.ts_control.dt_max = max_dt
     first_ts = size_report_step
-    m.data_ts.dt_first = first_ts
+    m.ts_control.dt_first = first_ts
     m.set_boundary_conditions_after_initialization()
 
     sim_time = 20 # days
@@ -134,9 +160,7 @@ def test(mesh_type, physics_type, overwrite='0'):
 
     m, data = run(mesh_type, physics_type)
 
-    pkl_suffix = ''
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-        pkl_suffix = '_iter'
+    pkl_suffix = _pkl_suffix()
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
                              '_' + mesh_type + '_' + physics_type + '.pkl')
     failed = 0

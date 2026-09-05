@@ -47,7 +47,6 @@ class LinearSolverSpec:
     configures the linear solve in one place::
 
         def set_solver(self):
-            self.set_sim_params(first_ts=..., tol_newton=1e-3)  # time-stepping / Newton
             super().set_solver()                                # platform default spec
             self.linear_solver.spec.tolerance = 1e-6                        # linear knobs
             self.linear_solver.spec.max_iterations = 40
@@ -758,9 +757,9 @@ class SchurEliminationSpec(LinearSolverSpec):
             inner=GMRESSolverSpec(prec=CPRSolverSpec()),
             elim_rows=list(range(K)), elim_cols=list(range(1, K + 1)),
         )
-        spec.tolerance = 1e-6        # set on the WRAPPER: the engine mirrors the
-        spec.max_iterations = 500    # top-level spec into sim_params and passes it
-        self.linear_solver = spec    # down to the inner solver at init
+        spec.tolerance = 1e-6             # set on the WRAPPER: the engine mirrors the
+        spec.max_iterations = 500         # top-level spec into sim_params and passes it
+        self.linear_solver.spec = spec    # down to the inner solver at init
 
     Tolerance/max-iteration semantics: the top-level (wrapper) spec is the
     single owner -- ``_sync_solver_to_sim_params`` mirrors ITS values into
@@ -845,13 +844,13 @@ class GPUSolverSpec(LinearSolverSpec):
     ``params.linear_type`` (``darts.engines.linear_solver_t``) enum, NOT through
     the open-source ``darts.linear_solvers`` registry. A GPUSolverSpec therefore does not
     build a C++ solver -- it names the enum value via :attr:`linear_type_name`, and
-    :meth:`darts.models.darts_model.DartsModel._apply_solver` translates
-    ``self.linear_solver`` to ``params.linear_type`` on the GPU platform. :meth:`build`
-    raises.
+    :meth:`~darts.linear_solvers.LinearSolver._apply_solver` translates
+    ``self.linear_solver.spec`` to ``params.linear_type`` on the GPU platform.
+    :meth:`build` raises.
 
-    This keeps ``self.linear_solver`` the single user-facing API on GPU too:
-    ``self.linear_solver = AMGXCPRSolverSpec()`` selects the GPU solver, mirroring the way
-    a CPU spec selects a registry solver.
+    This keeps ``self.linear_solver.spec`` the single user-facing API on GPU too:
+    ``self.linear_solver.spec = AMGXCPRSolverSpec()`` selects the GPU solver, mirroring
+    the way a CPU spec selects a registry solver.
     """
 
     #: name of the ``darts.engines.sim_params`` ``linear_solver_t`` enum value

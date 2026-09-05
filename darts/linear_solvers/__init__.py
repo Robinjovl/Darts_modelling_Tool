@@ -4,10 +4,13 @@ This package is the single source of input parameters for the linear solve and
 the home of the Python-side linear solver classes, mirroring the design of
 :mod:`darts.nonlinear_solvers` (!327):
 
-* the runtime :class:`~darts.linear_solvers.solver.LinearSolver` -- the instance
-  a model assigns to (and ``DartsModel.linear_solver`` always holds); constructed
-  detached, bound to the model during ``reset()``/``init()``, where its backend
-  (``handle`` / ``python_solver``) is materialized;
+* the runtime :class:`~darts.linear_solvers.solver.LinearSolver` -- composed onto
+  every ``DartsModel`` as ``self.linear_solver`` (created once in
+  ``DartsModel.__init__``, never reassigned), it owns the declarative :attr:`spec`
+  as well as every method that binds a model to its linear solver: backend
+  materialization at ``reset()``/``init()`` time (``handle`` / ``python_solver``),
+  mid-run reconfiguration (``update_solver``), adaptive per-timestep switching, and
+  the deprecated ``set_sim_params`` family;
 * the declarative :mod:`~darts.linear_solvers.specs` configuration classes
   (:class:`~darts.linear_solvers.specs.MGRSolverSpec`, ``SuperLUSolverSpec``, ...),
   retrievable as ``linear_solver.spec`` (serializable via ``spec.to_dict()``);
@@ -20,7 +23,7 @@ the home of the Python-side linear solver classes, mirroring the design of
 Model use (in ``set_solver()``, the shared hook of the linear and nonlinear solver)::
 
     def set_solver(self):
-        self.linear_solver = MGRSolverSpec(tolerance=1e-4, kdim=50)  # auto-wrapped
+        self.linear_solver.spec = MGRSolverSpec(tolerance=1e-4, kdim=50)
         # or tune the platform default (mirror of the nonlinear form):
         super().set_solver()
         self.linear_solver.spec.tolerance = 1e-6

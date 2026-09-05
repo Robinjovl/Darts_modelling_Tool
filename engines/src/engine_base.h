@@ -912,16 +912,16 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 #ifdef OPENDARTS_LINEAR_SOLVERS
 		// Open-source build: the enum-driven factory below builds the
 		// proprietary bos solvers, which are not available here. The linear
-		// solver must be injected from Python -- built from a LinearSolverSpec
-		// via the open-source registry; see darts_model._apply_linear_solver_spec().
+		// solver must be injected from Python, built from a LinearSolverSpec
+		// via the open-source registry; see LinearSolver._apply_solver().
 		// Throw instead of exit(1): engine init is entered through pybind11,
 		// which translates the exception into a Python RuntimeError -- the
 		// previous exit killed the host process (including Jupyter kernels).
 		throw std::runtime_error(
 		    "no linear solver was provided for " + engine_name +
 		    ". The open-source build requires a linear solver injected via "
-		    "set_linear_solver() (a LinearSolverSpec built through the "
-		    "darts.solvers registry).");
+		    "set_solver() (a LinearSolverSpec built through the "
+		    "darts.linear_solvers registry).");
 #else
 		switch (params->linear_type)
 		{

@@ -1,5 +1,6 @@
 from darts.engines import *
 from for_each_model import *
+from darts.tools.cicd_tools import check_performance as cicd_check_performance
 
 model_dir = r'.'
 exception_dirs = ['darts', 'SPE10']
@@ -23,7 +24,7 @@ def check_performance(mod):
     m.run()
     m.print_stat()
     abort_redirection(log_stream)
-    passed = m.check_performance(overwrite=0)
+    passed = cicd_check_performance(m, overwrite=0)
 
     return passed
 

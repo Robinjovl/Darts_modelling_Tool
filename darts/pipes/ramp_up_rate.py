@@ -28,7 +28,7 @@ class RampUpRate:
         :param pipe_geom: Pipe geometry object of the pipe for which the RampUpRate is going to be defined. It is used for assertion purposes.
         :type pipe_geom: PipeGeometry
         :param physics: physics object is used for assertion purposes and for evaluation of molar enthalpy for thermal scenarios
-        :param first_ts_size: Size of the first time step from the class DataTS in darts_model.py [day]
+        :param first_ts_size: Size of the first time step from the class TimestepControl in darts_model.py [day]
         :type first_ts_size: float
         :param segment_idx: The index of the segment which fluid will be injected into or produced from
         :type segment_idx: int
