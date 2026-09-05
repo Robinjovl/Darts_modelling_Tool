@@ -16,9 +16,9 @@ def run_darts_simulation():
     m = DartsModel()
     m.init(platform='cpu', n_solid=len(m.minerals))
     m.set_output(output_folder=output_folder)
-    m.data_ts.dt_first = 1e-5
+    m.ts_control.dt_first = 1e-5
     dt = 10
-    m.data_ts.dt_max = dt / 3
+    m.ts_control.dt_max = dt / 3
     n_steps = int(1500 / dt)
 
     # save data for plotting

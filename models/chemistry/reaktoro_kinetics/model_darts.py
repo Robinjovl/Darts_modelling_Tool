@@ -3,7 +3,7 @@ import os
 import h5py
 import warnings
 from darts.models.output import Output
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, sim_params, well_control_iface, timer_node
 from darts.engines import copy_data_to_device
 from darts.physics.properties.density import DensityBasic
@@ -111,7 +111,7 @@ class MyOutput(Output):
         return timesteps, property_array
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, n_obl_mult: int = 9):
         super().__init__()
         self.n_obl_mult = n_obl_mult
@@ -120,21 +120,26 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
         # Time-stepping and the linear solver are configured in set_solver()
-        # (the unified self.linear_solver = <LinearSolverSpec> pattern), which the base
+        # (the unified self.linear_solver.spec = <LinearSolverSpec> pattern), which the base
         # reset() calls before engine.init.
-        self.runtime = 1
+        self.ts_control.runtime = 1
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3  )
-        super().set_solver()  # platform default nonlinear + linear solvers
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=15)
+        self.ts_control.dt_first = 1e-5
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_max = 1e-3
+        self.ts_control.runtime = 1000
         # SuperLU direct solve for this small, stiff chemistry system, declared solely
         # through self.linear_solver (replaces the params.linear_type = cpu_superlu carrier,
         # which the base FGMRES+CPR default had been shadowing). proprietary_linear_type
-        # carries the same enum for the proprietary build's engine factory.
-        self.linear_solver = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200,
-                                        proprietary_linear_type=sim_params.cpu_superlu)
+        # carries the same enum for the proprietary build's engine factory. Set on the
+        # composed self.linear_solver (created in DartsModel.__init__) -- no platform
+        # default is ever materialized and discarded.
+        self.linear_solver.spec = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200,
+                                    proprietary_linear_type=sim_params.cpu_superlu)
+        super().set_solver()  # platform default nonlinear solver
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=15)
 
     def set_reservoir(self):
 
@@ -351,7 +356,7 @@ class Model(CICDModel):
 
             # Unified spec-driven dispatch (!280) + (rc, n_iters, residual) contract (!327)
 
-            r_code, n_lin, _ = self._solve_linear_equation()
+            r_code, n_lin, _ = self.linear_solver._solve_linear_equation()
 
             status.linear_solver_rc = r_code
 

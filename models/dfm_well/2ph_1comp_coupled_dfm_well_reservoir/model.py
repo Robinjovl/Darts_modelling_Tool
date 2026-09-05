@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.pipes.viz.plot_live import DartsModelWithLivePlots
 from darts.engines import sim_params, ms_well, value_vector, well_control_iface
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
@@ -22,7 +22,7 @@ from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
 # class Model(DartsModelWithLivePlots):
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -46,21 +46,23 @@ class Model(CICDModel):
 
         # For isenthalpic injection and injection at a constant gas rate
         # NOTE: set_sim_params stays in __init__ (not moved to set_solver): set_wells()
-        # builds RampUpRate from self.data_ts.dt_first and runs during init() before
+        # builds RampUpRate from self.ts_control.dt_first and runs during init() before
         # reset()/set_solver(). dfm_well is the documented set_solver exception.
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60),
-                            runtime=1/24/60, # This runtime will be used when CI test is conducted without the main file
-                            )
+        self.ts_control.dt_first = 0.0001/(24*60*60)
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 2/(24*60*60)
+        self.ts_control.runtime = 1/24/60  # This runtime will be used when CI test is conducted without the main file
 
         # # For injection at a constant WHP
-        # self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=0.1/(24*60*60),  tol_linear=1e-4,
+        # self.linear_solver.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=0.1/(24*60*60),  tol_linear=1e-4,
         #                      it_linear=10,
         #
         #                     )
 
         # # For injection at a constant total mass rate
         # # Use 0.001 as the first time-step size because 0.0001 did not converge
-        # self.set_sim_params(first_ts=0.001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60),  tol_linear=1e-4,
+        # self.linear_solver.set_sim_params(first_ts=0.001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60),  tol_linear=1e-4,
         #                      it_linear=10,
         #
         #                     )
@@ -227,7 +229,7 @@ class Model(CICDModel):
         inj_fluid_props = {"composition": inj_phase_comp, "phase_name": inj_phase_name,
                            "pressure": injected_fluid_pressure,"temperature": injected_fluid_temperature}
 
-        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx,
+        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.ts_control.dt_first, inj_segment_idx,
                                   inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
                                   verbose=verbose)
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation
