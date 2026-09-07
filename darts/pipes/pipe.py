@@ -12,7 +12,7 @@ Notes:
         - Use 'G' as the name of the gaseous phase
         - Use 'L' as the name of the liquid phase (for a single liquid phase)
         - Use 'L_a' and 'L_b' as the names of the liquid phases (for two liquid phases)
-        - Immobile phases after PropertyContainer.np_fl, or phases explicitly listed in Pipe.immobile_phase_names,
+        - Immobile phases after PropertyContainer.np_eq, or phases explicitly listed in Pipe.immobile_phase_names,
           are returned with zero velocity. The drift-flux momentum closure itself is still gas/liquid.
           Mobile-liquid holdup is tracked explicitly as sL (L or L_a + L_b). The C00-adjusted liquid saturations
           retain the original (1 - C00 * sG) form, while explicitly mobile-liquid terms use sL. If an
@@ -147,7 +147,7 @@ class Pipe:
         assert not unknown_immobile_phases, (
             f"Immobile phase(s) {sorted(unknown_immobile_phases)} are not found in the list of phases!"
         )
-        thermodynamic_phase_names = phase_names[: pc.np_fl]
+        thermodynamic_phase_names = phase_names[: pc.np_eq]
         mobile_phase_names = [
             phase_name
             for phase_name in thermodynamic_phase_names
@@ -359,7 +359,7 @@ class Pipe:
         num_segments = self.geometry.num_segments
         num_interfaces = self.geometry.num_interfaces
         pc = self.physics.property_containers[0]
-        Mw_fl = np.asarray(pc.Mw[: pc.nc_fl])
+        Mw_fl = np.asarray(pc.Mw[: pc.nc_eq])
         n_vars = self.physics.n_vars
 
         Xn_dfm_well_2d = Xn_dfm_well.reshape(num_segments, n_vars)
@@ -400,16 +400,16 @@ class Pipe:
                 sG0 = prop_arr0['sG']
                 rhoG0 = prop_arr0['rhoG']
                 miuG0 = prop_arr0['miuG'] * 1e-3  # convert cP to Pa.s
-                xG_mass0 = np.zeros((num_segments, pc.nc_fl))
-                for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
+                xG_mass0 = np.zeros((num_segments, pc.nc_eq))
+                for c_idx, c_name in enumerate(pc.components_name[: pc.nc_eq]):
                     xG_mass0[:, c_idx] = prop_arr0[f'x{c_name}_in_G_mass']
 
                 if self.n_mobile_phases == 2:
                     sL0 = prop_arr0['sL']
                     rhoL0 = prop_arr0['rhoL']
                     miuL0 = prop_arr0['miuL'] * 1e-3  # convert cP to Pa.s
-                    xL_mass0 = np.zeros((num_segments, pc.nc_fl))
-                    for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
+                    xL_mass0 = np.zeros((num_segments, pc.nc_eq))
+                    for c_idx, c_name in enumerate(pc.components_name[: pc.nc_eq]):
                         xL_mass0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_mass']
 
                 if self.n_mobile_phases == 3:
@@ -420,18 +420,18 @@ class Pipe:
                     rhoL_b_0 = prop_arr0['rhoL_b']
                     miuL_a_0 = prop_arr0['miuL_a'] * 1e-3  # convert cP to Pa.s
                     miuL_b_0 = prop_arr0['miuL_b'] * 1e-3  # convert cP to Pa.s
-                    xL_a_mass_0 = np.zeros((num_segments, pc.nc_fl))
-                    for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
+                    xL_a_mass_0 = np.zeros((num_segments, pc.nc_eq))
+                    for c_idx, c_name in enumerate(pc.components_name[: pc.nc_eq]):
                         xL_a_mass_0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_a_mass']
-                    xL_b_mass_0 = np.zeros((num_segments, pc.nc_fl))
-                    for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
+                    xL_b_mass_0 = np.zeros((num_segments, pc.nc_eq))
+                    for c_idx, c_name in enumerate(pc.components_name[: pc.nc_eq]):
                         xL_b_mass_0[:, c_idx] = prop_arr0[f'x{c_name}_in_L_b_mass']
 
                     # Calculate averaged liquid props
                     mask = sL0 > 0
                     rhoL0 = np.zeros(num_segments)
                     miuL0 = np.zeros(num_segments)
-                    xL_mass0 = np.zeros((num_segments, pc.nc_fl))
+                    xL_mass0 = np.zeros((num_segments, pc.nc_eq))
                     rhoL0[mask] = (
                         rhoL_a_0[mask] * sL_a_0[mask] + rhoL_b_0[mask] * sL_b_0[mask]
                     ) / sL0[mask]
@@ -455,8 +455,8 @@ class Pipe:
                 rhoL0 = np.zeros(num_segments)
                 miuG0 = np.zeros(num_segments)
                 miuL0 = np.zeros(num_segments)
-                xG_mass0 = np.zeros((num_segments, pc.nc_fl))
-                xL_mass0 = np.zeros((num_segments, pc.nc_fl))
+                xG_mass0 = np.zeros((num_segments, pc.nc_eq))
+                xL_mass0 = np.zeros((num_segments, pc.nc_eq))
 
                 if self.n_mobile_phases == 3:
                     sL_a_0 = np.zeros(num_segments)
@@ -465,8 +465,8 @@ class Pipe:
                     rhoL_b_0 = np.zeros(num_segments)
                     miuL_a_0 = np.zeros(num_segments)
                     miuL_b_0 = np.zeros(num_segments)
-                    xL_a_mass_0 = np.zeros((num_segments, pc.nc_fl))
-                    xL_b_mass_0 = np.zeros((num_segments, pc.nc_fl))
+                    xL_a_mass_0 = np.zeros((num_segments, pc.nc_eq))
+                    xL_b_mass_0 = np.zeros((num_segments, pc.nc_eq))
 
                 for i in range(num_segments):
                     state0 = Xn_dfm_well_2d[i, :]
@@ -482,7 +482,7 @@ class Pipe:
                         rhoL0[i] = pc.dens[l_idx]
                         miuL0[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                         # Calculate mass fractions of components in each phase
-                        x_mass0 = np.zeros((pc.np_fl, pc.nc_fl))
+                        x_mass0 = np.zeros((pc.np_eq, pc.nc_eq))
                         for j in pc.ph:
                             x_mass0[j, :] = (pc.x[j, :] * Mw_fl) / sum(
                                 pc.x[j, :] * Mw_fl
@@ -501,7 +501,7 @@ class Pipe:
                             pc.mu[lb_idx] * 1e-3,
                         )
                         # Calculate mass fractions of components in each phase
-                        x_mass0 = np.zeros((pc.np_fl, pc.nc_fl))
+                        x_mass0 = np.zeros((pc.np_eq, pc.nc_eq))
                         for j in pc.ph:
                             x_mass0[j, :] = (pc.x[j, :] * Mw_fl) / sum(
                                 pc.x[j, :] * Mw_fl
@@ -573,16 +573,16 @@ class Pipe:
             sG = prop_arr['sG']
             rhoG = prop_arr['rhoG']
             miuG = prop_arr['miuG'] * 1e-3  # convert cP to Pa.s
-            xG_mass = np.zeros((num_segments, pc.nc_fl))
-            for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
+            xG_mass = np.zeros((num_segments, pc.nc_eq))
+            for c_idx, c_name in enumerate(pc.components_name[: pc.nc_eq]):
                 xG_mass[:, c_idx] = prop_arr[f'x{c_name}_in_G_mass']
 
             if self.n_mobile_phases == 2:
                 sL = prop_arr['sL']
                 rhoL = prop_arr['rhoL']
                 miuL = prop_arr['miuL'] * 1e-3  # convert cP to Pa.s
-                xL_mass = np.zeros((num_segments, pc.nc_fl))
-                for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
+                xL_mass = np.zeros((num_segments, pc.nc_eq))
+                for c_idx, c_name in enumerate(pc.components_name[: pc.nc_eq]):
                     xL_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_mass']
 
             if self.n_mobile_phases == 3:
@@ -593,18 +593,18 @@ class Pipe:
                 rhoL_b = prop_arr['rhoL_b']
                 miuL_a = prop_arr['miuL_a'] * 1e-3  # convert cP to Pa.s
                 miuL_b = prop_arr['miuL_b'] * 1e-3  # convert cP to Pa.s
-                xL_a_mass = np.zeros((num_segments, pc.nc_fl))
-                for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
+                xL_a_mass = np.zeros((num_segments, pc.nc_eq))
+                for c_idx, c_name in enumerate(pc.components_name[: pc.nc_eq]):
                     xL_a_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_a_mass']
-                xL_b_mass = np.zeros((num_segments, pc.nc_fl))
-                for c_idx, c_name in enumerate(pc.components_name[: pc.nc_fl]):
+                xL_b_mass = np.zeros((num_segments, pc.nc_eq))
+                for c_idx, c_name in enumerate(pc.components_name[: pc.nc_eq]):
                     xL_b_mass[:, c_idx] = prop_arr[f'x{c_name}_in_L_b_mass']
 
                 # Calculate averaged liquid props
                 mask = sL > 0
                 rhoL = np.zeros(num_segments)
                 miuL = np.zeros(num_segments)
-                xL_mass = np.zeros((num_segments, pc.nc_fl))
+                xL_mass = np.zeros((num_segments, pc.nc_eq))
                 rhoL[mask] = (
                     rhoL_a[mask] * sL_a[mask] + rhoL_b[mask] * sL_b[mask]
                 ) / sL[mask]
@@ -626,8 +626,8 @@ class Pipe:
             rhoL = np.zeros(num_segments)
             miuG = np.zeros(num_segments)
             miuL = np.zeros(num_segments)
-            xG_mass = np.zeros((num_segments, pc.nc_fl))
-            xL_mass = np.zeros((num_segments, pc.nc_fl))
+            xG_mass = np.zeros((num_segments, pc.nc_eq))
+            xL_mass = np.zeros((num_segments, pc.nc_eq))
 
             if self.n_mobile_phases == 3:
                 sL_a = np.zeros(num_segments)
@@ -636,8 +636,8 @@ class Pipe:
                 rhoL_b = np.zeros(num_segments)
                 miuL_a = np.zeros(num_segments)
                 miuL_b = np.zeros(num_segments)
-                xL_a_mass = np.zeros((num_segments, pc.nc_fl))
-                xL_b_mass = np.zeros((num_segments, pc.nc_fl))
+                xL_a_mass = np.zeros((num_segments, pc.nc_eq))
+                xL_b_mass = np.zeros((num_segments, pc.nc_eq))
 
             for i in range(num_segments):
                 state = X_dfm_well_2d[i, :]
@@ -653,7 +653,7 @@ class Pipe:
                     rhoL[i] = pc.dens[l_idx]
                     miuL[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                     # Calculate mass fractions of components in each phase
-                    x_mass = np.zeros((pc.np_fl, pc.nc_fl))
+                    x_mass = np.zeros((pc.np_eq, pc.nc_eq))
                     for j in pc.ph:
                         x_mass[j, :] = (pc.x[j, :] * Mw_fl) / sum(pc.x[j, :] * Mw_fl)
                     xG_mass[i, :], xL_mass[i, :] = x_mass[g_idx, :], x_mass[l_idx, :]
@@ -664,7 +664,7 @@ class Pipe:
                     rhoL_a[i], rhoL_b[i] = pc.dens[la_idx], pc.dens[lb_idx]
                     miuL_a[i], miuL_b[i] = pc.mu[la_idx] * 1e-3, pc.mu[lb_idx] * 1e-3
                     # Calculate mass fractions of components in each phase
-                    x_mass = np.zeros((pc.np_fl, pc.nc_fl))
+                    x_mass = np.zeros((pc.np_eq, pc.nc_eq))
                     for j in pc.ph:
                         x_mass[j, :] = (pc.x[j, :] * Mw_fl) / sum(pc.x[j, :] * Mw_fl)
                     xG_mass[i, :], xL_a_mass[i, :], xL_b_mass[i, :] = (
@@ -736,8 +736,8 @@ class Pipe:
             miuG0_face = np.zeros(num_segments - 1)
             miuL0_face = np.zeros(num_segments - 1)
             # xG_mass0_face and xL_mass0_face for IFT calculation
-            xG_mass0_face = np.zeros((num_segments - 1, pc.nc_fl))
-            xL_mass0_face = np.zeros((num_segments - 1, pc.nc_fl))
+            xG_mass0_face = np.zeros((num_segments - 1, pc.nc_eq))
+            xL_mass0_face = np.zeros((num_segments - 1, pc.nc_eq))
 
             # Compute interface values using conditional averaging
             for i in range(num_segments - 1):

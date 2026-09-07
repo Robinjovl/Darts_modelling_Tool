@@ -296,7 +296,7 @@ class DartsModelWithLivePlots(DartsModel):
 
             pc = self.physics.property_containers[0]
             phase_names = list(pc.phases_name)
-            mobile_phase_names = phase_names[: pc.np_fl]
+            mobile_phase_names = phase_names[: pc.np_eq]
 
             def make_profile_line(ax, *, label=None, color='red'):
                 (line,) = ax.plot(

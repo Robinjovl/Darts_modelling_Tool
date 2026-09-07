@@ -134,7 +134,7 @@ class RampUpRate:
                     assert isinstance(ph_name, str), (
                         "The specified phase is not a string!"
                     )
-                    assert ph_name in pc.phases_name[: pc.np_fl], (
+                    assert ph_name in pc.phases_name[: pc.np_eq], (
                         f'The specified phase "{ph_name}" is not in the list of mobile phases defined in the physics!'
                     )
 
@@ -157,7 +157,7 @@ class RampUpRate:
                         .evaluate(
                             inj_fluid_props["pressure"],
                             inj_fluid_props["temperature"],
-                            inj_fluid_props["composition"][: pc.nc_fl],
+                            inj_fluid_props["composition"][: pc.nc_eq],
                         )
                     )
                     inj_fluid_props["molar_enthalpy"] = injected_fluid_molar_enthalpy

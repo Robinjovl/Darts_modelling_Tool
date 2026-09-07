@@ -81,7 +81,7 @@ class SingleAmbientTemperature:
     def check_initial_fluid_conditions(self, initial_conditions_dict):
         pc = self.physics.property_containers[0]
         for phase_name in initial_conditions_dict["phases_names"]:
-            assert phase_name in pc.phases_name[: pc.np_fl], (
+            assert phase_name in pc.phases_name[: pc.np_eq], (
                 f'The specified phase "{phase_name}" is not in the list of mobile phases defined in the physics!'
             )
 
@@ -119,7 +119,7 @@ class SingleAmbientTemperature:
                     ][i]
 
             density = pc.density_ev[phase_name].evaluate(
-                p[0], temp, initial_phase_composition[: pc.nc_fl]
+                p[0], temp, initial_phase_composition[: pc.nc_eq]
             )
 
             return g * density * 1e-5  # Convert Pascal to bar
@@ -279,7 +279,7 @@ class LinearAmbientTemperature:
     def check_initial_fluid_conditions(self, initial_conditions_dict):
         pc = self.physics.property_containers[0]
         for phase_name in initial_conditions_dict["phases_names"]:
-            assert phase_name in pc.phases_name[: pc.np_fl], (
+            assert phase_name in pc.phases_name[: pc.np_eq], (
                 f'The specified phase "{phase_name}" is not in the list of mobile phases defined in the physics!'
             )
 
@@ -337,7 +337,7 @@ class LinearAmbientTemperature:
                     ][i]
 
             density = pc.density_ev[phase_name].evaluate(
-                p[0], temp, initial_phase_composition[: pc.nc_fl]
+                p[0], temp, initial_phase_composition[: pc.nc_eq]
             )
 
             return g * density * 1e-5  # Convert Pas to bar
