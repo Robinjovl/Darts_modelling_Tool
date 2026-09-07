@@ -80,7 +80,7 @@ class BlackOilProperties(PropertyContainer):
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
+        self.pressure = vec_state_as_np[0]
         self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
         zc = np.append(vec_state_as_np[1:], 1 - np.sum(vec_state_as_np[1:]))
@@ -91,7 +91,7 @@ class BlackOilProperties(PropertyContainer):
 
         self.clean_arrays()
         # two-phase flash - assume water phase is always present and water component last
-        xgo, V, pbub = self.flash_ev.evaluate(pressure, zc)
+        xgo, V, pbub = self.flash_ev.evaluate(self.pressure, zc)
         for i in range(self.nph):
             self.x[i, i] = 1
 
@@ -108,16 +108,16 @@ class BlackOilProperties(PropertyContainer):
             for i in range(self.nc):
                 M += self.Mw[i] * self.x[j][i]
             self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(
-                pressure, pbub, xgo
+                self.pressure, pbub, xgo
             )  # output in [kg/m3]
             self.dens_m[j] = self.dens[j] / M
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
-                pressure, pbub
+                self.pressure, pbub
             )  # output in [cp]
 
         self.nu[2] = zc[2]
         # two phase undersaturated condition
-        if pressure > pbub:
+        if self.pressure > pbub:
             self.nu[0] = 0
             self.nu[1] = zc[1]
         else:
