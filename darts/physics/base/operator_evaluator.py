@@ -68,37 +68,6 @@ def assert_flash_snapshot_consistent(property_container) -> None:
         )
 
 
-class DictPointStore:
-    """
-    Minimal in-memory supporting-point store with the same single-point API the
-    adaptive C++ interpolators expose (``try_get_point``/``set_point``), keyed
-    on the int32 multi-index produced by :meth:`OperatorsBase._point_key`.
-
-    Backs a region's :class:`FlashOperators` when no adaptive C++ point store is
-    available (itor_mode='static', no compiled OBL template for the flash row
-    width, or a prebuilt extension predating the try_get_point/set_point
-    bindings), so flash reuse between the region's operator sets
-    (:meth:`FlashOperators.ensure_flash`) still works there. Unlike the C++
-    store it is never persisted by ``PhysicsBase.write_cache``: it lives only
-    for the run, which is where the reuse pays off (every operator set of the
-    region sweeps the same supporting points).
-    """
-
-    def __init__(self):
-        self._points = {}
-
-    def try_get_point(self, key):
-        """Return the stored row for ``key``, or None when absent."""
-        return self._points.get(tuple(int(k) for k in key))
-
-    def set_point(self, key, row):
-        """Store a copy of ``row`` under ``key``."""
-        self._points[tuple(int(k) for k in key)] = np.array(row, dtype=np.float64)
-
-    def __len__(self):
-        return len(self._points)
-
-
 class OperatorsBase(operator_set_evaluator_iface):
     def __init__(
         self,
@@ -236,9 +205,8 @@ class OperatorsBase(operator_set_evaluator_iface):
 
         Leave unattached (or pass ``itor=None``) to disable caching entirely.
         An ``itor`` that does not expose ``try_get_point``/``set_point`` is
-        treated as None, so static-mode interpolators (single-point store access
-        is adaptive-only) and prebuilt extensions predating those bindings
-        degrade to uncached evaluation without the caller having to check.
+        treated as None, so a prebuilt extension predating those bindings
+        degrades to uncached evaluation without the caller having to check.
         Also unattached: regions with no compiled OBL template for this
         (n_dims, n_ops), and evaluators wrapped in ``ParallelEvaluator``
         (worker-process evaluators are fresh instances that are never attached).
@@ -593,12 +561,9 @@ class FlashOperators(OperatorsBase):
     via :meth:`ensure_flash` instead of recomputing it.
     All interpolators of a region share identical axes origin/step, hence coinciding
     supporting points produce bit-identical coordinates and exact keys match.
-    The store is the region's dedicated adaptive C++ interpolator when available
-    (its rows are then also disk-persisted with the OBL cache), and a plain in-memory
-    :class:`DictPointStore` otherwise (itor_mode='static', no compiled template for the
-    flash row width, or an extension predating try_get_point/set_point). Only a
-    standalone instance never wired through Physics has no store at all: there
-    :meth:`ensure_flash` runs the flash directly on every call.
+    When no flash store is attached (a standalone instance never wired to a Physics
+    interpolator), there is no cache at all: :meth:`ensure_flash` runs the flash
+    directly on every call.
 
     It also implements the evaluator interface itself, exposing phase fractions ``nu``,
     phase compositions ``x`` and temperature as operator values, so it can back an
@@ -709,10 +674,10 @@ class FlashOperators(OperatorsBase):
         the container "already holds" the state) makes the hit path correct regardless
         of what ran in between (other supporting points, ``compute_total_enthalpy``, ...).
 
-        Tabulation goes through the attached flash point store (the adaptive C++
-        store, or its :class:`DictPointStore` fallback (see :meth:`attach_point_store`).
-        With no store attached (a standalone instance never wired through Physics)
-        there is no cache and the flash is recomputed on every call.
+        Tabulation goes through the C++ flash point store when one is attached (see
+        :meth:`attach_point_store`); otherwise there is no cache and the flash is
+        recomputed on every call (a standalone instance never wired to a Physics
+        interpolator).
 
         :param state_np: State at the supporting point [pres, comp_0, ..., comp_N-1, (temp), (history)]
         :type state_np: np.ndarray

@@ -16,7 +16,6 @@ from darts.engines import *
 from darts.interpolators import *
 from darts.physics.base.history_extension import HistoryField, HistoryStateSupport
 from darts.physics.base.operator_evaluator import (
-    DictPointStore,
     FlashOperators,
     OperatorsBase,
     PropertyOperators,
@@ -280,10 +279,8 @@ class PhysicsBase:
         self.flash_region = {}
         self.property_containers = {}
 
-        # Flash-result point store backing each region's FlashOperators, populated by
-        # set_interpolators(): a dedicated adaptive C++ interpolator when available,
-        # a DictPointStore fallback otherwise (static mode, missing compiled template,
-        # old extension); None only when the region has no shared FlashOperators.
+        # C++ flash-result point store backing each region's FlashOperators,
+        # populated by set_interpolators(); None where unavailable (see set_interpolators).
         self.flash_operators = {}
         self.flash_itor = {}
         self.reservoir_operators = {}
@@ -738,8 +735,8 @@ class PhysicsBase:
         # interpolator's supporting-point store (attach_point_store), so boundary
         # extrapolation (OperatorsBase.extrapolate) reuses tabulated rows instead
         # of re-evaluating supporting points. attach_point_store itself degrades
-        # to a no-op for interpolators without the single-point API (static mode,
-        # older prebuilt extensions). ParallelEvaluator-wrapped evaluators forward
+        # to a no-op for interpolators without the single-point API (older
+        # prebuilt extensions). ParallelEvaluator-wrapped evaluators forward
         # the attach to the parent-side serial evaluator, which also receives the
         # supporting-point rows worker processes ship back after each batch.
 
@@ -792,11 +789,9 @@ class PhysicsBase:
             # n_ops requests exactly the row width for its flash snapshot (see PropertyContainer.flash_row_width)
             # This interpolator is only ever accessed as a key/row point store, never interpolated through.
             # The container's flash-snapshot methods were already validated in set_operators()
-            # When the C++ store is unavailable (static mode, a missing compiled
-            # (n_dims, n_ops) template for this region, an un-rebuilt extension
-            # predating the try_get_point/set_point bindings), an in-memory
-            # DictPointStore takes its place: same in-run flash reuse between the
-            # region's operator sets, just without the disk persistence.
+            # The only remaining reasons to fall back to evaluating the flash uncached every call are:
+            # - a missing compiled (n_dims, n_ops) template for this region,
+            # - an un-rebuilt extension predating the try_get_point/set_point bindings.
             flash_operators = self.flash_operators[region]
             container = self.property_containers[region]
             if (
@@ -814,32 +809,28 @@ class PhysicsBase:
                 container.flash_row_width() if flash_operators is not None else 0
             )
             if flash_operators is not None and flash_row_width > 0:
-                if itor_mode == 'adaptive':
-                    try:
-                        flash_itor, flash_n_slots = self.create_interpolator(
-                            flash_operators,
-                            n_ops=flash_row_width,
-                            platform=platform,
-                            algorithm=itor_type,
-                            mode=itor_mode,
-                            precision=itor_precision,
-                            timer_name=f'flash {region:d} interpolation',
-                            region=str(region),
-                            is_barycentric=is_barycentric,
-                            include_history=False,
-                        )
-                        if not (
-                            hasattr(flash_itor, 'try_get_point')
-                            and hasattr(flash_itor, 'set_point')
-                        ):
-                            flash_itor = None
-                    except ValueError:
-                        # No compiled OBL interpolator template for this region's
-                        # (n_dims, n_ops) -- fall back to the dict store below.
+                try:
+                    flash_itor, flash_n_slots = self.create_interpolator(
+                        flash_operators,
+                        n_ops=flash_row_width,
+                        platform=platform,
+                        algorithm=itor_type,
+                        precision=itor_precision,
+                        timer_name=f'flash {region:d} interpolation',
+                        region=str(region),
+                        is_barycentric=is_barycentric,
+                        include_history=False,
+                    )
+                    if not (
+                        hasattr(flash_itor, 'try_get_point')
+                        and hasattr(flash_itor, 'set_point')
+                    ):
                         flash_itor = None
-                if flash_itor is None:
-                    flash_itor = DictPointStore()
-                    flash_n_slots = flash_row_width
+                except ValueError:
+                    # No compiled OBL interpolator template for this region's
+                    # (n_dims, n_ops) -- flash results will be recomputed uncached
+                    # (see FlashOperators.ensure_flash).
+                    flash_itor = None
             self.flash_itor[region] = flash_itor
             if flash_operators is not None:
                 flash_operators.attach_point_store(
@@ -1469,8 +1460,8 @@ class PhysicsBase:
 
         # Exposed interpolator name pattern. It carries neither an index-type letter (the
         # index-type template parameter was dropped -- storage is keyed on a multi-index,
-        # so the index type is not part of the class identity) nor an "adaptive" token
-        # (the static interpolators are gone, so it distinguishes nothing):
+        # so the index type is not part of the class identity) nor a mode token (every
+        # interpolator is built the same way, so there is nothing left to distinguish):
         #   {algorithm}_{platform}_interpolator_{precision}_{n_dims}_{n_ops}
         itor_base = f"{algorithm}_{platform}_interpolator"
         itor_name = f"{itor_base}_{precision}_{n_dims:d}_{n_ops:d}"
@@ -1575,11 +1566,11 @@ class PhysicsBase:
                 return name
 
             # Caches created from here on use the simplified identity token, mirroring the
-            # interpolator names (no "adaptive": static interpolation is gone). A cache
-            # written by an earlier version hashes its "_adaptive_" spelling to a different
-            # file name; when such a file is already there it simply stays the cache file
-            # for this run (read from and appended to in place), so no existing cache is
-            # orphaned and none is duplicated on disk.
+            # interpolator names (no mode token left to distinguish). A cache written by
+            # an earlier version hashes its "_adaptive_" spelling to a different file name;
+            # when such a file is already there it simply stays the cache file for this run
+            # (read from and appended to in place), so no existing cache is orphaned and
+            # none is duplicated on disk.
             itor_cache_filename = cache_filename('_')
             if not os.path.exists(itor_cache_filename):
                 legacy_cache_filename = cache_filename('_adaptive_')
