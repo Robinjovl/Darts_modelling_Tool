@@ -89,7 +89,7 @@ class Pipe:
         :type source_sinks: dict
         :param immobile_phase_names: Phase names that are thermodynamic phases but are wanted to have zero DFM
                                      velocity in the pipe, e.g. ["Ice"]. These phases are the immobile phases that
-                                     are not considered as np_sol in the property container.
+                                     are not considered as np_kin in the property container.
         :type immobile_phase_names: list[str] or None
         :param Cmax: A user-specified maximum profile parameter that can be tuned to match the observations and
                      could have a value between 1.0 and 1.5. It is set to:

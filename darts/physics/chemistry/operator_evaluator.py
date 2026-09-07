@@ -31,9 +31,9 @@ class ReservoirOperators(OperatorsSuper):
         """
         # set some properties to -1 to use OperatorsSuper constructor
         # TODO: refactor in future
-        property_container.nc_fl = -1
-        property_container.np_fl = -1
-        property_container.ns = -1
+        property_container.nc_eq = -1
+        property_container.np_eq = -1
+        property_container.nc_kin = -1
         super().__init__(
             property_container=property_container,
             thermal=thermal,

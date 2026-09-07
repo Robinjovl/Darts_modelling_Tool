@@ -17,8 +17,8 @@ class PropertyContainer(BasePropertyContainer):
         components_name,
         Mw,
         stoich_matrix,
-        nc_sol=0,
-        np_sol=0,
+        nc_kin=0,
+        np_kin=0,
         eps_z=1e-11,
         temperature=None,
         fc_mask=None,
@@ -33,10 +33,10 @@ class PropertyContainer(BasePropertyContainer):
         :type Mw: Dict[str, float]
         :param stoich_matrix: Stoichiometric matrix
         :type stoich_matrix: np.ndarray
-        :param nc_sol: Number of components in solid phase
-        :type nc_sol: int
-        :param np_sol: Number of components in pure phase
-        :type np_sol: int
+        :param nc_kin: Number of kinetic (mineral) components
+        :type nc_kin: int
+        :param np_kin: Number of kinetic (mineral) phases
+        :type np_kin: int
         :param eps_z: Minimum composition value
         :type eps_z: float
         :param temperature: Temperature, for isothermal simulation
@@ -54,8 +54,8 @@ class PropertyContainer(BasePropertyContainer):
             phases_name=phase_name,
             components_name=components_name,
             Mw=Mw,
-            nc_sol=nc_sol,
-            np_sol=np_sol,
+            nc_kin=nc_kin,
+            np_kin=np_kin,
             eps_z=eps_z,
             temperature=temperature,
         )

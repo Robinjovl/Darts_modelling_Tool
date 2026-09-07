@@ -72,6 +72,18 @@ class Flash:
     def evaluate_equilibrium(self, pressure, temperature, zc):
         pass
 
+    @staticmethod
+    def _snap_single_phase_composition(nu, x, zc_eq):
+        """If exactly one equilibrium phase is present: pin its composition to ``zc_eq``.
+
+        :param nu: Phase molar fractions (equilibrium phases only), mutated in place.
+        :param x: Phase compositions (equilibrium phases only), mutated in place.
+        :param zc_eq: Normalized equilibrium-component feed composition.
+        """
+        present = [j for j in range(len(nu)) if nu[j] > 0]
+        if len(present) == 1:
+            x[present[0]] = zc_eq
+
     def evaluate(self, pressure, temperature, zc):
         """Evaluate flash, normalizing for kinetic components/phases if configured.
 
@@ -92,7 +104,19 @@ class Flash:
         :return: Number of flash errors encountered (0 on success).
         """
         if self.np_kin == 0:
-            return self.evaluate_equilibrium(pressure, temperature, zc)
+            error_output = self.evaluate_equilibrium(pressure, temperature, zc)
+            self.nu = np.asarray(self.nu)
+            try:
+                self.X = np.asarray(self.X).reshape(self.np_eq, self.nc_eq)
+            except ValueError as e:
+                print(e.args[0], pressure, temperature, zc)
+                error_output += 1
+                # failed flash left X mis-shaped; keep going with NaN phase
+                # compositions so the error is detectable downstream instead of
+                # crashing on the undefined local
+                self.X = np.full((self.np_eq, self.nc_eq), np.nan)
+            self._snap_single_phase_composition(self.nu, self.X, zc)
+            return error_output
 
         # Normalize compositions
         zc_kin = zc[self.nc_eq :]
@@ -112,6 +136,8 @@ class Flash:
             # compositions so the error is detectable downstream instead of
             # crashing on the undefined local
             x = np.full((self.np_eq, self.nc_eq), np.nan)
+
+        self._snap_single_phase_composition(nu, x, zc_norm)
 
         # Re-normalize kinetic phases and append to nu, x -- kinetic phase compositions
         # are written into the regular (equilibrium) component columns via each phase's
@@ -142,6 +168,10 @@ class Flash:
         return error_output
 
     def get_flash_results(self):
+        """Exists to keep the same call pattern as DARTS-flash, whose flash objects
+        return a separate results object from this getter rather than storing
+        nu/X/temperature on self; here evaluate() already sets them on self, so this
+        just returns self."""
         return self
 
 

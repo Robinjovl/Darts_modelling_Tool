@@ -66,7 +66,8 @@ class Model(DartsModel):
         nc_fl = nc-1
         thermal = 0
         ne = nc + thermal
-        Mw = [44.01, (40.078 + 60.008) / 2, 18.015, 100.086, ]
+        # fluid components only (solid composition is mapped to Ions in PropertyContainer)
+        Mw = [44.01, 40.078 + 60.008, 18.015]
 
         stoich = [0, -1, 0, 1]
         init_ions = 0.5
@@ -84,11 +85,18 @@ class Model(DartsModel):
 
         """Physical properties"""
         # Create a property container
-        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, nc_sol=1, np_sol=1,
+        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, nc_kin=1, np_kin=1,
                                                temperature=1., rock_comp=1e-7, eps_z=epsilon)
 
         """ properties correlations """
-        property_container.flash_ev = ConstantK(nc - 1, [10, 1e-12, 1e-1], self.zero)
+        # Fluid flash: constant K for CO2, water and ions
+        flash_ev = ConstantK(nc_fl, [10, 1e-12, 1e-1], self.zero)
+        # Register the CaCO3 kinetic (non-equilibrium) phase
+        flash_ev.set_kinetic_phase(component_map=[1],  # composition of CaCO3 phase directly maps to ions
+                                   composition=[1.0]   # phase composition is pure CaCO3
+                                   )
+        property_container.flash_ev = flash_ev
+
         property_container.density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=100)),
                                               ('wat', DensityBasic(compr=1e-6, dens0=1000)),
                                               ('sol', ConstFunc(2000.))])

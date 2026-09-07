@@ -501,9 +501,13 @@ class OperatorsSuper(OperatorsBase):
             property_container, thermal, extrapolation_flag=extrapolation_flag, dz=dz
         )  # Initialize base-class
 
-        self.nc_fl = property_container.nc_fl
-        self.ns = property_container.ns
-        self.np_fl = property_container.np_fl
+        self.nc_eq = property_container.nc_eq
+        self.nc_kin = property_container.nc_kin
+        self.np_eq = property_container.np_eq
+        self.fluid_phase_idxs = property_container.fluid_phase_idxs
+        self.kin_phase_idxs = property_container.kin_phase_idxs
+        self.solid_comp_idxs = property_container.solid_comp_idxs
+        self.fluid_comp_idxs = property_container.fluid_comp_idxs
 
         # Operator order
         self.ACC_OP = 0  # accumulation operator - ne
@@ -587,35 +591,39 @@ class ReservoirOperators(OperatorsSuper):
         self.property.evaluate(state_np)
         self.compr = self.property.rock_compr_ev.evaluate(state_np[0])
 
+        # All equilibrium phases contribute here, not just flowing ones -- zc[:nc_eq]
+        # spans every equilibrium phase regardless of mobility, so a non-flowing
+        # equilibrium phase (in solid_phase_idxs but not kin_phase_idxs) must still
+        # count toward the equilibrium-component mixture density.
         density_tot = np.sum(
-            self.property.sat[: self.np_fl] * self.property.dens_m[: self.np_fl]
+            self.property.sat[: self.np_eq] * self.property.dens_m[: self.np_eq]
         )
         zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
-        self.phi_s = np.sum(zc[self.nc_fl :])
+        self.phi_s = np.sum(zc[self.nc_eq :])
         self.phi_f = 1.0 - self.phi_s
 
         """ CONSTRUCT OPERATORS HERE """
 
         """ Alpha operator represents accumulation term """
         # fluid mass accumulation: c_r [1/bar] z_c* [-] rho_m^T [kmol/m3]
-        values_np[self.ACC_OP : self.ACC_OP + self.nc_fl] = (
-            self.compr * density_tot * zc[: self.nc_fl]
+        values_np[self.ACC_OP : self.ACC_OP + self.nc_eq] = (
+            self.compr * density_tot * zc[: self.nc_eq]
         )
 
         """ and alpha for mineral components """
         # solid mass accumulation: c_r phi^T z_s* [-] rho_ms [kmol/m3]
-        values_np[self.ACC_OP + self.nc_fl : self.ACC_OP + self.nc_fl + self.ns] = (
+        values_np[self.ACC_OP + self.nc_eq : self.ACC_OP + self.nc_eq + self.nc_kin] = (
             self.compr
-            * self.property.dens_m[self.np_fl : self.np_fl + self.ns]
-            * zc[self.nc_fl : self.nc_fl + self.ns]
+            * self.property.dens_m[self.kin_phase_idxs]
+            * zc[self.nc_eq : self.nc_eq + self.nc_kin]
         )
 
         """ Beta operator """
         for j in self.property.ph:
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             values_np[
-                self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_fl
-            ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
+                self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_eq
+            ] = self.property.x[j][: self.nc_eq] * self.property.dens_m[j]
 
         """ Molar density operator """
         # molar density: rho_mj [kmol/m3]
@@ -629,8 +637,8 @@ class ReservoirOperators(OperatorsSuper):
             self.compr * self.phi_f * self.property.sat[self.property.ph]
         )
         # solid diffusive flux sat: c_r [1/bar] z_s* (1/bar)
-        values_np[self.UPSAT_OP + self.np_fl : self.UPSAT_OP + self.np_fl + self.ns] = (
-            self.compr * zc[self.nc_fl : self.nc_fl + self.ns]
+        values_np[self.UPSAT_OP + self.kin_phase_idxs] = (
+            self.compr * zc[self.nc_eq : self.nc_eq + self.nc_kin]
         )
 
         """ Chi operator for diffusion """
@@ -638,8 +646,8 @@ class ReservoirOperators(OperatorsSuper):
             D = self.property.diffusion_ev[self.property.phases_name[j]].evaluate()
             # fluid diffusive flux: D_cj [m2/day] x_cj [-] (m2/day)
             values_np[
-                self.GRAD_OP + j * self.ne : self.GRAD_OP + j * self.ne + self.nc_fl
-            ] = D[: self.nc_fl] * self.property.x[j][: self.nc_fl]
+                self.GRAD_OP + j * self.ne : self.GRAD_OP + j * self.ne + self.nc_eq
+            ] = D[: self.nc_eq] * self.property.x[j][: self.nc_eq]
 
         """ Delta operator for reaction """
         # fluid/solid mass source: n_c [kmol/m3/day] (kmol/m3/day)
@@ -708,9 +716,9 @@ class ReservoirOperators(OperatorsSuper):
             self.compr
             * self.phi_s
             * np.sum(
-                self.property.sat[self.np_fl : self.np_fl + self.ns]
-                * self.property.dens_m[self.np_fl : self.np_fl + self.ns]
-                * self.property.enthalpy[self.np_fl : self.np_fl + self.ns]
+                self.property.sat[self.kin_phase_idxs]
+                * self.property.dens_m[self.kin_phase_idxs]
+                * self.property.enthalpy[self.kin_phase_idxs]
             )
         )
         # Enthalpy to internal energy conversion
@@ -767,34 +775,38 @@ class WellOperators(OperatorsSuper):
         # Evaluate properties at current state
         self.property.evaluate(state_np)
 
+        # All equilibrium phases contribute here, not just flowing ones -- zc[:nc_eq]
+        # spans every equilibrium phase regardless of mobility, so a non-flowing
+        # equilibrium phase (in solid_phase_idxs but not kin_phase_idxs) must still
+        # count toward the equilibrium-component mixture density.
         density_tot = np.sum(
-            self.property.sat[: self.np_fl] * self.property.dens_m[: self.np_fl]
+            self.property.sat[: self.np_eq] * self.property.dens_m[: self.np_eq]
         )
         zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
-        self.phi_s = np.sum(zc[self.nc_fl :])
+        self.phi_s = np.sum(zc[self.nc_eq :])
         self.phi_f = 1.0 - self.phi_s
 
         """ CONSTRUCT OPERATORS HERE """
 
         """ Alpha operator represents accumulation term """
         # fluid mass accumulation: z_c* [-] rho_m^T [kmol/m3]
-        values_np[self.ACC_OP : self.ACC_OP + self.nc_fl] = (
-            density_tot * zc[: self.nc_fl]
+        values_np[self.ACC_OP : self.ACC_OP + self.nc_eq] = (
+            density_tot * zc[: self.nc_eq]
         )
 
         """ and alpha for mineral components """
         # solid mass accumulation: z_s* [-] rho_ms [kmol/m3]
-        values_np[self.ACC_OP + self.nc_fl : self.ACC_OP + self.nc_fl + self.ns] = (
-            self.property.dens_m[self.np_fl : self.np_fl + self.ns]
-            * zc[self.nc_fl : self.nc_fl + self.ns]
+        values_np[self.ACC_OP + self.nc_eq : self.ACC_OP + self.nc_eq + self.nc_kin] = (
+            self.property.dens_m[self.kin_phase_idxs]
+            * zc[self.nc_eq : self.nc_eq + self.nc_kin]
         )
 
         """ Beta operator """
         for j in self.property.ph:
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             values_np[
-                self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_fl
-            ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
+                self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_eq
+            ] = self.property.x[j][: self.nc_eq] * self.property.dens_m[j]
 
         """ Molar density operator """
 
@@ -861,9 +873,9 @@ class WellOperators(OperatorsSuper):
         )  # fluid enthalpy (kJ/m3)
         # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
         values[self.ACC_OP + self.nc] += self.phi_s * np.sum(
-            self.property.sat[self.np_fl : self.np_fl + self.ns]
-            * self.property.dens_m[self.np_fl : self.np_fl + self.ns]
-            * self.property.enthalpy[self.np_fl : self.np_fl + self.ns]
+            self.property.sat[self.kin_phase_idxs]
+            * self.property.dens_m[self.kin_phase_idxs]
+            * self.property.enthalpy[self.kin_phase_idxs]
         )
 
         # Enthalpy to internal energy conversion
