@@ -505,7 +505,10 @@ class OperatorsSuper(OperatorsBase):
         self.nc_kin = property_container.nc_kin
         self.np_eq = property_container.np_eq
         self.fluid_phase_idxs = property_container.fluid_phase_idxs
+        self.solid_phase_idxs = property_container.solid_phase_idxs
         self.kin_phase_idxs = property_container.kin_phase_idxs
+        self.bulk_kin_phase_idxs = property_container.bulk_kin_phase_idxs
+        self.bulk_kin_comp_idxs = property_container.bulk_kin_comp_idxs
         self.solid_comp_idxs = property_container.solid_comp_idxs
         self.fluid_comp_idxs = property_container.fluid_comp_idxs
 
@@ -599,8 +602,6 @@ class ReservoirOperators(OperatorsSuper):
             self.property.sat[: self.np_eq] * self.property.dens_m[: self.np_eq]
         )
         zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
-        self.phi_s = np.sum(zc[self.nc_eq :])
-        self.phi_f = 1.0 - self.phi_s
 
         """ CONSTRUCT OPERATORS HERE """
 
@@ -612,10 +613,10 @@ class ReservoirOperators(OperatorsSuper):
 
         """ and alpha for mineral components """
         # solid mass accumulation: c_r phi^T z_s* [-] rho_ms [kmol/m3]
-        values_np[self.ACC_OP + self.nc_eq : self.ACC_OP + self.nc_eq + self.nc_kin] = (
+        values_np[self.ACC_OP + self.bulk_kin_comp_idxs] = (
             self.compr
-            * self.property.dens_m[self.kin_phase_idxs]
-            * zc[self.nc_eq : self.nc_eq + self.nc_kin]
+            * self.property.dens_m[self.bulk_kin_phase_idxs]
+            * self.property.sat[self.bulk_kin_phase_idxs]
         )
 
         """ Beta operator """
@@ -634,11 +635,11 @@ class ReservoirOperators(OperatorsSuper):
         """ Gamma operator for diffusion (for heat conduction and molecular diffusion) """
         # fluid diffusive flux sat: c_r [1/bar] phi_f s_j (1/bar)
         values_np[self.UPSAT_OP + self.property.ph] = (
-            self.compr * self.phi_f * self.property.sat[self.property.ph]
+            self.compr * self.property.phi_f * self.property.sat[self.property.ph]
         )
         # solid diffusive flux sat: c_r [1/bar] z_s* (1/bar)
-        values_np[self.UPSAT_OP + self.kin_phase_idxs] = (
-            self.compr * zc[self.nc_eq : self.nc_eq + self.nc_kin]
+        values_np[self.UPSAT_OP + self.bulk_kin_phase_idxs] = (
+            self.compr * self.property.sat[self.bulk_kin_phase_idxs]
         )
 
         """ Chi operator for diffusion """
@@ -664,7 +665,7 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Permeability multiplier k/kmax """
         # E5_> permeability multiplier due to permporo relationship
-        values_np[self.MULT_OP] = self.property.permporo_mult_ev.evaluate(self.phi_f)
+        values_np[self.MULT_OP] = self.property.permporo_mult
 
         """ Lambda operator (phase mobility) """
         # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
@@ -704,7 +705,7 @@ class ReservoirOperators(OperatorsSuper):
         # fluid enthalpy: phi_f[-] s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
         values[self.ACC_OP + self.nc] += (
             self.compr
-            * self.phi_f
+            * self.property.phi_f
             * np.sum(
                 self.property.sat[self.property.ph]
                 * self.property.dens_m[self.property.ph]
@@ -714,11 +715,11 @@ class ReservoirOperators(OperatorsSuper):
         # solid enthalpy: phi_s[-] s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
         values[self.ACC_OP + self.nc] += (
             self.compr
-            * self.phi_s
+            * self.property.phi_s
             * np.sum(
-                self.property.sat[self.kin_phase_idxs]
-                * self.property.dens_m[self.kin_phase_idxs]
-                * self.property.enthalpy[self.kin_phase_idxs]
+                self.property.sat[self.bulk_kin_phase_idxs]
+                * self.property.dens_m[self.bulk_kin_phase_idxs]
+                * self.property.enthalpy[self.bulk_kin_phase_idxs]
             )
         )
         # Enthalpy to internal energy conversion
@@ -783,8 +784,6 @@ class WellOperators(OperatorsSuper):
             self.property.sat[: self.np_eq] * self.property.dens_m[: self.np_eq]
         )
         zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
-        self.phi_s = np.sum(zc[self.nc_eq :])
-        self.phi_f = 1.0 - self.phi_s
 
         """ CONSTRUCT OPERATORS HERE """
 
@@ -796,9 +795,9 @@ class WellOperators(OperatorsSuper):
 
         """ and alpha for mineral components """
         # solid mass accumulation: z_s* [-] rho_ms [kmol/m3]
-        values_np[self.ACC_OP + self.nc_eq : self.ACC_OP + self.nc_eq + self.nc_kin] = (
-            self.property.dens_m[self.kin_phase_idxs]
-            * zc[self.nc_eq : self.nc_eq + self.nc_kin]
+        values_np[self.ACC_OP + self.bulk_kin_comp_idxs] = (
+            self.property.dens_m[self.bulk_kin_phase_idxs]
+            * self.property.sat[self.bulk_kin_phase_idxs]
         )
 
         """ Beta operator """
@@ -866,16 +865,16 @@ class WellOperators(OperatorsSuper):
 
         """ Alpha operator represents accumulation term """
         # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
-        values[self.ACC_OP + self.nc] += self.phi_f * np.sum(
+        values[self.ACC_OP + self.nc] += self.property.phi_f * np.sum(
             self.property.sat[self.property.ph]
             * self.property.dens_m[self.property.ph]
             * self.property.enthalpy[self.property.ph]
         )  # fluid enthalpy (kJ/m3)
         # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
-        values[self.ACC_OP + self.nc] += self.phi_s * np.sum(
-            self.property.sat[self.kin_phase_idxs]
-            * self.property.dens_m[self.kin_phase_idxs]
-            * self.property.enthalpy[self.kin_phase_idxs]
+        values[self.ACC_OP + self.nc] += self.property.phi_s * np.sum(
+            self.property.sat[self.bulk_kin_phase_idxs]
+            * self.property.dens_m[self.bulk_kin_phase_idxs]
+            * self.property.enthalpy[self.bulk_kin_phase_idxs]
         )
 
         # Enthalpy to internal energy conversion

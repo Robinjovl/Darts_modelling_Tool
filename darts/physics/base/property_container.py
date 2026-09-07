@@ -9,6 +9,10 @@ from darts.physics.properties.hysteresis import (
     HistoryAwareCapPressure,
     HistoryAwareRelPerm,
 )
+from darts.physics.properties.kinetic_formulation import (
+    BulkVolumeFractionKinetic,
+    KineticVarFormulation,
+)
 
 
 class PropertyContainer:
@@ -26,6 +30,8 @@ class PropertyContainer:
         np_kin: int = 0,
         solid_phase_idxs: list = None,
         solid_comp_idxs: list = None,
+        kin_formulation: list = None,
+        nc_kin_per_phase: list = None,
         eps_z: float = 1e-11,
         rock_comp: float = 1e-6,
         temperature: float = None,
@@ -62,6 +68,22 @@ class PropertyContainer:
                       be overridden, e.g. if a component is only ever present in
                       non-flowing phases.
         :type solid_comp_idxs: list[int], optional
+        :param kin_formulation: One :class:`~darts.physics.properties.kinetic_formulation.KineticVarFormulation`
+                      per kinetic PHASE (``np_kin`` entries, same order as
+                      Flash.set_kinetic_phase() registration -- a phase's
+                      formulation describes its own total amount, not any one of
+                      the components it may map to), defining what that phase's
+                      raw zc entry/entries represent. Default is ``None`` (every
+                      phase uses :class:`BulkVolumeFractionKinetic` -- the raw zc
+                      entry already is a bulk volume fraction, matching current/legacy
+                      behavior for every model in this repo).
+        :type kin_formulation: list[KineticVarFormulation], optional
+        :param nc_kin_per_phase: Number of kinetic components each kinetic phase maps
+                      to (``np_kin`` entries, same registration order), e.g. ``1`` for
+                      a fixed-composition phase or more for a variable-composition one
+                      spanning several kinetic components. Default is ``None`` (``1``
+                      per phase, matching every kinetic phase in this repo today).
+        :type nc_kin_per_phase: list[int], optional
         :param eps_z: Minimum bound of component mole fractions in OBL grid, default is 1e-11
         :type eps_z: float
         :param rock_comp: Rock compressibility, default is 1e-6
@@ -84,12 +106,91 @@ class PropertyContainer:
         self.nc_eq = self.nc - nc_kin
         self.np_eq = self.nph - np_kin
 
+        # What each kinetic PHASE's raw zc entry/entries represent; see
+        # kinetic_formulation.py. One entry per kinetic phase (not per kinetic
+        # component -- a phase's formulation describes its own amount as a whole,
+        # matching Flash.set_kinetic_phase()'s equally per-phase is_mole_fraction).
+        # Defaults to today's implicit behavior everywhere.
+        self.kin_formulation: list[KineticVarFormulation] = (
+            list(kin_formulation)
+            if kin_formulation is not None
+            else [BulkVolumeFractionKinetic() for _ in range(np_kin)]
+        )
+        assert len(self.kin_formulation) == np_kin, (
+            f"kin_formulation has {len(self.kin_formulation)} entries, expected np_kin={np_kin}"
+        )
+
+        # How many kinetic components each kinetic phase maps to (registration
+        # order, matching Flash.set_kinetic_phase() calls) -- 1 for a fixed-
+        # composition phase, or more for a variable-composition one spanning
+        # several kinetic components. Defaults to 1 per phase, matching every
+        # kinetic phase in this repo today.
+        self.nc_kin_per_phase = (
+            list(nc_kin_per_phase) if nc_kin_per_phase is not None else [1] * np_kin
+        )
+        assert len(self.nc_kin_per_phase) == np_kin, (
+            f"nc_kin_per_phase has {len(self.nc_kin_per_phase)} entries, expected np_kin={np_kin}"
+        )
+        assert sum(self.nc_kin_per_phase) == nc_kin, (
+            f"nc_kin_per_phase sums to {sum(self.nc_kin_per_phase)}, expected nc_kin={nc_kin}"
+        )
+        # Starting offset (into the nc_kin block) of each phase's own kinetic
+        # component(s), derived from nc_kin_per_phase.
+        kin_comp_offsets = np.concatenate(([0], np.cumsum(self.nc_kin_per_phase)[:-1]))
+
         # Kinetic phases (np_kin of them) are, structurally, always the last phases
         # in phases_name/nu/X -- that ordering comes from Flash.set_kinetic_phase(),
         # which appends kinetic phases after the equilibrium ones, and is not a
         # user choice. This index set is used only by the kinetic-phase machinery
         # below (run_flash's reshape, and the zc-driven kinetic loops in evaluate()).
         self.kin_phase_idxs = np.arange(self.np_eq, self.nph)
+
+        # Kinetic phases using BulkVolumeFractionKinetic -- i.e. their raw zc entry
+        # already is a bulk volume fraction -- and the matching kinetic-component
+        # indices (into 0..nc-1) for the ones tied 1:1 to such a phase.
+        #
+        # The "one kinetic component per phase" limitation only applies to these:
+        # the "mineral components" ACC_OP/UPSAT_OP terms (operator_evaluator.py)
+        # write ONE value per component slot from a phase-level dens_m*sat, so a
+        # bulk-volume phase spanning multiple kinetic components has no way to
+        # split that value between them without further per-component data. A
+        # MoleFractionKinetic phase has no such restriction -- its sat is derived
+        # from self.nu, which Flash already aggregates correctly across however
+        # many raw zc entries the phase consumes -- but is also not included here:
+        # its sat is normalized against the combined (fluid + kinetic) total
+        # instead (see MoleFractionKinetic.to_bulk_volume_fraction), a different
+        # basis that isn't meant to be summed together with a bulk-volume-fraction
+        # directly, and its own component-level mass-balance accumulation isn't
+        # implemented yet (operator_evaluator.py asserts on this rather than
+        # silently dropping it).
+        self.bulk_kin_phase_idxs = []
+        self.bulk_kin_comp_idxs = []
+        for j, idx in enumerate(self.kin_phase_idxs):
+            if isinstance(self.kin_formulation[j], BulkVolumeFractionKinetic):
+                assert self.nc_kin_per_phase[j] == 1, (
+                    f"kinetic phase {j} uses BulkVolumeFractionKinetic but maps "
+                    f"{self.nc_kin_per_phase[j]} kinetic components; only a "
+                    "variable-composition phase mapping to exactly one component "
+                    "is supported for this formulation (a MoleFractionKinetic "
+                    "phase has no such restriction)"
+                )
+                self.bulk_kin_phase_idxs.append(idx)
+                self.bulk_kin_comp_idxs.append(self.nc_eq + kin_comp_offsets[j])
+        self.bulk_kin_phase_idxs = np.array(self.bulk_kin_phase_idxs, dtype=int)
+        self.bulk_kin_comp_idxs = np.array(self.bulk_kin_comp_idxs, dtype=int)
+
+        # The "mineral components" ACC_OP/UPSAT_OP terms in operator_evaluator.py
+        # only support BulkVolumeFractionKinetic kinetic components -- a
+        # MoleFractionKinetic component needs a different accumulation mechanism (it
+        # shares the flash's nu-normalized basis with the fluid components, not the
+        # mineral one), not yet implemented. Fail loudly here rather than let
+        # operator_evaluator.py silently give it no accumulation term at all.
+        assert len(self.bulk_kin_comp_idxs) == self.nc_kin, (
+            "ACC_OP/UPSAT_OP mineral-component terms only support "
+            "BulkVolumeFractionKinetic kinetic components currently; "
+            f"{self.nc_kin - len(self.bulk_kin_comp_idxs)} component(s) use a "
+            "different formulation and would get no accumulation term"
+        )
 
         # solid_phase_idxs is a separate, independent concept: which phases don't
         # flow (no kr/mu/pc/diffusion), used to derive fluid_phase_idxs. A
@@ -191,6 +292,15 @@ class PropertyContainer:
         self.dX = []
         self.mass_source = np.zeros(self.nc)
         self.energy_source = 0.0
+        # phi_s/phi_f: fraction of bulk volume not/available to the self.ph-
+        # normalized fluid saturations (see compute_saturation()); permporo_mult:
+        # the resulting permeability-porosity multiplier. All three are rock/
+        # porosity properties computed from phi_f, kept in PropertyContainer
+        # (alongside the kinetic-phase volume accounting phi_s depends on) so
+        # operators just read them rather than repeating that accounting themselves.
+        self.phi_s = 0.0
+        self.phi_f = 1.0
+        self.permporo_mult = 1.0
 
         self.phase_props = [
             self.dens,
@@ -348,15 +458,18 @@ class PropertyContainer:
 
     def compute_saturation(self, state_pt=None, evaluate_PT_from_PHflash: bool = False):
         """
-        Compute phase saturations from molar phase fractions and phase densities.
+        Compute phase saturations -- fluid AND kinetic -- from molar phase fractions
+        and phase densities/molar masses. The only place PropertyContainer converts a
+        kinetic phase's amount (self.nu, from Flash) to a physical volume quantity
+        (via kin_formulation), so no other module (Flash, operator_evaluator) has to.
 
         Two uses:
-        - ``state_pt=None`` (default): used from within :meth:`evaluate`, where flash and
-          phase densities (``self.ph``, ``self.dens_m``) have already been computed for
-          the current state earlier in that call.
+        - ``state_pt=None`` (default): used from within :meth:`evaluate`, where flash,
+          phase densities and equilibrium x/Mw (``self.ph``, ``self.dens_m``, ``self.nu``)
+          have already been computed for the current state earlier in that call.
         - ``state_pt`` given: used for initial-conditions calculation (previously the
           separate ``compute_saturation_full()`` method). Runs the flash for the given
-          PT-state and computes phase densities before computing saturations.
+          PT-state and computes phase densities.
 
         :param state_pt: State (pressure, [temperature], compositions) to flash; if
                           ``None``, uses the already-computed ``self.ph``/``self.dens_m``
@@ -370,17 +483,49 @@ class PropertyContainer:
             self.ph = self.run_flash(
                 pressure, temperature, zc, evaluate_PT=evaluate_PT_from_PHflash
             )
+            self.pressure = pressure
 
             for j in self.ph:
-                M = np.sum(self.Mw * self.x[j][:])
+                M = np.sum(self.Mw * self.x[j][: self.nc_eq])
                 self.dens_m[j] = (
                     self.density_ev[self.phases_name[j]].evaluate(
                         pressure, temperature, self.x[j, :]
                     )
                     / M
                 )
+        else:
+            pressure, temperature = self.pressure, self.temperature
 
-        # Get saturations [volume fraction]
+        if self.np_kin:
+            assert self.flash_handles_kinetics, (
+                "flash_ev must be configured via Flash.set_kinetic_phase() for every "
+                "kinetic phase -- there is no other source for a kinetic phase's "
+                "composition/molar mass."
+            )
+
+        # Kinetic phases: density/molar mass, then saturation (bulk volume fraction)
+        # via kin_formulation -- x[idx, :] is meaningful here (populated via
+        # Flash.set_kinetic_phase's component_map): a kinetic phase is a
+        # stoichiometric compound of its mapped equilibrium components (e.g. CaCO3 =
+        # 1 mole Ca + 1 mole CO3), not a mole-fraction blend of them, so its molar
+        # mass is the unweighted sum of the mapped components' Mw -- read off which
+        # components are mapped from x's nonzero entries (their actual fractions
+        # don't factor in). self.nu[idx] (not the raw zc entry/entries) is passed as
+        # this phase's amount: Flash already aggregates it correctly regardless of
+        # how many raw zc entries the phase consumes (1 for fixed composition, more
+        # for variable), so kin_formulation doesn't need to know that count either.
+        for idx in self.kin_phase_idxs:
+            j = idx - self.np_eq
+            self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
+                pressure, temperature
+            )
+            M = np.sum(self.Mw[self.x[idx, : self.nc_eq] > 0])
+            self.dens_m[idx] = self.dens[idx] / M
+            self.sat[idx] = self.kin_formulation[j].to_bulk_volume_fraction(
+                self.nu[idx], self.dens_m[idx], self.nu, self.dens_m
+            )
+
+        # Get fluid saturations [fraction of pore space]
         vol = [self.nu[j] / self.dens_m[j] for j in self.ph]
         self.sat[self.ph] = vol / np.sum(vol)
 
@@ -533,6 +678,16 @@ class PropertyContainer:
 
         self.compute_saturation()
 
+        # phi_s: fraction of bulk volume NOT covered by the self.ph-normalized fluid
+        # saturations just computed above -- sums only over BulkVolumeFractionKinetic
+        # phases, since a MoleFractionKinetic phase's sat is normalized against the
+        # combined (fluid + kinetic) total instead (see
+        # MoleFractionKinetic.to_bulk_volume_fraction) and so isn't on the same basis
+        # as a simple additive bulk-volume-fraction sum here.
+        self.phi_s = np.sum(self.sat[self.bulk_kin_phase_idxs])
+        self.phi_f = 1.0 - self.phi_s
+        self.permporo_mult = self.permporo_mult_ev.evaluate(self.phi_f)
+
         # Extract every appended history variable by label, preserving the physics-declared
         # order. history_labels is populated by PhysicsBase.add_property_region; when it's
         # empty but n_history > 0 we fall back to the legacy single-trailing-scalar layout and
@@ -573,27 +728,6 @@ class PropertyContainer:
                 self.kr[j] = kr_ev.evaluate(self.sat[j], **self.history_values)
             else:
                 self.kr[j] = kr_ev.evaluate(self.sat[j])
-
-        if self.np_kin:
-            assert self.flash_handles_kinetics, (
-                "flash_ev must be configured via Flash.set_kinetic_phase() for every "
-                "kinetic phase -- there is no other source for a kinetic phase's "
-                "composition/molar mass."
-            )
-        for idx in self.kin_phase_idxs:
-            j = idx - self.np_eq
-            self.sat[idx] = zc[self.nc_eq + j]
-            self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
-                self.pressure, self.temperature
-            )
-            # x[idx, :] is meaningful here (populated via Flash.set_kinetic_phase's
-            # component_map): a kinetic phase is a stoichiometric compound of its
-            # mapped equilibrium components (e.g. CaCO3 = 1 mole Ca + 1 mole CO3), not
-            # a mole-fraction blend of them, so its molar mass is the unweighted sum
-            # of the mapped components' Mw -- read off which components are mapped
-            # from x's nonzero entries (their actual fractions don't factor in).
-            M = np.sum(self.Mw[self.x[idx, : self.nc_eq] > 0])
-            self.dens_m[idx] = self.dens[idx] / M
 
         self.mass_source = self.evaluate_mass_source(
             self.pressure, self.temperature, zc
