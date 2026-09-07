@@ -1,7 +1,11 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
+#ifdef OPENDARTS_LINEAR_SOLVERS
+#include "timer_node.hpp"
+#else
 #include "timer_node.h"
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #include <fstream>
 #include <vector>
@@ -76,6 +80,10 @@ public:
     CPU_SAMG,
     CPU_GMRES_ILU0,
     CPU_SUPERLU,
+    CPU_GMRES_MGR, // keep ALL CPU methods before the GPU block: several engines
+                   // classify a solver as GPU via `linear_type >= GPU_GMRES_CPR_AMG`
+                   // (device Jacobian copies etc.), so a CPU method placed after the
+                   // boundary would be silently mis-bucketed as GPU.
     GPU_GMRES_CPR_AMG, // <<<---- Should be the first GPU method for correct Jacobian treatment
     GPU_GMRES_ILU0,
     GPU_GMRES_CPR_AIPS,
@@ -84,9 +92,9 @@ public:
     GPU_GMRES_CPR_AMGX_AMGX,
     GPU_GMRES_AMGX,
     GPU_AMGX,
-    GPU_GMRES_CPR_NF,
     GPU_BICGSTAB_CPR_AMGX,
-    GPU_CUSOLVER
+    GPU_CUSOLVER,
+    GPU_CUDSS // cuDSS sparse direct solver (GPU build with WITH_CUDSS)
   };
 
   enum nonlinear_norm_t
@@ -107,10 +115,14 @@ public:
 #else
     linear_type = CPU_GMRES_CPR_AMG;
 #endif
+    linear_print_level = 0;
 
     enable_permporo = false;
     sim_eps = 1e-12;
     assembly_kernel = 0;
+    schur_elim_count = 0;
+    schur_elim_rows.clear();
+    schur_elim_cols.clear();
 
     finalize_mpi = 1;
 
@@ -123,13 +135,22 @@ public:
   bool enable_permporo;        // flag enabling transmissibility multiplier in assembly
   value_t sim_eps;             // offset from axes that solution should remain inside
   int assembly_kernel;         // select non-default assebly kernel (for GPU)
+  int schur_elim_count;     // K = number of cell-local (diagonal-block-only) equation/
+                               // unknown pairs to Schur-eliminate before preconditioning
+                               // (0 = off). Consumed by the GPU engine solver factory; CPU
+                               // chains use SchurEliminationSpec instead. The eliminated
+                               // (row, column) pairs are given explicitly by schur_elim_rows/
+                               // schur_elim_cols (each of length K); no built-in row/column
+                               // convention. (In a chemistry model these are the mineral
+                               // balances, but the transform is physics-agnostic.)
+  std::vector<int> schur_elim_rows;  // preferred eliminated equation rows (length K)
+  std::vector<int> schur_elim_cols;  // eliminated unknown columns (length K)
 
   linear_solver_t linear_type;          // Linear solver type
+  int linear_print_level;               // Linear solver verbosity (HYPRE print level)
 
   std::vector<value_t> linear_params;
 
-  // for NF solver
-  std::vector<int> global_actnum;
 
   index_t finalize_mpi;         // flag to run MPI_Finalize in relevant solvers (required for multiple model run)
 

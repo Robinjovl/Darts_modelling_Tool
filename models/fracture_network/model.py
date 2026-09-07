@@ -1,6 +1,6 @@
 from darts.engines import value_vector, sim_params, well_control_iface
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.iapws_physics import IAPWSPhysics
 from darts.physics.base.property_container import PropertyContainer
@@ -20,7 +20,7 @@ def fmt(x):
 
 # Here the Model class is defined (child-class from DartsModel) in which most of the data and properties for the
 # simulation are defined, e.g. for the reservoir/physics/sim_parameters/etc.
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, idata : InputData):
         # base class constructor
         super().__init__()
@@ -114,13 +114,8 @@ class Model(CICDModel):
                                t_origin=self.idata.obl.t_origin,
                                is_ph=False)
 
-        # Some tuning parameters:
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-4,
-                                           chop=ChopSpec(mode='local', factor=0.2))  # nonlinear update chopping strategy
-        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_linear=1e-5)
-        # direct linear solver
-        #if int(input_data['overburden_layers']) + int(input_data['underburden_layers']) > 0:
-        #    self.params.linear_type = sim_params.cpu_superlu
+        # Time-stepping / Newton / linear-solver settings live in set_solver(),
+        # called from the base reset() (see DartsModel.set_solver).
 
         # End timer for model initialization:
         self.timer.node["initialization"].stop()
@@ -188,6 +183,42 @@ class Model(CICDModel):
         pc.output_props = {'temperature': lambda: pc.temperature}
 
         return pc
+
+    def set_solver(self):
+        from darts.linear_solvers import GPUCuSolverSpec, SuperLUSolverSpec
+        # Time-stepping.
+        self.ts_control.dt_first = 1e-6
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 1.5
+        self.ts_control.dt_max = 60
+        self.ts_control.runtime = 1000
+
+        # Linear solver: this is a Geothermal DFM (discrete fracture matrix) model.
+        # The default FGMRES+CPR (and MGR) stall on its wide, strongly-coupled
+        # fracture-matrix Jacobian -- iterative defaults hang on it (the former
+        # 2h CI timeouts on the open-source CPU *and* the GPU jobs, where the
+        # CPU-only SuperLU spec was silently ignored). A direct solve is robust
+        # and fast here (the mesh is small), so pick the platform's direct
+        # solver: cpu -> SuperLU (registry); gpu (open-source) -> in-tree
+        # cuSOLVER QR (gpu_cusolver; CuDSSSolverSpec is the faster alternative
+        # on WITH_CUDSS builds). Proprietary builds ignore CPU specs and lack
+        # an in-tree GPU direct solver -> keep their engine-factory default.
+        # self.linear_solver.spec is only assigned when a spec is actually picked
+        # below -- left None otherwise, so set_solver() falls through to the
+        # platform default, same as before.
+        if getattr(self, "platform", "cpu") == "gpu":
+            if self.linear_solver.open_source_solvers_available():
+                self.linear_solver.spec = GPUCuSolverSpec()
+        else:
+            self.linear_solver.spec = SuperLUSolverSpec()
+        super().set_solver()  # platform default when no spec was picked above
+        # Newton tuning -- MUST come after super().set_solver(): the base call is what
+        # materializes the default NewtonSolver (dereferencing nonlinear_solver.spec
+        # before it crashed every CI job with 'NoneType' object has no attribute 'spec').
+        self.nonlinear_solver.spec.tolerance = 1e-4  # historic tol_newton (dropped in a merge resolution)
+        self.nonlinear_solver.spec.chop.mode = 'local'  # chopping strategy
+        self.nonlinear_solver.spec.chop.factor = 0.2    # chop criterion
+        self.linear_solver.spec.tolerance = 1e-5
 
     def print_range(self, time, part='cells'):
         depth = np.array(self.reservoir.mesh.depth, copy=True)

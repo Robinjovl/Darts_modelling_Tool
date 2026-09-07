@@ -30,9 +30,9 @@ def run(discr_type, mesh_file, test=False):
     # num_report_steps = int(5.0 / size_report_step)
     max_dt = 2.0
     m.max_dt = max_dt
-    m.data_ts.dt_max = max_dt
+    m.ts_control.dt_max = max_dt
     first_ts = 1.e-3
-    m.data_ts.dt_first = first_ts
+    m.ts_control.dt_first = first_ts
 
     # Properties for writing to vtk format:
     # output_directory = 'trial_dir'  # Specify output directory here

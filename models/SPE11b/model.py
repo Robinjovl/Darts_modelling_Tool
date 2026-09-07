@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from darts.models.darts_model import DartsModel
 from darts.nonlinear_solvers import Norm, NewtonSolver, ChopSpec
 from darts.engines import value_vector
-from darts.input.input_data import linear_solver_types
 from math import fabs
 try:
     from darts.engines import copy_data_to_device, copy_data_to_host, allocate_device_data
@@ -110,12 +109,12 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=12,
-                                           chop=ChopSpec(mode='local', factor=0.01),
-                                           norm=Norm.L2)  # Norm.LINF if you use m.set_rhs() for injection
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4,
-                            it_linear=50)
-        # self.data_ts.eta = np.ones(self.physics.n_vars)
+        self.ts_control.dt_first = 1e-6
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 365
+        self.ts_control.runtime = 1000
+        # self.ts_control.eta = np.ones(self.physics.n_vars)
 
         """ Define reservoir """
         self.set_reservoir()
@@ -268,6 +267,15 @@ class Model(DartsModel):
             # self.reservoir.physical_tags['matrix'] = [1, 2, 3, 4, 5, 6, 7]
             # # self.set_boundary_conditions_11c()
 
+
+    def set_solver(self):
+        # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=12,
+            chop=ChopSpec(mode='local', factor=0.01),
+            norm=Norm.L2)  # Norm.LINF if you use m.set_rhs() for injection
+        self.linear_solver.spec.tolerance = 1e-4
+        self.linear_solver.spec.max_iterations = 50
 
     def set_wells(self):
         self.reservoir.set_wells(False)
@@ -798,9 +806,6 @@ class Model(DartsModel):
             # apply RHS flux
             self.apply_rhs_flux(dt, t)
 
-            if self.has_dfm_well:
-                self.apply_dfm_well_lateral_heat_flux(dt, t)
-
             if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
@@ -851,29 +856,17 @@ class Model(DartsModel):
                 if i > 0:  # min_i_newton
                     break
 
-            if isinstance(self.data_ts.linear_type, linear_solver_types):
-                # solvers via Python interface
-                if self.data_ts.linear_type in [
-                    linear_solver_types.CPU_PETSC_CPR,
-                    linear_solver_types.CPU_PETSC_FS,
-                ]:
-                    self.petsc_solve_linear_equation()
-                elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                    self.pardiso_solve_linear_equation()
-                else:
-                    raise Exception(
-                        "Unknown linear solver type", self.data_ts.linear_type
-                    )
-            else:
-                # compile-time C++ linear solvers
-                r_code = self.physics.engine.solve_linear_equation()
-                status.linear_solver_rc = r_code
-                if r_code != 0:
-                    # failed linear solve: do NOT apply a stale update; the
-                    # post-loop verdict reads status.linear_solver_rc -> fail
-                    self._linear_solver_rc_last = r_code
-                    break
-                status.n_linear += self.physics.engine.get_last_linear_iters()
+            # Unified spec-driven dispatch (!280): routes to the Python-resident
+            # solver (PETSc / Pardiso spec) or the C++ engine solver and returns
+            # the (rc, n_iters, residual) contract of !327.
+            r_code, n_lin, _ = self.linear_solver._solve_linear_equation()
+            status.linear_solver_rc = r_code
+            if r_code != 0:
+                # failed linear solve: do NOT apply a stale update; the
+                # post-loop verdict reads status.linear_solver_rc -> fail
+                self._linear_solver_rc_last = r_code
+                break
+            status.n_linear += n_lin
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()
@@ -888,9 +881,9 @@ class Model(DartsModel):
         converged = self.physics.engine.post_newtonloop(dt, t, converged)
         solver.stats.update(converged, status)
 
-        self.time.append(t)
-        self.n_newton_iters.append(status.n_newton)
-        self.time_step_size.append(dt)
+        self.ts_control.time.append(t)
+        solver.n_newton_iters.append(status.n_newton)
+        self.ts_control.time_step_size.append(dt)
 
         self.timer.node["simulation"].stop()
 

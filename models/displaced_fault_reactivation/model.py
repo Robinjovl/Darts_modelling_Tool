@@ -66,6 +66,8 @@ class Model(THMCModel):
         self.depletion_value = config['depletion']['value']
         self.friction_law = config['friction_law']
         self.mesh_file = config['mesh_file']
+        # enable Pardiso (pypardiso / Intel MKL) direct linear solver if it was set in config.
+        self.use_pardiso = config.get('use_pardiso', False)
         if 'cache_discretizer' in config:
             self.cache_discretizer = config['cache_discretizer']
         else:
@@ -129,11 +131,65 @@ class Model(THMCModel):
                 if cell.centroid[1] >= -150.0 and cell.centroid[1] <= 150.0:
                     X[4 * cell_id + 3] += p(cell.centroid[0])
                     Xn[4 * cell_id + 3] += p(cell.centroid[0])
-    def set_solver_params(self):
-        self.set_solver()
+    def set_solver(self):
+        # Open-source FS-CPR by default (pm_discretizer / engine_pm_cpu). The
+        # spec-built solver is injected via set_linear_solver and now genuinely
+        # drives the open-source solve (engine_pm_cpu prefers the external
+        # solver over its ls_params bank); ls_params remains the
+        # proprietary-build / factory path. Mid-run changes (e.g. the dynamic
+        # rupture stage in main.py) go through model.linear_solver.update_solver().
+        from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        mesh = self.reservoir.mesh
+        n_res_blks = mesh.n_res_blocks
+        n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
+        n_fracs_mesh = getattr(self.reservoir, 'n_fracs', 0)
+        # engine_pm_cpu variable layout: displacement first (U_VAR=0), pressure at
+        # ND=3, no composition variable (Z_VAR=255). Without these overrides the
+        # FS-CPR splits the engine_super_elastic_cpu default layout (P_VAR=0) and
+        # mis-identifies the pressure/displacement subsystems -- a wrong
+        # preconditioner that stalls convergence (and hangs when GMRES can't
+        # compensate). Read the indices off the engine so this stays correct if
+        # the conventions change. NE = N_VARS - ND = NC for the isothermal cases.
+        engine = self.physics.engine
+        fs_cpr = FSCPRSolverSpec(
+            force_amg_asymmetric=True,
+            n_res=n_matrix + n_fracs_mesh,
+            n_fracs=0,
+            n_wells=mesh.n_blocks - n_res_blks,
+            p_var=engine.P_VAR,
+            z_var=engine.Z_VAR,
+            u_var=engine.U_VAR,
+            nc=engine.N_VARS - 3,
+        )
+        # 1e-10 / 500, not the sim_params defaults (1e-5 / 50). Until !280 this model
+        # ran a *direct* solve (ls_params[0] = cpu_superlu), and ref/*/solution_fault1.vtu
+        # was generated with it; main.py compares the fault data at rtol 1e-6 / atol 1e-8.
+        # The slip-weakening case amplifies the linear residual: mu depends on the slip g,
+        # so the momentum-residual floor propagates straight into mu and f_local. At
+        # 1e-5 / 50 GMRES+FS-CPR leaves ||ru|| ~ 4e-9 (vs ~2e-14 for the direct solve),
+        # which moves mu by ~1.3e-6 and f_local by ~5e-4 -- over the comparison tolerance.
+        # At 1e-10 / 500 the Newton path matches the direct solve exactly (NI = 5, same
+        # residuals to ~10 digits) and every fault field is within isclose(1e-6, 1e-8) of
+        # it, at ~20% more wall time. The static case is insensitive (constant mu) and
+        # passes either way. main.py tightens this further (1e-12 / 500) for the dynamic
+        # rupture stage via update_solver().
+        # Optional Pardiso (pypardiso / Intel MKL) sparse direct solve,
+        # requires the optional pypardiso dependency (install darts with [linear_solvers])
+        if self.use_pardiso:
+            from darts.linear_solvers.specs import PardisoSolverSpec
+            self.linear_solver.spec = PardisoSolverSpec()
+        else:
+            self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-10, max_iterations=500, restart=50)
+        self.solver_phase = 'static'  # main.py flips to 'dynamic' at rupture
+
+        # Mechanics model: the LINEAR solver comes from params.linear_type /
+        # engine.ls_params (THMCModel.linear_solver_from_engine_factory), so the
+        # flow CPR/AMG default is not applied; the NONLINEAR solver is configured
+        # on its spec below. Called from the base reset(), before engine.init.
+        super().set_solver()
         self.nonlinear_solver.spec.tolerance = 1e-6 # Tolerance of newton residual norm ||residual||<tol_newt
-        self.nonlinear_solver.spec.chop.mode = 'local'  # nonlinear update chopping strategy
-        self.nonlinear_solver.spec.chop.factor = 0.2
+        self.nonlinear_solver.spec.chop.mode = 'local'  # Type of newton method (related to chopping strategy?)
+        self.nonlinear_solver.spec.chop.factor = 0.2  # Probably chop-criteria(?)
         if self.friction_law == 'rsf':
             self.nonlinear_solver.spec.max_iterations = 20
         else:
@@ -144,21 +200,42 @@ class Model(THMCModel):
         self.nonlinear_solver = DisplacedFaultNewtonSolver(self.nonlinear_solver.spec)
         self.nonlinear_solver.bind(self)
 
-        ls1 = linear_solver_params()
-        ls1.linear_type = sim_params.cpu_superlu
-        self.physics.engine.ls_params.append(ls1)
+        # Idempotent: ls_params is appended once even though set_solver() runs on every reset().
+        if len(self.physics.engine.ls_params) == 0:
+            ls1 = linear_solver_params()
+            # Placeholder in the open-source build (the FS-CPR spec drives the solve,
+            # and the neutralised cpu_gmres_fs_cpr factory path crashes there); real
+            # selector (bos_fs_cpr) in the proprietary build.
+            ls1.linear_type = (sim_params.cpu_superlu if self.linear_solver.open_source_solvers_available()
+                               else sim_params.cpu_gmres_fs_cpr)
+            self.physics.engine.ls_params.append(ls1)
 
-        # for iterative preconditioner need to repeat AMG setup as Juu is changing
-        if ls1.linear_type == sim_params.cpu_gmres_fs_cpr:
-            m.physics.engine.update_uu_jacobian()
+            # for iterative preconditioner need to repeat AMG setup as Juu is changing
+            if ls1.linear_type == sim_params.cpu_gmres_fs_cpr:
+                self.physics.engine.update_uu_jacobian()
 
-        # different solver for dynamic simulation
-        if self.enable_dynamic_mode:
-            ls2 = linear_solver_params()
-            ls2.linear_type = sim_params.cpu_gmres_ilu0
-            ls2.tolerance_linear = 1.e-12
-            ls2.max_i_linear = 500
-            self.physics.engine.ls_params.append(ls2)
+            # different solver for dynamic simulation -- works with BOS-solvers build only.
+            # There, main.py switches the engine-side solver at rupture
+            # (active_linear_solver_id = 1). The open-source build reaches the same
+            # dynamic-stage settings by reconfiguring the injected GMRES+FS-CPR stack in
+            # place (main.py: update_solver(tolerance=1e-12, max_iterations=500)) and never
+            # selects ls_params[1], so it must not append this entry: engine_pm_cpu keeps
+            # the cpu_gmres_ilu0 case behind #ifndef OPENDARTS_LINEAR_SOLVERS, so the entry
+            # would match no case, nothing would be appended to the engine's linear_solvers
+            # and engine.init() -- which indexes that by the ls_params index --
+            # would read past its end. There is currently no standalone open-source ILU(0)
+            # to name here either: the in-tree block ILU(0) is reachable only as the CPR
+            # stage-2 smoother, not as a registry solver.
+            if self.enable_dynamic_mode and not self.open_source_solvers_available():
+                ls2 = linear_solver_params()
+                # Same placeholder rule as ls1: cpu_gmres_ilu0 is compiled out of
+                # the open-source engine factory, which would now raise instead of
+                # silently desyncing ls_params from the solver bank.
+                ls2.linear_type = (sim_params.cpu_superlu if self.open_source_solvers_available()
+                                   else sim_params.cpu_gmres_ilu0)
+                ls2.tolerance_linear = 1.e-12
+                ls2.max_i_linear = 500
+                self.physics.engine.ls_params.append(ls2)
     def set_wells(self):
         if self.depletion_mode == 'well':
             well_index = 1.E+10

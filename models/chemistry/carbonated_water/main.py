@@ -1,5 +1,5 @@
 import os, signal, sys
-os.environ["OMP_NUM_THREADS"] = "4"
+os.environ["OMP_NUM_THREADS"] = "16"
 import shutil
 from model import Model
 from darts.engines import redirect_darts_output
@@ -50,6 +50,14 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
     # Initialize model
     m.init(itor_type=interpolator, platform=platform, n_solid=len(minerals),
            parallel_evaluation=parallel_evaluation, n_workers=n_workers)
+
+    # Persistent OBL-axis box (MR327-equivalent correct_obl_axes): every Newton
+    # update is clamped into the parametrization region on CPU and GPU, which
+    # prevents excursions that trigger PHREEQC dilution fallbacks, wasted
+    # iterations and unbounded adaptive-cache growth.
+    from darts.engines import value_vector
+    m.physics.engine.correct_obl_axes(value_vector(list(map(float, m.axes_min))),
+                                      value_vector(list(map(float, m.axes_max))))
     m.set_output(output_folder=output_folder, sol_filename=f'nx{nx}.h5')
 
     # Initialization check
@@ -93,22 +101,26 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             init_days = 20.0
             num_time_iterations = 7
         else:
-            init_days = 150.0
-            num_time_iterations = 3
+            init_days = 365.0
+            num_time_iterations = 7
 
         rate = m.inj_rate
         m.inj_rate = 0.0
-        m.data_ts.dt_max = 0.05
+
+        m.ts_control.dt_max = 5.0
+        _n_good_ts_saved = m.n_good_ts
+        m.n_good_ts = 10**18      # disable dt_max growth -> hard 5-day ceiling during init
         m.run(days=init_days)
+        m.n_good_ts = _n_good_ts_saved
 
         # injection
         m.inj_rate = rate
         m.physics.engine.t = 0.0
         ith_step = 0
-        m.data_ts.dt_max = max_ts
+        m.ts_control.dt_max = max_ts
         if domain == '1D':
-            m.data_ts.dt_first = 1.e-6
-            m.data_ts.dt_mult = 1.5
+            m.ts_control.dt_first = 1.e-6
+            m.ts_control.dt_mult = 1.5
             fig_paths = []
             fig_paths.append(plot(m))
             m.run(days=0.002, restart_dt=max_ts)
@@ -119,21 +131,21 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             fig_paths.append(plot(m))
             m.run(days=0.02, restart_dt=max_ts)
             fig_paths.append(plot(m))
-            # m.data_ts.dt_max *= 3
-            m.data_ts.first_ts = m.data_ts.dt_max
+            # m.ts_control.dt_max *= 3
+            m.ts_control.first_ts = m.ts_control.dt_max
             m.run(days=0.1, restart_dt=max_ts)
-            # m.data_ts.dt_max *= 4
+            # m.ts_control.dt_max *= 4
             m.run(days=0.86)
             fig_paths.append(plot(m))
-            # m.data_ts.dt_max *= 5
-            m.data_ts.first_ts = m.data_ts.dt_max
+            # m.ts_control.dt_max *= 5
+            m.ts_control.first_ts = m.ts_control.dt_max
 
             for i in range(num_time_iterations):
                 dt = 2.0
                 m.run(days=dt)
                 if i < 1:
-                    # m.data_ts.dt_max *= 1.5
-                    m.data_ts.first_ts = m.data_ts.dt_max
+                    # m.ts_control.dt_max *= 1.5
+                    m.ts_control.first_ts = m.ts_control.dt_max
                 fig_paths.append(plot(m))
 
             # if output:
@@ -145,13 +157,13 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
             if report_timesteps is None:
                 # (upper_cum, n_steps) — extra refinement applied only in [1e-2, 1e-1]
                 segments = [
-                    (0.001, 2),
+                    (0.001, 1),
                     (0.005, 2),
                     (0.010, 2),
-                    (0.030, 8),   # refined (was 4)
-                    (0.050, 4),   # refined (was 2)
-                    (0.100, 4),   # refined (was 2)
-                    (0.300, 4),
+                    (0.030, 2),
+                    (0.050, 2),
+                    (0.100, 2),
+                    (0.300, 2),
                     (0.500, 2),
                 ]
                 base = build_report_timesteps(segments)
@@ -170,14 +182,14 @@ def run_simulation(domain: str, max_ts: float, nx: int = 100, mesh_filename: str
                 dt_max_bump = 1.0
                 default_run = False
 
-            m.data_ts.dt_first = m.prev_dt = min(1.e-6 * 1e-3 / m.inj_rate, m.data_ts.dt_max)
-            m.data_ts.dt_mult = 1.5
+            m.ts_control.dt_first = m.prev_dt = min(1.e-6 * 1e-3 / m.inj_rate, m.ts_control.dt_max)
+            m.ts_control.dt_mult = 1.5
             ts_after_bt = 0
             max_snapshots_after_bt = 5
             for i, rts in enumerate(report_timesteps):
                 if i == n_fine and dt_max_bump != 1.0:
-                    m.data_ts.dt_max *= dt_max_bump
-                    m.data_ts.first_ts = m.data_ts.dt_max
+                    m.ts_control.dt_max *= dt_max_bump
+                    m.ts_control.first_ts = m.ts_control.dt_max
                 m.run(days=rts, restart_dt=m.prev_dt)
                 plot(m=m, ith_step=ith_step)
                 ith_step += 1
@@ -227,93 +239,140 @@ def run_test(args: dict, platform='cpu'):
     run_simulation(platform=platform, **args)
     return 0, 0.0
 
-if __name__ == '__main__':
-    # 1D
-    minerals = ['calcite', 'dolomite']#, 'magnesite']
-    nx = 200
-    n_obl_mult = 1
-    co2_injection = 0.1
+
+def run_1d(output: bool=False, n_obl_mult: int=1, platform: str='cpu',
+            output_folder: str=None, database: str='phreeqc', flash: str='phreeqc',
+            minerals: list=['calcite'], nx: int=200, two_phase_flag: bool=False,
+            inj_rate: float=None):
+    # inj_rate default None -> Model.set_physics computes the current 1D rate
+    # self.volume * 24 == 0.1 * 0.007 * 0.008415 * 24 ~= 1.4137e-4 m3/day
+    # (see model.py:248). Pass a float to override.
+
     max_ts = 1.e-3
-    flash='phreeqc' # 'phreeqc' # 'reaktoro'
-    database = 'phreeqc' # 'phreeqc' # 'pitzer' # 'supcrtbl'
-    # of = f'output_1D_{nx}_' + '_'.join(minerals) + f'_{n_obl_mult}_{co2_injection}_ts_{max_ts}_{flash}_{database}'
 
-    # phreeqc
-    run_simulation(domain='1D', nx=nx, perm_poro='power_8', n_obl_mult=n_obl_mult, minerals=minerals,
-                co2_injection=co2_injection, max_ts=max_ts, output=False, flash=flash, database=database,
-                parallel_evaluation=True, n_workers=8)
+    if two_phase_flag:
+        # increase CO2 content in injected water
+        co2_injection = 1.1
+    else:
+        co2_injection = 0.1
 
-    # reaktoro
-    # minerals = ['calcite'] # , 'dolomite', 'magnesite']
-    # flash='reaktoro'
-    # database='phreeqc'
-    # n_obl_mult = 1
-    # run_simulation(domain='2D', nx=10, perm_poro='power_8', n_obl_mult=n_obl_mult, minerals=minerals,
-    #             co2_injection=1.0, max_ts=max_ts, flash=flash, output=False, database=database)
+    # use supcrtbl/reaktoro database/solver for 3-mineral carbonate system.
+    if set(minerals) == {'calcite', 'dolomite', 'magnesite'}:
+        database = 'supcrtbl'
+        flash = 'reaktoro'
+        n_obl_mult = 9
 
-    # 2D
-    # run_simulation(domain='2D', nx=10, perm_poro='power_8', max_ts=1.5e-3)
-    n_obl_mult = 9
-    inj_rate = 1e-3
-    nx = 50
-    minerals = ['calcite']#, 'dolomite', 'magnesite']
+    if output_folder is None:
+        output_folder = f'output_1D_{nx}_' + '_'.join(minerals) + f'_{n_obl_mult}_{co2_injection}_ts_{max_ts}_{flash}_{database}'
+
+    run_simulation(domain='1D', nx=nx, perm_poro='power_8', n_obl_mult=n_obl_mult,
+                minerals=minerals, co2_injection=co2_injection, max_ts=max_ts,
+                output=output, output_folder=output_folder, flash=flash, database=database,
+                inj_rate=inj_rate,
+                parallel_evaluation=True, platform=platform, n_workers=32)
+
+def run_2d(output: bool=False, n_obl_mult: int=6, platform: str='cpu',
+            output_folder: str=None, database: str='phreeqc', flash: str='phreeqc',
+            minerals: list=['calcite'], two_phase_flag: bool=False,
+            inj_rate: float=None, nx: int=25, poro_filename: str='input/spherical_25_2.txt'):
+
+    if inj_rate is None:
+        inj_rate = 1e-3
     max_ts = 6.e-5 * 1e-4 / inj_rate
     max_ts = 1.e-6
-    co2_injection = 0.1
-    # run_simulation(domain='2D', nx=nx, output=True, max_ts=max_ts,
-    #                 n_obl_mult=n_obl_mult,
-    #                 interpolator='multilinear',
-    #                 output_folder=f'output_2D_{nx}_' + '_'.join(minerals) + f'_{n_obl_mult}_{co2_injection}_ts_{max_ts}',
-    #                 #mesh_filename='input/wedge.msh',
-    #                 poro_filename='input/spherical_50_5.txt', #'input/wedge_0.009.txt',#'old_calculations/calcite_2D_50_100/spherical_50_5_1/porosity_8.txt',
-    #                 minerals=minerals,
-    #                 h2o_injection=1.1,
-    #                 co2_injection=co2_injection,
-    #                 #inj_rate=inj_rate,
-    #                 perm_poro='power_8',
-    #                 platform='cpu',
-    #                 ni_dt_increase_cutoff=4,
-    #                 ni_dt_decrease_cutoff=6,
-    #                 n_good_ts=15,
-    #                 report_timesteps=6 * [5e-6])
 
+    if two_phase_flag:
+        # increase CO2 content in injected water
+        co2_injection = 1.1
+        n_obl_mult = 6
+    else:
+        co2_injection = 0.1
+
+    if output_folder is None:
+        output_folder = f'output_2D_{nx}_' + '_'.join(minerals) + f'_{inj_rate}_{n_obl_mult}_{co2_injection}_ts_{max_ts}'
+    run_simulation(domain='2D', nx=nx, output=True, max_ts=max_ts,
+                    n_obl_mult=n_obl_mult,
+                    output_folder=output_folder,
+                    poro_filename='input/spherical_25_2.txt', #'input/wedge_0.009.txt',#'old_calculations/calcite_2D_50_100/spherical_50_5_1/porosity_8.txt',
+                    minerals=minerals,
+                    h2o_injection=1.1,
+                    co2_injection=co2_injection,
+                    inj_rate=inj_rate,
+                    perm_poro='power_8',
+                    platform=platform,
+                    flash=flash,
+                    database=database,
+                    ni_dt_increase_cutoff=4,
+                    ni_dt_decrease_cutoff=9,
+                    n_good_ts=10,
+                    parallel_evaluation=True,
+                    n_workers=32)
+
+def run_3d(case: str='13k', output: bool=False, n_obl_mult: int=3, platform: str='cpu',
+            output_folder: str=None, database: str='phreeqc', flash: str='phreeqc',
+            minerals: list=['calcite'], two_phase_flag: bool=False, inj_rate: float=None):
+
+
+    if two_phase_flag:
+        # increase CO2 content in injected water
+        co2_injection = 1.1
+        n_obl_mult = 6
+    else:
+        co2_injection = 0.1
+
+    # use supcrtbl/reaktoro database/solver for 3-mineral carbonate system.
+    if set(minerals) == {'calcite', 'dolomite', 'magnesite'}:
+        database = 'supcrtbl'
+        flash = 'reaktoro'
+        n_obl_mult = 9
+
+    if case == '13k':
+        max_ts = 2.e-3
+        poro_filename = 'input/core_13k_0.02.txt'
+        mesh_filename = 'input/core_13k.msh'
+    elif case == '60k':
+        max_ts = 1.e-3
+        poro_filename = 'input/core_60k_0.01.txt'
+        mesh_filename = 'input/core_60k.msh'
+    elif case == '195k':
+        max_ts = 8.e-4
+        poro_filename = 'input/core_195k.txt'
+        mesh_filename = 'input/core_195k.msh'
+        pass
+    elif case == '474k':
+        max_ts = 5.e-4
+        pass
+    else:
+        raise NotImplementedError(f"{case} is not supported")
+
+    if output_folder is None:
+        of = f'output_3D_{case}_' + f'{platform}_' + '_'.join(minerals) + f'_{n_obl_mult}_{co2_injection}_ts_{max_ts}_{flash}_{database}'
+
+    run_simulation(domain='3D',
+                    max_ts=max_ts,
+                    output=output,
+                    output_folder=of,
+                    n_obl_mult=n_obl_mult,
+                    platform=platform,
+                    mesh_filename=mesh_filename,
+                    poro_filename=poro_filename,
+                    minerals=minerals,
+                    h2o_injection=1.1,
+                    co2_injection=co2_injection,
+                    # inj_rate=inj_rate,
+                    perm_poro='power_8',
+                    flash=flash,
+                    database=database,
+                    ni_dt_increase_cutoff=4,
+                    ni_dt_decrease_cutoff=9,
+                    n_good_ts=10,
+                    parallel_evaluation=True,
+                    n_workers=32)
+
+if __name__ == '__main__':
+    # 1D
+    run_1d(two_phase_flag=False)
+    # 2D
+    # run_2d(platform='cpu')
     # 3D
-    case = '195k' # '60k' # '195k'
-    minerals = ['calcite']
-    n_obl_mult = 3
-    co2_injection = 0.1
-    max_ts = 2.e-3
-    platform = 'cpu'
-    flash='phreeqc' # 'phreeqc' # 'reaktoro'
-    database = 'phreeqc' # 'phreeqc' # 'pitzer' # 'supcrtbl'
-    of = f'output_3D_{case}_' + f'{platform}_' + '_'.join(minerals) + f'_{n_obl_mult}_{co2_injection}_ts_{max_ts}_{flash}_{database}'
-    # run_simulation(domain='3D',
-    #                n_obl_mult=n_obl_mult,
-    #                max_ts=max_ts, output=True,
-    #                flash=flash, database=database,
-    #                output_folder=of,
-    #                platform=platform,
-    #                mesh_filename=f'input/core_{case}.msh',
-    #                poro_filename=f'input/core_{case}_0.01.txt')
-    # run_simulation(domain='3D', max_ts=1.e-3, output=True,
-    #                mesh_filename='input/core_60k.msh', poro_filename='input/core_60k_0.01.txt')
-    # run_simulation(domain='3D', max_ts=8.e-4, output=True, perm_poro='power_8',
-    #                n_obl_mult=3, platform='cpu', minerals=['calcite'],
-    #                mesh_filename='input/core_195k.msh', poro_filename='input/core_195k.txt')
-
-
-# paths = ['./100x100/data_ts3.vts',
-    #          './100x100/data_ts14.vts']
-    # write_2d_output_for_paper(paths=paths)
-    # paths = ['output_200/log.txt', 'output_2000_50000/log.txt',
-    #          'output_200_1000_5/log.txt', 'output_500/log.txt',
-    #          'output_200_1000_no_reaction/log.txt']
-    # labels = [r'$n_x=200,\, \Delta t_{max}=10^{-3}$ day, $n_{obl}=5001$',
-    #           r'$n_x=200,\, \Delta t_{max}=1\cdot 10^{-4}$ day, $n_{obl}=50001$',
-    #           r'$n_x=200,\, \Delta t_{max}=5\cdot 10^{-3}$ day, $n_{obl}=1001$',
-    #           r'$n_x=500,\, \Delta t_{max}=5\cdot 10^{-4}$ day \, $n_{obl}=5001$',
-    #           r'$n_x=200,\, \Delta t_{max}=8\cdot 10^{-6}$ day, $n_{obl}=5001$, no reaction']
-    # linestyle = ['-', '-.', ':', '-', '--']
-    # colors=['b', 'b', 'b', 'r', 'b']
-    # nx = [200, 200, 200, 500, 200]
-    # plot_max_cfl(paths=paths, labels=labels, nx=nx, linestyle=linestyle, colors=colors)
+    # run_3d()

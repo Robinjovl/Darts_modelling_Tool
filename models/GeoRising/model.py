@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from darts.engines import value_vector, sim_params, ms_well, well_control_iface
@@ -7,6 +7,7 @@ from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.input.input_data import InputData
 
+from darts.physics.base.initialize import Initialize
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.iapws_physics import IAPWSPhysics
 from darts.physics.base.property_container import PropertyContainer
@@ -16,7 +17,7 @@ from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.viscosity import MaoDuan2009
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, formulation: str = 'PT'):
         """Single-component-water geothermal model with a selectable thermal formulation.
 
@@ -47,12 +48,21 @@ class Model(CICDModel):
         self.set_input_data()
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=20,
-                                           chop=ChopSpec(mode='global', factor=1))
-        self.set_sim_params(first_ts=1e-4, mult_ts=8, max_ts=365, runtime=3650, tol_linear=1e-6,
-                            it_linear=40)
+        # solver configuration moved to set_solver() (called by base reset())
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 1e-4
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 8
+        self.ts_control.dt_max = 365
+        self.ts_control.runtime = 3650
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=20,
+            chop=ChopSpec(mode='global', factor=1))
+        self.linear_solver.spec.tolerance = 1e-6
+        self.linear_solver.spec.max_iterations = 40
 
     def set_reservoir(self):
         (nx, ny, nz) = (60, 60, 3)
@@ -71,8 +81,8 @@ class Model(CICDModel):
 
         # discretize structured reservoir
         self.reservoir = StructReservoir(self.timer, nx=nx, ny=ny, nz=nz, dx=dx, dy=dy, dz=dz,
-                                         permx=perm, permy=perm, permz=perm * 0.1, poro=poro, depth=2000,
-                                         hcap=2200, rcond=500)
+                                         permx=perm, permy=perm, permz=perm * 0.1, poro=poro,
+                                         start_z=2000, hcap=2200, rcond=500)
         self.reservoir.boundary_volumes['yz_minus'] = 1e8
         self.reservoir.boundary_volumes['yz_plus'] = 1e8
         self.reservoir.boundary_volumes['xz_minus'] = 1e8
@@ -186,13 +196,58 @@ class Model(CICDModel):
         return pc
 
     def set_initial_conditions(self):
-        # Same physical initial state for both formulations; PhysicsBase converts the
-        # temperature to enthalpy internally when state_spec is PH.
-        input_distribution = {'pressure': 200.,
-                              'temperature': 350.
-                              }
-        return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
-                                                              input_distribution=input_distribution)
+        """Gravity-equilibrated initial state on a geothermal gradient.
+
+        The reservoir has real layer depths (see :meth:`set_reservoir`), so a uniform
+        pressure is not an equilibrium: the column would be roughly 2.9 bar per 30 m out
+        of balance and would relax into hydrostatics over the first timesteps. Instead
+        :class:`~darts.physics.base.initialize.Initialize` marches a vertical
+        zero-flux equilibrium away from the datum conditions in ``idata.initial``,
+        imposing the geothermal gradient on temperature and solving the hydrostatic
+        pressure from the IAPWS-95 density at each depth rather than from a prescribed
+        bar/km.
+
+        The depth table is solved in the PT domain for both formulations;
+        :meth:`~darts.physics.base.physics.PhysicsBase.set_initial_conditions_from_depth_table`
+        converts temperature to enthalpy per cell when ``state_spec`` is PH, so the two
+        formulations start from the same physical state.
+
+        Well blocks are not covered by the depth table -- the engine initializes each
+        EPM well block from its own perforated reservoir cell
+        (``ms_well::initialize_control_epm``), so once the reservoir carries the depth
+        profile the wellbore inherits an equilibrated column as well.
+
+        :returns: whatever ``set_initial_conditions_from_depth_table`` returns (None)
+        """
+        ini = self.idata.initial
+        init = Initialize(physics=self.physics)
+
+        # Datum state: solve the specification equations at the reference depth first,
+        # so the marching solve starts from a state consistent with the property model.
+        datum = {'pressure': ini.pressure_at_ref_depth,
+                 'temperature': ini.temperature_at_ref_depth}
+        X0 = init.solve_state(Xi=[datum['pressure'], datum['temperature']], specs=datum)
+
+        depths = np.asarray(self.reservoir.mesh.depth)[:self.reservoir.mesh.n_res_blocks]
+        X, bc_idx = init.init_depth_table(depth_bottom=depths.max(),
+                                          depth_top=depths.min(),
+                                          depth_known=ini.reference_depth_for_pressure,
+                                          X0=X0,
+                                          nb=self.init_depth_table_size,
+                                          dTdh=ini.temperature_gradient * 1e-3,  # K/km -> K/m
+                                          )
+
+        # Single-component water: pressure and temperature are the only unknowns, so the
+        # hydrostatic and thermal-gradient equations close the system and no composition
+        # specification is needed.
+        X = init.solve(X=X, bc_idx=bc_idx, specs={}, downward=False)  # above the datum
+        X = init.solve(X=X, bc_idx=bc_idx, specs={}, downward=True)   # below the datum
+
+        return self.physics.set_initial_conditions_from_depth_table(
+            mesh=self.reservoir.mesh,
+            input_depth=init.depths,
+            input_distribution={'pressure': X[:, 0], 'temperature': X[:, 1]},
+        )
 
     def set_well_controls(self):
         # Both formulations label the liquid phase 'L'.
@@ -213,6 +268,24 @@ class Model(CICDModel):
         self.idata.rock.compressibility = 0.  # [1/bars]
         self.idata.rock.compressibility_ref_p = 1.  # [bars]
         self.idata.rock.compressibility_ref_T = 273.15  # [K]
+
+        # Datum conditions for the equilibrated initial state (see set_initial_conditions).
+        # Both are anchored mid-reservoir, so the layer-averaged state still matches the
+        # 200 bar / 350 K the model has always been described by, and only the vertical
+        # distribution around it changes.
+        # 30 K/km through 350 K at 2045 m implies a ~288.7 K (15.5 C) surface intercept,
+        # which is a sensible sedimentary-basin geotherm for this depth.
+        self.idata.initial.reference_depth_for_pressure = 2045.  # [m], mid-reservoir
+        self.idata.initial.pressure_at_ref_depth = 200.  # [bars]
+        self.idata.initial.reference_depth_for_temperature = 2045.  # [m], mid-reservoir
+        self.idata.initial.temperature_at_ref_depth = 350.  # [K]
+        self.idata.initial.temperature_gradient = 30.  # [K/km]
+        # pressure_gradient stays None on purpose: the hydrostatic gradient is solved from
+        # the IAPWS-95 density at each depth by Initialize, not prescribed as bar/km.
+
+        # Depth-table resolution for the equilibrium solve; the reservoir spans only 60 m,
+        # so 100 nodes puts a solved state every 0.6 m.
+        self.init_depth_table_size = 100
 
         # Fluid evaluator wiring lives in set_iapws_physics(); no idata.fluid needed.
         self.compositional = True

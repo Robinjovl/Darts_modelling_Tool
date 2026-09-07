@@ -63,7 +63,9 @@ def run_model(model):
         m = mod.Model()
         m.init(platform='cpu')
         m.set_output()
-        m.run(days=m.data_ts.dt_first, save_well_data=False, save_reservoir_data=False)
+        m.run(
+            days=m.ts_control.dt_first, save_well_data=False, save_reservoir_data=False
+        )
         print(f"[OK] {model}")
         success = True
     except Exception as e:

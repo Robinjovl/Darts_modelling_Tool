@@ -4,6 +4,11 @@
 #include <cstdint>
 
 #include "multi_index_key.hpp"
+// KERNEL_1D_THREAD, used by expand_hashmap() in the .tpp below. It has to be
+// included here rather than in the .tpp, because the .tpp is included inside
+// namespace gpu_hashmap_async and would otherwise declare gpu_tools.h's contents
+// in that namespace (and consume its include guard).
+#include "gpu_tools.h"
 
 // define those to avoid warning indication in syntax check for non-nvcc compilers
 #ifndef __NVCC__

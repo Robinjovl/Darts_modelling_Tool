@@ -1,6 +1,6 @@
 import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import ms_well
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
@@ -13,7 +13,7 @@ from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 
 import numpy as np
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -23,12 +23,20 @@ class Model(CICDModel):
 
         self.set_reservoir()
         self.set_physics()
-
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10, chop=ChopSpec(mode='local'))
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=100, tol_linear=1e-3,
-                            it_linear=50)
+        # Solver/time-stepping config moved to set_solver() (called from base reset()).
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 0.001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 1
+        self.ts_control.runtime = 100
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10, chop=ChopSpec(mode='local'))
+        self.linear_solver.spec.tolerance = 1e-3
+        self.linear_solver.spec.max_iterations = 50
 
     def set_reservoir(self):
         nx = 1000

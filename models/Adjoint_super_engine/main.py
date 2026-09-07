@@ -1,8 +1,66 @@
-from adjoint_definition import prepare_synthetic_observation_data, read_observation_data, process_adjoint
+import os
+import argparse
+from pathlib import Path
+
+from darts.engines import redirect_darts_output
+
+import adjoint_definition as adjoint
 
 # this adjoint gradient test is based on 2ph_comp model
-if __name__ == '__main__':
-    prepare_synthetic_observation_data()
-    read_observation_data()
-    failed = process_adjoint()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--adjoint-solver",
+        choices=("mgr", "superlu", "cpra", "cpra-gpu"),
+        default=None,
+        help="Override adjoint solver for this run. Omit to use adjoint_definition.use_adjoint_mgr_solver. "
+        "'cpra-gpu' needs --platform gpu (native device CPRA: GMRES-GPU + AMGX on P/P^T + transposed bILU0).",
+    )
+    parser.add_argument(
+        "--platform",
+        choices=("cpu", "gpu"),
+        default="cpu",
+        help="Engine platform for the forward simulation (the adjoint backward driver is host-side).",
+    )
+    parser.add_argument(
+        "--log",
+        default="run.log",
+        help="DARTS log path, relative to this model directory unless absolute.",
+    )
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    model_dir = Path(__file__).resolve().parent
+    os.chdir(model_dir)
+
+    if args.adjoint_solver is not None:
+        adjoint.adjoint_solver = args.adjoint_solver
+        adjoint.use_adjoint_mgr_solver = args.adjoint_solver == "mgr"
+    adjoint.platform = args.platform
+
+    log_path = Path(args.log)
+    if not log_path.is_absolute():
+        log_path = model_dir / log_path
+    redirect_darts_output(str(log_path))
+
+    if hasattr(adjoint, "current_adjoint_solver"):
+        solver_name = adjoint.current_adjoint_solver().upper()
+    else:
+        solver_name = (
+            "mgr" if adjoint.use_adjoint_mgr_solver else "superlu"
+        ).upper()
+    print("Adjoint solver mode: %s" % solver_name)
+
+    adjoint.prepare_synthetic_observation_data()
+    adjoint.read_observation_data()
+    failed = adjoint.process_adjoint()
     print('----------------The status is: %s' % failed)
+    return failed
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
