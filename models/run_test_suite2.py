@@ -116,7 +116,7 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
     test_dirs_mech += ['1ph_1comp_poroelastic_convergence']  # NE = 2
     test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
-    if heavy_models:
+    if platform == 'cpu':
         test_dirs_mech += ['SPE10_mech']
         physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
         meshes_list = ['data_10_10_10']
@@ -126,6 +126,7 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
                 test_args_mech_spe10.append([mesh, physics])
         test_args_mech += [test_args_mech_spe10]
 
+    if heavy_models:
         test_dirs_mech += ['displaced_fault_reactivation']
         test_args_fault = []
         config = {'mode': 'quasi_static',
@@ -446,14 +447,12 @@ if __name__ == '__main__':
     # displaced_fault_reactivation, the extra CPG geometries, SPE11b). GPU
     # suite runs keep the lighter set (they already brush the job time limit).
     _normalize_odls_env()
-    # Heavy mechanics cases (SPE10_mech, displaced_fault_reactivation) run on the
-    # iterative/BOS lane only, as before !280. _normalize_odls_env() already
-    # returns False under TEST_GPU=1, so this keeps the GPU-suite skip too.
-    # Rationale: SPE10_mech's dead_oil / dead_oil_thermal physics are not
-    # solvable by the in-tree FS-CPR -- GMRES makes no progress at all on them
-    # (relative residual pinned at 1.0 for the full 5000-iteration budget) --
-    # while the proprietary FS-CPR handles them. That lane split is what
-    # development had; running them open-source is new scope, not a regression.
+    # displaced_fault_reactivation, the extra CPG geometries and SPE11b still run on
+    # the iterative/BOS lane only. _normalize_odls_env() already returns False under
+    # TEST_GPU=1, so this keeps the GPU-suite skip too.
+    # SPE10_mech is no longer part of this set: it is gated on `platform == 'cpu'` in
+    # run_testing() and runs on the open-source lane as well, now that the in-tree
+    # FS-CPR solves all four of its physics variants (see the note there).
     heavy_models = _normalize_odls_env()
 
     rcode = run_testing(platform, overwrite, heavy_models, test_all_models)
