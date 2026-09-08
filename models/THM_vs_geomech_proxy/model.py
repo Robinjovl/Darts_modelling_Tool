@@ -1,21 +1,10 @@
 from scipy.interpolate import interp1d
 import numpy as np
-import os
-
 from darts.physics.base.property_container import PropertyContainer
-from darts.physics.dead_oil import DeadOilProperties
-from darts.physics.properties.flash import SinglePhase
-from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
-from darts.physics.properties.enthalpy import EnthalpyBasic
-from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
-from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus
-from darts.input.input_data import InputData
 from darts.engines import well_control_iface
 from darts.models.thmc_model import THMCModel
-from darts.physics.mech.poroelasticity import Poroelasticity
-from darts.engines import value_vector, sim_params
-from darts.tools.keyword_file_tools import load_single_keyword
+from darts.engines import sim_params
 from darts.physics.base.initialize import Initialize
 from darts.physics.properties.viscosity import MaoDuan2009
 
