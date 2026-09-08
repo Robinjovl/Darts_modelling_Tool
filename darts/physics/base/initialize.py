@@ -69,13 +69,13 @@ class Initialize:
         self.props.update(
             {
                 'pot' + ph: lambda j=j: pc.pressure - pc.pc[j]
-                for j, ph in enumerate(self.physics.phases)
+                for j, ph in enumerate(self.physics.phases[: pc.np_eq])
             }
         )
         self.props.update(
             {
                 'mob' + ph: lambda j=j: pc.kr[j] / pc.mu[j] if pc.mu[j] else 0.0
-                for j, ph in enumerate(physics.phases)
+                for j, ph in enumerate(physics.phases[: pc.np_eq])
             }
         )
         self.props.update(
