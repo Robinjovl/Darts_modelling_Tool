@@ -353,8 +353,8 @@ class Model(DartsModel):
             density[ii] = pc.dens
             density_m[ii] = pc.dens_m
 
-            X[ii, :, 0] = pc.x[1, :pc.nc_fl]
-            X[ii, :, 1] = pc.x[0, :pc.nc_fl]
+            X[ii, :, 0] = pc.x[1, :pc.nc_eq]
+            X[ii, :, 1] = pc.x[0, :pc.nc_eq]
             Sg[ii] = pc.sat[0]
             Ss[ii] = z_caco3[ii]
 
@@ -421,8 +421,8 @@ class Model(DartsModel):
 
         pc = self.physics.property_operators[0].property
         for ii in range(nb):
-            X[ii, :, 0] = pc.x[1, :pc.nc_fl]
-            X[ii, :, 1] = pc.x[0, :pc.nc_fl]
+            X[ii, :, 0] = pc.x[1, :pc.nc_eq]
+            X[ii, :, 1] = pc.x[0, :pc.nc_eq]
             Sg[ii] = pc.sat[0]
             Ss[ii] = z_caco3[ii]
 
