@@ -304,6 +304,33 @@ class PropertyContainer:
             np.arange(self.nc), self.solid_comp_idxs, assume_unique=True
         )
 
+    def schur_eliminable_comp_idxs(self) -> np.ndarray:
+        """Component indices with no flux/diffusion term, safe to Schur-eliminate
+        (see darts.linear_solvers.specs.SchurEliminationSpec): all
+        bulk_kin_comp_idxs (structurally local -- FLUX_OP/GRAD_OP never write
+        kinetic-component columns), plus mole_kin_comp_idxs whose phase's
+        diffusion_ev evaluates to zero. Excludes component nc-1 (no unknown
+        column -- get_state()'s implicit closure)."""
+
+        def is_zero_evaluator(ev) -> bool:
+            # Best-effort: False (not proven zero) on any exception --
+            # conservative, so custom evaluators default to "not eliminable".
+            try:
+                return bool(np.allclose(np.asarray(ev.evaluate(), dtype=float), 0.0))
+            except Exception:
+                return False
+
+        idxs = set(self.bulk_kin_comp_idxs.tolist())
+        for j, phase_idx in enumerate(self.kin_phase_idxs):
+            if self.kin_formulation[j] != self.KineticFormulation.MOLE_FRACTION:
+                continue
+            ev = self.diffusion_ev.get(self.phases_name[phase_idx])
+            if ev is not None and is_zero_evaluator(ev):
+                start = self.nc_eq + self.kin_comp_offsets[j]
+                idxs.update(range(start, start + self.nc_kin_per_phase[j]))
+        idxs.discard(self.nc - 1)
+        return np.array(sorted(idxs), dtype=int)
+
     def check_properties(self):
         """
         Check consistency of input properties

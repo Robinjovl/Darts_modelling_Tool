@@ -355,6 +355,7 @@ class PhysicsBase:
         n_workers: int | None = None,
         evaluator_factory_hook=None,
         verbose_evaluators: bool = False,
+        schur_elim_kinetic: bool = True,
     ) -> None:
         """
         Initialise engines, operators, and interpolators for this physics object.
@@ -381,6 +382,13 @@ class PhysicsBase:
                                        for constructing a fresh evaluator per worker process.
                                        Required when ``parallel_evaluation=True``.
         :type evaluator_factory_hook: callable
+        :param schur_elim_kinetic: Auto-detect kinetic component equations with no
+                                   flux/diffusion term (see
+                                   ``PropertyContainer.schur_eliminable_comp_idxs()``)
+                                   and expose them as ``self.schur_elim_rows``/
+                                   ``schur_elim_cols``/``schur_elim_count`` for the
+                                   linear solver to Schur-eliminate. Default ``True``.
+        :type schur_elim_kinetic: bool
         """
         # OBL grid is fully defined by (axes_origin, axes_step) — see __init__.
         # No more determine_obl_bounds() call: the adaptive interpolator caches cells
@@ -409,6 +417,23 @@ class PhysicsBase:
         # Assert all properties have been specified for each phase in each region
         for region in self.regions:
             self.property_containers[region].check_properties()
+
+        # Kinetic component equations with no flux/diffusion term (see
+        # PropertyContainer.schur_eliminable_comp_idxs()) can be Schur-eliminated
+        # by the linear solver; intersect across regions since the eliminated
+        # equation set must be uniform across the whole domain.
+        if schur_elim_kinetic and self.property_containers:
+            eligible = set.intersection(
+                *(
+                    set(pc.schur_eliminable_comp_idxs().tolist())
+                    for pc in self.property_containers.values()
+                )
+            )
+        else:
+            eligible = set()
+        self.schur_elim_rows = sorted(eligible)
+        self.schur_elim_cols = [i + 1 for i in self.schur_elim_rows]
+        self.schur_elim_count = len(self.schur_elim_rows)
 
         # Set operators and interpolators
         self.set_operators()
