@@ -483,9 +483,9 @@ class ModelProperties(PropertyContainer):
 
         self.clean_arrays()
 
-        self.ph = self.run_flash(pressure, temperature, zc)
+        self.eq_phase_idxs = self.run_flash(pressure, temperature, zc)
 
-        for j in self.ph:
+        for j in self.eq_phase_idxs:
             M = np.sum(self.Mw * self.x[j][:])
 
             self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :])  # output in [kg/m3]
@@ -499,10 +499,10 @@ class ModelProperties(PropertyContainer):
 
         self.pc = np.array(self.capillary_pressure_ev.evaluate(self.sat))
 
-        for j in self.ph:
+        for j in self.eq_phase_idxs:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc = np.array([0, 0])
 
         mass_source = self.evaluate_mass_source(pressure, temperature, zc)
 
-        return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
+        return self.eq_phase_idxs, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source

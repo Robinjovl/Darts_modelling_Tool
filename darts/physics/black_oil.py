@@ -96,13 +96,13 @@ class BlackOilProperties(PropertyContainer):
             self.x[i, i] = 1
 
         if V < 0:
-            self.ph = np.array([1, 2])
+            self.eq_phase_idxs = np.array([1, 2])
         else:  # assume oil and water are always exists
             self.x[1][0] = xgo
             self.x[1][1] = 1 - xgo
-            self.ph = np.array([0, 1, 2])
+            self.eq_phase_idxs = np.array([0, 1, 2])
 
-        for j in self.ph:
+        for j in self.eq_phase_idxs:
             M = 0
             # molar weight of mixture
             for i in range(self.nc):
@@ -126,7 +126,7 @@ class BlackOilProperties(PropertyContainer):
 
         self.compute_saturation()
 
-        for j in self.ph:
+        for j in self.eq_phase_idxs:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(
                 self.sat[0], self.sat[2]
             )

@@ -483,7 +483,7 @@ class Pipe:
                         miuL0[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                         # Calculate mass fractions of components in each phase
                         x_mass0 = np.zeros((pc.np_eq, pc.nc_eq))
-                        for j in pc.ph:
+                        for j in pc.eq_phase_idxs:
                             x_mass0[j, :] = (pc.x[j, :] * Mw_fl) / sum(
                                 pc.x[j, :] * Mw_fl
                             )
@@ -502,7 +502,7 @@ class Pipe:
                         )
                         # Calculate mass fractions of components in each phase
                         x_mass0 = np.zeros((pc.np_eq, pc.nc_eq))
-                        for j in pc.ph:
+                        for j in pc.eq_phase_idxs:
                             x_mass0[j, :] = (pc.x[j, :] * Mw_fl) / sum(
                                 pc.x[j, :] * Mw_fl
                             )
@@ -654,7 +654,7 @@ class Pipe:
                     miuL[i] = pc.mu[l_idx] * 1e-3  # convert cP to Pa.s
                     # Calculate mass fractions of components in each phase
                     x_mass = np.zeros((pc.np_eq, pc.nc_eq))
-                    for j in pc.ph:
+                    for j in pc.eq_phase_idxs:
                         x_mass[j, :] = (pc.x[j, :] * Mw_fl) / sum(pc.x[j, :] * Mw_fl)
                     xG_mass[i, :], xL_mass[i, :] = x_mass[g_idx, :], x_mass[l_idx, :]
 
@@ -665,7 +665,7 @@ class Pipe:
                     miuL_a[i], miuL_b[i] = pc.mu[la_idx] * 1e-3, pc.mu[lb_idx] * 1e-3
                     # Calculate mass fractions of components in each phase
                     x_mass = np.zeros((pc.np_eq, pc.nc_eq))
-                    for j in pc.ph:
+                    for j in pc.eq_phase_idxs:
                         x_mass[j, :] = (pc.x[j, :] * Mw_fl) / sum(pc.x[j, :] * Mw_fl)
                     xG_mass[i, :], xL_a_mass[i, :], xL_b_mass[i, :] = (
                         x_mass[g_idx, :],

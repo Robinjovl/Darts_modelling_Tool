@@ -119,8 +119,8 @@ class ReservoirOperators(OperatorsSuper):
             )
 
         """ molar density operator """
-        values_np[self.DENS_OP + self.property.ph] = self.property.dens_m[
-            self.property.ph
+        values_np[self.DENS_OP + self.property.eq_phase_idxs] = self.property.dens_m[
+            self.property.eq_phase_idxs
         ]
 
         """ Gamma operator for diffusion (same for thermal and isothermal) """
@@ -130,7 +130,7 @@ class ReservoirOperators(OperatorsSuper):
             )
 
         """ Chi operator for diffusion """
-        for j in self.property.ph:
+        for j in self.property.eq_phase_idxs:
             values_np[self.GRAD_OP + j * self.ne : self.GRAD_OP + (j + 1) * self.ne] = (
                 self.property.diffusivity[j] * self.property.x[j]
             )
@@ -143,12 +143,14 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Gravity and Capillarity operators """
         # E3-> gravity
-        values_np[self.GRAV_OP + self.property.ph] = self.property.dens[
-            self.property.ph
+        values_np[self.GRAV_OP + self.property.eq_phase_idxs] = self.property.dens[
+            self.property.eq_phase_idxs
         ]
 
         # E4-> capillarity
-        values_np[self.PC_OP + self.property.ph] = self.property.pc[self.property.ph]
+        values_np[self.PC_OP + self.property.eq_phase_idxs] = self.property.pc[
+            self.property.eq_phase_idxs
+        ]
 
         """ Permeability multiplier k/kmax """
         # E5_> permeability multiplier due to permporo relationship
@@ -158,13 +160,16 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Lambda operator for velocity calculations """
         # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
-        values_np[self.LAMBDA_OP + self.property.ph] = (
-            self.property.kr[self.property.ph] / self.property.mu[self.property.ph]
+        values_np[self.LAMBDA_OP + self.property.eq_phase_idxs] = (
+            self.property.kr[self.property.eq_phase_idxs]
+            / self.property.mu[self.property.eq_phase_idxs]
         )
 
         """ Saturation operator """
         # phase saturation: s_j [-]
-        values_np[self.SAT_OP + self.property.ph] = self.property.sat[self.property.ph]
+        values_np[self.SAT_OP + self.property.eq_phase_idxs] = self.property.sat[
+            self.property.eq_phase_idxs
+        ]
 
         """ Pressure operator """
         # Pressure operator (for generic state specification where no pressure in the state, for instance V,T)

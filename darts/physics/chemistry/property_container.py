@@ -75,7 +75,9 @@ class PropertyContainer(BasePropertyContainer):
 
         # Map user-provided phase names to roles (gas/aqueous) independent of order
         self.phase_idx = self._build_phase_index(phases)
-        self.ph = np.array([self.phase_idx['gas'], self.phase_idx['aq']], dtype=np.intp)
+        self.eq_phase_idxs = np.array(
+            [self.phase_idx['gas'], self.phase_idx['aq']], dtype=np.intp
+        )
 
         # to retrieve fluid component fractions from state
         self.f_mask_state = np.concatenate([[False], self.fc_mask[:-1]])

@@ -353,4 +353,4 @@ class Model(THMCModel):
 class ModelProperties(DeadOilProperties):
     def evaluate(self, state):
         super().evaluate(state)
-        return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, self.mass_source
+        return self.eq_phase_idxs, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, self.mass_source

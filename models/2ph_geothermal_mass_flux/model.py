@@ -154,9 +154,9 @@ class ModelProperties(PropertyContainer):
         self.pressure = vec_state_as_np[0]
         self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
-        self.ph = np.array([0], dtype=np.intp)
+        self.eq_phase_idxs = np.array([0], dtype=np.intp)
 
-        for j in self.ph:
+        for j in self.eq_phase_idxs:
             M = 0
             # molar weight of mixture
             for i in range(self.nc):
@@ -168,7 +168,7 @@ class ModelProperties(PropertyContainer):
         self.nu[0] = 1
         self.compute_saturation()
 
-        for j in self.ph:
+        for j in self.eq_phase_idxs:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc[j] = 0
 
