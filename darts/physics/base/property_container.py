@@ -174,7 +174,7 @@ class PropertyContainer:
         self.mass_source = np.zeros(self.nc)
         self.energy_source = 0.0
 
-        # phi_s/phi_f: fraction of bulk volume not/available to the pooled eq_phase_idxs + MoleFractionKinetic (self.mole_basis_phase_idxs) basis
+        # phi_s/phi_f: fraction of bulk volume not/available to the pooled eq_phase_idxs + MoleFractionKinetic (self.mole_basis_phase_idxs()) basis
         self.phi_s = 0.0
         self.phi_f = 1.0
         self.permporo_mult = 1.0
@@ -452,15 +452,19 @@ class PropertyContainer:
         for j in range(self.nph):
             self.x[j][:] = 0
 
-    def _update_mole_basis_phase_idxs(self):
-        """mole_basis_phase_idxs: present equilibrium phases + MoleFractionKinetic
-        phases (share saturation/accumulation/diffusion/conduction); eq_phase_idxs_mobile:
-        the flowing subset of that. Call whenever self.eq_phase_idxs changes."""
-        self.mole_basis_phase_idxs = np.concatenate(
-            [self.eq_phase_idxs, self.mole_kin_phase_idxs]
-        )
-        self.eq_phase_idxs_mobile = np.intersect1d(
-            self.mole_basis_phase_idxs, self.fluid_phase_idxs, assume_unique=True
+    def mole_basis_phase_idxs(self) -> np.ndarray:
+        """Present equilibrium phases (self.eq_phase_idxs) + MoleFractionKinetic
+        phases (share saturation/accumulation/diffusion/conduction). Computed fresh
+        from self.eq_phase_idxs on every call -- never cached, so it can't go stale
+        across an evaluate()/compute_saturation() call or a subclass override that
+        forgets to refresh it."""
+        return np.concatenate([self.eq_phase_idxs, self.mole_kin_phase_idxs])
+
+    def eq_phase_idxs_mobile(self) -> np.ndarray:
+        """The flowing (fluid_phase_idxs) subset of mole_basis_phase_idxs(). Computed
+        fresh on every call, same reasoning as mole_basis_phase_idxs()."""
+        return np.intersect1d(
+            self.mole_basis_phase_idxs(), self.fluid_phase_idxs, assume_unique=True
         )
 
     def compute_saturation(self, state_pt=None, evaluate_PT_from_PHflash: bool = False):
@@ -490,7 +494,6 @@ class PropertyContainer:
             self.eq_phase_idxs = self.run_flash(
                 pressure, temperature, zc, evaluate_PT=evaluate_PT_from_PHflash
             )
-            self._update_mole_basis_phase_idxs()
             self.pressure = pressure
 
             for j in self.eq_phase_idxs:
@@ -526,11 +529,9 @@ class PropertyContainer:
         # together: a MoleFractionKinetic phase's nu is on the same combined-total
         # basis as the (Flash-rescaled) equilibrium phases' nu (see
         # Flash.set_kinetic_phase(is_mole_fraction=True)), so they're one pool.
-        vol = (
-            self.nu[self.mole_basis_phase_idxs]
-            / self.dens_m[self.mole_basis_phase_idxs]
-        )
-        self.sat[self.mole_basis_phase_idxs] = vol / np.sum(vol)
+        mole_basis_phase_idxs = self.mole_basis_phase_idxs()
+        vol = self.nu[mole_basis_phase_idxs] / self.dens_m[mole_basis_phase_idxs]
+        self.sat[mole_basis_phase_idxs] = vol / np.sum(vol)
 
         return self.sat[0]
 
@@ -640,7 +641,6 @@ class PropertyContainer:
         self.eq_phase_idxs = self.run_flash(
             pressure, state_spec_2, zc, evaluate_PT=self.evaluate_PT_bool
         )
-        self._update_mole_basis_phase_idxs()
         self.pressure = pressure
         assert self.pressure is not None, (
             "PropertyContainer does not specify self.pressure, should be set to "
@@ -668,14 +668,15 @@ class PropertyContainer:
             )
 
         # Viscosity is a mobility property: only needed for present, flowing phases.
-        for j in self.eq_phase_idxs_mobile:
+        eq_phase_idxs_mobile = self.eq_phase_idxs_mobile()
+        for j in eq_phase_idxs_mobile:
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
                 self.pressure, self.temperature, self.x[j, :], self.dens[j]
             )  # output in [cp]
 
         self.compute_saturation()
 
-        # phi_s: fraction of bulk volume NOT covered by self.mole_basis_phase_idxs (sums only bulk_kin_phase_idxs)
+        # phi_s: fraction of bulk volume NOT covered by self.mole_basis_phase_idxs() (sums only bulk_kin_phase_idxs)
         self.phi_s = np.sum(self.sat[self.bulk_kin_phase_idxs])
         self.phi_f = 1.0 - self.phi_s
         self.permporo_mult = self.permporo_mult_ev.evaluate(self.phi_f)
@@ -698,7 +699,7 @@ class PropertyContainer:
             self.history_values = {}
 
         if isinstance(self.capillary_pressure_ev, dict):
-            for j in self.eq_phase_idxs_mobile:
+            for j in eq_phase_idxs_mobile:
                 pc_ev = self.capillary_pressure_ev[self.phases_name[j]]
                 if self.history_values and isinstance(pc_ev, HistoryAwareCapPressure):
                     self.pc[j] = pc_ev.evaluate(self.sat[j], **self.history_values)
@@ -707,7 +708,7 @@ class PropertyContainer:
         else:
             self.pc[:] = self.capillary_pressure_ev.evaluate(self.sat)
 
-        for j in self.eq_phase_idxs_mobile:
+        for j in eq_phase_idxs_mobile:
             kr_ev = self.rel_perm_ev[self.phases_name[j]]
             if self.history_values and isinstance(kr_ev, HistoryAwareRelPerm):
                 self.kr[j] = kr_ev.evaluate(self.sat[j], **self.history_values)

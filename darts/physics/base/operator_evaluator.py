@@ -310,9 +310,7 @@ class WellCtrlOperators(OperatorsBase):
         )
         self.n_ops = self.n_state_ctrl_ops + 2 * self.n_rate_ctrl_types * self.nph
 
-    def _fill_rate_ctrl_ops(self, values, offset, rate_factor):
-        eq_phase_idxs_mobile = self.property.eq_phase_idxs_mobile
-
+    def _fill_rate_ctrl_ops(self, values, offset, rate_factor, eq_phase_idxs_mobile):
         # Molar rate ctrl operator
         idx = offset
         values[idx + eq_phase_idxs_mobile] = (
@@ -351,12 +349,16 @@ class WellCtrlOperators(OperatorsBase):
         if self.thermal:
             self.property.evaluate_thermal(state_np)
 
+        eq_phase_idxs_mobile = self.property.eq_phase_idxs_mobile()
         epm_rate_factor = (
-            self.property.kr[self.property.eq_phase_idxs_mobile]
-            / self.property.mu[self.property.eq_phase_idxs_mobile]
+            self.property.kr[eq_phase_idxs_mobile]
+            / self.property.mu[eq_phase_idxs_mobile]
         )
         self._fill_rate_ctrl_ops(
-            values_np, self.epm_rate_ctrl_ops_offset, epm_rate_factor
+            values_np,
+            self.epm_rate_ctrl_ops_offset,
+            epm_rate_factor,
+            eq_phase_idxs_mobile,
         )
 
         # Store pressure (P) and temperature (T) of the current state for a generic state specification.
@@ -366,9 +368,12 @@ class WellCtrlOperators(OperatorsBase):
         values_np[idx + 0] = state[0]
         values_np[idx + 1] = self.property.temperature
 
-        dfm_rate_factor = self.property.sat[self.property.eq_phase_idxs_mobile]
+        dfm_rate_factor = self.property.sat[eq_phase_idxs_mobile]
         self._fill_rate_ctrl_ops(
-            values_np, self.dfm_rate_ctrl_ops_offset, dfm_rate_factor
+            values_np,
+            self.dfm_rate_ctrl_ops_offset,
+            dfm_rate_factor,
+            eq_phase_idxs_mobile,
         )
 
         return 0
@@ -599,14 +604,19 @@ class ReservoirOperators(OperatorsSuper):
         self.property.evaluate(state_np)
         self.compr = self.property.rock_compr_ev.evaluate(state_np[0])
 
+        # Computed fresh (not cached on self.property) each call -- see
+        # PropertyContainer.mole_basis_phase_idxs()/eq_phase_idxs_mobile().
+        mole_basis_phase_idxs = self.property.mole_basis_phase_idxs()
+        eq_phase_idxs_mobile = self.property.eq_phase_idxs_mobile()
+
         # Average molar density of the equilibrium + KineticFormulation.MOLE_FRACTION phase pool
-        # (self.property.mole_basis_phase_idxs, see compute_saturation()) -- zc for
+        # (mole_basis_phase_idxs, see compute_saturation()) -- zc for
         # equilibrium AND KineticFormulation.MOLE_FRACTION components are both "modified
         # variables" on that same shared basis (see Flash's is_mole_fraction), so
         # both use this density_tot directly below.
         density_tot = np.sum(
-            self.property.sat[self.property.mole_basis_phase_idxs]
-            * self.property.dens_m[self.property.mole_basis_phase_idxs]
+            self.property.sat[mole_basis_phase_idxs]
+            * self.property.dens_m[mole_basis_phase_idxs]
         )
         zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
 
@@ -635,7 +645,7 @@ class ReservoirOperators(OperatorsSuper):
         )
 
         """ Beta operator """
-        for j in self.property.eq_phase_idxs_mobile:
+        for j in eq_phase_idxs_mobile:
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             values_np[
                 self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_eq
@@ -651,7 +661,7 @@ class ReservoirOperators(OperatorsSuper):
         # convection/FLUX_OP): pool them in alongside eq_phase_idxs_mobile even
         # when immobile, since they share the fluid's diffusion machinery.
         diffusive_phase_idxs = np.union1d(
-            self.property.eq_phase_idxs_mobile, self.mole_kin_phase_idxs
+            eq_phase_idxs_mobile, self.mole_kin_phase_idxs
         )
 
         """ Gamma operator for diffusion (for heat conduction and molecular diffusion) """
@@ -679,8 +689,8 @@ class ReservoirOperators(OperatorsSuper):
         ]
 
         # E4-> capillarity
-        values_np[self.PC_OP + self.property.eq_phase_idxs_mobile] = self.property.pc[
-            self.property.eq_phase_idxs_mobile
+        values_np[self.PC_OP + eq_phase_idxs_mobile] = self.property.pc[
+            eq_phase_idxs_mobile
         ]
 
         """ Permeability multiplier k/kmax """
@@ -689,9 +699,9 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Lambda operator (phase mobility) """
         # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
-        values_np[self.LAMBDA_OP + self.property.eq_phase_idxs_mobile] = (
-            self.property.kr[self.property.eq_phase_idxs_mobile]
-            / self.property.mu[self.property.eq_phase_idxs_mobile]
+        values_np[self.LAMBDA_OP + eq_phase_idxs_mobile] = (
+            self.property.kr[eq_phase_idxs_mobile]
+            / self.property.mu[eq_phase_idxs_mobile]
         )
 
         """ Saturation operator for phase volumetric calculations in the wellbore """
@@ -705,13 +715,17 @@ class ReservoirOperators(OperatorsSuper):
         values_np[self.PRES_OP] = state_np[0]
 
         if self.thermal:
-            self.evaluate_thermal(state_np, values_np)
+            self.evaluate_thermal(
+                state_np, values_np, mole_basis_phase_idxs, eq_phase_idxs_mobile
+            )
 
         # self.print_operators(state, values)
 
         return 0
 
-    def evaluate_thermal(self, state, values):
+    def evaluate_thermal(
+        self, state, values, mole_basis_phase_idxs, eq_phase_idxs_mobile
+    ):
         """
         Evaluate the thermal reservoir operators for the super engine
 
@@ -731,9 +745,9 @@ class ReservoirOperators(OperatorsSuper):
             self.compr
             * self.property.phi_f
             * np.sum(
-                self.property.sat[self.property.mole_basis_phase_idxs]
-                * self.property.dens_m[self.property.mole_basis_phase_idxs]
-                * self.property.enthalpy[self.property.mole_basis_phase_idxs]
+                self.property.sat[mole_basis_phase_idxs]
+                * self.property.dens_m[mole_basis_phase_idxs]
+                * self.property.enthalpy[mole_basis_phase_idxs]
             )
         )  # fluid enthalpy (kJ/m3)
         # solid enthalpy: phi_s[-] s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
@@ -751,21 +765,16 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Beta operator """
         # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] (kJ/m3)
-        values[
-            self.FLUX_OP + self.property.eq_phase_idxs_mobile * self.ne + self.nc
-        ] = (
-            self.property.enthalpy[self.property.eq_phase_idxs_mobile]
-            * self.property.dens_m[self.property.eq_phase_idxs_mobile]
+        values[self.FLUX_OP + eq_phase_idxs_mobile * self.ne + self.nc] = (
+            self.property.enthalpy[eq_phase_idxs_mobile]
+            * self.property.dens_m[eq_phase_idxs_mobile]
         )
 
         """ Chi operator for temperature in conduction """
         # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day) --
         # eq_phase_idxs + KineticFormulation.MOLE_FRACTION phases share this pooled basis.
-        values[
-            self.GRAD_OP + self.property.mole_basis_phase_idxs * self.ne + self.nc
-        ] = (
-            self.property.temperature
-            * self.property.cond[self.property.mole_basis_phase_idxs]
+        values[self.GRAD_OP + mole_basis_phase_idxs * self.ne + self.nc] = (
+            self.property.temperature * self.property.cond[mole_basis_phase_idxs]
         )
 
         """ Delta operator for reaction """
@@ -806,14 +815,19 @@ class WellOperators(OperatorsSuper):
         # Evaluate properties at current state
         self.property.evaluate(state_np)
 
+        # Computed fresh (not cached on self.property) each call -- see
+        # PropertyContainer.mole_basis_phase_idxs()/eq_phase_idxs_mobile().
+        mole_basis_phase_idxs = self.property.mole_basis_phase_idxs()
+        eq_phase_idxs_mobile = self.property.eq_phase_idxs_mobile()
+
         # Average molar density of the equilibrium + KineticFormulation.MOLE_FRACTION phase pool
-        # (self.property.mole_basis_phase_idxs, see compute_saturation()) -- zc for
+        # (mole_basis_phase_idxs, see compute_saturation()) -- zc for
         # equilibrium AND KineticFormulation.MOLE_FRACTION components are both "modified
         # variables" on that same shared basis (see Flash's is_mole_fraction), so
         # both use this density_tot directly below.
         density_tot = np.sum(
-            self.property.sat[self.property.mole_basis_phase_idxs]
-            * self.property.dens_m[self.property.mole_basis_phase_idxs]
+            self.property.sat[mole_basis_phase_idxs]
+            * self.property.dens_m[mole_basis_phase_idxs]
         )
         zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
 
@@ -839,7 +853,7 @@ class WellOperators(OperatorsSuper):
         )
 
         """ Beta operator """
-        for j in self.property.eq_phase_idxs_mobile:
+        for j in eq_phase_idxs_mobile:
             # fluid convective mass flux: x_cj [-] rho_mj [kmol/m3] (kmol/m3)
             values_np[
                 self.FLUX_OP + j * self.ne : self.FLUX_OP + j * self.ne + self.nc_eq
@@ -869,9 +883,9 @@ class WellOperators(OperatorsSuper):
 
         """ Lambda operator (phase mobility) """
         # phase mobility: k_rj [-] / mu_j [cP ∝ bar.day] (1/(bar.day))
-        values_np[self.LAMBDA_OP + self.property.eq_phase_idxs_mobile] = (
-            self.property.kr[self.property.eq_phase_idxs_mobile]
-            / self.property.mu[self.property.eq_phase_idxs_mobile]
+        values_np[self.LAMBDA_OP + eq_phase_idxs_mobile] = (
+            self.property.kr[eq_phase_idxs_mobile]
+            / self.property.mu[eq_phase_idxs_mobile]
         )
 
         """ Saturation operator for phase volumetric calculations in the wellbore """
@@ -885,13 +899,17 @@ class WellOperators(OperatorsSuper):
         values_np[self.PRES_OP] = state_np[0]
 
         if self.thermal:
-            self.evaluate_thermal(state_np, values_np)
+            self.evaluate_thermal(
+                state_np, values_np, mole_basis_phase_idxs, eq_phase_idxs_mobile
+            )
 
         # self.print_operators(state, values)
 
         return 0
 
-    def evaluate_thermal(self, state, values):
+    def evaluate_thermal(
+        self, state, values, mole_basis_phase_idxs, eq_phase_idxs_mobile
+    ):
         """
         Evaluate the thermal well operators for the super engine
 
@@ -908,9 +926,9 @@ class WellOperators(OperatorsSuper):
         # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3) --
         # eq_phase_idxs + KineticFormulation.MOLE_FRACTION phases share this pooled basis.
         values[self.ACC_OP + self.nc] += self.property.phi_f * np.sum(
-            self.property.sat[self.property.mole_basis_phase_idxs]
-            * self.property.dens_m[self.property.mole_basis_phase_idxs]
-            * self.property.enthalpy[self.property.mole_basis_phase_idxs]
+            self.property.sat[mole_basis_phase_idxs]
+            * self.property.dens_m[mole_basis_phase_idxs]
+            * self.property.enthalpy[mole_basis_phase_idxs]
         )  # fluid enthalpy (kJ/m3)
         # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
         values[self.ACC_OP + self.nc] += self.property.phi_s * np.sum(
@@ -924,21 +942,16 @@ class WellOperators(OperatorsSuper):
 
         """ Beta operator """
         # fluid convective energy flux: H_j [kJ/kmol] rho_mj [kmol/m3] (kJ/m3)
-        values[
-            self.FLUX_OP + self.property.eq_phase_idxs_mobile * self.ne + self.nc
-        ] = (
-            self.property.enthalpy[self.property.eq_phase_idxs_mobile]
-            * self.property.dens_m[self.property.eq_phase_idxs_mobile]
+        values[self.FLUX_OP + eq_phase_idxs_mobile * self.ne + self.nc] = (
+            self.property.enthalpy[eq_phase_idxs_mobile]
+            * self.property.dens_m[eq_phase_idxs_mobile]
         )
 
         """ Chi operator for temperature in conduction """
         # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day) --
         # eq_phase_idxs + KineticFormulation.MOLE_FRACTION phases share this pooled basis.
-        values[
-            self.GRAD_OP + self.property.mole_basis_phase_idxs * self.ne + self.nc
-        ] = (
-            self.property.temperature
-            * self.property.cond[self.property.mole_basis_phase_idxs]
+        values[self.GRAD_OP + mole_basis_phase_idxs * self.ne + self.nc] = (
+            self.property.temperature * self.property.cond[mole_basis_phase_idxs]
         )
 
         """ Delta operator for reaction """
