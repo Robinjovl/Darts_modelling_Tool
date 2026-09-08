@@ -116,8 +116,8 @@ class Model(THMCModel):
         self.ts_control.dt_mult = 2
         self.ts_control.dt_max = 5
         self.nonlinear_solver.spec.tolerance = 1e-6
-        self.params.tolerance_linear = self.data_ts.linear_tol
-        self.params.max_i_linear = self.data_ts.linear_max_iter
+        self.params.tolerance_linear = self.linear_solver.spec.tolerance
+        self.params.max_i_linear = self.linear_solver.spec.max_iterations
         self.nonlinear_solver.spec.max_iterations = 20
 
     def set_reservoir(self):
