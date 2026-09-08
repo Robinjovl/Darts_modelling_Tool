@@ -510,6 +510,8 @@ class OperatorsSuper(OperatorsBase):
         self.fluid_phase_idxs = property_container.fluid_phase_idxs
         self.solid_phase_idxs = property_container.solid_phase_idxs
         self.kin_phase_idxs = property_container.kin_phase_idxs
+        self.mole_kin_phase_idxs = property_container.mole_kin_phase_idxs
+        self.mole_kin_comp_idxs = property_container.mole_kin_comp_idxs
         self.bulk_kin_phase_idxs = property_container.bulk_kin_phase_idxs
         self.bulk_kin_comp_idxs = property_container.bulk_kin_comp_idxs
         self.solid_comp_idxs = property_container.solid_comp_idxs
@@ -597,12 +599,14 @@ class ReservoirOperators(OperatorsSuper):
         self.property.evaluate(state_np)
         self.compr = self.property.rock_compr_ev.evaluate(state_np[0])
 
-        # All equilibrium phases contribute here, not just flowing ones -- zc[:nc_eq]
-        # spans every equilibrium phase regardless of mobility, so a non-flowing
-        # equilibrium phase (in solid_phase_idxs but not kin_phase_idxs) must still
-        # count toward the equilibrium-component mixture density.
+        # Average molar density of the equilibrium + MoleFractionKinetic phase pool
+        # (self.property.mole_basis_phase_idxs, see compute_saturation()) -- zc for
+        # equilibrium AND MoleFractionKinetic components are both "modified
+        # variables" on that same shared basis (see Flash's is_mole_fraction), so
+        # both use this density_tot directly below.
         density_tot = np.sum(
-            self.property.sat[: self.np_eq] * self.property.dens_m[: self.np_eq]
+            self.property.sat[self.property.mole_basis_phase_idxs]
+            * self.property.dens_m[self.property.mole_basis_phase_idxs]
         )
         zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
 
@@ -613,9 +617,15 @@ class ReservoirOperators(OperatorsSuper):
         values_np[self.ACC_OP : self.ACC_OP + self.nc_eq] = (
             self.compr * density_tot * zc[: self.nc_eq]
         )
+        # MoleFractionKinetic components: same formula, same density_tot -- their
+        # raw zc is on the same basis as the equilibrium components' own.
+        values_np[self.ACC_OP + self.mole_kin_comp_idxs] = (
+            self.compr * density_tot * zc[self.mole_kin_comp_idxs]
+        )
 
-        """ and alpha for mineral components """
-        # solid mass accumulation: c_r phi^T z_s* [-] rho_ms [kmol/m3]
+        """ and alpha for bulk (volume-based) kinetic components """
+        # solid mass accumulation: c_r [1/bar] rho_ms [kmol/m3] -- always 1 component
+        # per phase (see PropertyContainer), so this maps directly, no splitting needed.
         values_np[self.ACC_OP + self.bulk_kin_comp_idxs] = (
             self.compr
             * self.property.dens_m[self.bulk_kin_phase_idxs]
@@ -635,20 +645,21 @@ class ReservoirOperators(OperatorsSuper):
             self.property.eq_phase_idxs
         ]
 
+        # Diffusion isn't mobility-gated for MoleFractionKinetic phases (unlike
+        # convection/FLUX_OP): pool them in alongside eq_phase_idxs_mobile even
+        # when immobile, since they share the fluid's diffusion machinery.
+        diffusive_phase_idxs = np.union1d(
+            self.property.eq_phase_idxs_mobile, self.mole_kin_phase_idxs
+        )
+
         """ Gamma operator for diffusion (for heat conduction and molecular diffusion) """
         # fluid diffusive flux sat: c_r [1/bar] phi_f s_j (1/bar)
-        values_np[self.UPSAT_OP + self.property.eq_phase_idxs_mobile] = (
-            self.compr
-            * self.property.phi_f
-            * self.property.sat[self.property.eq_phase_idxs_mobile]
-        )
-        # solid diffusive flux sat: c_r [1/bar] z_s* (1/bar)
-        values_np[self.UPSAT_OP + self.bulk_kin_phase_idxs] = (
-            self.compr * self.property.sat[self.bulk_kin_phase_idxs]
+        values_np[self.UPSAT_OP + diffusive_phase_idxs] = (
+            self.compr * self.property.phi_f * self.property.sat[diffusive_phase_idxs]
         )
 
         """ Chi operator for diffusion """
-        for j in self.property.eq_phase_idxs_mobile:
+        for j in diffusive_phase_idxs:
             D = self.property.diffusion_ev[self.property.phases_name[j]].evaluate()
             # fluid diffusive flux: D_cj [m2/day] x_cj [-] (m2/day)
             values_np[
@@ -712,14 +723,15 @@ class ReservoirOperators(OperatorsSuper):
         self.property.evaluate_thermal(state)
 
         """ Alpha operator represents accumulation term """
-        # fluid enthalpy: phi_f[-] s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
+        # fluid enthalpy: phi_f[-] s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3) --
+        # eq_phase_idxs + MoleFractionKinetic phases share this pooled basis.
         values[self.ACC_OP + self.nc] += (
             self.compr
             * self.property.phi_f
             * np.sum(
-                self.property.sat[self.property.eq_phase_idxs]
-                * self.property.dens_m[self.property.eq_phase_idxs]
-                * self.property.enthalpy[self.property.eq_phase_idxs]
+                self.property.sat[self.property.mole_basis_phase_idxs]
+                * self.property.dens_m[self.property.mole_basis_phase_idxs]
+                * self.property.enthalpy[self.property.mole_basis_phase_idxs]
             )
         )  # fluid enthalpy (kJ/m3)
         # solid enthalpy: phi_s[-] s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
@@ -745,9 +757,13 @@ class ReservoirOperators(OperatorsSuper):
         )
 
         """ Chi operator for temperature in conduction """
-        # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
-        values[self.GRAD_OP + self.property.eq_phase_idxs * self.ne + self.nc] = (
-            self.property.temperature * self.property.cond[self.property.eq_phase_idxs]
+        # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day) --
+        # eq_phase_idxs + MoleFractionKinetic phases share this pooled basis.
+        values[
+            self.GRAD_OP + self.property.mole_basis_phase_idxs * self.ne + self.nc
+        ] = (
+            self.property.temperature
+            * self.property.cond[self.property.mole_basis_phase_idxs]
         )
 
         """ Delta operator for reaction """
@@ -788,12 +804,14 @@ class WellOperators(OperatorsSuper):
         # Evaluate properties at current state
         self.property.evaluate(state_np)
 
-        # All equilibrium phases contribute here, not just flowing ones -- zc[:nc_eq]
-        # spans every equilibrium phase regardless of mobility, so a non-flowing
-        # equilibrium phase (in solid_phase_idxs but not kin_phase_idxs) must still
-        # count toward the equilibrium-component mixture density.
+        # Average molar density of the equilibrium + MoleFractionKinetic phase pool
+        # (self.property.mole_basis_phase_idxs, see compute_saturation()) -- zc for
+        # equilibrium AND MoleFractionKinetic components are both "modified
+        # variables" on that same shared basis (see Flash's is_mole_fraction), so
+        # both use this density_tot directly below.
         density_tot = np.sum(
-            self.property.sat[: self.np_eq] * self.property.dens_m[: self.np_eq]
+            self.property.sat[self.property.mole_basis_phase_idxs]
+            * self.property.dens_m[self.property.mole_basis_phase_idxs]
         )
         zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
 
@@ -804,9 +822,13 @@ class WellOperators(OperatorsSuper):
         values_np[self.ACC_OP : self.ACC_OP + self.nc_eq] = (
             density_tot * zc[: self.nc_eq]
         )
+        # MoleFractionKinetic components: same formula, same density_tot.
+        values_np[self.ACC_OP + self.mole_kin_comp_idxs] = (
+            density_tot * zc[self.mole_kin_comp_idxs]
+        )
 
-        """ and alpha for mineral components """
-        # solid mass accumulation: z_s* [-] rho_ms [kmol/m3]
+        """ and alpha for bulk (volume-based) kinetic components """
+        # solid mass accumulation: rho_ms [kmol/m3] -- always 1 component per phase.
         values_np[self.ACC_OP + self.bulk_kin_comp_idxs] = (
             self.property.dens_m[self.bulk_kin_phase_idxs]
             * self.property.sat[self.bulk_kin_phase_idxs]
@@ -879,11 +901,12 @@ class WellOperators(OperatorsSuper):
         self.property.evaluate_thermal(state)
 
         """ Alpha operator represents accumulation term """
-        # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
+        # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3) --
+        # eq_phase_idxs + MoleFractionKinetic phases share this pooled basis.
         values[self.ACC_OP + self.nc] += self.property.phi_f * np.sum(
-            self.property.sat[self.property.eq_phase_idxs]
-            * self.property.dens_m[self.property.eq_phase_idxs]
-            * self.property.enthalpy[self.property.eq_phase_idxs]
+            self.property.sat[self.property.mole_basis_phase_idxs]
+            * self.property.dens_m[self.property.mole_basis_phase_idxs]
+            * self.property.enthalpy[self.property.mole_basis_phase_idxs]
         )  # fluid enthalpy (kJ/m3)
         # solid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3)
         values[self.ACC_OP + self.nc] += self.property.phi_s * np.sum(
@@ -905,9 +928,13 @@ class WellOperators(OperatorsSuper):
         )
 
         """ Chi operator for temperature in conduction """
-        # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day)
-        values[self.GRAD_OP + self.property.eq_phase_idxs * self.ne + self.nc] = (
-            self.property.temperature * self.property.cond[self.property.eq_phase_idxs]
+        # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day) --
+        # eq_phase_idxs + MoleFractionKinetic phases share this pooled basis.
+        values[
+            self.GRAD_OP + self.property.mole_basis_phase_idxs * self.ne + self.nc
+        ] = (
+            self.property.temperature
+            * self.property.cond[self.property.mole_basis_phase_idxs]
         )
 
         """ Delta operator for reaction """

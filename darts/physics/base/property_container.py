@@ -133,7 +133,7 @@ class PropertyContainer:
         self.capillary_pressure_ev = ConstFunc(np.zeros(self.np_eq))
         self.diffusion_ev = {
             phases_name[j]: ConstFunc(np.zeros(self.nc_eq))
-            for j in self.fluid_phase_idxs
+            for j in self.mole_frac_phase_idxs
         }
         self.kinetic_rate_ev = {}
         self.energy_source_ev = {}
@@ -162,7 +162,8 @@ class PropertyContainer:
         self.dX = []
         self.mass_source = np.zeros(self.nc)
         self.energy_source = 0.0
-        # phi_s/phi_f: fraction of bulk volume not/available to the self.eq_phase_idxs
+
+        # phi_s/phi_f: fraction of bulk volume not/available to the pooled eq_phase_idxs + MoleFractionKinetic (self.mole_basis_phase_idxs) basis
         self.phi_s = 0.0
         self.phi_f = 1.0
         self.permporo_mult = 1.0
@@ -190,9 +191,9 @@ class PropertyContainer:
         solid_phase_idxs: list,
         solid_comp_idxs: list,
     ):
-        """kin_formulation/nc_kin_per_phase (one entry per kinetic phase), the
-        derived kin_phase_idxs/bulk_kin_phase_idxs/bulk_kin_comp_idxs, and the
-        independent solid/fluid phase and component idx sets."""
+        """kin_formulation/nc_kin_per_phase (one entry per kinetic phase), the derived
+        kin_phase_idxs/bulk_kin_phase_idxs/bulk_kin_comp_idxs/mole_kin_phase_idxs/
+        mole_kin_comp_idxs, and the independent solid/fluid phase and component idx sets."""
         # One formulation per kinetic phase; default: bulk volume fraction (legacy).
         self.kin_formulation: list[KineticVarFormulation] = (
             list(kin_formulation)
@@ -214,36 +215,51 @@ class PropertyContainer:
             f"nc_kin_per_phase sums to {sum(self.nc_kin_per_phase)}, expected nc_kin={nc_kin}"
         )
         # Starting offset of each phase's own kinetic component(s) in the nc_kin block.
-        kin_comp_offsets = np.concatenate(([0], np.cumsum(self.nc_kin_per_phase)[:-1]))
+        self.kin_comp_offsets = np.concatenate(
+            ([0], np.cumsum(self.nc_kin_per_phase)[:-1])
+        )
 
         # Kinetic phases are always the last np_kin phases (Flash.set_kinetic_phase() order).
         self.kin_phase_idxs = np.arange(self.np_eq, self.nph)
 
-        # BulkVolumeFractionKinetic phases/components, and their 1:1 pairing (required
-        # by the ACC_OP/UPSAT_OP "mineral" terms in operator_evaluator.py).
+        # BulkVolumeFractionKinetic phases/components: dens_m*sat can't be split
+        # across multiple components (no per-component fraction data), so exactly 1
+        # component per such phase. Used for phi_s, the thermal solid-enthalpy term,
+        # and the "bulk" ACC_OP term (operator_evaluator.py) -- a MoleFractionKinetic
+        # phase's sat is normalized on a different (combined-total) basis not meant
+        # to be summed directly alongside these.
         self.bulk_kin_phase_idxs = []
         self.bulk_kin_comp_idxs = []
         for j, idx in enumerate(self.kin_phase_idxs):
             if isinstance(self.kin_formulation[j], BulkVolumeFractionKinetic):
                 assert self.nc_kin_per_phase[j] == 1, (
                     f"kinetic phase {j} uses BulkVolumeFractionKinetic but maps "
-                    f"{self.nc_kin_per_phase[j]} kinetic components; only 1 is supported"
+                    f"{self.nc_kin_per_phase[j]} kinetic components; only "
+                    "MoleFractionKinetic supports more than 1"
                 )
                 self.bulk_kin_phase_idxs.append(idx)
-                self.bulk_kin_comp_idxs.append(self.nc_eq + kin_comp_offsets[j])
+                self.bulk_kin_comp_idxs.append(self.nc_eq + self.kin_comp_offsets[j])
         self.bulk_kin_phase_idxs = np.array(self.bulk_kin_phase_idxs, dtype=int)
         self.bulk_kin_comp_idxs = np.array(self.bulk_kin_comp_idxs, dtype=int)
 
-        # MoleFractionKinetic components have no ACC_OP mechanism yet -- fail loudly
-        # rather than silently drop their accumulation term.
-        assert len(self.bulk_kin_comp_idxs) == self.nc_kin, (
-            "ACC_OP/UPSAT_OP solid-component terms only support "
-            "BulkVolumeFractionKinetic kinetic components currently; "
-            f"{self.nc_kin - len(self.bulk_kin_comp_idxs)} component(s) use a "
-            "different formulation and would get no accumulation term"
+        # MoleFractionKinetic phases/components: their raw zc is on the same
+        # combined-total basis as the equilibrium components, so they're folded into
+        # the same ACC_OP term as those (scaled by density_tot), not the bulk one.
+        self.mole_kin_phase_idxs = np.setdiff1d(
+            self.kin_phase_idxs, self.bulk_kin_phase_idxs, assume_unique=True
+        )
+        self.mole_kin_comp_idxs = np.setdiff1d(
+            np.arange(self.nc_eq, self.nc), self.bulk_kin_comp_idxs, assume_unique=True
         )
 
-        # Non-flowing phases (no kr/mu/pc/diffusion)
+        # All mole-fraction-based phases: equilibrium phases + MoleFractionKinetic
+        # ones. Diffusion is defined on this set regardless of mobility (unlike
+        # kr/mu/pc, which are mobility-gated -- see fluid_phase_idxs below).
+        self.mole_frac_phase_idxs = np.concatenate(
+            [np.arange(self.np_eq), self.mole_kin_phase_idxs]
+        )
+
+        # Non-flowing phases (no kr/mu/pc)
         self.solid_phase_idxs = (
             np.asarray(solid_phase_idxs, dtype=int)
             if solid_phase_idxs is not None
@@ -268,29 +284,37 @@ class PropertyContainer:
         """
         Check consistency of input properties
         """
-        # Check that all phases have a density and enthalpy/conductivity evaluator in case of thermal
-        # and all mobile phases have a viscosity/diffusion/relperm evaluator
-        acc_evs = {"density": self.density_ev} | (
+        # Needed for every phase, mobile or not.
+        all_phase_evs = {"density": self.density_ev} | (
             {"enthalpy": self.enthalpy_ev, "conductivity": self.conductivity_ev}
             if self.thermal
             else {}
         )
-        flux_evs = {
+        # Needed only for mobile (flowing) phases.
+        mobile_phase_evs = {
             "viscosity": self.viscosity_ev,
-            "diffusion": self.diffusion_ev,
             "rel_perm": self.rel_perm_ev,
         }
+        # Needed for mole-fraction-based phases (equilibrium + MoleFractionKinetic),
+        # regardless of mobility -- diffusion isn't mobility-gated.
+        mole_frac_phase_evs = {"diffusion": self.diffusion_ev}
 
-        for name, ev in acc_evs.items():
+        for name, ev in all_phase_evs.items():
             for phase in self.phases_name:
                 assert phase in ev.keys() and ev[phase] is not None, (
-                    f"Acc evaluator '{name}' missing for phase '{phase}'"
+                    f"Evaluator '{name}' missing for phase '{phase}'"
                 )
-        for name, ev in flux_evs.items():
+        for name, ev in mobile_phase_evs.items():
             for j in self.fluid_phase_idxs:
                 phase = self.phases_name[j]
                 assert phase in ev.keys() and ev[phase] is not None, (
-                    f"Flux evaluator '{name}' missing for phase '{phase}'"
+                    f"Evaluator '{name}' missing for mobile phase '{phase}'"
+                )
+        for name, ev in mole_frac_phase_evs.items():
+            for j in self.mole_frac_phase_idxs:
+                phase = self.phases_name[j]
+                assert phase in ev.keys() and ev[phase] is not None, (
+                    f"Evaluator '{name}' missing for mole-fraction-based phase '{phase}'"
                 )
 
         for name, kinetic_ev in self.kinetic_rate_ev.items():
@@ -404,6 +428,17 @@ class PropertyContainer:
         for j in range(self.nph):
             self.x[j][:] = 0
 
+    def _update_mole_basis_phase_idxs(self):
+        """mole_basis_phase_idxs: present equilibrium phases + MoleFractionKinetic
+        phases (share saturation/accumulation/diffusion/conduction); eq_phase_idxs_mobile:
+        the flowing subset of that. Call whenever self.eq_phase_idxs changes."""
+        self.mole_basis_phase_idxs = np.concatenate(
+            [self.eq_phase_idxs, self.mole_kin_phase_idxs]
+        )
+        self.eq_phase_idxs_mobile = np.intersect1d(
+            self.mole_basis_phase_idxs, self.fluid_phase_idxs, assume_unique=True
+        )
+
     def compute_saturation(self, state_pt=None, evaluate_PT_from_PHflash: bool = False):
         """
         Compute phase saturations -- fluid AND kinetic -- from molar phase fractions
@@ -431,10 +466,7 @@ class PropertyContainer:
             self.eq_phase_idxs = self.run_flash(
                 pressure, temperature, zc, evaluate_PT=evaluate_PT_from_PHflash
             )
-            # Present AND flowing equilibrium phases
-            self.eq_phase_idxs_mobile = np.intersect1d(
-                self.eq_phase_idxs, self.fluid_phase_idxs, assume_unique=True
-            )
+            self._update_mole_basis_phase_idxs()
             self.pressure = pressure
 
             for j in self.eq_phase_idxs:
@@ -457,19 +489,24 @@ class PropertyContainer:
 
         # Molar mass = unweighted sum of mapped components' Mw (stoichiometric compound, not a blend).
         for idx in self.kin_phase_idxs:
-            j = idx - self.np_eq
             self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
                 pressure, temperature
             )
             M = np.sum(self.Mw[self.x[idx, : self.nc_eq] > 0])
             self.dens_m[idx] = self.dens[idx] / M
-            self.sat[idx] = self.kin_formulation[j].to_bulk_volume_fraction(
-                self.nu[idx], self.dens_m[idx], self.nu, self.dens_m
-            )
 
-        # Get fluid saturations [fraction of pore space]
-        vol = [self.nu[j] / self.dens_m[j] for j in self.eq_phase_idxs]
-        self.sat[self.eq_phase_idxs] = vol / np.sum(vol)
+        # BulkVolumeFractionKinetic: raw nu already is the bulk volume fraction.
+        self.sat[self.bulk_kin_phase_idxs] = self.nu[self.bulk_kin_phase_idxs]
+
+        # Equilibrium phases + MoleFractionKinetic phases, saturation-normalized
+        # together: a MoleFractionKinetic phase's nu is on the same combined-total
+        # basis as the (Flash-rescaled) equilibrium phases' nu (see
+        # Flash.set_kinetic_phase(is_mole_fraction=True)), so they're one pool.
+        vol = (
+            self.nu[self.mole_basis_phase_idxs]
+            / self.dens_m[self.mole_basis_phase_idxs]
+        )
+        self.sat[self.mole_basis_phase_idxs] = vol / np.sum(vol)
 
         return self.sat[0]
 
@@ -567,9 +604,7 @@ class PropertyContainer:
         self.eq_phase_idxs = self.run_flash(
             pressure, state_spec_2, zc, evaluate_PT=self.evaluate_PT_bool
         )
-        self.eq_phase_idxs_mobile = np.intersect1d(
-            self.eq_phase_idxs, self.fluid_phase_idxs, assume_unique=True
-        )
+        self._update_mole_basis_phase_idxs()
         self.pressure = pressure
         assert self.pressure is not None, (
             "PropertyContainer does not specify self.pressure, should be set to "
@@ -604,7 +639,7 @@ class PropertyContainer:
 
         self.compute_saturation()
 
-        # phi_s: fraction of bulk volume NOT covered by self.eq_phase_idxs
+        # phi_s: fraction of bulk volume NOT covered by self.mole_basis_phase_idxs (sums only bulk_kin_phase_idxs)
         self.phi_s = np.sum(self.sat[self.bulk_kin_phase_idxs])
         self.phi_f = 1.0 - self.phi_s
         self.permporo_mult = self.permporo_mult_ev.evaluate(self.phi_f)
