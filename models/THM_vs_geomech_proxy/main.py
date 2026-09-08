@@ -441,7 +441,7 @@ def run_test(args: list = [], platform='cpu'):
         print('NO REFERENCE VTK FILE', os.path.abspath(vtk_ref_fname) + ';',
               'checked only that the case runs.')
         return 0, time.time() - t0
-    return compare_vtk_with_ref(vtk_cur_fname, vtk_ref_fname, props=REF_PROPS), time.time() - t0
+    return compare_vtk_with_ref(vtk_cur_fname, vtk_ref_fname, props=REF_PROPS, abs_tolerance=1e-7), time.time() - t0
 
 
 if __name__ == '__main__':
