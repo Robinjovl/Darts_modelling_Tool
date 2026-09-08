@@ -279,7 +279,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     # Preserve the transient first timestep while equilibrium initialization
     # temporarily replaces it with its intentionally very large timestep.
-    transient_first_ts = m.data_ts.dt_first
+    transient_first_ts = m.ts_control.dt_first
 
     # For geomechanics equilibrium intialization, we initially run the simulation for a long time
     # to get the equilibrium, then store that initial displacements internally.

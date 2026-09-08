@@ -267,12 +267,12 @@ class LinearSolver:
             )
 
     def _block_size(self) -> int:
-        """Matrix block size for building a solver: ``engine.N_VARS`` for mechanics
+        """Matrix block size for building a solver: ``engine.get_n_vars()`` for mechanics
         engines (it includes the displacement DOFs that ``physics.n_vars`` does not
         count), else ``physics.n_vars`` (pressure + n_components - 1 for flow)."""
         engine = getattr(self.model.physics, "engine", None)
-        if engine is not None and hasattr(engine, "N_VARS"):
-            return engine.N_VARS
+        if engine is not None:
+            return engine.get_n_vars()
         return self.model.physics.n_vars
 
     def _apply_solver(self):
