@@ -17,7 +17,7 @@ from darts.physics.base.initialize import Initialize
 
 class Model(DartsModel):
     def __init__(self, obl_points, reservoir_type, nx: int = None, components: list = [], itor_type: str = 'multilinear',
-                 itor_mode: str = 'adaptive', is_barycentric: bool = False):
+                 is_barycentric: bool = False):
         # Call base class constructor
         super().__init__()
 
@@ -27,7 +27,6 @@ class Model(DartsModel):
         self.reservoir_type = reservoir_type
         self.components = components
         self.itor_type = itor_type
-        self.itor_mode = itor_mode
         self.is_barycentric = is_barycentric
         self.well_controls = {'INJ': 'rate', 'PRD': 'pressure'}
 
@@ -37,15 +36,8 @@ class Model(DartsModel):
         self.set_reservoir()
         self.set_physics()
 
-        if len(self.components) > 14:
-            max_ts_mult = 1.
-        else:
-            max_ts_mult = 5.
-        max_ts = min(4., max_ts_mult * 1000 / self.nx)
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10, chop=ChopSpec(mode='local'))
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=max_ts, runtime=1000, tol_linear=1e-3,
-                            it_linear=50)
-        # self.params.linear_type = sim_params.cpu_superlu
+        # Time-stepping / Newton / linear-solver configuration moved to set_solver()
+        # (called from DartsModel.reset() before engine.init).
 
         self.timer.node["initialization"].stop()
 
@@ -55,6 +47,23 @@ class Model(DartsModel):
 
         self.inj_composition = self.inj_comp[:self.physics.nc-1]
         self.physics.components = self.components
+
+    def set_solver(self):
+        if len(self.components) > 14:
+            max_ts_mult = 1.
+        else:
+            max_ts_mult = 5.
+        max_ts = min(4., max_ts_mult * 1000 / self.nx)
+        self.ts_control.dt_first = 0.001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = max_ts
+        self.ts_control.runtime = 1000
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10, chop=ChopSpec(mode='local'))
+        self.linear_solver.spec.tolerance = 1e-3
+        self.linear_solver.spec.max_iterations = 50
+        # self.params.linear_type = sim_params.cpu_superlu
 
     def set_reservoir(self):
         if self.reservoir_type == '1D':
@@ -313,7 +322,7 @@ class Model(DartsModel):
         else:
             # run initialization over depth with specified GOC, pure liquid above, pure vapour under
             from darts.physics.base.initialize import Initialize
-            init = Initialize(physics=self.physics, algorithm=self.itor_type, mode=self.itor_mode,
+            init = Initialize(physics=self.physics, algorithm=self.itor_type,
                               is_barycentric=self.is_barycentric)
 
             # top boundary: calculate phase equilibrium for given uniform composition
@@ -486,7 +495,7 @@ class ModelProperties(PropertyContainer):
             ##########################################################
 
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :], self.dens[j])  # output in [cp]
-        self.compute_saturation(self.ph)
+        self.compute_saturation()
 
         self.pc = np.array(self.capillary_pressure_ev.evaluate(self.sat))
 

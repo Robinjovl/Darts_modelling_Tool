@@ -34,25 +34,21 @@ N_OPS = 4
 
 
 def _resolve_cls(base, *, required=True):
-    # Letterless naming since the index-type template parameter was dropped from
-    # the adaptive interpolators; the legacy '_l_'/'_i_' suffixed names are kept
-    # as fallbacks so the test still runs against an older compiled module.
-    candidates = [f"{base}_d_{N_DIMS}_{N_OPS}"] + [
-        f"{base}_{tag}_d_{N_DIMS}_{N_OPS}" for tag in ("l", "i")
-    ]
-    for name in candidates:
-        if hasattr(_itor_module, name):
-            return name
+    # Exposed names carry neither the "adaptive" token (static interpolation is gone)
+    # nor an index-type letter (that template parameter was dropped).
+    name = f"{base}_d_{N_DIMS}_{N_OPS}"
+    if hasattr(_itor_module, name):
+        return name
     if not required:
         return None
     raise SystemExit(
-        f"None of {candidates} exposed in darts.interpolators — "
+        f"{name} is not exposed in darts.interpolators — "
         f"rebuild with this (n_dims, n_ops) pair."
     )
 
 
-ML_CLS_NAME = _resolve_cls("multilinear_adaptive_cpu_interpolator")
-LIN_CLS_NAME = _resolve_cls("linear_adaptive_cpu_interpolator", required=False)
+ML_CLS_NAME = _resolve_cls("multilinear_cpu_interpolator")
+LIN_CLS_NAME = _resolve_cls("linear_cpu_interpolator", required=False)
 MultilinearAdaptiveCls = getattr(_itor_module, ML_CLS_NAME)
 LinearAdaptiveCls = (
     getattr(_itor_module, LIN_CLS_NAME) if LIN_CLS_NAME is not None else None

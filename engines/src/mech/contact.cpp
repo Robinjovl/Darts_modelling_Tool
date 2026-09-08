@@ -8,8 +8,8 @@
 
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
+#include "csr_matrix.hpp"
+#include "linsolv_superlu.hpp"
 #else
 #include "csr_matrix.h"
 #include "linsolv_superlu.h"

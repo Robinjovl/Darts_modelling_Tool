@@ -20,6 +20,10 @@ from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 
 
 class THMCModel(DartsModel):
+    # Mechanics engines select their linear solver through params.linear_type /
+    # engine.ls_params (see set_solver below), not through a LinearSolverSpec.
+    linear_solver_from_engine_factory = True
+
     def __init__(self):
         try:
             from darts.engines import get_num_threads
@@ -47,7 +51,8 @@ class THMCModel(DartsModel):
         if hasattr(self, 'idata'):
             if self.idata.type_mech == 'thermoporoelasticity':
                 self.reservoir.T_VAR = self.physics.engine.T_VAR
-        self.set_solver_params()
+        # Solver/Newton config is set by set_solver(), called from the base
+        # DartsModel.reset() (at the top, before engine.init).
         self.timer.node["initialization"].stop()
 
     def reinit(self, zero_conduction):
@@ -74,8 +79,15 @@ class THMCModel(DartsModel):
             fluid_vars=self.physics.vars,
         )
 
-    def set_solver_params(self):
-        self.set_solver()
+    def set_solver(self):
+        # Unified per-model solver hook (!280): called from the base reset(),
+        # before engine.init. Mechanics models drive the LINEAR solver through
+        # params.linear_type / engine.ls_params (a direct cpu_superlu by
+        # default), NOT through a self.linear_solver spec -- so they do NOT call
+        # super().set_solver() (which would select the flow CPR/AMG default) and
+        # leave self.linear_solver at the untouched platform default.
+        # The NONLINEAR solver is configured through its spec (!327).
+        super().set_solver()
         spec = self.nonlinear_solver.spec
         spec.tolerance = 1e-6  # Tolerance of newton residual norm ||residual||<tol_newt
         spec.chop.mode = "global"
@@ -89,20 +101,32 @@ class THMCModel(DartsModel):
         self.nonlinear_solver = MechanicsNewtonSolver(spec)
         self.nonlinear_solver.bind(self)
 
+        # Per-engine default (decision 2026-06-12): in a BOS build
+        # (ENABLE_BOS_SOLVERS, no open-source registry) mechanics engines
+        # default to the proprietary fixed-stress CPR -- the flow-tuned
+        # CPU_GMRES_CPR_AMG factory default is not supported on mechanics
+        # engines. The open-source build keeps the direct SuperLU default
+        # (the in-tree 'fs_cpr' registry solver is opt-in via FSCPRSolverSpec).
+        mech_default = (
+            sim_params.cpu_superlu
+            if self.linear_solver.open_source_solvers_available()
+            else sim_params.cpu_gmres_fs_cpr
+        )
         if self.discretizer_name == 'mech_discretizer':
             self.params.tolerance_linear = (
                 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
             )
-            self.params.linear_type = (
-                sim_params.cpu_superlu
-            )  # cpu_gmres_fs_cpr # cpu_superlu
+            self.params.linear_type = mech_default
             self.params.max_i_linear = 5000
         elif self.discretizer_name == 'pm_discretizer':
-            ls1 = linear_solver_params()
-            ls1.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
-            ls1.tolerance_linear = 1.0e-12
-            ls1.max_i_linear = 500
-            self.physics.engine.ls_params.append(ls1)
+            # Idempotent: set_solver() runs on every reset(), but ls_params is
+            # appended once (subclasses then tune ls_params[-1]).
+            if len(self.physics.engine.ls_params) == 0:
+                ls1 = linear_solver_params()
+                ls1.linear_type = mech_default
+                ls1.tolerance_linear = 1.0e-12
+                ls1.max_i_linear = 500
+                self.physics.engine.ls_params.append(ls1)
 
     def set_input_data(self):
         self.idata.check()

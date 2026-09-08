@@ -1,12 +1,15 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import DartsModel
+from darts.models.darts_model import DartsModel
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic, DensityBrineCO2
 from darts.physics.properties.black_oil import *
+from darts.physics.dead_oil import DeadOilProperties
+from darts.physics.black_oil import BlackOilProperties
 from darts.nonlinear_solvers import NewtonSolver
+
 
 class Model(DartsModel):
     def __init__(self, physics: str = 'geo'):
@@ -50,10 +53,20 @@ class Model(DartsModel):
             self.inj_temp = 300
             self.inj_comp = []
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-2)
-        self.set_sim_params(first_ts=1e-3, mult_ts=4, max_ts=dt_max)
+        self.dt_max = dt_max
+        # Time-stepping / linear-solver config lives in set_solver() (called from the
+        # base reset() before engine.init), per the unified set_solver pattern.
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 1e-3
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 4
+        self.ts_control.dt_max = self.dt_max
+        self.ts_control.runtime = 1000
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2)
 
     def set_reservoir(self):
         (nx, ny, nz) = (60, 60, 3)
@@ -115,7 +128,8 @@ class Model(DartsModel):
         components = ["w", "o"]
         phases = ["wat", "oil"]
 
-        property_container = DOProperties(phases_name=phases, components_name=components, eps_z=epsilon,)
+        property_container = DeadOilProperties(phases_name=phases, components_name=components,
+                                               Mw=np.ones(len(components)), eps_z=epsilon, temperature=1.)
 
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
                                               ('oil', DensityBasic(compr=5e-3, dens0=500))])
@@ -148,7 +162,8 @@ class Model(DartsModel):
         """ properties correlations """
         pvt = 'physics.in'
         Mw = np.ones(len(components))
-        property_container = BOProperties(phases_name=phases, components_name=components, Mw=Mw, eps_z=zero)
+        property_container = BlackOilProperties(phases_name=phases, components_name=components, Mw=Mw,
+                                                eps_z=zero, temperature=1.)
 
         property_container.flash_ev = flash_black_oil(pvt)
         property_container.density_ev = dict([('gas', DensityGas(pvt)),
@@ -213,58 +228,71 @@ class Model(DartsModel):
 
     def set_vl_physics(self, components):
         from darts.physics.base.physics import PhysicsBase
-        from dartsflash.mixtures import DARTSFlash, CompData, EoS, VL
+        from darts.physics.eos_physics import EoSPhysics
+        from dartsflash.mixtures import DARTSFlash, Mixture, CompData, EoS
 
         from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
         from darts.physics.properties.viscosity import Fenghour1998
         """Physical properties"""
         # Create property containers:
+        comp_data = CompData(components=components, setprops=True)
         phases = ['V', 'L']
         nc = len(components)
         zero = 1e-12
 
-        comp_data = CompData(components=components, setprops=True)
-
-        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw, eps_z=zero)
-
-        """ properties correlations """
+        """ Create instance of EoSPhysics """
         pt = False
-        flash_ev = VL(comp_data)
-        flash_ev.set_vl_eos("PR")
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash)
-        property_container.flash_ev = flash_ev
-        property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["VL"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
-                                              ('L', EoSDensity(eos=flash_ev.eos["VL"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN))])
-        property_container.viscosity_ev = dict([('V', Fenghour1998()),
-                                                ('L', Fenghour1998())])
-        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MAX)),
-                                               ('L', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MIN))])
-        property_container.rel_perm_ev = dict([('V', PhaseRelPerm("gas", swc=0.2)),
-                                               ('L', PhaseRelPerm("oil", swc=0.2))])
-        property_container.conductivity_ev = dict([('V', ConstFunc(10.)),
-                                                   ('L', ConstFunc(180.)), ])
-
-
-        """ Activate physics """
         state_spec = PhysicsBase.StateSpecification.PT if pt else PhysicsBase.StateSpecification.PH
         # [p, z_1, ..., z_{nc-1}, T] (PT) or [p, z_1, ..., z_{nc-1}, H] (PH)
         nz = nc - 1
         ax_step = [2.0] + [5e-3] * nz + [0.8]
         ax_origin = [1.0] + [zero] * nz + [273.15]
-        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
-                                     axes_step=ax_step, axes_origin=ax_origin,
-                                     epsilon_z=zero)
+        self.physics = EoSPhysics(components=components, phases=phases, timer=self.timer, state_spec=state_spec,
+                                  axes_step=ax_step, axes_origin=ax_origin, epsilon_z=zero
+                                  )
+        property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
+                                               eps_z=zero)
         self.physics.add_property_region(property_container)
+
+        """ Specify Mixture object """
+        mixture = Mixture(comp_data)
+        mixture.set_vl_eos(vl_eos_name="VL", root_order=[EoS.MAX, EoS.MIN])
+        mixture.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash)
+        self.physics.set_mixture(mixture)
+
+        """ properties correlations """
+        flash_ev = self.physics.get_flash_ev()  # returns self.physics.mixture
+        property_container.flash_ev = flash_ev
+        # property_container.density_ev = dict([('V', self.physics.get_density_ev_from_flash(phase_idx=0)),
+        #                                       ('L', self.physics.get_density_ev_from_flash(phase_idx=1))])
+        # property_container.density_ev = dict([('V', EoSDensity(flash_ev=flash_ev, phase_idx=0)),
+        #                                       ('L', EoSDensity(flash_ev=flash_ev, phase_idx=1))])
+        property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MAX)),
+                                              ('L', EoSDensity(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MIN))])
+        property_container.viscosity_ev = dict([('V', Fenghour1998()),
+                                                ('L', Fenghour1998())])
+        property_container.enthalpy_ev = dict([('V', self.physics.get_enthalpy_ev_from_flash(phase_idx=0)),
+                                               ('L', self.physics.get_enthalpy_ev_from_flash(phase_idx=1))])
+        # property_container.enthalpy_ev = dict([('V', EoSEnthalpy(flash_ev=flash_ev, phase_idx=0)),
+        #                                        ('L', EoSEnthalpy(flash_ev=flash_ev, phase_idx=1))])
+        # property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MAX)),
+        #                                        ('L', EoSEnthalpy(eos=flash_ev.eos["VL"], root_flag=EoS.RootFlag.MIN))])
+        property_container.rel_perm_ev = dict([('V', PhaseRelPerm("gas", swc=0.2)),
+                                               ('L', PhaseRelPerm("oil", swc=0.2))])
+        property_container.conductivity_ev = dict([('V', ConstFunc(10.)),
+                                                   ('L', ConstFunc(180.)), ])
+
         return
 
-    def set_iapws_physics(self):
+    def set_iapws_physics(self, is_ph: bool = True):
         from darts.physics.base.physics import PhysicsBase
+        from darts.physics.iapws_physics import IAPWSPhysics
         from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
 
         from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
         from darts.physics.properties.viscosity import Fenghour1998
-        """Physical properties"""
-        # Create property containers:
+
+        """ Components and phases """
         components = ["H2O"]
         phases = ['V', 'L']
         nc = len(components)
@@ -272,33 +300,36 @@ class Model(DartsModel):
 
         comp_data = CompData(components=components, setprops=True)
 
+        """ Activate physics """
+        state_spec = PhysicsBase.StateSpecification.PH if is_ph else PhysicsBase.StateSpecification.PT
+        # IAPWS: H2O only → no z axes. [p, T or H]
+        self.physics = IAPWSPhysics(phases, self.timer, state_spec=state_spec,
+                                    axes_step=[2.0, 0.8], axes_origin=[1.0, 273.15],
+                                    )
+
+        """Physical properties"""
+        # Create property containers:
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=comp_data.Mw,
                                                eps_z=zero)
+        self.physics.add_property_region(property_container)
 
         """ properties correlations """
-        pt = True
-        flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash)
-        property_container.flash_ev = flash_ev
-        property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
-                                              ('L', EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN))])
+        mixture = IAPWS(iapws_ideal=True, ice_phase=False)
+        mixture.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if is_ph else DARTSFlash.FlashType.PTFlash)
+        self.physics.set_mixture(mixture)
+
+        property_container.flash_ev = self.physics.get_flash_ev()
+        property_container.density_ev = dict([('V', EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.RootFlag.MAX)),
+                                              ('L', EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.RootFlag.MIN))])
         property_container.viscosity_ev = dict([('V', Fenghour1998()),
                                                 ('L', Fenghour1998())])
-        property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX)),
-                                               ('L', EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN))])
+        property_container.enthalpy_ev = dict([('V', self.physics.get_enthalpy_ev_from_flash(phase_idx=0)),
+                                               ('L', self.physics.get_enthalpy_ev_from_flash(phase_idx=1))])
         property_container.rel_perm_ev = dict([('V', PhaseRelPerm("gas", swc=0.2)),
                                                ('L', PhaseRelPerm("oil", swc=0.2))])
         property_container.conductivity_ev = dict([('V', ConstFunc(10.)),
                                                    ('L', ConstFunc(180.)), ])
 
-
-        """ Activate physics """
-        state_spec = PhysicsBase.StateSpecification.PT if pt else PhysicsBase.StateSpecification.PH
-        # IAPWS: H2O only → no z axes. [p, T or H]
-        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
-                                     axes_step=[2.0, 0.8], axes_origin=[1.0, 273.15],
-                                     epsilon_z=zero)
-        self.physics.add_property_region(property_container)
         return
 
     def set_initial_conditions(self):
@@ -365,146 +396,3 @@ class CompProperties(PropertyContainer):
         self.nu[2] = zc[-1]
 
         return np.array(ph, dtype=np.intp)
-
-class DOProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, eps_z=1e-11):
-        # Call base class constructor
-        self.nph = len(phases_name)
-        Mw = np.ones(self.nph)
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z, temperature=1.)
-
-    def evaluate(self, state):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
-        """
-        # Composition vector and pressure from state:
-        vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
-        self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
-
-        zc = np.append(vec_state_as_np[1:], 1 - np.sum(vec_state_as_np[1:]))
-
-        self.clean_arrays()
-        # two-phase flash - assume water phase is always present and water component last
-        for i in range(self.nph):
-            self.x[i, i] = 1
-
-        self.ph = np.array([0, 1], dtype=np.intp)
-
-        for j in self.ph:
-            # molar weight of mixture
-            M = np.sum(self.x[j, :] * self.Mw)
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure)  # output in [kg/m3]
-            self.dens_m[j] = self.dens[j] / M
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
-
-        self.nu = zc
-        self.compute_saturation(self.ph)
-
-        for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
-            self.pc[j] = 0
-
-        return
-
-    def evaluate_at_cond(self, pressure, zc):
-        self.sat[:] = 0
-
-        ph = [0, 1]
-        for j in ph:
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
-
-        self.dens_m = [1025, 0.77]  # to match DO based on PVT
-
-        self.nu = zc
-        self.compute_saturation(ph)
-
-        return self.sat, self.dens_m
-
-
-class BOProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, eps_z: float = 1e-11, temperature: float = None):
-        # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=1.)
-
-    def evaluate(self, state):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
-        """
-        # Composition vector and pressure from state:
-        vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
-
-        zc = np.append(vec_state_as_np[1:], 1 - np.sum(vec_state_as_np[1:]))
-
-        if zc[-1] < 0:
-            # print(zc)
-            zc = self.comp_out_of_bounds(zc)
-
-        self.clean_arrays()
-        # two-phase flash - assume water phase is always present and water component last
-        (xgo, V, pbub) = self.flash_ev.evaluate(pressure, zc)
-        for i in range(self.nph):
-            self.x[i, i] = 1
-
-        if V < 0:
-            self.ph = np.array([1, 2])
-        else:  # assume oil and water are always exists
-            self.x[1][0] = xgo
-            self.x[1][1] = 1 - xgo
-            self.ph = np.array([0, 1, 2])
-
-        for j in self.ph:
-            M = 0
-            # molar weight of mixture
-            for i in range(self.nc):
-                M += self.Mw[i] * self.x[j][i]
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, pbub, xgo)  # output in [kg/m3]
-            self.dens_m[j] = self.dens[j] / M
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, pbub)  # output in [cp]
-
-        self.nu[2] = zc[2]
-        # two phase undersaturated condition
-        if pressure > pbub:
-            self.nu[0] = 0
-            self.nu[1] = zc[1]
-        else:
-            self.nu[1] = zc[1] / (1 - xgo)
-            self.nu[0] = 1 - self.nu[1] - self.nu[2]
-
-        self.compute_saturation(self.ph)
-
-        for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[0], self.sat[2])
-
-        pcow = self.capillary_pressure_ev['pcow'].evaluate(self.sat[2])
-        pcgo = self.capillary_pressure_ev['pcgo'].evaluate(self.sat[0])
-
-        self.pc = np.array([-pcgo, 0, pcow])
-
-        return
-
-    def evaluate_at_cond(self, pressure, zc):
-
-        self.sat[:] = 0
-
-        if zc[-1] < 0:
-            # print(zc)
-            zc = self.comp_out_of_bounds(zc)
-
-        self.ph = []
-        for j in range(self.nph):
-            if zc[j] > self.eps_z:
-                self.ph.append(j)
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].dens_sc
-
-        self.nu = zc
-        self.compute_saturation(self.ph)
-
-        return self.sat, self.dens_m

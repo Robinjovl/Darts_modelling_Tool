@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from darts.engines import value_vector, sim_params
@@ -8,13 +8,14 @@ from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.base.property_container import PropertyContainer
+from darts.physics.iapws_physics import IAPWSPhysics, EoSPhysics
 from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.viscosity import MaoDuan2009
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, resolution=10):
         # call base class constructor
         super().__init__()
@@ -25,17 +26,21 @@ class Model(CICDModel):
         self.set_reservoir(resolution)
         self.set_physics()
 
-        # The OBL grid is unbounded in this branch, so the former axis clamp no longer
-        # caps a Newton excursion: a first-step overshoot drove the well-block temperature
-        # far below the IAPWS-valid range (-> "BISECTION not converged" crash). Tighten the
-        # global chop from 1 (100% relative change) to 0.2, matching the mitigation already
-        # used by cpg_sloping_fault's ModelGeothermal for the same failure.
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=20,
-                                           chop=ChopSpec(mode='global', factor=0.2))
-        self.set_sim_params(first_ts=1e-6, mult_ts=8, max_ts=31, runtime=365, tol_linear=1e-6,
-                            it_linear=40)
+        # solver configuration moved to set_solver() (called from base reset())
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 1e-6
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 8
+        self.ts_control.dt_max = 31
+        self.ts_control.runtime = 365
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=20,
+            chop=ChopSpec(mode='global', factor=0.2))
+        self.linear_solver.spec.tolerance = 1e-6
+        self.linear_solver.spec.max_iterations = 40
 
     def set_reservoir(self, resolution):
         y_scale = 3
@@ -106,24 +111,38 @@ class Model(CICDModel):
         zero       = 1e-12
         comp_data  = CompData(components=components, setprops=True)
 
+        # Single component (H2O) with state_spec=PT -> OBL axes are [pressure, temperature]
+        self.physics = IAPWSPhysics(
+            phases, self.timer,
+            state_spec=PhysicsBase.StateSpecification.PT,
+            axes_step=[p_step, t_step],
+            axes_origin=[p_origin, t_origin],
+            cache=cache,
+        )
+
         pc = PropertyContainer(phases_name=phases, components_name=components,
                                Mw=comp_data.Mw, eps_z=zero)
+        self.physics.add_property_region(pc)
 
-        flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
-        pc.flash_ev = flash_ev
+        mixture = IAPWS(iapws_ideal=True, ice_phase=False)
+        mixture.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
+        self.physics.set_mixture(mixture)
+
+        pc.flash_ev = self.physics.get_flash_ev()
 
         pc.density_ev = {
-            'V': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),
-            'L': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN),
+            'V': EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.MAX),
+            'L': EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.MIN),
         }
         pc.viscosity_ev = {
             'V': ConstFunc(0.01),         # cP, steam
             'L': MaoDuan2009(components),  # cP, liquid water (pressure/temperature-dependent)
         }
         pc.enthalpy_ev = {
-            'V': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
-            'L': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
+            'V': EoSEnthalpy(eos=mixture.eos["IAPWS"], root_flag=EoS.MAX),
+            'L': EoSEnthalpy(eos=mixture.eos["IAPWS"], root_flag=EoS.MIN),
+            # 'V': self.physics.get_enthalpy_ev_from_flash(phase_idx=0),
+            # 'L': self.physics.get_enthalpy_ev_from_flash(phase_idx=1),
         }
         pc.rel_perm_ev = {
             'V': PhaseRelPerm("gas", swc=0.0),
@@ -136,16 +155,6 @@ class Model(CICDModel):
         # output_props exposes derived T (K) via the property interpolator
         pc.output_props = {'temperature': lambda: pc.temperature}
 
-        # Single component (H2O) with state_spec=PT -> OBL axes are [pressure, temperature]
-        self.physics = PhysicsBase(
-            components, phases, self.timer,
-            state_spec=PhysicsBase.StateSpecification.PT,
-            axes_step=[p_step, t_step],
-            axes_origin=[p_origin, t_origin],
-            epsilon_z=zero,
-            cache=cache,
-        )
-        self.physics.add_property_region(pc)
         return pc
 
     def set_initial_conditions(self):

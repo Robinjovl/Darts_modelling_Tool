@@ -23,7 +23,7 @@
     after_script:
         - &archive_logic
             - cd models
-            - ./archive_pkl.sh $ODLS $TEST_GPU
+            - ./archive_pkl.sh "$ODLS" "$TEST_GPU"
             - cd ..
     rules:
         - if: $CI_COMMIT_REF_PROTECTED == "true"
@@ -31,7 +31,7 @@
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
         - if: $TEST_CUSTOM_BRANCH == "1"
     variables:
-        ODLS: '-a'
+        ODLS: ''   # vestigial for the GPU build (GSELINSOLVERSPATH drives bos linkage); kept '' for pkl-suffix consistency
         TEST_GPU: '1'
         PY_VER: $DEFAULT_PY_VER
         CONDA_ENV: "darts_gpu_${CI_JOB_ID}"
@@ -46,6 +46,9 @@
       when: always
 
 test-linux-oahu-gpu:
+    # The Oahu runner exposes shared physical GPUs. Serialize this project's GPU
+    # tests so two pipelines cannot select and overload the same device.
+    resource_group: oahu-gpu
     tags:
         - linux_gpu
     variables:
@@ -60,6 +63,16 @@ test-linux-oahu-gpu:
         - pip uninstall open-darts-flash  --yes
         - export WHEEL_PATH="$(ls ./dist/*.whl | head -n 1)"
         - pip install "${WHEEL_PATH}[test]"
+        - |
+          gpu_env_file="$(mktemp)"
+          python "${CI_PROJECT_DIR}/helper_scripts/gpu_ci_preflight.py" \
+            --env-file "$gpu_env_file" || {
+              rm -f "$gpu_env_file"
+              exit 1
+            }
+          source "$gpu_env_file"
+          rm -f "$gpu_env_file"
+          echo "Selected CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES GPU_DEVICE=$GPU_DEVICE"
     after_script:
         - *archive_logic  # parent's commands
         - source ${CONDAPATH}/bin/activate
@@ -84,6 +97,16 @@ test-linux-oahu-gpu:
         - pip uninstall open-darts-flash --yes
         - export WHEEL_PATH="$(ls ./dist/*.whl | head -n 1)"
         - pip install "${WHEEL_PATH}[test]"
+        - |
+          gpu_env_file="$(mktemp)"
+          python "${CI_PROJECT_DIR}/helper_scripts/gpu_ci_preflight.py" \
+            --env-file "$gpu_env_file" || {
+              rm -f "$gpu_env_file"
+              exit 1
+            }
+          source "$gpu_env_file"
+          rm -f "$gpu_env_file"
+          echo "Selected CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES GPU_DEVICE=$GPU_DEVICE"
     after_script:
         - spack env activate open_darts_gcc134
         - . "${CONDAPATH}/etc/profile.d/conda.sh"
@@ -123,6 +146,27 @@ test-linux-tahiti-image-gpu:
             WHEEL_PATH=\$(ls ./dist/*.whl | head -n 1) && \
             pip install \"\${WHEEL_PATH}[test]\" --force-reinstall
             "
+        - |
+          # Use a project-local temporary file because the helper runs inside
+          # Apptainer and its exports must be sourced by the outer runner shell.
+          gpu_env_file="$(mktemp "${CI_PROJECT_DIR}/.gpu_ci_env.XXXXXX")"
+          export APPTAINERENV_CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-}"
+          export APPTAINERENV_GPU_DEVICE="${GPU_DEVICE:-}"
+          apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "
+            source /opt/conda/etc/profile.d/conda.sh &&
+            conda activate ${CONDA_ENV} &&
+            python '${CI_PROJECT_DIR}/helper_scripts/gpu_ci_preflight.py' \
+              --env-file '${gpu_env_file}'
+          " || {
+            rm -f "$gpu_env_file"
+            exit 1
+          }
+          source "$gpu_env_file"
+          rm -f "$gpu_env_file"
+          export APPTAINERENV_CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE_DEVICES"
+          export APPTAINERENV_GPU_DEVICE="$GPU_DEVICE"
+          export APPTAINERENV_DARTS_CI_PHYSICAL_GPU_DEVICE="${DARTS_CI_PHYSICAL_GPU_DEVICE:-}"
+          echo "Selected CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES GPU_DEVICE=$GPU_DEVICE"
     script:
         - |
           apptainer exec --nv "$APPTAINER_IMAGE" bash -lc "

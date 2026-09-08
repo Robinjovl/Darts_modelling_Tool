@@ -31,7 +31,8 @@ class FakeEngine:
     Scripted inputs:
       * ``res_seq``   -- reservoir residuals returned per Newton iteration
       * ``well_seq``  -- well residuals returned per iteration
-      * ``solve_rcs`` -- linear-solve return codes returned per solve (0/1/2)
+      * ``solve_rcs`` -- linear-solve return codes returned per solve
+        (0 ok / 1 setup fail / 2 solve fail / 3 not-converged-usable)
       * ``dev_seq``   -- deviatoric per-component residual tuples for the
                          mechanics driver: ``(dev_p, dev_u)`` or
                          ``(dev_p, dev_u, dev_third)`` per iteration
@@ -150,9 +151,6 @@ class FakeModel:
         self.platform = "cpu"
         self.timer = _FakeTimer()
         self._linear_solver_rc_last = 0
-        self.time = []
-        self.n_newton_iters = []
-        self.time_step_size = []
         self.reservoir = _Reservoir()
 
         class _Physics:
@@ -162,18 +160,27 @@ class FakeModel:
         self.physics.engine = engine
         self.physics.n_vars = n_vars
 
-        class _DataTS:
-            linear_type = None
+        class _TimestepControl:
+            def __init__(self):
+                self.time = []
+                self.time_step_size = []
 
-        self.data_ts = _DataTS()
+        self.ts_control = _TimestepControl()
+
+        class _LinearSolver:
+            def _solve_linear_equation(inner_self):
+                engine = self.physics.engine
+                rc = engine.solve_linear_equation()
+                return (
+                    rc,
+                    engine.get_last_linear_iters(),
+                    engine.get_last_linear_residual(),
+                )
+
+        self.linear_solver = _LinearSolver()
 
     def apply_rhs_flux(self, dt, t):
         pass
-
-    def _solve_linear_equation(self):
-        engine = self.physics.engine
-        rc = engine.solve_linear_equation()
-        return rc, engine.get_last_linear_iters(), engine.get_last_linear_residual()
 
 
 @pytest.fixture

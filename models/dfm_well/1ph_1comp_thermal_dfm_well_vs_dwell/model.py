@@ -1,12 +1,13 @@
 import numpy as np
 
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, ms_well, value_vector
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
 
 from darts.physics.base.physics import PhysicsBase
+from darts.physics.eos_physics import EoSPhysics
 from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
@@ -20,7 +21,7 @@ from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -33,15 +34,25 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
-                                           chop=ChopSpec(mode='local'),
-                                           coupled_well_res_norm_method=2)
-        self.set_sim_params(first_ts=0.0001/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_linear=1e-4,
-                            it_linear=10,
-                            runtime=10 / 24 / 60,   # This runtime will be used when CI test is conducted without the main file
-                            )
+        # NOTE: set_sim_params stays in __init__ (not moved to set_solver): set_wells()
+        # builds RampUpRate from self.ts_control.dt_first and runs during init() before
+        # reset()/set_solver(). dfm_well is the documented set_solver exception.
+        self.ts_control.dt_first = 0.0001/(24*60*60)
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 2/(24*60*60)
+        self.ts_control.runtime = 10 / 24 / 60  # This runtime will be used when CI test is conducted without the main file
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
+            chop=ChopSpec(mode='local'),
+            coupled_well_res_norm_method=2)
+        self.linear_solver.spec.tolerance = 1e-4
+        self.linear_solver.spec.max_iterations = 10
 
     def set_reservoir(self):
         (nr, nz) = (2, 1)
@@ -76,9 +87,9 @@ class Model(CICDModel):
         return
 
     def set_physics(self):
-        from dartsflash.libflash import CubicEoS, FlashParams, EoS
+        from dartsflash.libflash import EoS
         from dartsflash.components import CompData
-        from dartsflash.mixtures import DARTSFlash, VL
+        from dartsflash.mixtures import DARTSFlash, Mixture
         components_names = ['CO2']
         phases_names = ['G', 'L']
         comp_data = CompData(components_names, setprops=True)
@@ -88,28 +99,31 @@ class Model(CICDModel):
         ph = True
         state_spec = PhysicsBase.StateSpecification.PH if ph else PhysicsBase.StateSpecification.PT
         # state_spec=PH for 1-comp thermal → axes [p, h]
-        self.physics = PhysicsBase(components_names, phases_names, self.timer, state_spec=state_spec,
-                                     axes_step=[0.05, 0.035],  # p [bar], h
-                                     axes_origin=[1.0, 150.0],
-                                     epsilon_z=epsilon)
+        self.physics = EoSPhysics(components_names, phases_names, self.timer, state_spec=state_spec,
+                                  axes_step=[0.05, 0.035],  # p [bar], h
+                                  axes_origin=[1.0, 150.0],
+                                  epsilon_z=epsilon)
 
         """ PropertyContainer object and correlations """
         property_container = PropertyContainer(phases_names, components_names, Mw=comp_data.Mw, eps_z=epsilon,
                                                temperature=None, rock_comp=0)
 
         """ Define flash """
-        flash_ev = VL(comp_data)
-        flash_ev.set_vl_eos("PR", root_order=[EoS.MAX, EoS.MIN])
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash)
-        property_container.flash_ev = flash_ev
+        mixture = Mixture(comp_data)
+        mixture.set_vl_eos(vl_eos_name="PR", root_order=[EoS.MAX, EoS.MIN])
+        pr = mixture.eos["PR"]
+
+        mixture.init_flash(flash_type=DARTSFlash.FlashType.PHFlash if ph else DARTSFlash.FlashType.PTFlash)
+
+        self.physics.set_mixture(mixture)
 
         """ Define phase properties """
-        pr = flash_ev.eos["VL"]
-        property_container.density_ev = dict([('G', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX)),
-                                              ('L', EoSDensity(eos=pr, Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN)),
+        property_container.flash_ev = self.physics.get_flash_ev()
+        property_container.density_ev = dict([('G', EoSDensity(eos=pr, root_flag=EoS.RootFlag.MAX)),
+                                              ('L', EoSDensity(eos=pr, root_flag=EoS.RootFlag.MIN)),
                                               ])
-        property_container.enthalpy_ev = dict([('G', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MAX)),
-                                               ('L', EoSEnthalpy(eos=pr, root_flag=EoS.RootFlag.MIN)),
+        property_container.enthalpy_ev = dict([('G', self.physics.get_enthalpy_ev_from_flash(phase_idx=0)),
+                                               ('L', self.physics.get_enthalpy_ev_from_flash(phase_idx=1)),
                                                ])
         property_container.viscosity_ev = dict([('G', Fenghour1998()),
                                                 ('L', Fenghour1998()),
@@ -175,7 +189,7 @@ class Model(CICDModel):
         molar_enthalpy = 88.02
         inj_fluid_props = {"composition": inj_phase_comp, "molar_enthalpy": molar_enthalpy}
 
-        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.data_ts.dt_first, inj_segment_idx,
+        ramp_up_rate = RampUpRate(well_1_name, well_1_geometry, self.physics, self.ts_control.dt_first, inj_segment_idx,
                                   inflow_or_outflow, target_inj_rate, ramp_up_period, inj_fluid_props,
                                   verbose=verbose)
         # The following dict will be used in set_rhs_flux and pipe velocity evaluation

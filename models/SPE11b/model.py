@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from darts.models.darts_model import DartsModel
 from darts.nonlinear_solvers import Norm, NewtonSolver, ChopSpec
 from darts.engines import value_vector
-from darts.input.input_data import linear_solver_types
 from math import fabs
 try:
     from darts.engines import copy_data_to_device, copy_data_to_host, allocate_device_data
@@ -14,12 +13,13 @@ except ImportError:
     pass
 from darts.engines import well_control_iface
 from darts.physics.base.physics import PhysicsBase
+from darts.physics.eos_physics import EoSPhysics
 from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.basic import ConstFunc, CapillaryPressure, PhaseRelPerm
 from darts.physics.properties.density import Garcia2001
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-from dartsflash.libflash import NegativeFlash, FlashParams, InitialGuess
+from dartsflash.libflash import NegativeFlash, FlashParams
 from dartsflash.libflash import CubicEoS, AQEoS
 from dartsflash.components import CompData
 from scipy.special import erf
@@ -109,12 +109,12 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=12,
-                                           chop=ChopSpec(mode='local', factor=0.01),
-                                           norm=Norm.L2)  # Norm.LINF if you use m.set_rhs() for injection
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4,
-                            it_linear=50)
-        # self.data_ts.eta = np.ones(self.physics.n_vars)
+        self.ts_control.dt_first = 1e-6
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 365
+        self.ts_control.runtime = 1000
+        # self.ts_control.eta = np.ones(self.physics.n_vars)
 
         """ Define reservoir """
         self.set_reservoir()
@@ -268,6 +268,15 @@ class Model(DartsModel):
             # # self.set_boundary_conditions_11c()
 
 
+    def set_solver(self):
+        # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=12,
+            chop=ChopSpec(mode='local', factor=0.01),
+            norm=Norm.L2)  # Norm.LINF if you use m.set_rhs() for injection
+        self.linear_solver.spec.tolerance = 1e-4
+        self.linear_solver.spec.max_iterations = 50
+
     def set_wells(self):
         self.reservoir.set_wells(False)
         return
@@ -358,27 +367,13 @@ class Model(DartsModel):
 
         from dartsflash.libflash import EoS
         from dartsflash.components import CompData
-        from dartsflash.mixtures import DARTSFlash, VLAq
+        from dartsflash.mixtures import DARTSFlash, Mixture
         # Fluid components, ions and solid
         phases = ["V", "Aq"]
         comp_data = CompData(self.components, setprops=True)
         nc = len(self.components)
 
-        """ Define flash """
-        flash_ev = VLAq(comp_data, hybrid=True)
-        flash_ev.set_vl_eos("PR", root_order=[EoS.STABLE],
-                            trial_comps=[i for i in range(nc)],
-                            stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
-                            )
-        flash_ev.set_aq_eos("Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
-        pr = flash_ev.eos["VL"]
-        aq = flash_ev.eos["Aq"]
-
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash, eos_order=["VL", "Aq"],
-                            t_min=270., t_max=500., t_init=300.,
-                            # pxflash_switch_ttol=1e-3, near_zero_px=1e-2,
-                            )
-
+        """ Define EoSPhysics """
         if temperature is None:  # if None, then thermal=True
             thermal = True
             state_spec = PhysicsBase.StateSpecification.PT
@@ -394,12 +389,26 @@ class Model(DartsModel):
         if thermal:
             ax_step.append(0.1)
             ax_origin.append(273.15)
-        self.physics = PhysicsBase(self.components, phases, timer=self.timer,
-                                     axes_step=ax_step, axes_origin=ax_origin,
-                                     epsilon_z=self.zero / 10,
-                                     state_spec=state_spec,
-                                     extrapolation_flag=False,
-                                     cache=False)
+        self.physics = EoSPhysics(self.components, phases, timer=self.timer,
+                                  axes_step=ax_step, axes_origin=ax_origin,
+                                  epsilon_z=self.zero / 10,
+                                  state_spec=state_spec,
+                                  extrapolation_flag=False,
+                                  cache=False)
+
+        """ Define flash """
+        mixture = Mixture(comp_data)
+        mixture.set_vl_eos(vl_eos_name="VL", hybrid_aq_eos_name="Aq",
+                           root_order=[EoS.STABLE],
+                           trial_comps=[i for i in range(nc)],
+                           stability_tol=1e-20, switch_tol=1e-2, max_iter=50, use_gmix=False
+                           )
+        mixture.set_aq_eos(aq_eos_name="Aq", stability_tol=1e-20, max_iter=10, use_gmix=True)
+
+        mixture.init_flash(flash_type=DARTSFlash.FlashType.PTFlash, eos_order=["VL", "Aq"],
+                           t_min=270., t_max=500., t_init=300.,
+                           # pxflash_switch_ttol=1e-3, near_zero_px=1e-2,
+                           )
 
         dispersivity = 10.
         self.physics.dispersivity = {}
@@ -409,23 +418,23 @@ class Model(DartsModel):
             diff_g = 2e-8 * 86400
             property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
                                                    eps_z=self.zero / 10, temperature=temperature)
+            self.physics.add_property_region(property_container, i)
+            self.physics.set_mixture(mixture, region=i)
 
-            property_container.flash_ev = flash_ev
-            property_container.density_ev = dict([('V', EoSDensity(eos=flash_ev.eos["VL"], Mw=comp_data.Mw)),
+            property_container.flash_ev = self.physics.get_flash_ev(region=i)
+            property_container.density_ev = dict([('V', EoSDensity(eos=mixture.eos["VL"])),
                                                   ('Aq', Garcia2001(self.components)), ])
             property_container.viscosity_ev = dict([('V', Fenghour1998()),
                                                     ('Aq', Islam2012(self.components)), ])
             property_container.diffusion_ev = dict([('V', ConstFunc(np.ones(nc) * diff_g)),
                                                     ('Aq', ConstFunc(np.ones(nc) * diff_w))])
-            property_container.enthalpy_ev = dict([('V', EoSEnthalpy(eos=flash_ev.eos["VL"])),
-                                                   ('Aq', EoSEnthalpy(eos=flash_ev.eos["Aq"]))])
+            property_container.enthalpy_ev = dict([('V', self.physics.get_enthalpy_ev_from_flash(phase_idx=0)),
+                                                   ('Aq', self.physics.get_enthalpy_ev_from_flash(phase_idx=1))])
             property_container.conductivity_ev = dict([('V', ConstFunc(8.4)),
                                                        ('Aq', ConstFunc(170.)),])
             property_container.rel_perm_ev = dict([('V', ModBrooksCorey(corey_params, 'V')),
                                                    ('Aq', ModBrooksCorey(corey_params, 'Aq'))])
             property_container.capillary_pressure_ev = ModCapillaryPressure(corey_params)
-
-            self.physics.add_property_region(property_container, i)
 
             property_container.output_props = {
                 "sat_V": lambda ii=i: self.physics.property_containers[ii].sat[phases.index('V')],
@@ -797,9 +806,6 @@ class Model(DartsModel):
             # apply RHS flux
             self.apply_rhs_flux(dt, t)
 
-            if self.has_dfm_well:
-                self.apply_dfm_well_lateral_heat_flux(dt, t)
-
             if self.platform == "gpu":
                 copy_data_to_device(
                     self.physics.engine.RHS, self.physics.engine.get_RHS_d()
@@ -850,29 +856,17 @@ class Model(DartsModel):
                 if i > 0:  # min_i_newton
                     break
 
-            if isinstance(self.data_ts.linear_type, linear_solver_types):
-                # solvers via Python interface
-                if self.data_ts.linear_type in [
-                    linear_solver_types.CPU_PETSC_CPR,
-                    linear_solver_types.CPU_PETSC_FS,
-                ]:
-                    self.petsc_solve_linear_equation()
-                elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                    self.pardiso_solve_linear_equation()
-                else:
-                    raise Exception(
-                        "Unknown linear solver type", self.data_ts.linear_type
-                    )
-            else:
-                # compile-time C++ linear solvers
-                r_code = self.physics.engine.solve_linear_equation()
-                status.linear_solver_rc = r_code
-                if r_code != 0:
-                    # failed linear solve: do NOT apply a stale update; the
-                    # post-loop verdict reads status.linear_solver_rc -> fail
-                    self._linear_solver_rc_last = r_code
-                    break
-                status.n_linear += self.physics.engine.get_last_linear_iters()
+            # Unified spec-driven dispatch (!280): routes to the Python-resident
+            # solver (PETSc / Pardiso spec) or the C++ engine solver and returns
+            # the (rc, n_iters, residual) contract of !327.
+            r_code, n_lin, _ = self.linear_solver._solve_linear_equation()
+            status.linear_solver_rc = r_code
+            if r_code != 0:
+                # failed linear solve: do NOT apply a stale update; the
+                # post-loop verdict reads status.linear_solver_rc -> fail
+                self._linear_solver_rc_last = r_code
+                break
+            status.n_linear += n_lin
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()
@@ -887,9 +881,9 @@ class Model(DartsModel):
         converged = self.physics.engine.post_newtonloop(dt, t, converged)
         solver.stats.update(converged, status)
 
-        self.time.append(t)
-        self.n_newton_iters.append(status.n_newton)
-        self.time_step_size.append(dt)
+        self.ts_control.time.append(t)
+        solver.n_newton_iters.append(status.n_newton)
+        self.ts_control.time_step_size.append(dt)
 
         self.timer.node["simulation"].stop()
 

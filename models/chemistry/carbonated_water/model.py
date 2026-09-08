@@ -5,7 +5,7 @@ import os
 
 import darts
 from darts.models.output import Output
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from darts.physics.chemistry.property_container import (
@@ -124,7 +124,7 @@ class MyOutput(Output):
         return timesteps, property_array
 
 # Actual Model class creation here!
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, domain: str = '1D', nx: int = 200, mesh_filename: str = None,
                  poro_filename: str = None, minerals: list = ['calcite'],
                  kinetic_mechanisms=['acidic', 'neutral', 'carbonate'],
@@ -154,12 +154,9 @@ class Model(CICDModel):
         # initialize wormhole propagation ratio
         self.reservoir.wh_propagation_ratio = 0.0
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
-                                           chop=ChopSpec(mode='local', factor=0.2))
-        # self.nonlinear_solver.spec.norm = Norm.LINF
-        # self.data_ts.linear_type = sim_params.cpu_superlu
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_linear=1e-6, it_linear=200)
-        self.runtime = 1
+        # Time-stepping / Newton / linear-solver config (see DartsModel.set_solver,
+        # called from reset()).
+        self.ts_control.runtime = 1
         # default timestep control thresholds (overridable by callers)
         self.ni_dt_increase_cutoff = 5
         self.ni_dt_decrease_cutoff = 8
@@ -178,6 +175,66 @@ class Model(CICDModel):
         self._n_diluted_newton_iters = 0
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 1e-5
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_max = 1e-3
+        self.ts_control.runtime = 1000
+
+        # GPU -> AMGX-CPR; CPU -> FGMRES + CPR/AMG
+        tolerance = 1e-6
+        max_iterations = 500
+        # Exact local (block-Schur) elimination of the mineral-balance equations
+        # is ON BY DEFAULT for every mineral present (they are the cell-local /
+        # diagonal-block-only equations here).
+        K = self.n_solid
+        n_vars = getattr(self.physics, 'n_vars', None)
+        elim = K > 0 and (n_vars is None or n_vars - K >= 2)
+        elim_rows = list(range(K))
+        elim_cols = list(range(1, K + 1))
+        # Set on the composed self.linear_solver (created in DartsModel.__init__) --
+        # no platform default is ever materialized and discarded.
+        if getattr(self, 'platform', 'cpu') == 'gpu':
+            from darts.linear_solvers import AMGXCPRSolverSpec
+            if elim:
+                # NOTE: local elimination is incompatible with AMGX adaptive
+                # hierarchy reuse (the reduced pressure COEFFICIENTS change every
+                # Newton/timestep as condensation folds in the evolving local-
+                # equation dynamics; a reused hierarchy goes stale -> AMGX setup
+                # fails -> wasted Newton -> dt cut; measured on the 60k core:
+                # reuse on made elimination +12% overall with 210 wasted Newtons,
+                # reuse off -40% with none). The engine chain builder disables
+                # reuse for the elimination chain's OWN AMGX instances (per-
+                # instance ctor override) -- no process-global environment
+                # mutation, other AMGX instances keep the default adaptive reuse.
+                self.linear_solver.spec = AMGXCPRSolverSpec(
+                    max_iterations=max_iterations, tolerance=tolerance,
+                    schur_elim_count=K, schur_elim_rows=elim_rows,
+                    schur_elim_cols=elim_cols)
+            else:
+                self.linear_solver.spec = AMGXCPRSolverSpec(
+                    max_iterations=max_iterations, tolerance=tolerance)
+        else:
+            from darts.linear_solvers import CPRSolverSpec, GMRESSolverSpec
+            spec = GMRESSolverSpec(restart=50, prec=CPRSolverSpec())
+            spec.tolerance = tolerance
+            spec.max_iterations = max_iterations
+            if elim:
+                from darts.linear_solvers import SchurEliminationSpec
+                wrap = SchurEliminationSpec(inner=spec, elim_rows=elim_rows,
+                                            elim_cols=elim_cols)
+                wrap.tolerance = tolerance
+                wrap.max_iterations = max_iterations
+                spec = wrap
+            self.linear_solver.spec = spec
+
+        super().set_solver()  # platform default nonlinear solver
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,
+            chop=ChopSpec(mode='local', factor=0.2))
+        self.nonlinear_solver.spec.chop.mode = 'local'
+        # self.params.nonlinear_norm_type = sim_params.nonlinear_norm_t.LINF
+        self.nonlinear_solver.spec.chop.factor = 0.2
 
     def set_output(self, output_folder: str = 'output', sol_filename: str = 'reservoir_solution.h5',
                    well_filename: str = 'well_data.h5', save_initial: bool = True, all_phase_props : bool = False,
@@ -465,7 +522,7 @@ class Model(CICDModel):
                                                 permx=perm, permy=perm, permz=perm, poro=1, depth=1)
                 self.inj_cells = self.domain_cells[0] * np.arange(self.domain_cells[1])
             else:
-                self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0,
+                self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0, cache=True,
                                                 mesh_file=mesh_filename, poro=1)
                 self.reservoir.physical_tags['matrix'] = [99991]
                 self.reservoir.physical_tags['boundary'] = [991, 992, 993, 994, 995, 996]
@@ -512,7 +569,7 @@ class Model(CICDModel):
         elif self.domain == '3D':
             depth = 1
             mesh_file = mesh_filename
-            self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0,
+            self.reservoir = UnstructReservoir(timer=self.timer, permx=perm, permy=perm, permz=perm, frac_aper=0, cache=True,
                                                mesh_file=mesh_file, poro=1)
             self.reservoir.physical_tags['matrix'] = [99991]
             self.reservoir.physical_tags['boundary'] = [991, 992, 993]
@@ -631,7 +688,7 @@ class Model(CICDModel):
         if isinstance(self.reservoir, UnstructReservoir):
             for idx in self.prd_cells:
                 self.reservoir.add_perforation(well_name='P1', res_cell_idx=idx, ms_epm=False,
-                                               verbose=True, well_diameter=w_d, well_index=well_index,
+                                               verbose=False, well_diameter=w_d, well_index=well_index,
                                                well_indexD=well_index)
         elif isinstance(self.reservoir, StructReservoir):
             for idx in range(self.domain_cells[1]):
@@ -696,9 +753,9 @@ class Model(CICDModel):
                 pass
             # Mirror the base method's per-step history bookkeeping for the failed step.
             try:
-                self.time.append(t)
-                self.n_newton_iters.append(self.nonlinear_solver.status.n_newton)
-                self.time_step_size.append(dt)
+                self.ts_control.time.append(t)
+                self.nonlinear_solver.n_newton_iters.append(self.nonlinear_solver.status.n_newton)
+                self.ts_control.time_step_size.append(dt)
             except Exception:
                 pass
             return 0  # converged = False -> run() else-branch cuts dt
@@ -766,8 +823,8 @@ class Model(CICDModel):
         """
         verbose = self.verbose if verbose is None else verbose
         assert hasattr(self, 'output'), "self.output does not exist, please call m.set_output() after m.init()"
-        days = days if days is not None else self.runtime
-        data_ts = self.data_ts
+        days = days if days is not None else self.ts_control.runtime
+        ts_control = self.ts_control
 
         self.output.save_well_after_run = save_well_data_after_run
 
@@ -788,11 +845,11 @@ class Model(CICDModel):
 
         # same logic as in engine.run
         if fabs(t) < 1e-15 or not hasattr(self, 'prev_dt'):
-            dt = data_ts.dt_first
+            dt = ts_control.dt_first
         elif restart_dt > 0.:
             dt = restart_dt
         else:
-            dt = min(self.prev_dt*data_ts.dt_mult, days, data_ts.dt_max)
+            dt = min(self.prev_dt*ts_control.dt_mult, days, ts_control.dt_max)
 
         self.prev_dt = dt
 
@@ -810,10 +867,10 @@ class Model(CICDModel):
         # it must not break the good-step streak.
         dt_truncated = False
 
-        if np.fabs(data_ts.dt_mult - 1) < 1e-10:
+        if np.fabs(ts_control.dt_mult - 1) < 1e-10:
             omega = 0.
         else:
-            omega = 1 / (data_ts.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
+            omega = 1 / (ts_control.dt_mult - 1)  # inversion assuming mult = (1 + omega) / omega
 
         # Per-timestep Python orchestration outside run_timestep (state copies, dt/CFL
         # control, well-data accumulation) is otherwise untimed; bracket it into the
@@ -833,10 +890,10 @@ class Model(CICDModel):
                 ts += 1
 
                 x = np.array(self.physics.engine.X, copy=False)[:nb * nc]
-                dt_mult_new = data_ts.dt_mult
+                dt_mult_new = ts_control.dt_mult
                 for i in range(nc):
                     max_dx[i] = np.max(abs(xn[i::nc] - x[i::nc]))
-                    mult = ((1 + omega) * data_ts.eta[i]) / (max_dx[i] + omega * data_ts.eta[i])
+                    mult = ((1 + omega) * ts_control.eta[i]) / (max_dx[i] + omega * ts_control.eta[i])
                     if mult < dt_mult_new:
                         dt_mult_new = mult
 
@@ -851,23 +908,23 @@ class Model(CICDModel):
                     # dt_max is sustainable, so leave the streak untouched (neither
                     # increment nor reset).
                     pass
-                elif fabs(dt - data_ts.dt_max) < 1.e-10 and status.n_newton < self.ni_dt_increase_cutoff:
+                elif fabs(dt - ts_control.dt_max) < 1.e-10 and status.n_newton < self.ni_dt_increase_cutoff:
                     self._n_good_steps += 1
                 else:
                     self._n_good_steps = 0
 
                 if status.n_newton > self.ni_dt_decrease_cutoff:
-                    data_ts.dt_max /= 2 * data_ts.dt_mult
+                    ts_control.dt_max /= 2 * ts_control.dt_mult
                     self._n_good_steps = 0
 
                 if self._n_good_steps > self.n_good_ts:
-                    data_ts.dt_max *= 2 * data_ts.dt_mult
+                    ts_control.dt_max *= 2 * ts_control.dt_mult
                     self._n_good_steps = 0
 
-                dt = min(dt * dt_mult_new, data_ts.dt_max)
+                dt = min(dt * dt_mult_new, ts_control.dt_max)
 
                 dt_truncated = False
-                if np.fabs(t + dt - stop_time) < data_ts.dt_min:
+                if np.fabs(t + dt - stop_time) < ts_control.dt_min:
                     dt = stop_time - t
                     dt_truncated = True
 
@@ -901,22 +958,22 @@ class Model(CICDModel):
                     dt /= 10.0
                     n_bad_steps += 2
                 else:
-                    dt /= data_ts.dt_mult
+                    dt /= ts_control.dt_mult
                     n_bad_steps += 1
                 self._n_good_steps = 0
                 dt_truncated = False
 
                 if n_bad_steps > 1:
-                    data_ts.dt_max /= 2.
+                    ts_control.dt_max /= 2.
                     n_bad_steps = 0
 
                 if verbose:
                     print("Cut timestep to %2.10f (solver rc=%d)"
                           % (dt, getattr(self, '_linear_solver_rc_last', 0)))
-                if dt <= data_ts.dt_min:
+                if dt <= ts_control.dt_min:
                     overhead.stop()  # keep the bracket balanced before aborting the run
                     raise RuntimeError('Stop simulation. Reason: reached min. timestep '
-                                       + str(data_ts.dt_min) + ' dt=' + str(dt))
+                                       + str(ts_control.dt_min) + ' dt=' + str(dt))
 
             overhead.stop()
 
@@ -977,11 +1034,19 @@ class GasViscosity:
         return 0.0278
 
 class LiquidViscosity:
+    # IAPWS validity envelope: outside it the correlation's exp() underflows to
+    # exactly 0.0 (seen at rho ~ 2280 kg/m3 from extreme single-phase-aq flash
+    # results at unreachable OBL corners), and mu = 0 turns the mobility operator
+    # kr/mu into +inf, silently poisoning the OBL point cache and every hypercube
+    # (and hence Jacobian) that touches it. Clamp the density into the correlation
+    # range and floor the result so mobility stays finite.
+    RHO_MAX = 1200.0   # kg/m3, upper edge of the IAPWS viscosity correlation range
+    MU_MIN = 1e-3      # cP, positive floor (gas-like); only hit on degenerate inputs
     def __init__(self):
         pass
     def evaluate(self, density, temperature):
-        visc = _Viscosity(rho=density, T=temperature)
-        return visc * 1000
+        visc = _Viscosity(rho=min(density, self.RHO_MAX), T=temperature)
+        return max(visc * 1000, self.MU_MIN)
 
 class PermPoroRelationship:
     def __init__(self, exp):

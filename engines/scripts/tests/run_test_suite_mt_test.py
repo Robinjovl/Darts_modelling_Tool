@@ -5,6 +5,7 @@ import numpy as np
 import os, sys
 from pathlib import Path
 import importlib
+from darts.tools.cicd_tools import check_performance as cicd_check_performance, get_performance_data
 
 
 model_dir = r'../../../darts-models'
@@ -49,7 +50,7 @@ for x in p.iterdir():
               m.init()
               m.run()
               sys.stdout = orig_stdout
-              m.check_performance()
+              cicd_check_performance(m)
             else:
               print ()
               for nt in [1, 2, 4, 6, 8, 10]:
@@ -60,7 +61,7 @@ for x in p.iterdir():
                 m.init()
                 m.run()
                 sys.stdout = orig_stdout
-                perf_data = m.get_performance_data()
+                perf_data = get_performance_data(m)
                 #print ()
                 print ('nt=',nt, 'total: %f, lin it: %d, lin: %f, jac: %f (%f), interp: %f (%f), gen: %f' % (m.timer.node['simulation'].get_timer(), perf_data["linear iterations"] + perf_data['wasted newton iterations'],
                                                                       m.timer.node['simulation'].node["linear solver setup"].get_timer() +

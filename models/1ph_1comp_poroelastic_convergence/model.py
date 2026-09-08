@@ -15,8 +15,8 @@ class Model(THMCModel):
         self.heat_cond_mult = heat_cond_mult
         super().__init__()
 
-    def init(self):
-        super().init()
+    def init(self, *args, **kwargs):
+        super().init(*args, **kwargs)
         if self.mode == 'thermoporoelastic':
             vol_strain_trans = np.array(self.reservoir.mesh.vol_strain_tran, copy=False)
             vol_strain_rhs = np.array(self.reservoir.mesh.vol_strain_rhs, copy=False)
@@ -28,17 +28,68 @@ class Model(THMCModel):
         Xref[:] = 0.0
         Xn_ref[:] = 0.0
 
-    def set_solver_params(self):
-        super().set_solver_params()
-        if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-            linear_type = sim_params.cpu_gmres_fs_cpr
-        else:
-            linear_type = sim_params.cpu_superlu
+    def set_solver(self):
+        # Open-source FS-CPR by default -- inject the spec; the engine bypasses
+        # sim_params.linear_type. FS-CPR is a PRECONDITIONER (single application),
+        # not an outer Krylov loop -- wrap it in GMRES to mirror the proprietary
+        # path (bos_gmres + bos_fs_cpr).
+        from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        mesh = self.reservoir.mesh
+        n_blocks = mesh.n_blocks
+        n_res_blks = mesh.n_res_blocks
+        n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
+        n_fracs_mesh = getattr(self.reservoir, 'n_fracs', 0)
+        # Match proprietary engine_pm_cpu.cpp:136 convention:
+        #   n_res  = n_matrix + n_fracs  (matrix + fracture cells treated as "reservoir")
+        #   n_fracs= 0   (zero gap-DOF rows -- FS_UPG not yet supported)
+        #   n_wells= n_blocks - n_res_blocks
+        fs_cpr_kwargs = dict(
+            force_amg_asymmetric=True,
+            n_res=n_matrix + n_fracs_mesh,
+            n_fracs=0,
+            n_wells=n_blocks - n_res_blks,
+        )
+        if self.discretizer_name == 'pm_discretizer':
+            # engine_pm_cpu lays the block out as U_VAR=0, P_VAR=ND, Z_VAR=255 --
+            # not the spec's default (P_VAR=0, Z_VAR=1, U_VAR=NE). Without this
+            # FS-CPR splits the wrong subsystem and preconditions poorly (the
+            # analytics model passes the same four fields for the same reason).
+            engine = self.physics.engine
+            fs_cpr_kwargs.update(
+                p_var=engine.P_VAR,
+                z_var=engine.Z_VAR,
+                u_var=engine.U_VAR,
+                nc=engine.N_VARS - 3,
+            )
+        fs_cpr = FSCPRSolverSpec(**fs_cpr_kwargs)
+        # Single solver declaration. The FS-CPR spec drives _apply_solver on the
+        # open-source CPU build. On the proprietary build _apply_solver applies
+        # proprietary_linear_type (bos_fs_cpr) to params.linear_type -- but only for
+        # mech_discretizer; pm_discretizer keeps its mechanics multi-stage backend
+        # (engine.ls_params), so its spec carries no proprietary fallback (None).
+        # The spec is set here, before super().set_solver() below, so the platform
+        # default is never materialized.
+        self.linear_solver.spec = GMRESSolverSpec(
+            prec=fs_cpr,
+            # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
+            # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()
+            # with sim_params (defaults 1e-5 / 50, globals.h:117), so the spec's numbers were
+            # decorative. The spec is authoritative now, so state the values the model has
+            # really been running -- keeping behaviour unchanged. FS-CPR does not reach 1e-8 on
+            # these systems anyway: asking for it only burns the iteration budget (on SPE10_mech
+            # 22 of 48 solves exhaust the 200-iteration cap; 99 vs 41 linear iters per Newton).
+            tolerance=1e-5,
+            max_iterations=50,
+            restart=50,
+            proprietary_linear_type=(sim_params.cpu_gmres_fs_cpr
+                                     if self.discretizer_name == 'mech_discretizer' else None),
+        )
+        super().set_solver()
+        if self.discretizer_name == 'pm_discretizer':
+            self.physics.engine.ls_params[-1].linear_type = (
+                sim_params.cpu_superlu if self.linear_solver.open_source_solvers_available()
+                else sim_params.cpu_gmres_fs_cpr)
 
-        if self.discretizer_name == 'mech_discretizer':
-            self.params.linear_type = linear_type
-        elif self.discretizer_name == 'pm_discretizer':
-            self.physics.engine.ls_params[-1].linear_type = linear_type
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, discretizer=self.discretizer_name,
                                                  fluid_vars=self.physics.vars, mode=self.mode, mesh_filename=self.mesh_filename)

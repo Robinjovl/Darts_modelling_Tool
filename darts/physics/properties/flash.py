@@ -34,14 +34,40 @@ class SinglePhase(Flash):
 
 
 class ConstantK(Flash):
-    def __init__(self, nc, ki, eps=1e-11):
+    def __init__(self, nc, ki, eps=1e-11, use_dartsflash: bool = False):
+        """
+        Constant K-value flash, option to make use of DARTS-flash RR solver.
+        K-values are defined as Ki = yi/xi, with the y-phase returned as phase 0.
+        The DARTS-flash RR solver defines K-values with phase 0 as reference phase
+        (Ki = xi1/xi0), so K-values are inverted internally when use_dartsflash is enabled.
+
+        :param nc: Number of components
+        :param ki: K-values per component (Ki = yi/xi)
+        :param eps: Epsilon value for composition
+        :param use_dartsflash: Use DARTS-flash RR solver, default is False
+        """
         super().__init__(nph=2, nc=nc)
 
         self.rr_eps = eps
         self.K_values = np.array(ki)
 
+        self.use_dartsflash = use_dartsflash
+        if use_dartsflash:
+            from dartsflash.libflash import RR_EqConvex2
+
+            self.rr = RR_EqConvex2(nc=nc, min_z=eps, rr_tol=1e-12, max_iter=100)
+
     def evaluate(self, pressure, temperature, zc):
-        self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
+        if self.use_dartsflash:
+            # darts-flash uses phase 0 as reference phase (Ki = xi1/xi0), so invert
+            # the K-values to keep the y-phase as phase 0 in the flash output
+            self.rr.solve_rr(zc, 1.0 / self.K_values, np.array([]))
+            self.nu, self.X = self.rr.getnu(), self.rr.getx()
+            self.X = np.array(self.X).reshape(2, self.nc)
+
+        else:
+            self.nu, self.X = RR2(self.K_values, zc, self.rr_eps)
+
         self.temperature = temperature
         return 0
 
@@ -111,7 +137,21 @@ class SolidFlash(Flash):
         self.np_sol = np_sol
 
     def evaluate(self, pressure, temperature, zc):
-        """Evaluate flash normalized for solids"""
+        """Evaluate flash normalized for solids.
+
+        Normalizes the fluid part of ``zc`` (solids removed), evaluates the wrapped
+        fluid flash, then re-appends the solid phase fractions to ``nu``/``X``.
+
+        If the wrapped flash fails and leaves its phase compositions mis-shaped,
+        the fluid part of ``X`` is filled with NaN and the error count is
+        incremented instead of raising, so the caller (OBL point generation)
+        can detect the failed supporting point downstream.
+
+        :param pressure: Pressure at the evaluated point.
+        :param temperature: Temperature (may be None for isothermal physics).
+        :param zc: Overall composition including solid components.
+        :return: Number of flash errors encountered (0 on success).
+        """
         # Normalize compositions
         zc_sol = zc[self.nc_fl :]
         zc_sol_tot = np.sum(zc_sol)

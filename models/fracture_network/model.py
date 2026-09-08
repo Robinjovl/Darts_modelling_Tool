@@ -1,7 +1,8 @@
 from darts.engines import value_vector, sim_params, well_control_iface
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.physics.base.physics import PhysicsBase
+from darts.physics.iapws_physics import IAPWSPhysics
 from darts.physics.base.property_container import PropertyContainer
 from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
@@ -19,7 +20,7 @@ def fmt(x):
 
 # Here the Model class is defined (child-class from DartsModel) in which most of the data and properties for the
 # simulation are defined, e.g. for the reservoir/physics/sim_parameters/etc.
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, idata : InputData):
         # base class constructor
         super().__init__()
@@ -110,20 +111,16 @@ class Model(CICDModel):
         self.set_iapws_physics(p_step=self.idata.obl.p_step,
                                p_origin=self.idata.obl.p_origin,
                                t_step=self.idata.obl.t_step,
-                               t_origin=self.idata.obl.t_origin)
+                               t_origin=self.idata.obl.t_origin,
+                               is_ph=False)
 
-        # Some tuning parameters:
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-4,
-                                           chop=ChopSpec(mode='local', factor=0.2))  # nonlinear update chopping strategy
-        self.set_sim_params(first_ts=1e-6, mult_ts=1.5, max_ts=60, tol_linear=1e-5)
-        # direct linear solver
-        #if int(input_data['overburden_layers']) + int(input_data['underburden_layers']) > 0:
-        #    self.params.linear_type = sim_params.cpu_superlu
+        # Time-stepping / Newton / linear-solver settings live in set_solver(),
+        # called from the base reset() (see DartsModel.set_solver).
 
         # End timer for model initialization:
         self.timer.node["initialization"].stop()
 
-    def set_iapws_physics(self, p_step, p_origin, t_step, t_origin, cache=False):
+    def set_iapws_physics(self, p_step, p_origin, t_step, t_origin, is_ph: bool, cache=False):
         """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PT-flash.
         Single-component water; phases are vapor ('V') and liquid ('L').
         State spec is PT so engine.X layout is [P, T, ...] and the OBL grid is sampled on (P, T).
@@ -134,24 +131,45 @@ class Model(CICDModel):
         zero = 1e-12
         comp_data = CompData(components=components, setprops=True)
 
+        # state_spec=PH -> OBL axes are [pressure, enthalpy]; state_spec=PT -> [pressure, temperature]
+        self.physics = IAPWSPhysics(
+            phases, self.timer,
+            state_spec=PhysicsBase.StateSpecification.PH if is_ph else PhysicsBase.StateSpecification.PT,
+            axes_step=[p_step, t_step],
+            axes_origin=[p_origin, t_origin],
+            cache=cache,
+        )
+
+        mixture = IAPWS(iapws_ideal=True, ice_phase=False)
+        if is_ph:
+            # PHFlash -> PXFlash(ENTHALPY) under the hood (dartsflash wrapper). Bound the
+            # PXFlash temperature root-finding to the IAPWS liquid range: the default
+            # t_min=100 K lets the solver sample far below the ice point, where IAPWS-95
+            # density bisection diverges ("LIQUID MINIMUM BISECTION not converged").
+            mixture.init_flash(flash_type=DARTSFlash.FlashType.PHFlash,
+                                t_min=273.15, t_max=575., t_init=350.)
+        else:
+            mixture.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
+        self.physics.set_mixture(mixture)
+
+        """ Set property container and define properties """
         pc = PropertyContainer(phases_name=phases, components_name=components,
                                Mw=comp_data.Mw, eps_z=zero)
+        self.physics.add_property_region(pc)
 
-        flash_ev = IAPWS(iapws_ideal=True, ice_phase=False)
-        flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
-        pc.flash_ev = flash_ev
+        pc.flash_ev = self.physics.get_flash_ev()
 
         pc.density_ev = {
-            'V': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MAX),
-            'L': EoSDensity(eos=flash_ev.eos["IAPWS"], Mw=comp_data.Mw, root_flag=EoS.RootFlag.MIN),
+            'V': EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
+            'L': EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
         }
         pc.viscosity_ev = {
-            'V': ConstFunc(0.01),         # cP, steam
-            'L': MaoDuan2009(components),  # cP, liquid water (pressure/temperature-dependent)
+            'V': ConstFunc(0.01),                  # cP, steam
+            'L': MaoDuan2009(components),          # cP, liquid water (pressure/temperature-dependent)
         }
         pc.enthalpy_ev = {
-            'V': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
-            'L': EoSEnthalpy(eos=flash_ev.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
+            'V': self.physics.get_enthalpy_ev_from_flash(phase_idx=0),
+            'L': self.physics.get_enthalpy_ev_from_flash(phase_idx=1),
         }
         pc.rel_perm_ev = {
             'V': PhaseRelPerm("gas", swc=0.0),
@@ -159,21 +177,48 @@ class Model(CICDModel):
         }
         pc.conductivity_ev = {
             'V': ConstFunc(0.0),
-            'L': ConstFunc(172.8),       # kJ/m/day/K, matches geothermal default
+            'L': ConstFunc(172.8),                 # kJ/m/day/K, matches geothermal default
         }
         # output_props exposes derived T (K) via the property interpolator
         pc.output_props = {'temperature': lambda: pc.temperature}
 
-        self.physics = PhysicsBase(
-            components, phases, self.timer,
-            state_spec=PhysicsBase.StateSpecification.PT,
-            axes_step=[p_step, t_step],
-            axes_origin=[p_origin, t_origin],
-            epsilon_z=zero,
-            cache=cache,
-        )
-        self.physics.add_property_region(pc)
         return pc
+
+    def set_solver(self):
+        from darts.linear_solvers import GPUCuSolverSpec, SuperLUSolverSpec
+        # Time-stepping.
+        self.ts_control.dt_first = 1e-6
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 1.5
+        self.ts_control.dt_max = 60
+        self.ts_control.runtime = 1000
+
+        # Linear solver: this is a Geothermal DFM (discrete fracture matrix) model.
+        # The default FGMRES+CPR (and MGR) stall on its wide, strongly-coupled
+        # fracture-matrix Jacobian -- iterative defaults hang on it (the former
+        # 2h CI timeouts on the open-source CPU *and* the GPU jobs, where the
+        # CPU-only SuperLU spec was silently ignored). A direct solve is robust
+        # and fast here (the mesh is small), so pick the platform's direct
+        # solver: cpu -> SuperLU (registry); gpu (open-source) -> in-tree
+        # cuSOLVER QR (gpu_cusolver; CuDSSSolverSpec is the faster alternative
+        # on WITH_CUDSS builds). Proprietary builds ignore CPU specs and lack
+        # an in-tree GPU direct solver -> keep their engine-factory default.
+        # self.linear_solver.spec is only assigned when a spec is actually picked
+        # below -- left None otherwise, so set_solver() falls through to the
+        # platform default, same as before.
+        if getattr(self, "platform", "cpu") == "gpu":
+            if self.linear_solver.open_source_solvers_available():
+                self.linear_solver.spec = GPUCuSolverSpec()
+        else:
+            self.linear_solver.spec = SuperLUSolverSpec()
+        super().set_solver()  # platform default when no spec was picked above
+        # Newton tuning -- MUST come after super().set_solver(): the base call is what
+        # materializes the default NewtonSolver (dereferencing nonlinear_solver.spec
+        # before it crashed every CI job with 'NoneType' object has no attribute 'spec').
+        self.nonlinear_solver.spec.tolerance = 1e-4  # historic tol_newton (dropped in a merge resolution)
+        self.nonlinear_solver.spec.chop.mode = 'local'  # chopping strategy
+        self.nonlinear_solver.spec.chop.factor = 0.2    # chop criterion
+        self.linear_solver.spec.tolerance = 1e-5
 
     def print_range(self, time, part='cells'):
         depth = np.array(self.reservoir.mesh.depth, copy=True)

@@ -1793,7 +1793,14 @@ int conn_mesh::init_spe(value_t grav_acceleration_for_spe)
 	// Calculate and store specific potential energy (spe) at cell centroids
 	cell_spe.assign(n_blocks, 0);
 
-	for (size_t i = 0; i < depth.size(); i++)
+	// depth can be LONGER than n_blocks: the boundary-aware (MPFA) init_* overloads
+	// size it n_res_blocks + n_bounds, and add_wells_mpfa never shrinks it. Bound
+	// the loop by the vector actually written -- iterating depth.size() overflowed
+	// cell_spe on MPFA meshes (heap corruption -> malloc()/0xC0000005 aborts; see
+	// 2ph_do_thermal_mpfa). Only cell_spe[block < n_blocks] is ever read by the
+	// engines, so clamping is lossless.
+	const size_t n_spe = std::min(static_cast<size_t>(n_blocks), depth.size());
+	for (size_t i = 0; i < n_spe; i++)
 	{
 		// It is multiplied by -1 because for spe height needs to be used instead of depth
 		// It is multiplied by 1e-3 to convert Joule to kilo Joule
