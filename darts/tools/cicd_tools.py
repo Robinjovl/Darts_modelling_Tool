@@ -214,7 +214,6 @@ def compare_vtk_with_ref(
     return ret_flag
 
 
-
 # overwrite key to save results over existed
 # diff_norm_normalized_tol defines tolerance for L2 norm of final solution difference , normalized by amount of blocks and variable range
 # diff_abs_max_normalized_tol defines tolerance for maximum of final solution difference, normalized by variable range
