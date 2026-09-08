@@ -599,9 +599,9 @@ class ReservoirOperators(OperatorsSuper):
         self.property.evaluate(state_np)
         self.compr = self.property.rock_compr_ev.evaluate(state_np[0])
 
-        # Average molar density of the equilibrium + MoleFractionKinetic phase pool
+        # Average molar density of the equilibrium + KineticFormulation.MOLE_FRACTION phase pool
         # (self.property.mole_basis_phase_idxs, see compute_saturation()) -- zc for
-        # equilibrium AND MoleFractionKinetic components are both "modified
+        # equilibrium AND KineticFormulation.MOLE_FRACTION components are both "modified
         # variables" on that same shared basis (see Flash's is_mole_fraction), so
         # both use this density_tot directly below.
         density_tot = np.sum(
@@ -613,11 +613,13 @@ class ReservoirOperators(OperatorsSuper):
         """ CONSTRUCT OPERATORS HERE """
 
         """ Alpha operator represents accumulation term """
+        # zc is the raw z_c* (get_state() docstring), not Flash-normalized: z_c* already
+        # bakes in phi_f, so density_tot (per fluid volume) * z_c* gives kmol per bulk volume.
         # fluid mass accumulation: c_r [1/bar] z_c* [-] rho_m^T [kmol/m3]
         values_np[self.ACC_OP : self.ACC_OP + self.nc_eq] = (
             self.compr * density_tot * zc[: self.nc_eq]
         )
-        # MoleFractionKinetic components: same formula, same density_tot -- their
+        # KineticFormulation.MOLE_FRACTION components: same formula, same density_tot -- their
         # raw zc is on the same basis as the equilibrium components' own.
         values_np[self.ACC_OP + self.mole_kin_comp_idxs] = (
             self.compr * density_tot * zc[self.mole_kin_comp_idxs]
@@ -645,7 +647,7 @@ class ReservoirOperators(OperatorsSuper):
             self.property.eq_phase_idxs
         ]
 
-        # Diffusion isn't mobility-gated for MoleFractionKinetic phases (unlike
+        # Diffusion isn't mobility-gated for KineticFormulation.MOLE_FRACTION phases (unlike
         # convection/FLUX_OP): pool them in alongside eq_phase_idxs_mobile even
         # when immobile, since they share the fluid's diffusion machinery.
         diffusive_phase_idxs = np.union1d(
@@ -724,7 +726,7 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Alpha operator represents accumulation term """
         # fluid enthalpy: phi_f[-] s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3) --
-        # eq_phase_idxs + MoleFractionKinetic phases share this pooled basis.
+        # eq_phase_idxs + KineticFormulation.MOLE_FRACTION phases share this pooled basis.
         values[self.ACC_OP + self.nc] += (
             self.compr
             * self.property.phi_f
@@ -758,7 +760,7 @@ class ReservoirOperators(OperatorsSuper):
 
         """ Chi operator for temperature in conduction """
         # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day) --
-        # eq_phase_idxs + MoleFractionKinetic phases share this pooled basis.
+        # eq_phase_idxs + KineticFormulation.MOLE_FRACTION phases share this pooled basis.
         values[
             self.GRAD_OP + self.property.mole_basis_phase_idxs * self.ne + self.nc
         ] = (
@@ -804,9 +806,9 @@ class WellOperators(OperatorsSuper):
         # Evaluate properties at current state
         self.property.evaluate(state_np)
 
-        # Average molar density of the equilibrium + MoleFractionKinetic phase pool
+        # Average molar density of the equilibrium + KineticFormulation.MOLE_FRACTION phase pool
         # (self.property.mole_basis_phase_idxs, see compute_saturation()) -- zc for
-        # equilibrium AND MoleFractionKinetic components are both "modified
+        # equilibrium AND KineticFormulation.MOLE_FRACTION components are both "modified
         # variables" on that same shared basis (see Flash's is_mole_fraction), so
         # both use this density_tot directly below.
         density_tot = np.sum(
@@ -818,11 +820,13 @@ class WellOperators(OperatorsSuper):
         """ CONSTRUCT OPERATORS HERE """
 
         """ Alpha operator represents accumulation term """
+        # zc is the raw z_c* (get_state() docstring), not Flash-normalized: z_c* already
+        # bakes in phi_f, so density_tot (per fluid volume) * z_c* gives kmol per bulk volume.
         # fluid mass accumulation: z_c* [-] rho_m^T [kmol/m3]
         values_np[self.ACC_OP : self.ACC_OP + self.nc_eq] = (
             density_tot * zc[: self.nc_eq]
         )
-        # MoleFractionKinetic components: same formula, same density_tot.
+        # KineticFormulation.MOLE_FRACTION components: same formula, same density_tot.
         values_np[self.ACC_OP + self.mole_kin_comp_idxs] = (
             density_tot * zc[self.mole_kin_comp_idxs]
         )
@@ -902,7 +906,7 @@ class WellOperators(OperatorsSuper):
 
         """ Alpha operator represents accumulation term """
         # fluid enthalpy: s_j [-] rho_mj [kmol/m3] H_j [kJ/kmol] (kJ/m3) --
-        # eq_phase_idxs + MoleFractionKinetic phases share this pooled basis.
+        # eq_phase_idxs + KineticFormulation.MOLE_FRACTION phases share this pooled basis.
         values[self.ACC_OP + self.nc] += self.property.phi_f * np.sum(
             self.property.sat[self.property.mole_basis_phase_idxs]
             * self.property.dens_m[self.property.mole_basis_phase_idxs]
@@ -929,7 +933,7 @@ class WellOperators(OperatorsSuper):
 
         """ Chi operator for temperature in conduction """
         # fluid/solid conductive flux: kappa_j [kJ/m.K.day] T [K] (kJ/m.day) --
-        # eq_phase_idxs + MoleFractionKinetic phases share this pooled basis.
+        # eq_phase_idxs + KineticFormulation.MOLE_FRACTION phases share this pooled basis.
         values[
             self.GRAD_OP + self.property.mole_basis_phase_idxs * self.ne + self.nc
         ] = (

@@ -24,7 +24,7 @@ class Flash:
         self,
         component_map: list,
         composition: list = None,
-        is_mole_fraction: bool = True,
+        is_mole_fraction: bool = False,
     ):
         """
         Register one kinetic (non-equilibrium) phase, appended after
@@ -52,42 +52,13 @@ class Flash:
                              1, one kinetic zc entry consumed), or ``None`` for a
                              variable composition (one kinetic zc entry per mapped
                              component consumed).
-        :param is_mole_fraction: Whether this phase's kinetic zc entries should be
-                             subtracted from the same sum-to-1 budget the fluid feed
-                             is renormalized against. This is NOT simply "this
-                             component uses MoleFractionKinetic" (see
-                             :mod:`darts.physics.properties.kinetic_formulation`) --
-                             it also has to be ``True`` whenever the fluid primary
-                             variables were pre-scaled by the model to leave room for
-                             this entry in a shared budget, regardless of what the
-                             entry itself represents. E.g. every kinetic-component
-                             model in this repo today uses BulkVolumeFractionKinetic
-                             (the entry is a volume fraction) yet still needs
-                             ``is_mole_fraction=True``, because that entry is their
-                             state vector's closure component (``1 - sum(others)``)
-                             and the fluid primaries are pre-scaled against it --
-                             setting ``False`` would silently feed an unnormalized,
-                             sub-1 composition into evaluate_equilibrium().
-
-                             - ``True`` (default): included in the total subtracted
-                               from the fluid feed before renormalizing it, and this
-                               phase's own ``nu`` is set to the (normalized) zc entry
-                               directly, matching the combined-total simplex. Always
-                               correct for a MoleFractionKinetic component (that's
-                               its definition); for a BulkVolumeFractionKinetic one,
-                               correct only if the fluid primaries were pre-scaled
-                               against this same entry as above.
-                             - ``False``: excluded from the fluid-feed
-                               normalization -- appropriate for a
-                               BulkVolumeFractionKinetic component that is instead
-                               an independently-given primary variable, with fluid
-                               primaries that are already true, unscaled mole
-                               fractions needing no adjustment for it. Flash has no
-                               phase-density access and so cannot convert a volume
-                               fraction to a mole fraction itself; this phase's
-                               ``nu`` is still set to the raw zc entry, but is then
-                               only a placeholder -- not a true mole fraction -- and
-                               isn't meant to be used as one downstream.
+        :param is_mole_fraction: Whether this phase is ``MOLE_FRACTION`` (``True``) or
+                             ``BULK_VOLUME_FRACTION`` (``False``, default) --
+                             see :class:`~darts.physics.base.property_container.PropertyContainer.KineticFormulation`.
+                             ``True``: zc is subtracted from the fluid-feed budget
+                             here before renormalizing it. ``False``: Flash leaves zc
+                             alone; :meth:`~darts.physics.base.property_container.PropertyContainer.run_flash`
+                             strips it from the fluid budget before Flash sees it.
         :type is_mole_fraction: bool
         """
         if composition is not None:
@@ -203,9 +174,9 @@ class Flash:
 
         # NU[row] is set to the raw (registration-order) zc entry either way. It's a
         # true mole fraction of the combined total only for is_mole_fraction=True
-        # phases (matching MoleFractionKinetic); for is_mole_fraction=False phases it
+        # phases (matching KineticFormulation.MOLE_FRACTION); for is_mole_fraction=False phases it
         # is just a placeholder passthrough -- not meant to be used as a mole
-        # fraction downstream (see BulkVolumeFractionKinetic).
+        # fraction downstream (see KineticFormulation.BULK_VOLUME_FRACTION).
         offset = 0
         for j, kin in enumerate(self._kinetic_phases):
             z_j = zc_kin[offset : offset + kin["nc_kin"]]

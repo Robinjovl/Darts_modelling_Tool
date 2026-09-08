@@ -1,3 +1,5 @@
+import warnings
+from enum import Enum
 from typing import Any
 
 import numpy as np
@@ -9,10 +11,6 @@ from darts.physics.properties.hysteresis import (
     HistoryAwareCapPressure,
     HistoryAwareRelPerm,
 )
-from darts.physics.properties.kinetic_formulation import (
-    BulkVolumeFractionKinetic,
-    KineticVarFormulation,
-)
 
 
 class PropertyContainer:
@@ -20,6 +18,17 @@ class PropertyContainer:
     nc: int
     nph: int
     output_props = {}
+
+    class KineticFormulation(Enum):
+        """What a kinetic (non-equilibrium) phase's raw zc entry/entries represent."""
+
+        BULK_VOLUME_FRACTION = 0
+        """The raw zc entry already is the bulk volume fraction;
+        Restricted to exactly one component per phase"""
+
+        MOLE_FRACTION = 1
+        """The raw zc entry is a mole fraction of the combined (fluid + kinetic) total;
+        isn't necessarily restricted to one component per phase."""
 
     def __init__(
         self,
@@ -61,13 +70,15 @@ class PropertyContainer:
                       ``None`` (the kinetic components); independent of ``nc_kin`` and
                       overridable.
         :type solid_comp_idxs: list[int], optional
-        :param kin_formulation: One :class:`~darts.physics.properties.kinetic_formulation.KineticVarFormulation`
-                      per kinetic phase (``np_kin`` entries, Flash.set_kinetic_phase()
-                      order). Default ``None`` (:class:`BulkVolumeFractionKinetic` for all).
-        :type kin_formulation: list[KineticVarFormulation], optional
+        :param kin_formulation: One :class:`KineticFormulation` per kinetic phase
+                      (``np_kin`` entries, Flash.set_kinetic_phase() order), or a
+                      single :class:`KineticFormulation` broadcast to every kinetic
+                      phase. Default ``None`` (``BULK_VOLUME_FRACTION`` for all).
+        :type kin_formulation: list[KineticFormulation] | KineticFormulation, optional
         :param nc_kin_per_phase: Number of kinetic components each kinetic phase maps to
-                      (``np_kin`` entries). Default ``None`` (``1`` per phase).
-        :type nc_kin_per_phase: list[int], optional
+                      (``np_kin`` entries), or a single ``int`` broadcast to every
+                      kinetic phase. Default ``None`` (``1`` per phase).
+        :type nc_kin_per_phase: list[int] | int, optional
         :param eps_z: Minimum bound of component mole fractions in OBL grid, default is 1e-11
         :type eps_z: float
         :param rock_comp: Rock compressibility, default is 1e-6
@@ -194,11 +205,24 @@ class PropertyContainer:
         """kin_formulation/nc_kin_per_phase (one entry per kinetic phase), the derived
         kin_phase_idxs/bulk_kin_phase_idxs/bulk_kin_comp_idxs/mole_kin_phase_idxs/
         mole_kin_comp_idxs, and the independent solid/fluid phase and component idx sets."""
+        # A single (non-list) value is shorthand for "every kinetic phase";
+        # the length/sum asserts below will still catch a genuine mismatch.
+        if isinstance(kin_formulation, PropertyContainer.KineticFormulation):
+            kin_formulation = [kin_formulation] * np_kin
+        if isinstance(nc_kin_per_phase, int):
+            nc_kin_per_phase = [nc_kin_per_phase] * np_kin
+
         # One formulation per kinetic phase; default: bulk volume fraction (legacy).
-        self.kin_formulation: list[KineticVarFormulation] = (
+        if kin_formulation is None and np_kin:
+            warnings.warn(
+                f"kin_formulation not specified for {np_kin} kinetic phase(s); "
+                "defaulting to BULK_VOLUME_FRACTION for all of them.",
+                stacklevel=2,
+            )
+        self.kin_formulation: list[PropertyContainer.KineticFormulation] = (
             list(kin_formulation)
             if kin_formulation is not None
-            else [BulkVolumeFractionKinetic() for _ in range(np_kin)]
+            else [self.KineticFormulation.BULK_VOLUME_FRACTION] * np_kin
         )
         assert len(self.kin_formulation) == np_kin, (
             f"kin_formulation has {len(self.kin_formulation)} entries, expected np_kin={np_kin}"
@@ -222,29 +246,29 @@ class PropertyContainer:
         # Kinetic phases are always the last np_kin phases (Flash.set_kinetic_phase() order).
         self.kin_phase_idxs = np.arange(self.np_eq, self.nph)
 
-        # BulkVolumeFractionKinetic phases/components: dens_m*sat can't be split
-        # across multiple components (no per-component fraction data), so exactly 1
+        # BULK_VOLUME_FRACTION phases/components: dens_m*sat can't be split across
+        # multiple components (no per-component fraction data), so exactly 1
         # component per such phase. Used for phi_s, the thermal solid-enthalpy term,
-        # and the "bulk" ACC_OP term (operator_evaluator.py) -- a MoleFractionKinetic
+        # and the "bulk" ACC_OP term (operator_evaluator.py) -- a MOLE_FRACTION
         # phase's sat is normalized on a different (combined-total) basis not meant
         # to be summed directly alongside these.
         self.bulk_kin_phase_idxs = []
         self.bulk_kin_comp_idxs = []
         for j, idx in enumerate(self.kin_phase_idxs):
-            if isinstance(self.kin_formulation[j], BulkVolumeFractionKinetic):
+            if self.kin_formulation[j] == self.KineticFormulation.BULK_VOLUME_FRACTION:
                 assert self.nc_kin_per_phase[j] == 1, (
-                    f"kinetic phase {j} uses BulkVolumeFractionKinetic but maps "
+                    f"kinetic phase {j} uses BULK_VOLUME_FRACTION but maps "
                     f"{self.nc_kin_per_phase[j]} kinetic components; only "
-                    "MoleFractionKinetic supports more than 1"
+                    "MOLE_FRACTION supports more than 1"
                 )
                 self.bulk_kin_phase_idxs.append(idx)
                 self.bulk_kin_comp_idxs.append(self.nc_eq + self.kin_comp_offsets[j])
         self.bulk_kin_phase_idxs = np.array(self.bulk_kin_phase_idxs, dtype=int)
         self.bulk_kin_comp_idxs = np.array(self.bulk_kin_comp_idxs, dtype=int)
 
-        # MoleFractionKinetic phases/components: their raw zc is on the same
-        # combined-total basis as the equilibrium components, so they're folded into
-        # the same ACC_OP term as those (scaled by density_tot), not the bulk one.
+        # MOLE_FRACTION phases/components: their raw zc is on the same combined-total
+        # basis as the equilibrium components, so they're folded into the same
+        # ACC_OP term as those (scaled by density_tot), not the bulk one.
         self.mole_kin_phase_idxs = np.setdiff1d(
             self.kin_phase_idxs, self.bulk_kin_phase_idxs, assume_unique=True
         )
@@ -538,7 +562,19 @@ class PropertyContainer:
         # otherwise PropertyContainer normalizes the kinetic part of zc away itself.
         self.flash_handles_kinetics = getattr(self.flash_ev, "np_kin", 0) > 0
         if self.flash_handles_kinetics:
-            zc_flash = zc
+            # BULK_VOLUME_FRACTION components aren't mole fractions, so Flash never
+            # normalizes for them (Flash.set_kinetic_phase(is_mole_fraction=False));
+            # strip them from the fluid budget here instead, before Flash sees zc.
+            # Exact given get_state()'s single closure (zc[:nc_eq].sum() +
+            # zc_bulk_tot + zc_mole_tot == 1): dividing both the fluid slice and the
+            # MOLE_FRACTION-kinetic slice by (1 - zc_bulk_tot) leaves them summing to
+            # 1, so Flash's own (unchanged) is_mole_fraction=True normalization over
+            # the now-already-bulk-adjusted MOLE_FRACTION entries is still exact.
+            zc_flash = zc.copy()
+            if self.bulk_kin_comp_idxs.size:
+                zc_bulk_tot = np.sum(zc[self.bulk_kin_comp_idxs])
+                zc_flash[: self.nc_eq] /= 1.0 - zc_bulk_tot
+                zc_flash[self.mole_kin_comp_idxs] /= 1.0 - zc_bulk_tot
             n_rows = self.np_eq + self.np_kin
         elif self.nc_kin:
             zc_flash = zc[: self.nc_eq] / (1.0 - np.sum(zc[self.nc_eq :]))
