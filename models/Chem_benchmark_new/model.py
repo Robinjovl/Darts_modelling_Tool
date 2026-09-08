@@ -239,7 +239,9 @@ class Model(DartsModel):
 
         for i in range(3):
             property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
-                                                 nc_kin=1, np_kin=1, eps_z=epsilon, rock_comp=1e-7)
+                                                 nc_kin=1, np_kin=1,
+                                                 kin_formulation=PropertyContainer.KineticFormulation.BULK_VOLUME_FRACTION,
+                                                 eps_z=epsilon, rock_comp=1e-7)
 
             property_container.flash_ev = flash_ev
             property_container.density_ev = density_ev
@@ -457,10 +459,10 @@ class Model(DartsModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, nc_kin: int = 0, np_kin: int = 0,
+    def __init__(self, phases_name, components_name, Mw, nc_kin: int = 0, np_kin: int = 0, kin_formulation: list = None,
                  eps_z=1e-11, rock_comp=1e-6, temperature=1.):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, nc_kin=nc_kin, np_kin=np_kin,
+        super().__init__(phases_name, components_name, Mw, nc_kin=nc_kin, np_kin=np_kin, kin_formulation=kin_formulation,
                          eps_z=eps_z, rock_comp=rock_comp, temperature=temperature)
 
     def evaluate_mass_source(self, pressure, temperature, zc):

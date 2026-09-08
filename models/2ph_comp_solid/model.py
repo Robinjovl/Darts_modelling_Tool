@@ -86,6 +86,7 @@ class Model(DartsModel):
         """Physical properties"""
         # Create a property container
         property_container = PropertyContainer(phases_name=phases, components_name=components, Mw=Mw, nc_kin=1, np_kin=1,
+                                               kin_formulation=PropertyContainer.KineticFormulation.BULK_VOLUME_FRACTION,
                                                temperature=1., rock_comp=1e-7, eps_z=epsilon)
 
         """ properties correlations """
