@@ -111,6 +111,13 @@ class PropertyContainer:
         )
 
         # Mw covers only nc_eq (matches x's columns); dict-keyed Mw (chemistry subclass) passed through as-is.
+        # May carry nc entries instead, the trailing nc_kin being the kinetic components'
+        # molar masses -- needed when a kinetic phase is not a 1:1 compound, since the
+        # derivation below assumes one of each mapped component.
+        self.Mw_kin = None
+        if not isinstance(Mw, dict) and nc_kin and len(Mw) == self.nc:
+            self.Mw_kin = np.asarray(Mw)[self.nc_eq :]
+            Mw = np.asarray(Mw)[: self.nc_eq]
         self.Mw = Mw if isinstance(Mw, dict) else np.asarray(Mw)
         self.eps_z = eps_z
         # Number of OBL history variables (e.g. sg_max) appended to the state vector after
@@ -546,7 +553,11 @@ class PropertyContainer:
             self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
                 pressure, temperature
             )
-            M = np.sum(self.Mw[self.x[idx, : self.nc_eq] > 0])
+            j = idx - self.np_eq
+            if self.Mw_kin is not None:
+                M = float(self.Mw_kin[self.kin_comp_offsets[j]])
+            else:
+                M = np.sum(self.Mw[self.x[idx, : self.nc_eq] > 0])
             self.dens_m[idx] = self.dens[idx] / M
 
         # BulkVolumeFractionKinetic: raw nu already is the bulk volume fraction.
