@@ -134,6 +134,9 @@ class PropertyContainer:
             self.thermal = True
             self.temperature = None
 
+        # Flash evaluator: support native darts.phyiscs.properties.Flash or darts-flash object
+        self.flash_ev: Flash = 0
+
         # In case of PH-formulation, PT flashes are required for calculating initial distribution (Initialize class)
         self.evaluate_PT_bool = False  # set to True when PH-formulation but PT-flash needs to be calculated (Initialize)
 
@@ -155,11 +158,6 @@ class PropertyContainer:
         }
         self.kinetic_rate_ev = {}
         self.energy_source_ev = {}
-        self.flash_ev: Flash = 0
-        # Set by run_flash(): whether flash_ev itself handles kinetic phases (via
-        # Flash.set_kinetic_phase()), in which case self.x for kinetic phases is
-        # populated and meaningful; see run_flash().
-        self.flash_handles_kinetics = False
         self.permporo_mult_ev = ConstFunc(1.0)
 
         # passing arguments
@@ -384,6 +382,16 @@ class PropertyContainer:
                 f"Energy source evaluator missing for '{name}'"
             )
 
+        if self.np_kin:
+            flash_np_kin = getattr(self.flash_ev, "np_kin", 0)
+            assert flash_np_kin == self.np_kin, (
+                f"PropertyContainer declares np_kin={self.np_kin} kinetic phase(s), "
+                f"but flash_ev has {flash_np_kin} registered -- call "
+                "flash_ev.set_kinetic_phase() once per kinetic phase (in "
+                "PropertyContainer.kin_formulation/Flash.set_kinetic_phase() order) "
+                "before check_properties() runs."
+            )
+
     def validate_history_consistency(self) -> None:
         """Assert that every history-aware evaluator in this container that owns a
         :class:`~darts.physics.properties.hysteresis.KilloughLandModel` (or any other
@@ -541,22 +549,23 @@ class PropertyContainer:
         else:
             pressure, temperature = self.pressure, self.temperature
 
-        if self.np_kin:
-            assert self.flash_handles_kinetics, (
-                "flash_ev must be configured via Flash.set_kinetic_phase() for every "
-                "kinetic phase -- there is no other source for a kinetic phase's "
-                "composition/molar mass."
-            )
-
         # Molar mass = unweighted sum of mapped components' Mw (stoichiometric compound, not a blend).
         for idx in self.kin_phase_idxs:
             self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
                 pressure, temperature
             )
             j = idx - self.np_eq
-            if self.Mw_kin is not None:
+            if self.nc_kin_per_phase[j] > 1:
+                # Variable composition (composition=None, >1 mapped component): x
+                # holds true, normalized mole fractions of an actual mixture, so a
+                # weighted average is needed -- an unweighted sum would double-count.
+                M = np.sum(self.x[idx, : self.nc_eq] * self.Mw)
+            elif self.Mw_kin is not None:
                 M = float(self.Mw_kin[self.kin_comp_offsets[j]])
             else:
+                # Fixed composition (or a single mapped component): composition
+                # values are a stoichiometric split within one compound, not blend
+                # fractions, so sum the mapped components' Mw unweighted.
                 M = np.sum(self.Mw[self.x[idx, : self.nc_eq] > 0])
             self.dens_m[idx] = self.dens[idx] / M
 
@@ -597,30 +606,14 @@ class PropertyContainer:
         return enthalpy
 
     def run_flash(self, pressure, state_spec_2, zc, evaluate_PT: bool = False):
-        # flash_ev handles kinetics itself only if configured via Flash.set_kinetic_phase();
-        # otherwise PropertyContainer normalizes the kinetic part of zc away itself.
-        self.flash_handles_kinetics = getattr(self.flash_ev, "np_kin", 0) > 0
-        if self.flash_handles_kinetics:
-            # BULK_VOLUME_FRACTION components aren't mole fractions, so Flash never
-            # normalizes for them (Flash.set_kinetic_phase(is_mole_fraction=False));
-            # strip them from the fluid budget here instead, before Flash sees zc.
-            # Exact given get_state()'s single closure (zc[:nc_eq].sum() +
-            # zc_bulk_tot + zc_mole_tot == 1): dividing both the fluid slice and the
-            # MOLE_FRACTION-kinetic slice by (1 - zc_bulk_tot) leaves them summing to
-            # 1, so Flash's own (unchanged) is_mole_fraction=True normalization over
-            # the now-already-bulk-adjusted MOLE_FRACTION entries is still exact.
-            zc_flash = zc.copy()
-            if self.bulk_kin_comp_idxs.size:
-                zc_bulk_tot = np.sum(zc[self.bulk_kin_comp_idxs])
-                zc_flash[: self.nc_eq] /= 1.0 - zc_bulk_tot
-                zc_flash[self.mole_kin_comp_idxs] /= 1.0 - zc_bulk_tot
-            n_rows = self.np_eq + self.np_kin
-        elif self.nc_kin:
-            zc_flash = zc[: self.nc_eq] / (1.0 - np.sum(zc[self.nc_eq :]))
-            n_rows = self.np_eq
-        else:
-            zc_flash = zc
-            n_rows = self.np_eq
+        # BULK_VOLUME_FRACTION components aren't mole fractions, so Flash never
+        # normalizes for them (Flash.set_kinetic_phase(is_mole_fraction=False))
+        zc_flash = zc.copy()
+        if self.bulk_kin_comp_idxs.size:
+            zc_bulk_tot = np.sum(zc[self.bulk_kin_comp_idxs])
+            zc_flash[: self.nc_eq] /= 1.0 - zc_bulk_tot
+            zc_flash[self.mole_kin_comp_idxs] /= 1.0 - zc_bulk_tot
+        n_rows = self.np_eq + self.np_kin
 
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
         if evaluate_PT:
