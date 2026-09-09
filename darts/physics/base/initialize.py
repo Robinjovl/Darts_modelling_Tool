@@ -66,16 +66,24 @@ class Initialize:
                 for i, comp in enumerate(self.physics.components[: pc.nc_eq])
             }
         )  # kg/m3 of component i
-        self.props.update(
-            {
-                'pot' + ph: lambda j=j: pc.pressure - pc.pc[j]
-                for j, ph in enumerate(self.physics.phases[: pc.np_eq])
-            }
+
+        # Potential and mobility: mobile phases only
+        mobile_eq_phase_idxs = np.intersect1d(
+            np.arange(pc.np_eq), pc.fluid_phase_idxs, assume_unique=True
         )
         self.props.update(
             {
-                'mob' + ph: lambda j=j: pc.kr[j] / pc.mu[j] if pc.mu[j] else 0.0
-                for j, ph in enumerate(physics.phases[: pc.np_eq])
+                'pot' + self.physics.phases[j]: lambda j=j: pc.pressure - pc.pc[j]
+                for j in mobile_eq_phase_idxs
+            }
+        )
+        # pc.kr/pc.mu are likewise only populated for eq_phase_idxs_mobile().
+        self.props.update(
+            {
+                'mob' + physics.phases[j]: lambda j=j: pc.kr[j] / pc.mu[j]
+                if pc.mu[j]
+                else 0.0
+                for j in mobile_eq_phase_idxs
             }
         )
         self.props.update(
