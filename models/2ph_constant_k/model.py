@@ -1,22 +1,23 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, value_vector, index_vector
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 from scipy.interpolate import interp1d
 import os
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
-from darts.physics.super.initialize import Initialize
+from darts.physics.base.initialize import Initialize
 
 
 class Model(DartsModel):
     def __init__(self, obl_points, reservoir_type, nx: int = None, components: list = [], itor_type: str = 'multilinear',
-                 itor_mode: str = 'adaptive', is_barycentric: bool = False):
+                 is_barycentric: bool = False):
         # Call base class constructor
         super().__init__()
 
@@ -26,7 +27,6 @@ class Model(DartsModel):
         self.reservoir_type = reservoir_type
         self.components = components
         self.itor_type = itor_type
-        self.itor_mode = itor_mode
         self.is_barycentric = is_barycentric
         self.well_controls = {'INJ': 'rate', 'PRD': 'pressure'}
 
@@ -36,14 +36,8 @@ class Model(DartsModel):
         self.set_reservoir()
         self.set_physics()
 
-        if len(self.components) > 14:
-            max_ts_mult = 1.
-        else:
-            max_ts_mult = 5.
-        max_ts = min(4., max_ts_mult * 1000 / self.nx)
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=max_ts, runtime=1000, tol_newton=1e-2, tol_linear=1e-3,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
-        # self.params.linear_type = sim_params.cpu_superlu
+        # Time-stepping / Newton / linear-solver configuration moved to set_solver()
+        # (called from DartsModel.reset() before engine.init).
 
         self.timer.node["initialization"].stop()
 
@@ -53,6 +47,23 @@ class Model(DartsModel):
 
         self.inj_composition = self.inj_comp[:self.physics.nc-1]
         self.physics.components = self.components
+
+    def set_solver(self):
+        if len(self.components) > 14:
+            max_ts_mult = 1.
+        else:
+            max_ts_mult = 5.
+        max_ts = min(4., max_ts_mult * 1000 / self.nx)
+        self.ts_control.dt_first = 0.001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = max_ts
+        self.ts_control.runtime = 1000
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10, chop=ChopSpec(mode='local'))
+        self.linear_solver.spec.tolerance = 1e-3
+        self.linear_solver.spec.max_iterations = 50
+        # self.params.linear_type = sim_params.cpu_superlu
 
     def set_reservoir(self):
         if self.reservoir_type == '1D':
@@ -273,31 +284,28 @@ class Model(DartsModel):
         property_container.output_props = {'satV': lambda: property_container.sat[0]}
         """ Activate physics """
         max_p = 500.
-        if n_comps != 20:
-            axes_max = [max_p, 1. - (n_comps-1) * epsilon, 0.9]
-            if n_comps > 3:
-                axes_max += [0.7]
-            if n_comps > 4:
-                axes_max += [0.5]
-            if n_comps > 5:
-                axes_max += (n_comps - 5) * [0.4]
-            assert(len(axes_max) == n_comps)
-        else:
-            axes_max = np.array([max_p, 1. - (n_comps-1) * epsilon, 0.240, 0.120, 0.090, 0.070, 0.070, 0.060, 0.060, 0.050, 0.045,
-                                 0.040, 0.035, 0.030, 0.025, 0.020, 0.015, 0.010, 0.007, 0.005])
-            axes_max[2:] *= 2
-            assert(axes_max.size == n_comps)
-
-        if self.reservoir_type != '1D' and self.reservoir_type != '2D':
-            max_p = 1.4 * np.max(self.p_init)
-            max_p = 500.0
-            axes_max[0] = max_p
-
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(self.components, phases, self.timer, state_spec=state_spec, n_points=self.obl_points,
-                                     min_p=40, max_p=max_p, min_z=0., max_z=1., epsilon_z=epsilon, cache=False,
-                                     axes_max=axes_max, extrapolation_flag=True)
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        if n_comps != 20:
+            comp_axes_max = [1. - (n_comps - 1) * epsilon, 0.9]
+            if n_comps > 3:
+                comp_axes_max += [0.7]
+            if n_comps > 4:
+                comp_axes_max += [0.5]
+            if n_comps > 5:
+                comp_axes_max += (n_comps - 5) * [0.4]
+        else:
+            comp_axes_max = [1. - (n_comps - 1) * epsilon]
+            comp_axes_max += [2. * m for m in [0.240, 0.120, 0.090, 0.070, 0.070, 0.060, 0.060, 0.050, 0.045,
+                                               0.040, 0.035, 0.030, 0.025, 0.020, 0.015, 0.010, 0.007, 0.005]]
+        assert len(comp_axes_max) == n_comps - 1
+        p_step = (max_p - 40.0) / max(self.obl_points - 1, 1)
+        z_denom = max(self.obl_points - 1, 1)
+        axes_step = [p_step] + [m / z_denom for m in comp_axes_max]
+        axes_origin = [40.0] + [epsilon] * (n_comps - 1)
+        self.physics = PhysicsBase(self.components, phases, self.timer, state_spec=state_spec,
+                                     axes_step=axes_step, axes_origin=axes_origin,
+                                     epsilon_z=epsilon, cache=False, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -313,8 +321,8 @@ class Model(DartsModel):
                                                                   input_distribution=input_distribution)
         else:
             # run initialization over depth with specified GOC, pure liquid above, pure vapour under
-            from darts.physics.super.initialize import Initialize
-            init = Initialize(physics=self.physics, algorithm=self.itor_type, mode=self.itor_mode,
+            from darts.physics.base.initialize import Initialize
+            init = Initialize(physics=self.physics, algorithm=self.itor_type,
                               is_barycentric=self.is_barycentric)
 
             # top boundary: calculate phase equilibrium for given uniform composition
@@ -364,7 +372,7 @@ class Model(DartsModel):
         injector = self.reservoir.get_well('I1')
         producer = self.reservoir.get_well('P1')
 
-        zero = self.physics.axes_min[1]
+        zero = self.physics.axes_origin[1]
         if self.reservoir_type == '1D':
             self.physics.set_well_controls(wctrl=injector.control, is_control=True, control_type=well_control_iface.MOLAR_RATE,
                                            is_inj=True, target=1., phase_name='gas', inj_composition=self.inj_composition)
@@ -487,7 +495,7 @@ class ModelProperties(PropertyContainer):
             ##########################################################
 
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :], self.dens[j])  # output in [cp]
-        self.compute_saturation(self.ph)
+        self.compute_saturation()
 
         self.pc = np.array(self.capillary_pressure_ev.evaluate(self.sat))
 

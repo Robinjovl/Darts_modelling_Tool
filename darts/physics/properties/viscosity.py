@@ -110,6 +110,16 @@ class MaoDuan2009(Viscosity):
         self.combined_ions = combined_ions
 
     def evaluate(self, pressure, temperature, x, rho):
+        # Mao–Duan (2009) and Islam–Carlson (2012) correlations are calibrated
+        # over T ∈ [273 K, 623 K]. With the adaptive multi-index interpolator
+        # there is no fixed OBL window, so during Newton iterations the
+        # supporting-point evaluator may be called with T far outside that
+        # range — e.g. T below zero or many thousands of kelvin. Evaluating
+        # 10**(c·T) at such extremes overflows IEEE doubles and aborts the
+        # whole solve. Clamp to a generous physical envelope before evaluation
+        # so the kernel always returns a finite value; the Newton step then
+        # backs off naturally instead of crashing.
+        temperature = np.clip(temperature, 200.0, 1500.0)
         # Density of pure water (Islam and Carlson, 2012)
         rhoH2O = self.rho_a
         for i in range(3):

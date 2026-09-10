@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.physics.super.property_container import (
+from darts.physics.base.property_container import (
     PropertyContainer as BasePropertyContainer,
 )
 
@@ -20,7 +20,6 @@ class PropertyContainer(BasePropertyContainer):
         nc_sol=0,
         np_sol=0,
         eps_z=1e-11,
-        rate_ann_mat=None,
         temperature=None,
         fc_mask=None,
     ):
@@ -40,8 +39,6 @@ class PropertyContainer(BasePropertyContainer):
         :type np_sol: int
         :param eps_z: Minimum composition value
         :type eps_z: float
-        :param rate_ann_mat: Rate annihilation matrix, optional
-        :type rate_ann_mat: np.ndarray
         :param temperature: Temperature, for isothermal simulation
         :type temperature: float | None
         :param fc_mask: Fluid component mask
@@ -60,7 +57,6 @@ class PropertyContainer(BasePropertyContainer):
             nc_sol=nc_sol,
             np_sol=np_sol,
             eps_z=eps_z,
-            rate_ann_mat=rate_ann_mat,
             temperature=temperature,
         )
         self.components_name = np.array(self.components_name)
@@ -98,6 +94,9 @@ class PropertyContainer(BasePropertyContainer):
         # Define custom evaluators
         self.rock_density_ev = {}
         self.rock_compr_ev = {}
+
+    def check_properties(self):
+        pass
 
     @staticmethod
     def _build_phase_index(phases: dict[str, int]) -> dict:
@@ -191,10 +190,13 @@ class PropertyContainer(BasePropertyContainer):
 
         self.pc = self.capillary_pressure_ev.evaluate(self.sat_overall)
 
+        fluid_sat_sum = np.sum(self.sat_overall[: self.nph])
         for j in range(self.nph):
             M = np.sum(self.Mw_array * self.x[j])
             self.dens[j] = self.dens_m[j] * M
-            self.sat[j] = self.sat_overall[j] / np.sum(self.sat_overall[: self.nph])
+            self.sat[j] = (
+                self.sat_overall[j] / fluid_sat_sum if fluid_sat_sum > 0 else 0.0
+            )
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.diffusivity[j] = self.diffusion_ev[self.phases_name[j]].evaluate()
 

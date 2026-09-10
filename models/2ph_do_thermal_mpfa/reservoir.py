@@ -222,7 +222,7 @@ class UnstructReservoir:
             # Store volumes and depth to single numpy arrays:
             self.unstr_discr.store_volume_all_cells()
             self.unstr_discr.store_depth_all_cells()
-            self.unstr_discr.store_centroid_all_cells()
+            self.unstr_discr.store_centroids_all_cells()
 
     def set_boundary_conditions(self, physical_tags):
         bc_flow = BoundaryCondition()
@@ -331,6 +331,9 @@ class UnstructReservoir:
             self.mesh.add_wells(ms_well_vector(self.wells))
             self.mesh.reverse_and_sort()
         self.mesh.init_grav_coef()
+        # allocate cell_spe: the super-engine assembly reads it unconditionally;
+        # ReservoirBase does this in its init_wells, this class must do it itself
+        self.mesh.init_spe(grav_acceleration_for_spe=0.0)
         return 0
 
     def init_reservoir(self, verbose):

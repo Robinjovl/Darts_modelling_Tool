@@ -11,7 +11,7 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 
 from model import Model
 from darts.engines import redirect_darts_output
-from darts.physics.base.operators_base import PropertyOperators as props
+from darts.physics.base.operator_evaluator import PropertyOperators as props
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 rcParams["text.usetex"]=False
@@ -146,8 +146,7 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
 
     n_res = len(params['itor_type'])
     for i in range(n_res):
-        model_path = get_output_folder( itor_type = params['itor_type'][i], itor_mode = params['itor_mode'][i],
-                                        obl_points = params['obl_points'][i], n_comps = params['n_comps'][i],
+        model_path = get_output_folder( itor_type = params['itor_type'][i],                                        obl_points = params['obl_points'][i], n_comps = params['n_comps'][i],
                                         reservoir_type = params['reservoir_type'][i], nx = params['nx'][i],
                                         is_barycentric = params['barycentric'][i] )
         path = os.path.join(path_prefix, model_path, 'solution.h5')
@@ -178,8 +177,7 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
 
         # saturation
         n = Model(obl_points=params['obl_points'][i], components=get_components(n_comps),
-                  reservoir_type=params['reservoir_type'][i], nx=params['nx'][i], itor_mode=params['itor_mode'][i],
-                  itor_type=params['itor_type'][i], is_barycentric=params['barycentric'][i])
+                  reservoir_type=params['reservoir_type'][i], nx=params['nx'][i],                  itor_type=params['itor_type'][i], is_barycentric=params['barycentric'][i])
         sat = np.zeros(ids.size)
         for k, id in enumerate(ids):
             n.physics.property_containers[0].evaluate(data['X'][-1, id, :])
@@ -235,7 +233,6 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
             for i in range(n_res):
                 model_path = get_output_folder(
                     itor_type=params['itor_type'][i],
-                    itor_mode=params['itor_mode'][i],
                     obl_points=params['obl_points'][i],
                     n_comps=params['n_comps'][i],
                     reservoir_type=params['reservoir_type'][i],
@@ -301,7 +298,6 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
             for i in range(n_res):
                 model_path = get_output_folder(
                     itor_type=params['itor_type'][i],
-                    itor_mode=params['itor_mode'][i],
                     obl_points=params['obl_points'][i],
                     n_comps=params['n_comps'][i],
                     reservoir_type=params['reservoir_type'][i],
@@ -340,8 +336,7 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
 
                 # saturation
                 n = Model(obl_points=params['obl_points'][i], components=get_components(n_comps),
-                          reservoir_type=params['reservoir_type'][i], nx=params['nx'][i], itor_mode=params['itor_mode'][i],
-                          itor_type=params['itor_type'][i], is_barycentric=params['barycentric'][i])
+                          reservoir_type=params['reservoir_type'][i], nx=params['nx'][i],                          itor_type=params['itor_type'][i], is_barycentric=params['barycentric'][i])
                 sat = np.zeros(n_cells)
                 for k in range(n_cells):
                     n.physics.property_containers[0].evaluate(data['X'][-1, k, :])
@@ -378,7 +373,6 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
             for i in range(n_res):
                 model_path = get_output_folder(
                     itor_type=params['itor_type'][i],
-                    itor_mode=params['itor_mode'][i],
                     obl_points=params['obl_points'][i],
                     n_comps=params['n_comps'][i],
                     reservoir_type=params['reservoir_type'][i],
@@ -424,7 +418,7 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
                 # saturation
                 n = Model(obl_points=params['obl_points'][i], components=get_components(n_comps),
                           reservoir_type=params['reservoir_type'][i], nx=params['nx'][i],
-                          itor_mode=params['itor_mode'][i], itor_type=params['itor_type'][i],
+                          itor_type=params['itor_type'][i],
                           is_barycentric=params['barycentric'][i])
                 sat = np.zeros(n_cells)
                 for k, id in enumerate(ids):
@@ -451,14 +445,14 @@ def plot_comparison(params, path_prefix, pic_fname='comparison.png', L=1000, add
     fig.tight_layout()
     fig.savefig(os.path.join(path_prefix, pic_fname))
 
-def get_output_folder(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = None, is_barycentric: bool = False):
+def get_output_folder(itor_type, obl_points, n_comps, reservoir_type, nx: int = None, is_barycentric: bool = False):
     if nx is None:
-        output_folder = 'output_' + itor_type + '_' + itor_mode + '_' + str(obl_points) + '_{}comp'.format(n_comps) + '_' + reservoir_type
+        output_folder = 'output_' + itor_type + '_adaptive_' + str(obl_points) + '_{}comp'.format(n_comps) + '_' + reservoir_type
     else:
         if itor_type == 'linear' and is_barycentric:
-            output_folder = 'output_' + itor_type + '_' + itor_mode + '_' + str(obl_points) + '_{}comp'.format(n_comps) + '_barycentric_' + reservoir_type + '_' + str(nx)
+            output_folder = 'output_' + itor_type + '_adaptive_' + str(obl_points) + '_{}comp'.format(n_comps) + '_barycentric_' + reservoir_type + '_' + str(nx)
         else:
-            output_folder = 'output_' + itor_type + '_' + itor_mode + '_' + str(obl_points) + '_{}comp'.format(n_comps) + '_' + reservoir_type + '_' + str(nx)
+            output_folder = 'output_' + itor_type + '_adaptive_' + str(obl_points) + '_{}comp'.format(n_comps) + '_' + reservoir_type + '_' + str(nx)
     return output_folder
 
 def get_components(n_comps: int):
@@ -487,8 +481,8 @@ def get_components(n_comps: int):
         components = []
     return components
 
-def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = None, is_barycentric: bool = False, vtk_output: bool = False):
-    output_folder = get_output_folder(itor_mode=itor_mode, itor_type=itor_type, obl_points=obl_points, n_comps=n_comps,
+def run(itor_type, obl_points, n_comps, reservoir_type, nx: int = None, is_barycentric: bool = False, vtk_output: bool = False):
+    output_folder = get_output_folder(itor_type=itor_type, obl_points=obl_points, n_comps=n_comps,
                                       reservoir_type=reservoir_type, nx=nx, is_barycentric=is_barycentric)
 
     if itor_type == 'linear':
@@ -502,8 +496,8 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
     redirect_darts_output(os.path.join(output_folder, 'log.out'))
 
     n = Model(obl_points=obl_points, components=get_components(n_comps), reservoir_type=reservoir_type, nx=nx,
-              itor_mode=itor_mode, itor_type=itor_type, is_barycentric=is_barycentric)
-    n.init(itor_mode=itor_mode, itor_type=itor_type, is_barycentric=is_barycentric)
+              itor_type=itor_type, is_barycentric=is_barycentric)
+    n.init(itor_type=itor_type, is_barycentric=is_barycentric)
     n.set_output(output_folder=output_folder)
     out_props = n.physics.vars + ['satV']
 
@@ -520,17 +514,17 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
             ts_mult = 4.0 if reservoir_type == 'spe10_20_40_40' else 1.0
             t = n.physics.engine.t
             if t < 70:
-                n.data_ts.dt_max = ts_mult * 0.25
+                n.ts_control.dt_max = ts_mult * 0.25
             elif t < 100:
-                n.data_ts.dt_max = ts_mult * 0.35
+                n.ts_control.dt_max = ts_mult * 0.35
             elif t < 400:
-                n.data_ts.dt_max = ts_mult * 0.5
+                n.ts_control.dt_max = ts_mult * 0.5
             elif t < 2000:
-                n.data_ts.dt_max = ts_mult * 1.0
+                n.ts_control.dt_max = ts_mult * 1.0
             else:
-                n.data_ts.dt_max = ts_mult * 1.5
+                n.ts_control.dt_max = ts_mult * 1.5
 
-        print(f'dt_max = {n.data_ts.dt_max}')
+        print(f'dt_max = {n.ts_control.dt_max}')
         n.run(30.5)
         if reservoir_type != '1D' and vtk_output:
             n.output.output_to_vtk(ith_step=i + 1, output_properties=out_props)
@@ -542,12 +536,12 @@ def run(itor_mode, itor_type, obl_points, n_comps, reservoir_type, nx: int = Non
     if reservoir_type == '1D' and vtk_output:
         # populate input lists for comparing multiple solutions
         animate_solution_1d_single_plot(paths=[output_folder + '/'],
-                            labels=[itor_type + ', ' + itor_mode + ', N=' + str(nx)],
+                            labels=[itor_type + ', N=' + str(nx)],
                             n_cells=[nx],
                             lower_lim=8.e-4,
                             upper_lim=1.5 * n.ini_comp[1])
 
-    return n.timer, n.physics.engine.stat
+    return n.timer, n.nonlinear_solver.stats
 
 def test_performance(params, n_repeat: int = 1):
     n_models = len(params['itor_type'])
@@ -567,8 +561,7 @@ def test_performance(params, n_repeat: int = 1):
         for key, val in output.items():
             val.append([])
         for j in range(n_repeat):
-            timer, stat = run(itor_type=params['itor_type'][i], itor_mode=params['itor_mode'][i],
-                              obl_points=params['obl_points'][i], n_comps=params['n_comps'][i],
+            timer, stat = run(itor_type=params['itor_type'][i],                              obl_points=params['obl_points'][i], n_comps=params['n_comps'][i],
                               reservoir_type=params['reservoir_type'][i], nx=params['nx'][i],
                               is_barycentric=params['barycentric'][i])
 
@@ -625,7 +618,6 @@ def test_linear_multilinear_obl_points():
     nx = 300
     # 1D
     params1 = {'itor_type': 6 * ['linear'] + 3 * ['multilinear'],
-              'itor_mode': n_runs * ['adaptive'],
               'obl_points': 3 * [64, 256, 1024],
               'n_comps': n_runs * [6],
               'barycentric': 3 * [False] + 3 * [True] + 3 * [False],
@@ -634,7 +626,6 @@ def test_linear_multilinear_obl_points():
     out_type_1d = test_performance(params=params1, n_repeat=n_repeat)
     # 2D
     params2 = {'itor_type': 6 * ['linear'] + 3 * ['multilinear'],
-              'itor_mode': n_runs * ['adaptive'],
               'obl_points': 3 * [64, 256, 1024],
               'n_comps': n_runs * [6],
               'barycentric': 3 * [False] + 3 * [True] + 3 * [False],
@@ -659,7 +650,6 @@ def test_linear_multilinear_components():
     n_runs = 9
     # 1D
     params1 = {'itor_type': 6 * ['linear'] + 3 * ['multilinear'],
-              'itor_mode': n_runs * ['adaptive'],
               'obl_points': n_runs * [100],
               'n_comps': 3 * [4, 6, 8],
               'barycentric': 3 * [False] + 3 * [True] + 3 * [False],
@@ -668,7 +658,6 @@ def test_linear_multilinear_components():
     out_type_1d = test_performance(params=params1, n_repeat=n_repeat)
     # 2D
     params2 = {'itor_type': 6 * ['linear'] + 3 * ['multilinear'],
-              'itor_mode': n_runs * ['adaptive'],
               'obl_points': n_runs * [100],
               'n_comps': 3 * [4, 6, 8],
               'barycentric': 3 * [False] + 3 * [True] + 3 * [False],
@@ -694,7 +683,6 @@ def test_linear_multilinear_nx():
     n_runs = 9
     # 1D
     params1 = {'itor_type': 6 * ['linear'] + 3 * ['multilinear'],
-              'itor_mode': n_runs * ['adaptive'],
               'obl_points': n_runs * [256],
               'n_comps': n_runs * [6],
               'barycentric': 3 * [False] + 3 * [True] + 3 * [False],
@@ -703,7 +691,6 @@ def test_linear_multilinear_nx():
     out_type_1d = test_performance(params=params1, n_repeat=n_repeat)
     # 2D
     params2 = {'itor_type': 6 * ['linear'] + 3 * ['multilinear'],
-              'itor_mode': n_runs * ['adaptive'],
               'obl_points': n_runs * [256],
               'n_comps': n_runs * [6],
               'barycentric': 3 * [False] + 3 * [True] + 3 * [False],
@@ -723,14 +710,13 @@ n_comps = 3
 obl_points = 1024 # 1024 # 128
 nx = 300
 # 1D
-# run(itor_type='multilinear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='1D', nx=nx, is_barycentric=False, vtk_output=True)
+# run(itor_type='multilinear', obl_points=obl_points, n_comps=n_comps, reservoir_type='1D', nx=nx, is_barycentric=False, vtk_output=True)
 # 2D
-# run(itor_type='linear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='2D', nx=nx, is_barycentric=True, vtk_output=False)
+# run(itor_type='linear', obl_points=obl_points, n_comps=n_comps, reservoir_type='2D', nx=nx, is_barycentric=True, vtk_output=False)
 # SPE10
-run(itor_type='multilinear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='spe10_60_220_85', is_barycentric=False, vtk_output=True)
+run(itor_type='multilinear', obl_points=obl_points, n_comps=n_comps, reservoir_type='spe10_60_220_85', is_barycentric=False, vtk_output=True)
 
 # params = {'itor_type': ['multilinear', 'multilinear', 'linear', 'linear'],
-#            'itor_mode': 4 * ['adaptive'],
 #            'obl_points': [1024] + 3 * [64],
 #            'n_comps': 4 * [6],
 #            'barycentric': 3 * [False] + [True],
@@ -740,7 +726,6 @@ run(itor_type='multilinear', itor_mode='adaptive', obl_points=obl_points, n_comp
 # plot_comparison(params=params, path_prefix='for_paper', pic_fname='obl_points_1d.png')
 #
 # params = {'itor_type': ['multilinear', 'multilinear', 'linear', 'linear'],
-#            'itor_mode': 4 * ['adaptive'],
 #            'obl_points': [1024] + 3 * [64],
 #            'n_comps': 4 * [6],
 #            'barycentric': 3 * [False] + [True],
@@ -750,9 +735,9 @@ run(itor_type='multilinear', itor_mode='adaptive', obl_points=obl_points, n_comp
 # plot_comparison(params=params, path_prefix='for_paper', pic_fname='obl_points_2d.png')
 
 # n_comps = 14
-# paths = [get_output_folder(itor_type='linear', itor_mode='adaptive', obl_points=128, n_comps=n_comps, reservoir_type='1D', nx=100, is_barycentric=False) + '/',
-#          get_output_folder(itor_type='linear', itor_mode='adaptive', obl_points=128, n_comps=n_comps, reservoir_type='1D', nx=1000, is_barycentric=False) + '/',
-#          get_output_folder(itor_type='linear', itor_mode='adaptive', obl_points=128, n_comps=n_comps, reservoir_type='1D', nx=4000, is_barycentric=False) + '/']
+# paths = [get_output_folder(itor_type='linear', obl_points=128, n_comps=n_comps, reservoir_type='1D', nx=100, is_barycentric=False) + '/',
+#          get_output_folder(itor_type='linear', obl_points=128, n_comps=n_comps, reservoir_type='1D', nx=1000, is_barycentric=False) + '/',
+#          get_output_folder(itor_type='linear', obl_points=128, n_comps=n_comps, reservoir_type='1D', nx=4000, is_barycentric=False) + '/']
 # labels = ['nx=100', 'nx=1000', 'nx=4000']
 # upper_lims = np.array([140, 1.01] + [0.275, 0.125, 0.100, 0.075, 0.075, 0.065, 0.065, 0.060, 0.050, 0.040, 0.030, 0.020, 0.015])
 # upper_lims[2:] *= 1.2
@@ -764,7 +749,7 @@ run(itor_type='multilinear', itor_mode='adaptive', obl_points=obl_points, n_comp
 #                     video_fname='comparison.mp4')
 
 
-# paths = [get_output_folder(itor_type='linear', itor_mode='adaptive', obl_points=obl_points, n_comps=n_comps, reservoir_type='1D', nx=100, is_barycentric=False) + '/']
+# paths = [get_output_folder(itor_type='linear', obl_points=obl_points, n_comps=n_comps, reservoir_type='1D', nx=100, is_barycentric=False) + '/']
 # labels = ['nx = 100']
 # upper_lims = np.array([140, 1.01] + [0.240, 0.120, 0.090, 0.070, 0.070, 0.060, 0.060, 0.050, 0.045,
 #                              0.040, 0.035, 0.030, 0.025, 0.020, 0.015, 0.010, 0.007, 0.005, 0.003])

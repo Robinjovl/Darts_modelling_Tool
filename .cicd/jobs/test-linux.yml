@@ -17,12 +17,11 @@
         # Select wheel matching current matrix python version (e.g. cp310, cp311)
         - export PY_TAG="cp${PY_VER/./}"
         - export WHEEL_PATH="$(ls ./dist/*${PY_TAG}*linux*.whl | head -n 1)"
-        - test -n "$WHEEL_PATH"
         # force reinstall of darts wheel only (need to force because darts wheel version is not incremented)
         # note: need to force here only for Windows actually, but lets be consistent and force for Linux too in case its behaviour will change
         - pip install --force-reinstall --no-deps "$WHEEL_PATH"
         # force-reinstall of dependencies takes too much time, lets only upgrade (eagerly!) them
-        - pip install --upgrade --upgrade-strategy eager "$WHEEL_PATH"
+        - pip install --upgrade --upgrade-strategy eager "${WHEEL_PATH}[test]"
     script:
         # run simulation fot test models set
         - cd models
@@ -30,10 +29,13 @@
         - darts run_test_suite2.py LOG
         - echo "run_test_suite2 returned" $?
         - cd ..
-        # test interpolators
-        - cd tests/interpolators
-        - darts test_interpolation.py
-        - cd ../..
+        # test interpolators from outside the checkout so Python imports the installed wheel
+        - |
+          PROJECT_DIR="${CI_PROJECT_DIR:-$PWD}"
+          INTERPOLATOR_TEST_WORKDIR="$(mktemp -d)"
+          cd "$INTERPOLATOR_TEST_WORKDIR" || exit
+          python -m pytest "$PROJECT_DIR/tests" -v
+          cd "$PROJECT_DIR" || exit
         # test discretizer
         - cd discretizer/tests/compare_discretizers
         - darts main.py
@@ -42,7 +44,7 @@
         - echo "test finished"
     after_script:
         - cd models
-        - ./archive_pkl.sh $ODLS $TEST_GPU
+        - ./archive_pkl.sh "$ODLS" "$TEST_GPU"
         - cd ..
     artifacts:
       paths:
@@ -54,14 +56,22 @@
       when: always
       expire_in: 1 week
 
+# Single Linux CPU test job: the in-tree open-source solvers (formerly
+# "test-linux-ODLS"; the proprietary `-a` twin was dropped after the solver
+# migration study -- see MR280_MASTER_PLAN.md §F).
 test-linux:
     extends: .test-linux
+    # Individual rules are anchored so the -BOS twin below can reuse them verbatim
+    # (single source of truth) while prepending its RUN_BOS_JOBS gate.
     rules: &python_version_rules
-        - if: '$PY_VER == $DEFAULT_PY_VER && ($CI_COMMIT_REF_PROTECTED == "true" || $CI_PIPELINE_SOURCE == "merge_request_event" || $TEST_CUSTOM_BRANCH == "1")'
-        - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_ALL_PYTHONS == "1"
+        - &rule_default_py_ver
+          if: '$PY_VER == $DEFAULT_PY_VER && ($CI_COMMIT_REF_PROTECTED == "true" || $CI_PIPELINE_SOURCE == "merge_request_event" || $TEST_CUSTOM_BRANCH == "1")'
+        - &rule_main_or_release_tag
+          if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
+        - &rule_all_pythons
+          if: $TEST_ALL_PYTHONS == "1"
     variables:
-        ODLS: '-a'
+        ODLS: ''              # test with open-darts linear solvers
     needs:
         - job: build-linux
           parallel:
@@ -74,13 +84,20 @@ test-linux:
             - PY_VER: '3.12'
             - PY_VER: '3.13'
 
-test-linux-ODLS:
+# Proprietary BOS-solvers test twin (consumes the build-linux-BOS wheels).
+test-linux-BOS:
     extends: .test-linux
-    rules: *python_version_rules
+    # Gated by RUN_BOS_JOBS (see .gitlab-ci.yml): skipped unless it is "1".
+    rules:
+        - if: $RUN_BOS_JOBS != "1"
+          when: never
+        - *rule_default_py_ver
+        - *rule_main_or_release_tag
+        - *rule_all_pythons
     variables:
-        ODLS: ''              # test with open-darts linear solvers
+        ODLS: '-a'           # proprietary BOS linear solvers
     needs:
-        - job: build-linux-ODLS
+        - job: build-linux-BOS
           parallel:
               matrix:
                   - PY_VER: ['$[[ matrix.PY_VER ]]']

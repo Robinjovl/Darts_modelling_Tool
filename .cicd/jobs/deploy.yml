@@ -41,8 +41,8 @@ deploy-testpypi:
         - twine upload -u $REPOUSER -p $REPOPWD --repository $REPO --verbose dist/*
     dependencies:
         # get the wheels from the build stage
-        - build-linux-ODLS
-        - build-windows-ODLS
+        - build-linux
+        - build-windows
 
 deploy-zenodo:
     stage: deploy
@@ -88,7 +88,7 @@ pages:
         paths:
         - public
     dependencies:
-        - build-linux-ODLS
+        - build-linux
 
 deploy-apptainer-image:
     stage: deploy

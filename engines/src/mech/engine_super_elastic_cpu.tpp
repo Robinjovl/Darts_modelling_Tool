@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <algorithm>
 #include <time.h>
 #include <functional>
@@ -13,11 +14,7 @@
 
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/linear_solvers/linsolv_bos_gmres.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_bilu0.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_cpr.hpp"
-#include "openDARTS/linear_solvers/linsolv_bos_amg.hpp"
-#include "openDARTS/linear_solvers/linsolv_superlu.hpp"
+#include "linsolv_superlu.hpp"
 #else
 #include "linsolv_bos_gmres.h"
 #include "linsolv_bos_bilu0.h"
@@ -81,8 +78,12 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	// Instantiate Jacobian
 	if (!Jacobian)
 	{
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		Jacobian = new block_csr_matrix; // unified block-CSR matrix (section 12)
+#else
 		Jacobian = new csr_matrix<N_VARS>;
 		Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+#endif
 	}
 
 	// figure out if this is GPU engine from its name.
@@ -92,7 +93,12 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	// if (!is_gpu_engine)
 	{
 		// for CPU engines we need full init
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		(static_cast<block_csr_matrix *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
+		Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE; // set after init() (init resets type)
+#else
 		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
+#endif
 	}
 	// else
 	// {
@@ -103,15 +109,21 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 #ifdef WITH_GPU
 	if (params->linear_type >= params->GPU_GMRES_CPR_AMGX_ILU)
 	{
+#ifndef OPENDARTS_LINEAR_SOLVERS
 		(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_device(mesh_->n_blocks, mesh_->n_links);
+#endif
+		// block_csr_matrix allocates device storage lazily via dual_array.
 	}
 #endif
 
 	// create linear solver
 	if (!linear_solver)
 	{
+		// Factory-allocated solvers are engine-owned and deleted in ~engine_base.
+		linear_solver_owned = true;
 		switch (params->linear_type)
 		{
+#ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS solvers; the open-source build injects via the registry
 		case sim_params::CPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
@@ -120,6 +132,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			linear_solver->set_prec(cpr);
 			break;
 		}
+#endif // OPENDARTS_LINEAR_SOLVERS
 #ifdef _WIN32
 #if 0
 		  // Can be enabled if amgdll.dll is available.
@@ -135,12 +148,14 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		}
 #endif
 #endif //_WIN32
+#ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS solver; open-source build injects via the registry
 		case sim_params::CPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>;
 			linear_solver->set_prec(new linsolv_bos_bilu0<N_VARS>);
 			break;
 		}
+#endif // OPENDARTS_LINEAR_SOLVERS
 #ifndef OPENDARTS_LINEAR_SOLVERS
 		case sim_params::CPU_GMRES_FS_CPR:
 		{
@@ -165,14 +180,16 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			break;
 		}
 
-#ifdef WITH_GPU
+// The GPU BOS-enum cases use the proprietary linsolv_bos_* solvers; the open-source
+// GPU build runs through engine_super_gpu (registry / AMGX-CPR), not this factory.
+#if defined(WITH_GPU) && !defined(OPENDARTS_LINEAR_SOLVERS)
 		case sim_params::GPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
 			break;
@@ -181,10 +198,10 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		case sim_params::GPU_GMRES_CPR_AIPS:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			int n_terms = 10;
 			bool print_radius = false;
@@ -211,13 +228,14 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			break;
 		}
 #endif //WITH_AIPS
+#ifdef OPENDARTS_GPU_HAS_AMGX
 		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			int n_json = 0;
 
@@ -229,52 +247,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 			linear_solver->set_prec(cpr);
 			break;
 		}
-#ifdef WITH_ADGPRS_NF
-		case sim_params::GPU_GMRES_CPR_NF:
-		{
-			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			// NF was initially created for CPU-based solver, so keeping unnesessary GPU->CPU->GPU copies so far for simplicity
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
-
-			int nx, ny, nz;
-			int n_colors = 4;
-			int coloring_scheme = 3;
-			bool is_ordering_reversed = true;
-			bool is_factorization_twisted = true;
-			if (params->linear_params.size() < 3)
-			{
-				printf("Error: Missing nx, ny, nz parameters, required for NF solver\n");
-				exit(-3);
-			}
-
-			nx = params->linear_params[0];
-			ny = params->linear_params[1];
-			nz = params->linear_params[2];
-			if (params->linear_params.size() > 3)
-			{
-				n_colors = params->linear_params[3];
-				if (params->linear_params.size() > 4)
-				{
-					coloring_scheme = params->linear_params[4];
-					if (params->linear_params.size() > 5)
-					{
-						is_ordering_reversed = params->linear_params[5];
-						if (params->linear_params.size() > 6)
-						{
-							is_factorization_twisted = params->linear_params[6];
-						}
-					}
-				}
-			}
-
-			cpr->set_prec(new linsolv_adgprs_nf<1>(nx, ny, nz, params->global_actnum, n_colors, coloring_scheme, is_ordering_reversed, is_factorization_twisted));
-			linear_solver->set_prec(cpr);
-			break;
-		}
-#endif //WITH_ADGPRS_NF
+#endif // OPENDARTS_GPU_HAS_AMGX
 		case sim_params::GPU_GMRES_ILU0:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
@@ -285,6 +258,15 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		default:
 			break;
 		}
+		// A compiled-out case leaves linear_solver at nullptr (engine_base.h
+		// initialises it there), and the caller dereferences it immediately.
+		// Fail with a diagnostic instead of a null deref.
+		if (!linear_solver)
+			throw std::runtime_error(
+				"engine_super_elastic_cpu: linear solver type " +
+				std::to_string(static_cast<int>(params->linear_type)) +
+				" is not available in this build; use sim_params::CPU_SUPERLU or inject "
+				"a solver from Python via set_linear_solver().");
 	}
 
 	n_vars = get_n_vars();
@@ -294,16 +276,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	z_var_idx = get_z_var_idx();
 	if (NC_ > 1)
 	{
-		if (params->log_transform == 0)
-		{
-			min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
-			max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
-		}
-		else if (params->log_transform == 1)
-		{
-			min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
-			max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
-		}
+		// Physical-simplex clipping; OBL window no longer constrains Newton — see engine_base.h
+		min_axis_z = 0.0;
+		max_axis_z = 1.0;
 		min_sim_z = min_axis_z + params->sim_eps;
 		max_sim_z = max_axis_z - params->sim_eps;
 	}
@@ -380,7 +355,6 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
 
-	stat = sim_stat();
 
 	print_header();
 
@@ -416,7 +390,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	}
 
 	Xn = X = X_init;
-	dt = params->first_ts;
+	dt = 0.0; // timestep sizing is owned by the Python driver
 	prev_usual_dt = dt;
 
 	// initialize arrays for every operator set
@@ -425,14 +399,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	op_axis_max.resize(acc_flux_op_set_list.size());
 	for (int r = 0; r < acc_flux_op_set_list.size(); r++)
 	{
+		// op_axis_min/op_axis_max left empty — disables apply_obl_axis_local_correction
 		block_idxs[r].clear();
-		op_axis_min[r].resize(nc + THERMAL);
-		op_axis_max[r].resize(nc + THERMAL);
-		for (int j = 0; j < nc + THERMAL; j++)
-		{
-			op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-			op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-		}
 	}
 
 	// create a block list for every operator set
@@ -1466,7 +1434,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update(value_t dt)
 	timer->node["newton update"].node["composition correction"].start();
 	if (nc > 1)
 	{
-		if (params->log_transform == 1)
+		if (log_transform == 1)
 		{
 			apply_composition_correction_new(X, dX);
 		}
@@ -1477,9 +1445,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update(value_t dt)
 	}
 	timer->node["newton update"].node["composition correction"].stop();
 
-	if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
+	if (newton_chop_mode == sim_params::NEWTON_GLOBAL_CHOP)
 	{
-		if (params->log_transform == 1)
+		if (log_transform == 1)
 		{
 			apply_global_chop_correction_new(X, dX);
 		}
@@ -1489,9 +1457,9 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::apply_newton_update(value_t dt)
 		}
 	}
 	// apply local chop only if number of components is 2 and more
-	/*else if (params->newton_type == sim_params::NEWTON_LOCAL_CHOP && nc > 1)
+	/*else if (newton_chop_mode == sim_params::NEWTON_LOCAL_CHOP && nc > 1)
 	{
-		if (params->log_transform == 1)
+		if (log_transform == 1)
 		{
 			apply_local_chop_correction_new(X, dX);
 		}
@@ -1530,7 +1498,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 {
 	int r_code;
 	char buffer[1024];
-	linear_solver_error_last_dt = 0;
+	last_linear_iters = 0;
 
 	/*if (1) //changed this to write jacobian to file!
 	{
@@ -1556,11 +1524,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver setup returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		//Jacobian->write_matrix_to_file("jac_linear_setup_fail.csr");
-		linear_solver_error_last_dt = 1;
-		return linear_solver_error_last_dt;
+		return 1;
 	}
 
 	timer->node["linear solver solve"].start();
@@ -1590,22 +1554,24 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 		//return 0;
 	}
 
+	// Unified solve() convention: a POSITIVE code is "budget exhausted, iterate
+	// usable" -- reported as engine status 3 for the nonlinear policy to act on.
+	if (const int nc = classify_linear_solve_status(r_code); nc == 3)
+		return 3;
 	if (r_code)
 	{
 		sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		linear_solver_error_last_dt = 2;
-		return linear_solver_error_last_dt;
+		return 2;
 	}
 	else
 	{
-		sprintf(buffer, "\t #%d (%.4e, %.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1,
+		sprintf(buffer, "\t (%.4e, %.4e, %.4e): lin %d (%.1e)\n",
 			dev_p, dev_u, well_residual_last_dt,
 			linear_solver->get_n_iters(), linear_solver->get_residual());
 		std::cout << buffer << std::flush;
-		n_linear_last_dt += linear_solver->get_n_iters();
+		last_linear_iters = linear_solver->get_n_iters();
+		last_linear_residual = linear_solver->get_residual();
 	}
 	return 0;
 }
@@ -1613,57 +1579,21 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, value_t time, index_t converged)
 {
-	char buffer[1024];
-	double well_tolerance_coefficient = 1e2;
-
-	if (linear_solver_error_last_dt == 1) // linear solver setup failed
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (linear solver setup failed) \n", deltat);
-	}
-	else if (linear_solver_error_last_dt == 2) // linear solver solve failed
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (linear solver solve failed) \n", deltat);
-	}
-	else if (newton_residual_last_dt >= params->tolerance_newton) // no reservoir convergence reached
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (newton residual reservoir) \n", deltat);
-	}
-	else if (well_residual_last_dt > well_tolerance_coefficient * params->tolerance_newton) // no well convergence reached
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (newton residual wells) \n", deltat);
-	}
-	else
-	{
-		converged *= 1;
-	}
-
 	dev_u = dev_p = dev_e = std::numeric_limits<value_t>::infinity();
 	fill(dev_z, dev_z + NC_, std::numeric_limits<value_t>::infinity());
+	well_residual_last_dt = std::numeric_limits<value_t>::infinity();
 
 	if (!converged)
 	{
-		stat.n_newton_wasted += n_newton_last_dt;
-		stat.n_linear_wasted += n_linear_last_dt;
-		stat.n_timesteps_wasted++;
-		converged = 0;
-
 		X = Xn;
 		Xref = Xn_ref;
 		std::copy(hooke_forces_n.begin(), hooke_forces_n.end(), hooke_forces.begin());
 		std::copy(biot_forces_n.begin(), biot_forces_n.end(), biot_forces.begin());
 		if constexpr (THERMAL)
 		  std::copy(thermal_forces_n.begin(), thermal_forces_n.end(), thermal_forces.begin());
-		std::cout << buffer << std::flush;
 	}
 	else //convergence reached
 	{
-		stat.n_newton_total += n_newton_last_dt;
-		stat.n_linear_total += n_linear_last_dt;
-		stat.n_timesteps_total++;
-		converged = 1;
-
-		print_timestep(time + deltat, deltat);
-
 		time_data["time"].push_back(time + deltat);
 
 		for (ms_well *w : wells)
@@ -1694,7 +1624,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 		if constexpr (THERMAL)
 		  std::copy(thermal_forces.begin(), thermal_forces.end(), thermal_forces_n.begin());
 		op_vals_arr_n = op_vals_arr;
-		t += dt;
+		t = time + deltat;
 	}
 	return converged;
 }
@@ -1702,7 +1632,7 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::post_newtonloop(value_t deltat, v
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 std::vector<value_t> engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev()
 {
-	/*switch (params->nonlinear_norm_type)
+	/*switch (residual_norm_type)
 	{
 	case sim_params::L1:
 	{
@@ -1724,7 +1654,7 @@ std::vector<value_t> engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev(
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 std::vector<value_t> engine_super_elastic_cpu<NC, NP, THERMAL>::calc_newton_dev_L2()
 {
-	std::vector<value_t> dev_by_balance(THERMAL + NC + 2, 0.0); // mass + momentum + energy
+	std::vector<value_t> dev_by_balance(4, 0.0); // [0] mass, [1] momentum, [2] energy, [3] gap
 	std::vector<value_t> dev(n_vars, 0);
 	std::vector<value_t> norm(n_vars, 0);
 	value_t gap_dev = 0.0, norm_gap = 0.0;
@@ -1859,14 +1789,14 @@ void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_global_chop_correction(std
 		}
 	}
 
-	if (max_ratio > params->newton_params[0])
+	if (max_ratio > newton_chop_factor)
 	{
 		std::cout << "Apply global chop with max changes = " << max_ratio << "\n";
 		for (size_t i = 0; i < n_blocks; i++)
 		{
 			for (uint8_t c = 1; c < NC; c++)
 			{
-				dX[i * N_VARS + P_VAR + c] *= params->newton_params[0] / max_ratio;
+				dX[i * N_VARS + P_VAR + c] *= newton_chop_factor / max_ratio;
 			}
 		}
 	}
@@ -1878,7 +1808,7 @@ void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_global_chop_correction_new
 	value_t max_ratio = 0, temp_zc = 0, temp_dz = 0, ratio;
 	index_t ind, n_blocks = mesh->n_blocks;
 
-	if (params->log_transform == 0)
+	if (log_transform == 0)
 	{
 		for (index_t i = 0; i < n_blocks; i++)
 		{
@@ -1893,19 +1823,19 @@ void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_global_chop_correction_new
 			}
 		}
 
-		if (max_ratio > params->newton_params[0])
+		if (max_ratio > newton_chop_factor)
 		{
 			std::cout << "Apply global chop with max changes = " << max_ratio << "\n";
 			for (index_t i = 0; i < n_blocks; i++)
 			{
 				for (uint8_t c = 1; c < NC; c++)
 				{
-					dX[i * N_VARS + P_VAR + c] *= params->newton_params[0] / max_ratio;
+					dX[i * N_VARS + P_VAR + c] *= newton_chop_factor / max_ratio;
 				}
 			}
 		}
 	}
-	/*else if (params->log_transform == 1)
+	/*else if (log_transform == 1)
 	{
 		for (index_t i = 0; i < n_blocks; i++)
 		{
@@ -1929,12 +1859,12 @@ void engine_super_elastic_cpu<NC, NP, THERMAL>::apply_global_chop_correction_new
 			}
 		}
 
-		if (max_ratio > params->newton_params[0])
+		if (max_ratio > newton_chop_factor)
 		{
 			std::cout << "Apply global chop with max changes = " << max_ratio << "\n";
 			for (size_t i = 0; i < n_vars_total; i++)
 			{
-				dX[i] *= params->newton_params[0] / max_ratio; //log based composition
+				dX[i] *= newton_chop_factor / max_ratio; //log based composition
 			}
 		}
 	}*/

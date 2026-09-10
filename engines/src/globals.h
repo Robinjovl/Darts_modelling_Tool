@@ -1,7 +1,11 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
+#ifdef OPENDARTS_LINEAR_SOLVERS
+#include "timer_node.hpp"
+#else
 #include "timer_node.h"
+#endif // OPENDARTS_LINEAR_SOLVERS
 
 #include <fstream>
 #include <vector>
@@ -26,7 +30,19 @@ typedef double interp_value_t;
 static const double LOWER_LIMIT = 1.0e-12;
 static const double UPPER_LIMIT = 1.0 - LOWER_LIMIT;
 static std::ofstream log_stream;
-#define MAX_NC 8
+
+// Max number of components for engine template instantiation (engine_nc_*,
+// engine_super_*). Recursive_instantiator_nc / nc_np loops cover NC ∈ [2, MAX_NC].
+// Driven by the OPENDARTS_MAX_DIMS cmake variable (-DMAX_NC=N) so it stays in
+// sync with MAX_DIMS in interpolation_config.h — for thermal physics the
+// interpolator parameter-space dim is NC+1, so MAX_DIMS must be ≥ MAX_NC.
+//
+// Fail loudly rather than silently defaulting: a TU compiled without -DMAX_NC
+// would land at a different value than the rest of the binary and produce
+// ODR-incoherent template instantiations with silent runtime corruption.
+#ifndef MAX_NC
+#error "MAX_NC must be defined (typically via the OPENDARTS_MAX_DIMS CMake variable, propagated as -DMAX_NC=N)."
+#endif
 
 #define GET_RAND_I(START, END) \
   START + rand() / (RAND_MAX / (END - START + 1) + 1)
@@ -44,10 +60,6 @@ static std::ofstream log_stream;
 extern int device_num;
 #endif
 
-// __uint128_t emulation (MSVC), numeric_limits, hash, and to_string
-// are now provided solely by interpolation_config.h (included
-// transitively via evaluator_iface.h → interpolation_config.h).
-
 /// Main simulation parameters including tolerances
 class sim_params
 {
@@ -57,8 +69,7 @@ public:
   {
     NEWTON_STD = 0,
     NEWTON_GLOBAL_CHOP,
-    NEWTON_LOCAL_CHOP,
-    NEWTON_INFLECTION_POINT
+    NEWTON_LOCAL_CHOP
   };
 
   enum linear_solver_t
@@ -69,6 +80,10 @@ public:
     CPU_SAMG,
     CPU_GMRES_ILU0,
     CPU_SUPERLU,
+    CPU_GMRES_MGR, // keep ALL CPU methods before the GPU block: several engines
+                   // classify a solver as GPU via `linear_type >= GPU_GMRES_CPR_AMG`
+                   // (device Jacobian copies etc.), so a CPU method placed after the
+                   // boundary would be silently mis-bucketed as GPU.
     GPU_GMRES_CPR_AMG, // <<<---- Should be the first GPU method for correct Jacobian treatment
     GPU_GMRES_ILU0,
     GPU_GMRES_CPR_AIPS,
@@ -77,9 +92,9 @@ public:
     GPU_GMRES_CPR_AMGX_AMGX,
     GPU_GMRES_AMGX,
     GPU_AMGX,
-    GPU_GMRES_CPR_NF,
     GPU_BICGSTAB_CPR_AMGX,
-    GPU_CUSOLVER
+    GPU_CUSOLVER,
+    GPU_CUDSS // cuDSS sparse direct solver (GPU build with WITH_CUDSS)
   };
 
   enum nonlinear_norm_t
@@ -92,78 +107,50 @@ public:
   sim_params()
   {
     // set default params
-    first_ts = 1;
-    max_ts = 10;
-    mult_ts = 2;
-    min_ts = 1e-12;
-
     max_i_linear = 50;
     tolerance_linear = 1e-5;
-    max_i_newton = 20;
-    min_i_newton = 0;
-    tolerance_newton = 1e-3;
-    well_tolerance_coefficient = 1e2;
-    stationary_point_tolerance = 1e-3;
-    newton_type = NEWTON_LOCAL_CHOP;
-    newton_params.push_back(0.1);
-    line_search = false;
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
     linear_type = CPU_SUPERLU;
 #else
     linear_type = CPU_GMRES_CPR_AMG;
 #endif
-    nonlinear_norm_type = L2;
+    linear_print_level = 0;
 
-    //Added for debugging purposes:
-    tot_newt_count = 0;
-    log_transform = 0;
-    interface_avg_tmult = 0;
     enable_permporo = false;
-    // obl_min_fac = 10;
     sim_eps = 1e-12;
     assembly_kernel = 0;
+    schur_elim_count = 0;
+    schur_elim_rows.clear();
+    schur_elim_cols.clear();
 
     finalize_mpi = 1;
 
     phase_existence_tolerance = 1.e-6;
   }
 
-  value_t first_ts; // first time step length (days)
-  value_t max_ts;   // maximum time step length (days)
-  value_t mult_ts;  // multiplication ts factor
-  value_t min_ts;   // minimum time step length (days)
-
-  index_t max_i_newton;     // maximum number of newton iterations
-  index_t min_i_newton;     // minimum number of newton iterations
   index_t max_i_linear;     // maximum number of linear iterations
-  value_t tolerance_newton; // tolerance for newton solver
   value_t tolerance_linear; // tolerance for linear solver
-  value_t well_tolerance_coefficient; // tolerance multiplier for well newton tolerance
-  value_t stationary_point_tolerance; // stationary point tolerance
-  bool line_search;         // apply line search in newton iterations
 
-  //Added for debugging purposes:
-  index_t tot_newt_count;      // total number of newton iterations (wasted + non-wasted)
-  index_t log_transform;       // 0 => normal comp (X=[P,Z1,...,Znc-1]), 1 => logtransform of comp (X=[P,log(Z1),...,log(Znc-1)])
-  index_t interface_avg_tmult; // 0 => normal trans-multiplier (in operator), 1 => interface weighted trans-multiplier (in engine)
   bool enable_permporo;        // flag enabling transmissibility multiplier in assembly
-  value_t obl_min_fac;         // factor used to determine z_min --> usually taken around 10, such that z_min = 10*z_OBL_min
   value_t sim_eps;             // offset from axes that solution should remain inside
   int assembly_kernel;         // select non-default assebly kernel (for GPU)
+  int schur_elim_count;     // K = number of cell-local (diagonal-block-only) equation/
+                               // unknown pairs to Schur-eliminate before preconditioning
+                               // (0 = off). Consumed by the GPU engine solver factory; CPU
+                               // chains use SchurEliminationSpec instead. The eliminated
+                               // (row, column) pairs are given explicitly by schur_elim_rows/
+                               // schur_elim_cols (each of length K); no built-in row/column
+                               // convention. (In a chemistry model these are the mineral
+                               // balances, but the transform is physics-agnostic.)
+  std::vector<int> schur_elim_rows;  // preferred eliminated equation rows (length K)
+  std::vector<int> schur_elim_cols;  // eliminated unknown columns (length K)
 
-  newton_solver_t newton_type;          // Newton solver type (more precisely, nonlinear update type - chopping strategies)
   linear_solver_t linear_type;          // Linear solver type
-  nonlinear_norm_t nonlinear_norm_type; // Nonlinear norm type, used to check for convergence
+  int linear_print_level;               // Linear solver verbosity (HYPRE print level)
 
-  std::vector<value_t> newton_params;
   std::vector<value_t> linear_params;
 
-  // for NF solver
-  std::vector<int> global_actnum;
-
-  // Global chop: 0 - solution increment/value (dX/X) ratio threshold (default 1)
-  // Local chop:  1 - composition increment is limited by max_dx (default 0.1)
 
   index_t finalize_mpi;         // flag to run MPI_Finalize in relevant solvers (required for multiple model run)
 
@@ -187,28 +174,6 @@ public:
     max_i_linear = 50;
     tolerance_linear = 1e-5;
   };
-};
-
-/// Main simulation statistics with active and wasted counts
-class sim_stat
-{
-public:
-  sim_stat()
-  {
-    n_newton_total = 0;     // total number of nonlinear iterations
-    n_linear_total = 0;     // total number of linear iterations
-    n_newton_wasted = 0;    // number of wasted nonlinear iterations
-    n_linear_wasted = 0;    // number of wasted linear iterations
-    n_timesteps_total = 0;  // total number of timetseps
-    n_timesteps_wasted = 0; // number of wasted timetseps
-  }
-
-  index_t n_newton_total;
-  index_t n_linear_total;
-  index_t n_newton_wasted;
-  index_t n_linear_wasted;
-  index_t n_timesteps_total;
-  index_t n_timesteps_wasted;
 };
 
 void write_vector_to_file(std::string file_name, std::vector<value_t> &v);

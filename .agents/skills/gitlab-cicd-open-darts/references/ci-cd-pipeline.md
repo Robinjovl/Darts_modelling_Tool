@@ -51,12 +51,12 @@ Jobs trigger based on these conditions:
 
 | Condition | Triggers |
 |---|---|
-| Protected branch push | All Python 3.10 jobs |
-| Merge request | All Python 3.10 jobs |
+| Protected branch push | All Python 3.11 jobs |
+| Merge request | All Python 3.11 jobs |
 | Push to `main` | All Python versions (3.10–3.13) |
 | Version tag (`v#.#.#`) | All builds + deploy to PyPI/Zenodo |
 | `TEST_ALL_PYTHONS=1` | All Python version builds + tests |
-| `TEST_CUSTOM_BRANCH=1` | Python 3.10 build + test |
+| `TEST_CUSTOM_BRANCH=1` | Python 3.11 build + test |
 | `UPLOAD_TEST_PYPI=1` | Upload to TestPyPI |
 | `DOCS_PAGES=1` | Build + deploy documentation |
 | `RUN_APPTAINER_DEPLOY=1` | Push Apptainer image to registry |
@@ -69,11 +69,11 @@ Jobs trigger based on these conditions:
 
 | Job | Python | Solvers | Notes |
 |---|---|---|---|
-| `build-linux-3.10` | 3.10 | bos_solvers (`-a`) | Default for MRs |
-| `build-linux-3.10-ODLS` | 3.10 | openDARTS | Default for MRs |
-| `build-linux-3.11` through `3.13` | 3.11–3.13 | Both variants | `main` / tags |
-| `build-linux-3.10-valgrind` | 3.10 | — | Debug + Valgrind flags |
-| `build-linux-gpu` | 3.10 | GPU bos_solvers | CUDA build |
+| `build-linux-3.11` | 3.11 | bos_solvers (`-a`) | Default for MRs |
+| `build-linux-3.11-ODLS` | 3.11 | openDARTS | Default for MRs |
+| `build-linux-3.10`, `3.12`, `3.13` | 3.10, 3.12–3.13 | Both variants | `main` / tags |
+| `build-linux-3.11-valgrind` | 3.11 | — | Debug + Valgrind flags |
+| `build-linux-gpu` | 3.11 | GPU bos_solvers | CUDA build |
 
 ### Windows Builds
 
@@ -85,8 +85,8 @@ Same Python version matrix as Linux, builds with MSVC.
 
 | Job | What it tests |
 |---|---|
-| `test-linux-3.10-ODLS` | Model suite + interpolators + discretizer (ODLS) |
-| `test-linux-3.10` | Same with bos_solvers |
+| `test-linux-3.11-ODLS` | Model suite + interpolators + discretizer (ODLS) |
+| `test-linux-3.11` | Same with bos_solvers |
 | `valgrind-check` | Memory leak detection |
 | `test-linux-gpu` | GPU-specific tests |
 
@@ -182,6 +182,7 @@ cd docs && sphinx-build -b html . public
 
 | Variable | Purpose |
 |---|---|
+| `RUN_BOS_JOBS` | Run the proprietary BOS-solvers CI twins (`build`/`test-linux-BOS`, `build`/`test-windows-BOS`). Default `"1"` (declared in `.gitlab-ci.yml`); set to anything else to skip all four. Override per-pipeline from a schedule or manual run. |
 | `TEST_ALL_PYTHONS` | Build/test all Python versions |
 | `TEST_CUSTOM_BRANCH` | Enable build/test for non-protected branches |
 | `TEST_GPU` | Enable GPU tests |

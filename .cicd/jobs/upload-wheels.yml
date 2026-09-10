@@ -1,23 +1,7 @@
-upload_wheels:
-    stage: deploy
-    image: "python:$DEFAULT_PY_VER"
-    rules:
-        - if: $UPLOAD_WHEELS == "1"
-    tags:
-        - linux
-    before_script:
-        - apt-get update -qq && apt-get install -y -qq smbclient
-    script:
-        - ./helper_scripts/rename_whls.sh # rename linux whls to make uploadable to test-pypi
-        - export DEFAULT_PY_TAG="cp${DEFAULT_PY_VER/./}"
-        - export wheel=`ls ./dist/*${DEFAULT_PY_TAG}*linux*`
-        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter
-        - export wheel=`ls ./dist/*${DEFAULT_PY_TAG}*win*`
-        - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_iter
-    dependencies:
-        # get the wheels from the build stage
-        - build-linux
-        - build-windows
+# NOTE (MR280 CI consolidation): the former `upload_wheels` job uploaded the
+# proprietary (`-a`) wheels to the `wheels_iter` SMB share. Its source build
+# was dropped together with the non-ODLS CI jobs, so the job is removed;
+# downstream consumers of `wheels_iter` should switch to `wheels_odls`.
 
 upload_wheels_oahu:
     stage: deploy
@@ -52,5 +36,5 @@ upload_wheels_odls:
         - smbclient -U $SMBLOGIN%$SMBPASS //$SMBNAME/darts-private-artifacts -c "put $wheel" -D=wheels_odls
     dependencies:
         # get the wheels from the build stage
-        - build-linux-ODLS
-        - build-windows-ODLS
+        - build-linux
+        - build-windows

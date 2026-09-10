@@ -6,6 +6,7 @@ import os, sys
 from darts.engines import redirect_darts_output
 from darts.tools.plot_darts import *
 from darts.tools.logging import redirect_all_output, abort_redirection
+from darts.tools.cicd_tools import check_performance, save_performance_data
 
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
@@ -29,7 +30,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         log_stream = redirect_all_output(log_filename)
 
     if physics_type == 'geothermal':
-        m = ModelGeothermal(iapws_physics=True)
+        m = ModelGeothermal(iapws_physics=True, formulation='PT')
     elif physics_type == 'deadoil':
         m = ModelDeadOil()
     elif physics_type == 'CCS':
@@ -53,7 +54,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     m.init_reservoir(arrays=arrays)
 
     # time stepping and convergence parameters
-    m.set_sim_params_data_ts(data_ts=m.idata.sim.DataTS)
+    m.ts_control = m.idata.sim.TimestepControl
 
     m.timer.node["initialization"].stop()
 
@@ -82,7 +83,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
         output_properties_main = m.physics.vars  # only main variables
         output_properties_full = output_properties_main + m.output.properties # additional properties (might take some time to compute)
-        m.reservoir.create_vtk_wells(output_directory=out_dir)
+
         n_timesteps = len(m.idata.sim.time_steps)
         for ith_step in range(n_timesteps + 1):
             # compute additional properties only for the first and for the last timestep:
@@ -90,8 +91,8 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
             #print('timestep', ith_step, 'output_properties:', output_properties)
             timesteps, property_array = m.output.output_properties(output_properties=output_properties, ts_idx=ith_step, engine=False)
             if ith_step == 0:
-                centers_x, centers_y, centers_z = m.reservoir.get_centers()
-                property_array.update({'centers_x' : centers_x.reshape(1,-1), 'centers_y': centers_y.reshape(1,-1), 'centers_z': centers_z.reshape(1,-1)})
+                pts = m.reservoir.get_centers()
+                property_array.update({'centers_x': pts[:, 0].reshape(1, -1), 'centers_y': pts[:, 1].reshape(1, -1), 'centers_z': pts[:, 2].reshape(1, -1)})
 
             if 0:
                 # save properties in its own *.h5 file
@@ -106,15 +107,31 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
 
             m.output.output_to_vtk(output_data=[timesteps, property_array], ith_step=ith_step)
 
+        m.reservoir.create_vtk_wells(output_directory=os.path.join(out_dir, 'vtk_files'))
         m.reservoir.centers_to_vtk(os.path.join(out_dir, 'vtk_files'))
 
     def add_columns_time_data(time_data):
         time_data['Time (years)'] = time_data['time'] / 365.25 # extra column with time in years
-        for k in time_data.keys():
+        for k in list(time_data.keys()):
             # extra column with temperature in celsius
             if 'BHT' in k:
                 time_data[k.replace('K', 'degrees')] = time_data[k] - 273.15
                 time_data.drop(columns=k, inplace=True)
+        # The geothermal flow is now driven by the compositional engine with phases ['V','L'],
+        # so the engine.time_data columns use ' : L rate ' / ' : V rate ' instead of the
+        # legacy ' : water rate ' / ' : steam rate '. Alias the liquid (water) rate so the
+        # shared plot helpers in darts.tools.plot_darts (plot_total_inj_water_rate_darts,
+        # plot_total_prod_water_rate_darts, ...) keep working for the geothermal physics.
+        if physics_type == 'geothermal':
+            for k in list(time_data.keys()):
+                if ' : L rate ' in k:
+                    new_k = k.replace(' : L rate ', ' : water rate ')
+                    if new_k not in time_data.columns:
+                        time_data[new_k] = time_data[k]
+                elif ' : V rate ' in k:
+                    new_k = k.replace(' : V rate ', ' : steam rate ')
+                    if new_k not in time_data.columns:
+                        time_data[new_k] = time_data[k]
 
     if not(m.idata.supress_all_output):
         # compute and save well time data
@@ -251,10 +268,10 @@ def check_performance_local(m, case, physics_type):
 
     is_plk_exist = os.path.isfile(file_name)
 
-    failed = m.check_performance(perf_file=file_name, overwrite=overwrite, pkl_suffix=pkl_suffix)
+    failed = check_performance(m, perf_file=file_name, overwrite=overwrite, pkl_suffix=pkl_suffix)
 
     if not is_plk_exist or overwrite == '1':
-        m.save_performance_data(file_name=file_name, pkl_suffix=pkl_suffix)
+        save_performance_data(m, file_name=file_name, pkl_suffix=pkl_suffix)
         return False, 0.0
 
     if is_plk_exist:
@@ -287,8 +304,8 @@ if __name__ == '__main__':
     # physics_list += ['deadoil']
 
     cases_list = []
-    cases_list += ['generate_5x3x4']
-    #cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_5x3x4']
+    cases_list += ['generate_51x51x1']
     #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['40x40x10']
@@ -296,9 +313,9 @@ if __name__ == '__main__':
     #cases_list += ['40x40x10_regions']
 
     well_controls = []
-    well_controls += ['wrate']
+    #well_controls += ['wrate']
     #well_controls += ['wbhp']
-    #well_controls += ['wperiodic']
+    well_controls += ['wperiodic']
 
     for physics_type in physics_list:
         for case_geom in cases_list:

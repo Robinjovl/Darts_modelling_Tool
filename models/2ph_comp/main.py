@@ -4,7 +4,7 @@ import sys, os
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
-from darts.physics.base.operators_base import PropertyOperators as props
+from darts.physics.base.operator_evaluator import PropertyOperators as props
 
 def plot_sol(n):
     Xn = np.array(n.physics.engine.X, copy=False)
@@ -48,8 +48,8 @@ if __name__ == '__main__':
 
     redirect_darts_output('run.log')
     n = Model()
-    # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
+    # n.physics.engine.print_linear_system = True
     n.set_output()
 
 

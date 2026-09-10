@@ -14,7 +14,7 @@ if __name__ == '__main__':
         n = Model(grid_1D=grid_1D, res=res, custom_physics=0)
         n.init()
         n.set_output()
-        n.params.max_ts = 1e-0
+        n.ts_control.dt_max = 1e-0
 
         n.run(50)
         # n.save_restart_data()

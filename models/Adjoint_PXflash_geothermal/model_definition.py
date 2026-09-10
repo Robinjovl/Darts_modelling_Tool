@@ -1,6 +1,7 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import ms_well
+from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
 from darts.models.opt.opt_module_settings import OptModuleSettings
@@ -8,10 +9,10 @@ from darts.models.opt.opt_module_settings import OptModuleSettings
 from darts.input.input_data import InputData
 
 
-class Model(CICDModel, OptModuleSettings):
-    def __init__(self, T, report_step=120, perm=300, poro=0.2, iapws_physics=False, n_points=128):
+class Model(DartsModel, OptModuleSettings):
+    def __init__(self, T, report_step=120, perm=300, poro=0.2, iapws_physics=False):
         # call base class constructor
-        CICDModel.__init__(self)
+        DartsModel.__init__(self)
         OptModuleSettings.__init__(self)
 
         # measure time spend on reading/initialization
@@ -22,14 +23,24 @@ class Model(CICDModel, OptModuleSettings):
 
         self.set_reservoir(perm, poro)
         self.iapws_physics = iapws_physics
-        self.set_input_data(n_points=n_points)
+        self.set_input_data()
         self.set_physics()
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1000, tol_newton=1e-3, tol_linear=1e-6)
+        # solver/time-stepping config moved to set_solver() (called at top of reset())
 
         self.init_pressure = 200.
         self.init_temperature = 350.
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 0.0001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 5
+        self.ts_control.runtime = 1000
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
+        self.linear_solver.spec.tolerance = 1e-6
 
     def set_reservoir(self, perm, poro):
         """Reservoir construction"""
@@ -74,66 +85,97 @@ class Model(CICDModel, OptModuleSettings):
 
     def set_physics(self):
         """Physical properties"""
+        # Define fluid components, phases and Flash object
+        from darts.physics.base.physics import PhysicsBase
+        from darts.physics.properties.eos_properties import EoSDensity
+        from dartsflash.libflash import EoS
+        from dartsflash.components import CompData
+        from dartsflash.mixtures import DARTSFlash, Mixture, IAPWS
+
+        # IAPWS physics
+        phases = ['steam', 'water']
+        components = ["H2O"]
+        comp_data = CompData(components=components, setprops=True)
+        zero = 1e-10
+        epsilon = 1e-11
+
+        """ Initialize flash """
+        pt = False
         if self.iapws_physics:
-            from darts.physics.geothermal.geothermal import Geothermal
-            self.physics = Geothermal(self.idata, self.timer)
-        else:
-            # Define fluid components, phases and Flash object
-            from dartsflash.libflash import EoS
-            from dartsflash.components import CompData
-            from dartsflash.dartsflash import DARTSFlash
-            from dartsflash.mixtures import IAPWS, VLAq
-            phases = ['water', 'steam']
-            components = ["H2O"]
-            comp_data = CompData(components=components, setprops=True)
-            Mw = comp_data.Mw
+            from darts.physics.iapws_physics import IAPWSPhysics
+            # PH: [p, z_1, ..., z_{nc-1}, H]
+            nz = len(components) - 1
+            ax_step = [0.4] + [1e-3] * nz + [0.1]
+            ax_origin = [1.0] + [epsilon] * nz + [273.15]
+            self.physics = IAPWSPhysics(phases, self.timer,
+                                        state_spec=PhysicsBase.StateSpecification.PH,
+                                        axes_step=ax_step, axes_origin=ax_origin,
+                                        cache=False)
 
-            """ Initialize flash """
-            pt = False
-            flash_ev = VLAq(comp_data, hybrid=True)
-
-            # Add EoS objects for V/L and Aq phases
-            flash_ev.set_vl_eos("PR", root_order=[EoS.MAX])
-            flash_ev.set_aq_eos("Aq", use_gmix=True)
-            ceos = flash_ev.eos["VL"]  # covers vapour phase
-            aq = flash_ev.eos["Aq"]  # aqueous liquid phase
+            ice_phase = False
+            mixture = IAPWS(iapws_ideal=True, ice_phase=False)
+            eos_order = ["IAPWS"] + ([] if not ice_phase else ["Ice"])
 
             # Initialize flash object
-            flash_ev.init_flash(flash_type=DARTSFlash.FlashType.PTFlash if pt else DARTSFlash.FlashType.PHFlash,
-                                eos_order=["Aq", "VL"], t_min=250., t_max=575.,
-                                pxflash_switch_ttol=1e-1, pxflash_ftol=1e-10)
+            mixture.init_flash(flash_type=DARTSFlash.FlashType.PHFlash,
+                               eos_order=eos_order, t_min=250., t_max=575.,
+                               pxflash_switch_ttol=1e-1, pxflash_ftol=1e-10)
+            self.physics.set_mixture(mixture)
 
-            # Define PropertyContainer
-            from darts.physics.super.property_container import PropertyContainer
-            zero = 1e-10
-            epsilon = 1e-11
-            property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=Mw, eps_z=epsilon)
+            aq_density = EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.MIN)
+            steam_density = EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.MAX)
 
-            property_container.flash_ev = flash_ev
+        else:
+            from darts.physics.eos_physics import EoSPhysics
+            # PH: [p, z_1, ..., z_{nc-1}, H]
+            nz = len(components) - 1
+            ax_step = [0.4] + [1e-3] * nz + [0.1]
+            ax_origin = [1.0] + [epsilon] * nz + [273.15]
+            self.physics = EoSPhysics(components, phases, self.timer,
+                                      state_spec=PhysicsBase.StateSpecification.PH,
+                                      axes_step=ax_step, axes_origin=ax_origin,
+                                      epsilon_z=epsilon, cache=False, extrapolation_flag=True)
 
-            # properties implemented in python
-            from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
-            from darts.physics.properties.density import Spivey2004
-            from darts.physics.properties.viscosity import MaoDuan2009
-            from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
-            property_container.enthalpy_ev = {'water': EoSEnthalpy(aq),
-                                              'steam': EoSEnthalpy(ceos, root_flag=EoS.RootFlag.MAX)}
-            property_container.density_ev = {'water': Spivey2004(components),
-                                             'steam': EoSDensity(ceos, comp_data.Mw, root_flag=EoS.RootFlag.MAX)}
-            property_container.viscosity_ev = {'water': MaoDuan2009(components),
-                                               'steam': ConstFunc(0.01)}
-            property_container.conductivity_ev = {'water': ConstFunc(172.8),
-                                                  'steam': ConstFunc(0.)}
-            property_container.rel_perm_ev = {'water': PhaseRelPerm("water"),
-                                              'steam': PhaseRelPerm("gas")}
-            property_container.output_props = {'temperature': lambda: property_container.temperature,
-                                               'satAq': lambda: property_container.sat[0]}
+            mixture = Mixture(comp_data)
+            # Add EoS objects for V/L and Aq phases
+            mixture.set_vl_eos(vl_eos_name="PR", hybrid_aq_eos_name="Aq", root_order=[EoS.MAX])
+            mixture.set_aq_eos(aq_eos_name="Aq", use_gmix=True)
+            eos_order = ["PR", "Aq"]
 
-            from darts.physics.super.physics import Compositional
-            self.physics = Compositional(components, phases, self.timer, state_spec=Compositional.StateSpecification.PH,
-                                         n_points=1001, min_p=1, max_p=400, min_z=0., max_z=1., epsilon_z=epsilon,
-                                         min_t=273.15, max_t=373.15, cache=False, extrapolation_flag=True)
-            self.physics.add_property_region(property_container)
+            # Initialize flash object
+            mixture.init_flash(flash_type=DARTSFlash.FlashType.PHFlash,
+                               eos_order=["Aq", "PR"], t_min=250., t_max=575.,
+                               pxflash_switch_ttol=1e-1, pxflash_ftol=1e-10)
+            self.physics.set_mixture(mixture)
+
+            aq_density = EoSDensity(eos=mixture.eos["Aq"])
+            steam_density = EoSDensity(eos=mixture.eos["PR"], root_flag=EoS.MAX)
+
+        # Define PropertyContainer
+        from darts.physics.base.property_container import PropertyContainer
+        property_container = PropertyContainer(phases_name=phases, components_name=["H2O"], Mw=comp_data.Mw, eps_z=epsilon)
+
+        self.physics.add_property_region(property_container)
+
+        # properties implemented in python
+        property_container.flash_ev = self.physics.get_flash_ev()
+
+        from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+        from darts.physics.properties.density import Spivey2004
+        from darts.physics.properties.viscosity import MaoDuan2009
+        from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
+        property_container.enthalpy_ev = {'water': self.physics.get_enthalpy_ev_from_flash(phase_idx=1),
+                                          'steam': self.physics.get_enthalpy_ev_from_flash(phase_idx=0)}
+        property_container.density_ev = {'water': aq_density if self.iapws_physics else Spivey2004(components),
+                                         'steam': steam_density}
+        property_container.viscosity_ev = {'water': MaoDuan2009(components),
+                                           'steam': ConstFunc(0.01)}
+        property_container.conductivity_ev = {'water': ConstFunc(172.8),
+                                              'steam': ConstFunc(0.)}
+        property_container.rel_perm_ev = {'water': PhaseRelPerm("water"),
+                                          'steam': PhaseRelPerm("gas")}
+        property_container.output_props = {'temperature': lambda: property_container.temperature,
+                                           'satAq': lambda: property_container.sat[0]}
 
         return
 
@@ -175,13 +217,13 @@ class Model(CICDModel, OptModuleSettings):
         for ts in time_step_arr:
             self.set_well_controls()
 
-            CICDModel.run(self, ts, verbose=export_to_vtk)
+            DartsModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()
             if export_to_vtk:
                 ith_step += 1
                 self.output_to_vtk(ith_step=ith_step, output_directory=output_path, output_properties=output_props)
 
-    def set_input_data(self, n_points):
+    def set_input_data(self):
         # init_type = 'uniform'
         init_type = 'gradient'
         self.idata = InputData(type_hydr='thermal', type_mech='none', init_type=init_type)
@@ -234,8 +276,7 @@ class Model(CICDModel, OptModuleSettings):
         #     self.idata.wells.controls.prod_bhp_constraint = 70 # lower limit for bhp, bars
         # self.idata.wells.controls.inj_bht = 300  # K
 
-        self.idata.obl.n_points = n_points
-        self.idata.obl.min_p = 1.
-        self.idata.obl.max_p = 351.
-        self.idata.obl.min_e = 1000.  # kJ/kmol, will be overwritten in PHFlash physics
-        self.idata.obl.max_e = 10000.  # kJ/kmol, will be overwritten in PHFlash physics
+        self.idata.obl.p_step = 0.5   # bar
+        self.idata.obl.p_origin = 1.0
+        self.idata.obl.e_step = 10.0  # kJ/kmol
+        self.idata.obl.e_origin = 1000.0

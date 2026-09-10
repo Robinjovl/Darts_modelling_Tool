@@ -7,19 +7,22 @@ from darts.engines import (
     linear_solver_params,
     mech_operators,
     sim_params,
-    value_vector,
 )
 from darts.models.darts_model import DartsModel
+from darts.physics.base.property_container import PropertyContainer
 from darts.physics.mech.poroelasticity import Poroelasticity
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 from darts.physics.properties.flash import SinglePhase
-from darts.physics.super.property_container import PropertyContainer
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 
 
 class THMCModel(DartsModel):
+    # Mechanics engines select their linear solver through params.linear_type /
+    # engine.ls_params (see set_solver below), not through a LinearSolverSpec.
+    linear_solver_from_engine_factory = True
+
     def __init__(self):
         try:
             from darts.engines import get_num_threads
@@ -34,6 +37,7 @@ class THMCModel(DartsModel):
             exit()
 
         super().__init__()
+        self.timer.node["initialization"].start()
         self.set_input_data()
         self.set_physics()
         self.set_reservoir()
@@ -42,7 +46,8 @@ class THMCModel(DartsModel):
         if hasattr(self, 'idata'):
             if self.idata.type_mech == 'thermoporoelasticity':
                 self.reservoir.T_VAR = self.physics.engine.T_VAR
-        self.set_solver_params()
+        # Solver/Newton config is set by set_solver(), called from the base
+        # DartsModel.reset() (at the top, before engine.init).
         self.timer.node["initialization"].stop()
 
     def reinit(self, zero_conduction):
@@ -69,30 +74,54 @@ class THMCModel(DartsModel):
             fluid_vars=self.physics.vars,
         )
 
-    def set_solver_params(self):
-        self.params.tolerance_newton = (
-            1e-6  # Tolerance of newton residual norm ||residual||<tol_newt
-        )
-        self.params.newton_type = (
-            sim_params.newton_global_chop
-        )  # Type of newton method (related to chopping strategy?)
-        self.params.newton_params = value_vector([0.2])  # Probably chop-criteria(?)
-        self.params.max_i_newton = 10
+    def set_solver(self):
+        # Unified per-model solver hook (!280): called from the base reset(),
+        # before engine.init. Mechanics models drive the LINEAR solver through
+        # params.linear_type / engine.ls_params (a direct cpu_superlu by
+        # default), NOT through a self.linear_solver spec -- so they do NOT call
+        # super().set_solver() (which would select the flow CPR/AMG default) and
+        # leave self.linear_solver at the untouched platform default.
+        # The NONLINEAR solver is configured through its spec (!327).
+        super().set_solver()
+        spec = self.nonlinear_solver.spec
+        spec.tolerance = 1e-6  # Tolerance of newton residual norm ||residual||<tol_newt
+        spec.chop.mode = "global"
+        spec.chop.factor = 0.2
+        spec.max_iterations = 10
+        # geomechanics engines converge on a deviatoric per-component residual and
+        # apply the C++ apply_newton_update composite directly: swap the runtime to
+        # the shared MechanicsNewtonSolver (replaces the per-model copied loops).
+        from darts.nonlinear_solvers import MechanicsNewtonSolver
 
+        self.nonlinear_solver = MechanicsNewtonSolver(spec)
+        self.nonlinear_solver.bind(self)
+
+        # Per-engine default (decision 2026-06-12): in a BOS build
+        # (ENABLE_BOS_SOLVERS, no open-source registry) mechanics engines
+        # default to the proprietary fixed-stress CPR -- the flow-tuned
+        # CPU_GMRES_CPR_AMG factory default is not supported on mechanics
+        # engines. The open-source build keeps the direct SuperLU default
+        # (the in-tree 'fs_cpr' registry solver is opt-in via FSCPRSolverSpec).
+        mech_default = (
+            sim_params.cpu_superlu
+            if self.linear_solver.open_source_solvers_available()
+            else sim_params.cpu_gmres_fs_cpr
+        )
         if self.discretizer_name == 'mech_discretizer':
             self.params.tolerance_linear = (
                 1e-10  # Tolerance for linear solver ||Ax - b||<tol_linslv
             )
-            self.params.linear_type = (
-                sim_params.cpu_superlu
-            )  # cpu_gmres_fs_cpr # cpu_superlu
+            self.params.linear_type = mech_default
             self.params.max_i_linear = 5000
         elif self.discretizer_name == 'pm_discretizer':
-            ls1 = linear_solver_params()
-            ls1.linear_type = sim_params.cpu_superlu  # cpu_gmres_fs_cpr # cpu_superlu
-            ls1.tolerance_linear = 1.0e-12
-            ls1.max_i_linear = 500
-            self.physics.engine.ls_params.append(ls1)
+            # Idempotent: set_solver() runs on every reset(), but ls_params is
+            # appended once (subclasses then tune ls_params[-1]).
+            if len(self.physics.engine.ls_params) == 0:
+                ls1 = linear_solver_params()
+                ls1.linear_type = mech_default
+                ls1.tolerance_linear = 1.0e-12
+                ls1.max_i_linear = 500
+                self.physics.engine.ls_params.append(ls1)
 
     def set_input_data(self):
         self.idata.check()
@@ -155,18 +184,25 @@ class THMCModel(DartsModel):
                 if thermal
                 else Poroelasticity.StateSpecification.P
             )
+            # Poroelasticity thermal: [p, z_1, ..., z_{nc-1}, T]
+            nz = len(components) - 1
+            ax_step = (
+                [self.idata.obl.p_step]
+                + [self.idata.obl.z_step] * nz
+                + [self.idata.obl.t_step]
+            )
+            ax_origin = (
+                [self.idata.obl.p_origin]
+                + [self.idata.obl.z_origin] * nz
+                + [self.idata.obl.t_origin]
+            )
             self.physics = Poroelasticity(
                 components,
                 phases,
                 self.timer,
-                n_points=self.idata.obl.n_points,
-                min_p=self.idata.obl.min_p,
-                max_p=self.idata.obl.max_p,
-                min_z=self.idata.obl.min_z,
-                max_z=self.idata.obl.max_z,
+                axes_step=ax_step,
+                axes_origin=ax_origin,
                 epsilon_z=self.idata.obl.epsilon_z,
-                min_t=self.idata.obl.min_t,
-                max_t=self.idata.obl.max_t,
                 state_spec=state_spec,
                 discretizer=self.discretizer_name,
                 extrapolation_flag=True,
@@ -178,15 +214,16 @@ class THMCModel(DartsModel):
                 if thermal
                 else Poroelasticity.StateSpecification.P
             )
+            # Poroelasticity isothermal: [p, z_1, ..., z_{nc-1}]
+            nz = len(components) - 1
+            ax_step = [self.idata.obl.p_step] + [self.idata.obl.z_step] * nz
+            ax_origin = [self.idata.obl.p_origin] + [self.idata.obl.z_origin] * nz
             self.physics = Poroelasticity(
                 components,
                 phases,
                 self.timer,
-                n_points=self.idata.obl.n_points,
-                min_p=self.idata.obl.min_p,
-                max_p=self.idata.obl.max_p,
-                min_z=self.idata.obl.min_z,
-                max_z=self.idata.obl.max_z,
+                axes_step=ax_step,
+                axes_origin=ax_origin,
                 epsilon_z=self.idata.obl.epsilon_z,
                 state_spec=state_spec,
                 discretizer=self.discretizer_name,
@@ -323,17 +360,20 @@ class THMCModel(DartsModel):
         perf_data['reservoir blocks'] = self.reservoir.mesh.n_blocks
 
         if is_last_ts:
-            perf_data['OBL resolution'] = list(self.physics.n_axes_points)
+            perf_data['OBL axes_step'] = list(self.physics.axes_step)
+            perf_data['OBL axes_origin'] = list(self.physics.axes_origin)
             perf_data['operators'] = self.physics.n_ops
-            perf_data['timesteps'] = self.physics.engine.stat.n_timesteps_total
-            perf_data['wasted timesteps'] = self.physics.engine.stat.n_timesteps_wasted
-            perf_data['newton iterations'] = self.physics.engine.stat.n_newton_total
-            perf_data['wasted newton iterations'] = (
-                self.physics.engine.stat.n_newton_wasted
+            perf_data['timesteps'] = self.nonlinear_solver.stats.n_timesteps_total
+            perf_data['wasted timesteps'] = (
+                self.nonlinear_solver.stats.n_timesteps_wasted
             )
-            perf_data['linear iterations'] = self.physics.engine.stat.n_linear_total
+            perf_data['newton iterations'] = self.nonlinear_solver.stats.n_newton_total
+            perf_data['wasted newton iterations'] = (
+                self.nonlinear_solver.stats.n_newton_wasted
+            )
+            perf_data['linear iterations'] = self.nonlinear_solver.stats.n_linear_total
             perf_data['wasted linear iterations'] = (
-                self.physics.engine.stat.n_linear_wasted
+                self.nonlinear_solver.stats.n_linear_wasted
             )
 
             sim = self.timer.node['simulation']

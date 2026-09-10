@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -46,6 +47,9 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	active_linear_solver_id = 0;
 
 	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
+	// publish the assembled Jacobian to Python (as engine_super_elastic_cpu does),
+	// so the Python-resident solvers (PETSc / Pardiso) can read the block-CSR arrays
+	this->expose_jacobian();
 	return 0;
 }
 
@@ -68,8 +72,12 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   // Instantiate Jacobian
   if (!Jacobian)
   {
+#ifdef OPENDARTS_LINEAR_SOLVERS
+	Jacobian = new block_csr_matrix; // unified block-CSR matrix (section 12)
+#else
 	Jacobian = new csr_matrix<N_VARS>;
 	Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE;
+#endif
   }
 
   // figure out if this is GPU engine from its name.
@@ -79,7 +87,12 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   // if (!is_gpu_engine)
   {
 	// for CPU engines we need full init
+#ifdef OPENDARTS_LINEAR_SOLVERS
+	(static_cast<block_csr_matrix *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
+	Jacobian->type = MATRIX_TYPE_CSR_FIXED_STRUCTURE; // set after init() (init resets type)
+#else
 	(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init(mesh_->n_blocks, mesh_->n_blocks, N_VARS, mesh_->n_links);
+#endif
   }
   // else
   // {
@@ -90,7 +103,11 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 #ifdef WITH_GPU
   if (params->linear_type >= params->GPU_GMRES_CPR_AMGX_ILU)
   {
+#ifndef OPENDARTS_LINEAR_SOLVERS
 	(static_cast<csr_matrix<N_VARS> *>(Jacobian))->init_device(mesh_->n_blocks, mesh_->n_links);
+#endif
+	// block_csr_matrix allocates device storage lazily via dual_array; no
+	// explicit init_device call.
   }
 #endif
 
@@ -99,6 +116,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   {
 	switch (param.linear_type)
 	{
+#ifndef OPENDARTS_LINEAR_SOLVERS
 	  case sim_params::CPU_GMRES_CPR_AMG:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>);
@@ -113,7 +131,6 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 		linear_solvers.back()->set_prec(new linsolv_bos_bilu0<N_VARS>);
 		break;
 	  }
-#ifndef OPENDARTS_LINEAR_SOLVERS
 	  case sim_params::CPU_GMRES_FS_CPR:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>);
@@ -140,25 +157,28 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 		break;
 	  }
 
-#ifdef WITH_GPU
+// The GPU BOS-enum cases use the proprietary linsolv_bos_* solvers; the open-source
+// GPU build injects its solver through the registry, not this factory.
+#if defined(WITH_GPU) && !defined(OPENDARTS_LINEAR_SOLVERS)
 	  case sim_params::GPU_GMRES_CPR_AMG:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
-		linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+		linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 		cpr->set_prec(new linsolv_bos_amg<1>);
 		linear_solvers.back()->set_prec(cpr);
 		break;
 	  }
+#ifdef OPENDARTS_GPU_HAS_AMGX
 	  case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
-		linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+		linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 		int n_json = 0;
 
@@ -170,6 +190,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 		linear_solvers.back()->set_prec(cpr);
 		break;
 	  }
+#endif // OPENDARTS_GPU_HAS_AMGX
 	  case sim_params::GPU_GMRES_ILU0:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
@@ -177,20 +198,32 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	  }
 #endif
 	  default:
-		break;
+		// Do not fall through silently: an unserviceable entry would leave
+		// linear_solvers shorter than ls_params, and the init loop below indexes
+		// the bank by the ls_params position -- an out-of-bounds read, or worse a
+		// silent mis-pairing of solver and settings.
+		throw std::runtime_error(
+			"engine_pm_cpu: linear solver type " +
+			std::to_string(static_cast<int>(param.linear_type)) +
+			" is not available in this build; use sim_params::CPU_SUPERLU or inject "
+			"a solver from Python via set_linear_solver().");
 	}
   }
+  if (linear_solvers.size() != ls_params.size())
+	throw std::runtime_error(
+		"engine_pm_cpu: built " + std::to_string(linear_solvers.size()) +
+		" linear solvers for " + std::to_string(ls_params.size()) + " ls_params entries");
 
   n_vars = get_n_vars();
   n_ops = get_n_ops();
   nc = get_n_comps();
   z_var_idx = get_z_var_idx();
-  /*if (params->log_transform == 0)
+  /*if (log_transform == 0)
 	{
 		min_axis_z = acc_flux_op_set_list[0]->get_axis_min(z_var_idx);
 		max_axis_z = acc_flux_op_set_list[0]->get_axis_max(z_var_idx);
 	}
-	else if (params->log_transform == 1)
+	else if (log_transform == 1)
 	{
 		min_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_min(z_var_idx));
 		max_axis_z = std::exp(acc_flux_op_set_list[0]->get_axis_max(z_var_idx));
@@ -241,7 +274,6 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   time(&rawtime);
   timeinfo = localtime(&rawtime);
 
-  stat = sim_stat();
 
   print_header();
 
@@ -271,6 +303,18 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	ls->init(Jacobian, param.max_i_linear, param.tolerance_linear);
   }
 
+  // An externally injected solver (a LinearSolverSpec built through the
+  // darts.solvers registry and set via set_linear_solver before engine.init)
+  // must be initialised against the Jacobian too. Previously it was stored
+  // but never initialised nor selected here, so the open-source spec path
+  // silently ran the ls_params placeholder instead of the requested solver.
+  if (linear_solver_external)
+  {
+	linear_solver_external->init_timer_nodes(&timer->node["linear solver setup"],
+	                                         &timer->node["linear solver solve"]);
+	linear_solver_external->init(Jacobian, params->max_i_linear, params->tolerance_linear);
+  }
+
   RHS.resize(n_vars * mesh->n_blocks);
   dX.resize(n_vars * mesh->n_blocks);
 
@@ -287,7 +331,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   for (index_t i = 0; i < mesh->ref_pressure.size(); i++)
 	Xref[N_VARS * i + P_VAR] = Xn_ref[N_VARS * i + P_VAR] = mesh->ref_pressure[i];
 
-  dt = params->first_ts;
+  dt = 0.0; // timestep sizing is owned by the Python driver
   prev_usual_dt = dt;
 
   // initialize arrays for every operator set
@@ -296,14 +340,8 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   op_axis_max.resize(acc_flux_op_set_list.size());
   for (int r = 0; r < acc_flux_op_set_list.size(); r++)
   {
+	// op_axis_min/op_axis_max left empty — disables apply_obl_axis_local_correction
 	block_idxs[r].clear();
-	op_axis_min[r].resize(nc);
-	op_axis_max[r].resize(nc);
-	for (int j = 0; j < nc; j++)
-	{
-	  op_axis_min[r][j] = acc_flux_op_set_list[r]->get_axis_min(j);
-	  op_axis_max[r][j] = acc_flux_op_set_list[r]->get_axis_max(j);
-	}
   }
 
   // create a block list for every operator set
@@ -1421,7 +1459,7 @@ void engine_pm_cpu::extract_Xop()
 std::vector<value_t>
 engine_pm_cpu::calc_newton_dev()
 {
-	/*switch (params->nonlinear_norm_type)
+	/*switch (residual_norm_type)
 	{
 	case sim_params::L1:
 	{
@@ -1591,7 +1629,7 @@ int engine_pm_cpu::assemble_linear_system(value_t deltat)
 
 int engine_pm_cpu::apply_newton_update(value_t dt)
 {
-	/*if (params->newton_type == sim_params::NEWTON_GLOBAL_CHOP)
+	/*if (newton_chop_mode == sim_params::NEWTON_GLOBAL_CHOP)
 	{
 		// max gap
 		/*for (index_t i = mesh->n_matrix; i < mesh->n_res_blocks; i++)
@@ -1633,9 +1671,22 @@ int engine_pm_cpu::solve_linear_equation()
 {
 	int r_code;
 	char buffer[1024];
-	linear_solver_error_last_dt = 0;
+	last_linear_iters = 0;
 
-	linear_solver = linear_solvers[active_linear_solver_id];
+	// Externally injected solver (spec path) takes precedence; the
+	// ls_params-built bank remains reachable through the legacy
+	// active_linear_solver_id switch (> 0), used by the proprietary
+	// dynamic-mode flow. On the spec path, mid-run changes go through
+	// DartsModel.update_solver (live reconfigure / re-injection).
+	if (linear_solver_external && active_linear_solver_id == 0)
+	  linear_solver = linear_solver_external.get();
+	else if (active_linear_solver_id >= 0 &&
+	         static_cast<size_t>(active_linear_solver_id) < linear_solvers.size())
+	  linear_solver = linear_solvers[active_linear_solver_id];
+	else
+	  throw std::runtime_error(
+		  "engine_pm_cpu: active_linear_solver_id=" + std::to_string(active_linear_solver_id) +
+		  " is out of range (" + std::to_string(linear_solvers.size()) + " solvers built)");
 
 	/*if (1) //changed this to write jacobian to file!
 	{
@@ -1670,11 +1721,7 @@ int engine_pm_cpu::solve_linear_equation()
 	{
 		sprintf(buffer, "ERROR: Linear solver setup returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		//Jacobian->write_matrix_to_file("jac_linear_setup_fail.csr");
-		linear_solver_error_last_dt = 1;
-		return linear_solver_error_last_dt;
+		return 1;
 	}
 
 	timer->node["linear solver solve"].start();
@@ -1740,61 +1787,34 @@ int engine_pm_cpu::solve_linear_equation()
 	  }
 	}*/
 
+	// Unified solve() convention: a POSITIVE code is "budget exhausted, iterate
+	// usable" -- reported as engine status 3 for the nonlinear policy to act on.
+	if (const int nc = classify_linear_solve_status(r_code); nc == 3)
+		return 3;
 	if (r_code)
 	{
 		sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);
 		std::cout << buffer << std::flush;
-		// use class property to save error state from linear solver
-		// this way it will work for both C++ and python newton loop
-		linear_solver_error_last_dt = 2;
-		return linear_solver_error_last_dt;
+		return 2;
 	}
 	else
 	{
-		sprintf(buffer, "\t #%d (%.4e, %.4e, %.4e, %.4e): lin %d (%.1e)\n", n_newton_last_dt + 1,
+		sprintf(buffer, "\t (%.4e, %.4e, %.4e, %.4e): lin %d (%.1e)\n",
 				dev_p, dev_u, dev_g, well_residual_last_dt,
 				linear_solver->get_n_iters(), linear_solver->get_residual());
 		std::cout << buffer << std::flush;
-		n_linear_last_dt += linear_solver->get_n_iters();
+		last_linear_iters = linear_solver->get_n_iters();
+		last_linear_residual = linear_solver->get_residual();
 	}
 	return 0;
 }
 
 int engine_pm_cpu::post_newtonloop(value_t deltat, value_t time, index_t converged)
 {
-	char buffer[1024];
-	double well_tolerance_coefficient = 1e2;
-
-	if (linear_solver_error_last_dt == 1) // linear solver setup failed
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (linear solver setup failed) \n", deltat);
-	}
-	else if (linear_solver_error_last_dt == 2) // linear solver solve failed
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (linear solver solve failed) \n", deltat);
-	}
-	else if (newton_residual_last_dt >= params->tolerance_newton) // no reservoir convergence reached
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (newton residual reservoir) \n", deltat);
-	}
-	else if (well_residual_last_dt > well_tolerance_coefficient * params->tolerance_newton) // no well convergence reached
-	{
-		sprintf(buffer, "FAILED TO CONVERGE WITH DT = %.3lf (newton residual wells) \n", deltat);
-	}
-	else
-	{
-		converged *= 1;
-	}
-
 	dev_u = dev_p = well_residual_last_dt = std::numeric_limits<value_t>::infinity();
 
 	if (!converged)
 	{
-		stat.n_newton_wasted += n_newton_last_dt;
-		stat.n_linear_wasted += n_linear_last_dt;
-		stat.n_timesteps_wasted++;
-		converged = 0;
-
 		for (auto& contact : contacts)
 		{
 		  std::copy(contact.states_n.begin(), contact.states_n.end(), contact.states.begin());
@@ -1806,17 +1826,9 @@ int engine_pm_cpu::post_newtonloop(value_t deltat, value_t time, index_t converg
 		std::copy(fluxes_biot_n.begin(), fluxes_biot_n.end(), fluxes_biot.begin());
 		std::copy(fluxes_ref_n.begin(), fluxes_ref_n.end(), fluxes_ref.begin());
 		std::copy(fluxes_biot_ref_n.begin(), fluxes_biot_ref_n.end(), fluxes_biot_ref.begin());
-		std::cout << buffer << std::flush;
 	}
 	else //convergence reached
 	{
-		stat.n_newton_total += n_newton_last_dt;
-		stat.n_linear_total += n_linear_last_dt;
-		stat.n_timesteps_total++;
-		converged = 1;
-
-		print_timestep(time + deltat, deltat);
-
 		time_data["time"].push_back(time + deltat);
 
 		for (ms_well *w : wells)
@@ -1886,12 +1898,9 @@ int engine_pm_cpu::post_explicit(value_t deltat, value_t time)
   char buffer[1024];
   double well_tolerance_coefficient = 1e2;
 
-  stat.n_newton_total += n_newton_last_dt;
-  stat.n_linear_total += n_linear_last_dt;
-  stat.n_timesteps_total++;
   converged = 1;
 
-  print_timestep(time + deltat, deltat);
+  print_timestep(time + deltat, deltat, 0, 0, 0.0, 0.0);
 
   time_data["time"].push_back(time + deltat);
 
@@ -1958,7 +1967,11 @@ int engine_pm_cpu::post_explicit(value_t deltat, value_t time)
 
 void engine_pm_cpu::update_uu_jacobian()
 {
+#ifndef OPENDARTS_LINEAR_SOLVERS
+	// The uu-block refresh lives on the proprietary FS-CPR preconditioner; in the
+	// open-source build the FS-CPR solver is not available and this is a no-op.
 	static_cast<linsolv_bos_fs_cpr<N_VARS>*>(static_cast<linsolv_bos_gmres<N_VARS>*>(linear_solver)->prec)->do_update_uu();
+#endif // OPENDARTS_LINEAR_SOLVERS
 }
 
 void engine_pm_cpu::scale_rows()

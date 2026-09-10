@@ -1,4 +1,6 @@
 # from darts.engines import value_vector
+from darts.engines import redirect_darts_output
+
 from model import Model
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -7,7 +9,8 @@ import os
 
 restart = False
 
-m = Model(iapws_physics=True)
+formulation = "PT"
+m = Model(formulation)  # 'PT' (IAPWS PT-flash) or 'PH' (PXFlash enthalpy)
 m.init() #(platform='gpu')
 m.set_output()
 
@@ -48,7 +51,7 @@ time_data_dict = m.output.store_well_time_data(save_output_files=True)
 # # plt.show()
 
 if restart:
-    m_restarted = Model(iapws_physics=True)
+    m_restarted = Model(formulation)
     m_restarted.init()
     m_restarted.set_output(output_folder='output/restarted', save_initial=False, all_phase_props=True)
 

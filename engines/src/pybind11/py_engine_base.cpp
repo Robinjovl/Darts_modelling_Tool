@@ -21,8 +21,24 @@ void pybind_engine_base (py::module &m)
 	   .def("calc_well_residual", &engine_base::calc_well_residual, py::call_guard<py::gil_scoped_release>())  \
 	   .def("calc_coupled_well_reservoir_residual", &engine_base::calc_coupled_well_reservoir_residual, py::arg("method"), py::call_guard<py::gil_scoped_release>())  \
 	   .def("apply_newton_update", &engine_base::apply_newton_update, py::call_guard<py::gil_scoped_release>())  \
+	   .def("correct_composition", &engine_base::correct_composition, py::call_guard<py::gil_scoped_release>())  \
+	   .def("correct_chop_global", &engine_base::correct_chop_global, py::call_guard<py::gil_scoped_release>())  \
+	   .def("correct_chop_local", &engine_base::correct_chop_local, py::call_guard<py::gil_scoped_release>())  \
+	   .def("correct_obl_axes", py::overload_cast<>(&engine_base::correct_obl_axes), py::call_guard<py::gil_scoped_release>())  \
+	   .def("correct_obl_axes", py::overload_cast<const std::vector<value_t> &, const std::vector<value_t> &>(&engine_base::correct_obl_axes), \
+			py::arg("axis_min"), py::arg("axis_max"), py::call_guard<py::gil_scoped_release>(), \
+			"Install persistent per-variable OBL axis bounds (size n_vars each) and clamp the current solution; " \
+			"subsequent Newton updates keep clamping against them (CPU and GPU)")  \
+	   .def("correct_thermal", &engine_base::correct_thermal, py::call_guard<py::gil_scoped_release>())  \
+	   .def("apply_update", &engine_base::apply_update, py::call_guard<py::gil_scoped_release>())  \
 	   .def("post_newtonloop", &engine_base::post_newtonloop, py::call_guard<py::gil_scoped_release>())  \
+	   .def("print_timestep", &engine_base::print_timestep, py::call_guard<py::gil_scoped_release>())  \
+	   .def("get_last_linear_iters", &engine_base::get_last_linear_iters)  \
+	   .def("get_last_linear_residual", &engine_base::get_last_linear_residual)  \
 	   .def("solve_linear_equation", &engine_base::solve_linear_equation, py::call_guard<py::gil_scoped_release>())  \
+	   .def("set_linear_solver", &engine_base::set_linear_solver, "Set external linear solver (from Python)", py::arg("solver"), py::arg("name") = "")  \
+	   .def("set_adjoint_linear_solver", &engine_base::set_adjoint_linear_solver, "Set external adjoint linear solver (from Python)", py::arg("solver"), py::arg("use_jacobian_transpose") = false)  \
+	   .def("set_adjoint_solver_cpra_gpu", &engine_base::set_adjoint_solver_cpra_gpu, "Attach the native GPU CPRA adjoint stack (GPU engines with AMGX; returns -1 when unsupported)", py::arg("restart") = 150)  \
 	   .def_readwrite("X", &engine_base::X) \
 	   .def_readwrite("dX", &engine_base::dX) \
 	   .def_readwrite("Xn", &engine_base::Xn) \
@@ -34,23 +50,25 @@ void pybind_engine_base (py::module &m)
 	   .def_readwrite("op_ders_arr", &engine_base::op_ders_arr) \
 	   .def_readwrite("timer", &engine_base::timer) \
 	   .def_readwrite("CFL_max", &engine_base::CFL_max) \
-	   .def_readwrite("n_newton_last_dt", &engine_base::n_newton_last_dt) \
-	   .def_readwrite("newton_residual_last_dt", &engine_base::newton_residual_last_dt) \
-	   .def_readwrite("stat", &engine_base::stat) \
-	   .def_readwrite("n_linear_last_dt", &engine_base::n_linear_last_dt) \
 	   .def_readwrite("op_vals_arr_n", &engine_base::op_vals_arr_n) \
 	   .def_readwrite("region_cell_idx", &engine_base::block_idxs) \
 	   .def_readwrite("time_data", &engine_base::time_data) \
 	   .def_readwrite("time_data_report", &engine_base::time_data_report) \
 	   .def_readwrite("engine_name", &engine_base::engine_name) \
 	   .def_readwrite("params", &engine_base::params) \
-	   .def_readwrite("newton_residual_last_dt", &engine_base::newton_residual_last_dt) \
-       .def_readwrite("well_residual_last_dt", &engine_base::well_residual_last_dt) \
 	   .def_readwrite("print_linear_system", &engine_base::print_linear_system) \
 	   .def_readwrite("darcy_velocities", &engine_base::darcy_velocities) \
 	   .def_readwrite("molar_weights", &engine_base::molar_weights) \
 	   .def_readwrite("dispersivity", &engine_base::dispersivity) \
+	   .def_readwrite("Xhistory", &engine_base::Xhistory) \
+	   .def_readwrite("Xop", &engine_base::Xop) \
+	   .def_readwrite("op_ders_arr_ext", &engine_base::op_ders_arr_ext) \
+	   .def_readwrite("n_history_runtime", &engine_base::n_history_runtime) \
 	   .def_readwrite("newton_update_coefficient", &engine_base::newton_update_coefficient) \
+	   .def_readwrite("newton_chop_mode", &engine_base::newton_chop_mode) \
+	   .def_readwrite("newton_chop_factor", &engine_base::newton_chop_factor) \
+	   .def_readwrite("log_transform", &engine_base::log_transform) \
+	   .def_readwrite("residual_norm_type", &engine_base::residual_norm_type) \
 	   .def_readwrite("e_dim", &engine_base::e_dim) \
 	   .def_readwrite("p_dim", &engine_base::p_dim) \
 	   .def_readwrite("m_dim", &engine_base::m_dim) \
@@ -145,6 +163,7 @@ void pybind_engine_base (py::module &m)
 	   .def_readwrite("cov_mat_inv", &engine_base::cov_mat_inv) \
 	   .def_readwrite("phase_relative_density", &engine_base::phase_relative_density) \
 	   .def_readwrite("opt_history_matching", &engine_base::opt_history_matching) \
+	   .def_readwrite("adjoint_assembly_on_gpu", &engine_base::adjoint_assembly_on_gpu) \
 	   .def_readwrite("optimize_component_rate", &engine_base::optimize_component_rate) \
 	   .def_readwrite("objfun_prod_phase_rate", &engine_base::objfun_prod_phase_rate) \
 	   .def_readwrite("objfun_inj_phase_rate", &engine_base::objfun_inj_phase_rate) \
@@ -157,7 +176,11 @@ void pybind_engine_base (py::module &m)
 	   .def_readwrite("is_mp", &engine_base::is_mp) \
 	   .def_readwrite("flux_multiplier", &engine_base::flux_multiplier) \
 
-	   .def_readwrite("observation_rate_type", &engine_base::observation_rate_type);
+	   .def_readwrite("observation_rate_type", &engine_base::observation_rate_type) \
+	   .def("get_n_vars", &engine_base::get_n_vars) \
+	   .def("get_n_ops", &engine_base::get_n_ops) \
+	   .def("get_n_state", &engine_base::get_n_state) \
+	   .def("get_n_history", &engine_base::get_n_history);
 
 	   py::enum_<engine_base::StateSpecification>(cls, "StateSpecification")
 		   .value("P", engine_base::StateSpecification::P)

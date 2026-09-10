@@ -1,10 +1,11 @@
 import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import sim_params
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from properties import GasFoamRelPerm
@@ -14,7 +15,7 @@ from darts.physics.properties.enthalpy import EnthalpyBasic
 
 import numpy as np
 
-class Model_therm(CICDModel):
+class Model_therm(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -25,10 +26,21 @@ class Model_therm(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=10, runtime=100, tol_newton=1e-2, tol_linear=1e-3,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
+        self.ts_control.dt_first = 0.001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 10
+        self.ts_control.runtime = 100
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-2, max_iterations=10,
+            chop=ChopSpec(mode='local'))
+        self.linear_solver.spec.tolerance = 1e-3
+        self.linear_solver.spec.max_iterations = 50
 
     def set_reservoir(self):
         nx = 1000
@@ -80,10 +92,14 @@ class Model_therm(CICDModel):
 
         """ Activate physics """
         thermal = True
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=1000, min_p=1, max_p=1000, min_z=self.zero/10, max_z=1-self.zero/10,
-                                     min_t=273.15 + 20, max_t=273.15 + 200)
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        # 1 p + (nc-1) z + 1 T
+        nz = len(components) - 1
+        ax_step = [1.0] + [1e-3] * nz + [0.18]
+        ax_origin = [1.0] + [self.zero / 10] * nz + [273.15 + 20]
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
+                                     axes_step=ax_step, axes_origin=ax_origin,
+                                     epsilon_z=self.zero / 10)
         self.physics.add_property_region(property_container)
 
         return

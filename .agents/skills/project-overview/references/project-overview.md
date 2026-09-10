@@ -22,9 +22,7 @@ open-darts/
 ├── darts/                  # Python package (installed as `open-darts`)
 │   ├── models/             # DartsModel, THMCModel, Output
 │   ├── physics/            # Physics implementations
-│   │   ├── base/           # PhysicsBase, operators_base
-│   │   ├── super/          # Compositional (main multi-phase)
-│   │   ├── geothermal/     # Geothermal
+│   │   ├── base/           # PhysicsBase, operators, property_container, initialize
 │   │   ├── chemistry/      # Reactive flow (ElementBased)
 │   │   ├── mech/           # Poroelasticity
 │   │   ├── deadoil/        # Dead-oil
@@ -38,7 +36,7 @@ open-darts/
 │   └── tools/              # CLI, plotting, HDF5, fracture networks
 ├── engines/                # C++ engine source code
 ├── discretizer/            # C++ discretizer source
-├── solvers/                # openDARTS linear solvers (SuperLU, Hypre)
+├── linear_solvers/                # openDARTS linear solvers (SuperLU, Hypre)
 ├── thirdparty/             # pybind11, SuperLU, Hypre, IPhreeqc (git submodules)
 ├── models/                 # Example / regression-test models
 ├── tests/                  # Unit and integration tests
@@ -60,9 +58,8 @@ open-darts/
 |---|---|
 | `darts.models.darts_model.DartsModel` | Base simulation model |
 | `darts.models.output.Output` | Simulation output (HDF5, VTK) |
-| `darts.physics.super.Compositional` | Multi-phase compositional physics |
-| `darts.physics.geothermal.Geothermal` | Geothermal physics |
-| `darts.physics.chemistry.ElementBasedReactiveFlow` | Reactive flow |
+| `darts.physics.base.physics.PhysicsBase` | Multi-phase compositional physics (base class for all concrete physics) |
+| `darts.physics.chemistry.physics.ElementBasedReactiveFlow` | Reactive flow |
 | `darts.physics.mech.Poroelasticity` | Poromechanics |
 | `darts.reservoirs.struct_reservoir.StructReservoir` | Structured grid |
 | `darts.reservoirs.unstruct_reservoir.UnstructReservoir` | Unstructured grid |

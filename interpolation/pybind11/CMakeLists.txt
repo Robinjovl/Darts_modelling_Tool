@@ -59,7 +59,7 @@ if (CUDA)
     PROPERTIES LANGUAGE CUDA)
 endif()
 
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(interpolators
     PUBLIC
       OPENDARTS_LINEAR_SOLVERS
@@ -71,6 +71,15 @@ else()
       PYBIND11_ENABLED
   )
 endif()
+
+# Forward the interpolator profile + max-dims selection from the top-level
+# CMakeLists.txt to this target. These are private — only the interpolators
+# pybind TUs need to see them.
+target_compile_definitions(interpolators
+  PRIVATE
+    OD_INTERP_PROFILE_${OPENDARTS_INTERPOLATOR_PROFILE}
+    MAX_DIMS=${OPENDARTS_MAX_DIMS}
+)
 
 target_link_libraries(interpolators
   PUBLIC

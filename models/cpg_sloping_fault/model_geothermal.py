@@ -1,9 +1,15 @@
 import numpy as np
 import pandas as pd
 
-from darts.engines import value_vector
-from darts.physics.geothermal.geothermal import Geothermal, GeothermalPH, GeothermalIAPWSFluidProps, GeothermalPHFluidProps
-from darts.engines import well_control_iface
+from darts.engines import value_vector, well_control_iface
+
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
+from darts.physics.iapws_physics import IAPWSPhysics
+from dartsflash.mixtures import DARTSFlash, CompData, EoS, IAPWS
+from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+from darts.physics.properties.basic import ConstFunc, PhaseRelPerm, RockCompactionEvaluator
+from darts.physics.properties.viscosity import MaoDuan2009
 
 from darts.input.input_data import InputData
 from set_case import set_input_data
@@ -11,22 +17,104 @@ from model_cpg import Model_CPG, fmt
 
 
 class ModelGeothermal(Model_CPG):
-    def __init__(self, iapws_physics: bool = True):
+    def __init__(self, iapws_physics: bool = True, formulation: str = 'PT'):
         self.iapws_physics = iapws_physics
+        # 'PT' (pressure-temperature) or 'PH' (pressure-enthalpy).
+        assert formulation in ('PT', 'PH'), formulation
+        self.formulation = formulation
         super().__init__()
 
+    def set_solver(self):
+        super().set_solver()
+        # The OBL grid is unbounded (no axes_max) in this branch, so a producer
+        # well-control switch can push the well-block enthalpy outside the IAPWS-valid
+        # range in a single Newton step -> singular CPR system -> NaN runaway -> crash.
+        # Enable the global Newton chop (caps the per-step relative change of all
+        # variables) to damp that transient.
+        self.nonlinear_solver.spec.chop.mode = 'global'
+        self.nonlinear_solver.spec.chop.factor = 0.2
+
+        self.nonlinear_solver.spec.obl_bounds.mode = 'obl_axes'
+        if self.formulation == 'PT':
+            self.nonlinear_solver.spec.obl_bounds.axis_min = [4.0, 280.0]
+            self.nonlinear_solver.spec.obl_bounds.axis_max = [600.0, 600.0]
+        elif self.formulation == 'PH':
+            self.nonlinear_solver.spec.obl_bounds.axis_min = [4.0, 1000.0]
+            self.nonlinear_solver.spec.obl_bounds.axis_max = [600.0, 60000.0]
+
     def set_physics(self):
-        # single component, two phase. Pressure and enthalpy are the main variables
-        if self.iapws_physics:
-            self.physics = Geothermal(self.idata, self.timer)  # IAPWS
+        # Single component, two phase. Uses the compositional engine in PT-flash mode
+        # with IAPWS EoS (drop-in replacement for the legacy Geothermal physics).
+        # State vector layout is [P, T] (n_vars=2).
+        if self.formulation == 'PH':
+            self.set_iapws_physics(p_step=self.idata.obl.p_step, p_origin=self.idata.obl.p_origin,
+                                   second_step=self.idata.obl.e_step, second_origin=self.idata.obl.e_origin,
+                                   is_ph=True)
         else:
-            self.physics = GeothermalPH(self.idata, self.timer)  # Flash
-            self.physics.determine_obl_bounds(
-                min_p=self.idata.obl.min_p,
-                max_p=self.idata.obl.max_p,
-                min_t=250.,
-                max_t=575.,
-            )
+            self.set_iapws_physics(p_step=self.idata.obl.p_step, p_origin=self.idata.obl.p_origin,
+                                   second_step=self.idata.obl.t_step, second_origin=self.idata.obl.t_origin,
+                                   is_ph=False)
+
+    def set_iapws_physics(self, p_step, p_origin, second_step, second_origin, is_ph=False, cache=False):
+        """Drop-in replacement for legacy Geothermal(...) using compositional + IAPWS PT-flash.
+        Single-component water; phases are vapor ('V') and liquid ('L').
+        State spec is PT so engine.X layout is [P, T, ...] and the OBL grid is sampled on (P, T).
+        """
+        components = ["H2O"]
+        phases = ['V', 'L']
+        zero = 1e-12
+        comp_data = CompData(components=components, setprops=True)
+
+        # Single component (H2O) with state_spec=PT -> OBL axes are [pressure, temperature]
+        self.physics = IAPWSPhysics(
+            phases, self.timer,
+            state_spec=PhysicsBase.StateSpecification.PH if is_ph else PhysicsBase.StateSpecification.PT,
+            axes_step=[p_step, second_step],
+            axes_origin=[p_origin, second_origin],
+            cache=cache,
+        )
+
+        mixture = IAPWS(iapws_ideal=True, ice_phase=False)
+        if is_ph:
+            mixture.init_flash(flash_type=DARTSFlash.FlashType.PHFlash,
+                               t_min=273.15, t_max=575., t_init=350.)
+        else:
+            mixture.init_flash(flash_type=DARTSFlash.FlashType.PTFlash)
+        self.physics.set_mixture(mixture)
+
+        pc = PropertyContainer(phases_name=phases, components_name=components,
+                               Mw=comp_data.Mw, eps_z=zero)
+        self.physics.add_property_region(pc)
+
+        pc.rock_compr_ev = RockCompactionEvaluator(pref=self.idata.rock.compressibility_ref_p,
+                                                   compres=self.idata.rock.compressibility)
+
+        pc.flash_ev = self.physics.get_flash_ev()
+
+        pc.density_ev = {
+            'V': EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.RootFlag.MAX),
+            'L': EoSDensity(eos=mixture.eos["IAPWS"], root_flag=EoS.RootFlag.MIN),
+        }
+        pc.viscosity_ev = {
+            'V': ConstFunc(0.01),                # cP, steam
+            'L': MaoDuan2009(components),        # cP, liquid water (pressure/temperature-dependent)
+        }
+        pc.enthalpy_ev = {
+            'V': self.physics.get_enthalpy_ev_from_flash(phase_idx=0),
+            'L': self.physics.get_enthalpy_ev_from_flash(phase_idx=1),
+        }
+        pc.rel_perm_ev = {
+            'V': PhaseRelPerm("gas", swc=0.0),
+            'L': PhaseRelPerm("oil", swc=0.0),
+        }
+        pc.conductivity_ev = {
+            'V': ConstFunc(0.0),
+            'L': ConstFunc(172.8),       # kJ/m/day/K, matches geothermal default
+        }
+        # output_props exposes derived T (K) via the property interpolator
+        pc.output_props = {'temperature': lambda: pc.temperature}
+
+        return pc
 
     def set_initial_conditions(self):
         if self.idata.initial.type == 'gradient':
@@ -90,13 +178,15 @@ class ModelGeothermal(Model_CPG):
         years = np.array(time_data['time'])[-1]/365.25
 
         rate_inj = rate_prd = temp_prd = temp_inj = 0.
+        # compositional engine emits per-phase rate columns as "<name> : <phase> rate (m3/day)".
+        # We use the liquid phase ('L') for water rate. Temperature column key is unchanged.
         if prd_well is not None:
-            pr_col_name = time_data.filter(like=prd_well.name + ' : water rate').columns.to_list()
+            pr_col_name = time_data.filter(like=prd_well.name + ' : L rate').columns.to_list()
             pt_col_name = time_data.filter(like=prd_well.name + ' : temperature').columns.to_list()
             rate_prd = np.array(time_data[pr_col_name])[-1][0]  # pick the last timestep value
             temp_prd = np.array(time_data[pt_col_name])[-1][0]  # pick the last timestep value
         if inj_well is not None:
-            ir_col_name = time_data.filter(like=inj_well.name + ' : water rate').columns.to_list()
+            ir_col_name = time_data.filter(like=inj_well.name + ' : L rate').columns.to_list()
             it_col_name = time_data.filter(like=inj_well.name + ' : temperature').columns.to_list()
             rate_inj  = np.array(time_data[ir_col_name])[-1][0]  # pick the last timestep value
             temp_inj = np.array(time_data[it_col_name])[-1][0]  # pick the last timestep value
@@ -111,16 +201,8 @@ class ModelGeothermal(Model_CPG):
 
         set_input_data(self.idata, case)
 
-        if self.iapws_physics:
-            self.idata.fluid = GeothermalIAPWSFluidProps()
-        else:
-            self.idata.fluid = GeothermalPHFluidProps()
-
-        # example - how to change the properties
-        # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
-
-        #from darts.physics.properties.basic import ConstFunc
-        #self.idata.fluid.conduction_ev['water'] = ConstFunc(172.8)
+        # Fluid evaluators are now wired directly inside set_iapws_physics() via the
+        # compositional PropertyContainer; no idata.fluid assignment is required.
 
         if init_type== 'uniform': # uniform initial conditions
             self.idata.initial.initial_pressure = 200.  # bars
@@ -147,23 +229,28 @@ class ModelGeothermal(Model_CPG):
         elif 'wrate' in case:
             for w in wells:
                 if self.well_is_inj(w):
-                    wdata.add_inj_rate_control(name=w, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=300, temperature=300, phase_name='water')  # m3/day | bars | K
+                    wdata.add_inj_rate_control(name=w, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=300, temperature=300, phase_name='L')  # m3/day | bars | K
                 else: # prod
-                    wdata.add_prd_rate_control(name=w, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=70, phase_name='water') # m3/day | bars
+                    wdata.add_prd_rate_control(name=w, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=70, phase_name='L') # m3/day | bars
         elif 'wperiodic' in case:
             wname = list(wdata.wells.keys())[0]  # single well
             y2d = 365.25
             for i in range(0, len(self.idata.sim.time_steps), 4):
                 # iterate [inj - stop - prod - stop]
-                wdata.add_inj_rate_control(time=(i+0)*y2d, name=wname, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=300, temperature=300, phase_name='water')
-                wdata.add_prd_rate_control(time=(i+1)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5, phase_name='water')
-                wdata.add_prd_rate_control(time=(i+2)*y2d, name=wname, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5, phase_name='water')
-                wdata.add_prd_rate_control(time=(i+3)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5, phase_name='water')
+                wdata.add_inj_rate_control(time=(i+0)*y2d, name=wname, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=300, temperature=300, phase_name='L')
+                wdata.add_prd_rate_control(time=(i+1)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5, phase_name='L')
+                wdata.add_prd_rate_control(time=(i+2)*y2d, name=wname, rate=5500, rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5, phase_name='L')
+                wdata.add_prd_rate_control(time=(i+3)*y2d, name=wname, rate=0,    rate_type=well_control_iface.VOLUMETRIC_RATE, bhp_constraint=5, phase_name='L')
         else:
             assert False, 'Unknown wctrl_type' +  case
 
-        self.idata.obl.n_points = 100
-        self.idata.obl.min_p = 50.
-        self.idata.obl.max_p = 400.
-        self.idata.obl.min_e = 1000.  # kJ/kmol, will be overwritten in PHFlash physics
-        self.idata.obl.max_e = 25000.  # kJ/kmol, will be overwritten in PHFlash physics
+        # OBL grid for the compositional + IAPWS PT-flash physics (state_spec=PT).
+        # Cell sizes reproduce the former 100-point grid over p in [50, 400] bar and
+        # T in [250, 575] K; the adaptive interpolator extends past it on demand.
+        self.idata.obl.p_step = 3.5   # bar
+        self.idata.obl.p_origin = 50.0
+        self.idata.obl.t_step = 3.25  # K
+        self.idata.obl.t_origin = 250.0
+        # (pressure, enthalpy) axes for the PH (PXFlash) formulation.
+        self.idata.obl.e_step = 70.   # kJ/kmol
+        self.idata.obl.e_origin = 1000.0

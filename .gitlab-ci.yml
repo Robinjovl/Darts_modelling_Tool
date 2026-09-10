@@ -4,6 +4,17 @@ workflow:
       when: never
     - when: always
 
+# ---------------------------------------------------------------------------
+# Pipeline-level switches
+# ---------------------------------------------------------------------------
+variables:
+  # Proprietary BOS-solvers CI twins: build-linux-BOS / test-linux-BOS and
+  # build-windows-BOS / test-windows-BOS (ENABLE_BOS_SOLVERS=ON, `-a` build flag).
+  #
+  #   "1" (default) -> the BOS twins run exactly as before
+  #   anything else -> all four BOS twins are skipped pipeline-wide
+  RUN_BOS_JOBS: "1"
+
 stages:
     - pre_commit
     - build_images

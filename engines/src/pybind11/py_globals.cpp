@@ -1,5 +1,6 @@
 #ifdef PYBIND11_ENABLED
 #include <pybind11/stl_bind.h>
+#include <algorithm>
 #include "py_globals.h"
 #include "globals.h"
 #include "engines_build_info.h"
@@ -8,7 +9,7 @@
 #include <fstream>
 
 #ifdef OPENDARTS_LINEAR_SOLVERS
-#include "openDARTS/config/version.hpp"
+#include "version.hpp"
 #else
 #include "linsolv_build_info.h"
 #endif // OPENDARTS_LINEAR_SOLVERS
@@ -78,111 +79,47 @@ void print_build_info()
   std::cout << "darts-engines built on " << ENGINES_BUILD_DATE << " by " << ENGINES_BUILD_MACHINE << " from " << ENGINES_BUILD_GIT_HASH << std::endl;
 }
 
+// Write a string to the darts standard output stream — i.e. the same destination
+// redirect_darts_output() points std::cout at (the log file, the terminal if not
+// redirected, or suppressed if redirected to ""). Lets Python helpers send text to the
+// redirected log instead of the Python-level stdout.
+void write_to_darts_output(std::string s)
+{
+  std::cout << s << std::flush;
+}
+
 void pybind_globals(py::module &m)
 {
   using namespace pybind11::literals;
 
-  // ---- begin uint128 binding ----
-  py::class_<__uint128_t>(m, "uint128", "128-bit unsigned integer")
-    .def(py::init<>())
-    .def(py::init([](py::int_ i){
-      const py::int_ two64 = py::int_(1) << py::int_(64);
-      const py::int_ hi_py = i / two64;
-      const py::int_ lo_py = i % two64;
-      // now cast each half to uint64_t
-      const uint64_t hi = hi_py.cast<uint64_t>();
-      const uint64_t lo = lo_py.cast<uint64_t>();
-      // rebuild the 128-bit value: (hi<<64) | lo
-      __uint128_t result = static_cast<__uint128_t>(hi);
-      result <<= 64;
-      result |= static_cast<__uint128_t>(lo);
-      return result;
-    }), "value"_a)
-
-  // conversion to Python int & use in slicing/indexing
-    .def("__int__", [](const __uint128_t& v) {
-#ifdef _MSC_VER
-      uint64_t lo = v._Word[0];
-      uint64_t hi = v._Word[1];
-#else
-      uint64_t lo = static_cast<uint64_t>(v);
-      uint64_t hi = static_cast<uint64_t>(v >> 64);
-#endif
-      py::int_ py_hi = py::int_(hi);
-      py::int_ py_lo = py::int_(lo);
-      return (py_hi << py::int_(64)) | py_lo;
-    })
-    .def("__index__", [](const __uint128_t &v){
-#ifdef _MSC_VER
-      uint64_t lo = v._Word[0];
-      uint64_t hi = v._Word[1];
-#else
-      uint64_t lo = static_cast<uint64_t>(v);
-      uint64_t hi = static_cast<uint64_t>(v >> 64);
-#endif
-      py::int_ py_hi = py::int_(hi);
-      py::int_ py_lo = py::int_(lo);
-      return (py_hi << py::int_(64)) | py_lo;
-    })
-    .def("__repr__", [](const __uint128_t &v){
-      std::ostringstream oss;
-      oss << "uint128(" << std::to_string(v) << ")";
-      return oss.str();
-    })
-
-    // make it picklable: store as two 64-bit words
-    .def(py::pickle(
-      /*__getstate__*/ [](const __uint128_t &v){
-#ifdef _MSC_VER
-        uint64_t lo = v._Word[0];
-        uint64_t hi = v._Word[1];
-#else
-        uint64_t lo = static_cast<uint64_t>(v);
-        uint64_t hi = static_cast<uint64_t>(v >> 64);
-#endif
-        return py::make_tuple(lo, hi);
-      },
-      /*__setstate__*/ [](py::tuple t){
-        if (t.size() != 2)
-          throw std::runtime_error("Invalid state for uint128");
-        uint64_t lo = t[0].cast<uint64_t>();
-        uint64_t hi = t[1].cast<uint64_t>();
-        __uint128_t result = static_cast<__uint128_t>(hi);
-        result <<= 64;
-        result |= static_cast<__uint128_t>(lo);
-        return result;
-      }
-    ));
-  // ---- end uint128 binding ----
+  // The uint128 Python binding was removed alongside __uint128_t support across the
+  // interpolators (which is what used to consume it for legacy mixed-radix
+  // hypercube enumeration in N_DIMS=20 grids). Adaptive storage now keys on a
+  // signed multi-index (cell_key_t), and the legacy point_data integer keys fit
+  // in uint64_t.
 
   py::class_<sim_params> sim_params(m, "sim_params", "Class simulation parameters");
 
   sim_params.def(py::init<>())
     //properties
-    .def_readwrite("first_ts", &sim_params::first_ts, "Length of the first time step (days)")
-    .def_readwrite("max_ts", &sim_params::max_ts)
-    .def_readwrite("mult_ts", &sim_params::mult_ts)
-    .def_readwrite("min_ts", &sim_params::min_ts)
-    .def_readwrite("max_i_newton", &sim_params::max_i_newton)
     .def_readwrite("max_i_linear", &sim_params::max_i_linear)
-    .def_readwrite("tolerance_newton", &sim_params::tolerance_newton)
     .def_readwrite("tolerance_linear", &sim_params::tolerance_linear)
-    .def_readwrite("newton_type", &sim_params::newton_type)
-    .def_readwrite("newton_params", &sim_params::newton_params)
     .def_readwrite("linear_type", &sim_params::linear_type)
     .def_readwrite("linear_params", &sim_params::linear_params)
-    .def_readwrite("nonlinear_norm_type", &sim_params::nonlinear_norm_type)
-    .def_readwrite("log_transform", &sim_params::log_transform)
     .def_readwrite("enable_permporo", &sim_params::enable_permporo)
-    .def_readwrite("obl_min_fac", &sim_params::obl_min_fac)
     .def_readwrite("sim_eps", &sim_params::sim_eps)
-    .def_readwrite("global_actnum", &sim_params::global_actnum)
-    .def_readwrite("well_tolerance_coefficient", &sim_params::well_tolerance_coefficient)
-    .def_readwrite("stationary_point_tolerance", &sim_params::stationary_point_tolerance)
     .def_readwrite("assembly_kernel", &sim_params::assembly_kernel)
+    .def_readwrite("schur_elim_count", &sim_params::schur_elim_count,
+        "K = number of cell-local (diagonal-block-only) equation/unknown pairs the GPU "
+        "solver Schur-eliminates before preconditioning (0 = off; CPU chains use "
+        "SchurEliminationSpec)")
+    .def_readwrite("schur_elim_rows", &sim_params::schur_elim_rows,
+        "Preferred eliminated equation rows (length K) for GPU local Schur elimination")
+    .def_readwrite("schur_elim_cols", &sim_params::schur_elim_cols,
+        "Eliminated unknown columns (length K) for GPU local Schur elimination")
     .def_readwrite("finalize_mpi", &sim_params::finalize_mpi)
     .def_readwrite("phase_existence_tolerance", &sim_params::phase_existence_tolerance)
-    .def_readwrite("line_search", &sim_params::line_search);
+    .def_readwrite("linear_print_level", &sim_params::linear_print_level);
 
 
   py::class_<linear_solver_params>(m, "linear_solver_params", "Class linear solver parameters") \
@@ -196,12 +133,12 @@ void pybind_globals(py::module &m)
     .value("newton_std", sim_params::newton_solver_t::NEWTON_STD)
     .value("newton_global_chop", sim_params::newton_solver_t::NEWTON_GLOBAL_CHOP)
     .value("newton_local_chop", sim_params::newton_solver_t::NEWTON_LOCAL_CHOP)
-    .value("newton_inflection_point", sim_params::newton_solver_t::NEWTON_INFLECTION_POINT)
     .export_values();
 
   py::enum_<sim_params::linear_solver_t>(sim_params, "linear_solver_t", "Available types of linear solvers")
     .value("cpu_gmres_cpr_amg", sim_params::linear_solver_t::CPU_GMRES_CPR_AMG)
     .value("cpu_gmres_ilu0", sim_params::linear_solver_t::CPU_GMRES_ILU0)
+    .value("cpu_gmres_mgr", sim_params::linear_solver_t::CPU_GMRES_MGR)
     .value("cpu_superlu", sim_params::linear_solver_t::CPU_SUPERLU)
     .value("cpu_gmres_cpr_amg1r5", sim_params::linear_solver_t::CPU_GMRES_CPR_AMG1R5)
     .value("cpu_gmres_fs_cpr", sim_params::linear_solver_t::CPU_GMRES_FS_CPR)
@@ -214,9 +151,9 @@ void pybind_globals(py::module &m)
     .value("gpu_gmres_cpr_amgx_amgx", sim_params::linear_solver_t::GPU_GMRES_CPR_AMGX_AMGX)
     .value("gpu_gmres_amgx", sim_params::linear_solver_t::GPU_GMRES_AMGX)
     .value("gpu_amgx", sim_params::linear_solver_t::GPU_AMGX)
-    .value("gpu_gmres_cpr_nf", sim_params::linear_solver_t::GPU_GMRES_CPR_NF)
     .value("gpu_bicgstab_cpr_amgx", sim_params::linear_solver_t::GPU_BICGSTAB_CPR_AMGX)
     .value("gpu_cusolver", sim_params::linear_solver_t::GPU_CUSOLVER)
+    .value("gpu_cudss", sim_params::linear_solver_t::GPU_CUDSS)
     .export_values();
 
   py::enum_<sim_params::nonlinear_norm_t>(sim_params, "nonlinear_norm_t", "Available types of nonlinear norm")
@@ -225,15 +162,99 @@ void pybind_globals(py::module &m)
     .value("LINF", sim_params::nonlinear_norm_t::LINF)
     .export_values();
 
-  py::class_<sim_stat>(m, "sim_stat", "Class simulation statistics")
-      .def(py::init<>())
-      //properties
-      .def_readwrite("n_newton_wasted", &sim_stat::n_newton_wasted)
-      .def_readwrite("n_newton_total", &sim_stat::n_newton_total)
-      .def_readwrite("n_linear_total", &sim_stat::n_linear_total)
-      .def_readwrite("n_linear_wasted", &sim_stat::n_linear_wasted)
-      .def_readwrite("n_timesteps_total", &sim_stat::n_timesteps_total)
-      .def_readwrite("n_timesteps_wasted", &sim_stat::n_timesteps_wasted);
+  // HYPRE MGR strategy constants exposed on sim_params for Python-side solver setup.
+  // These are plain integer constants because the MGR solver module consumes HYPRE's
+  // numeric option values directly. Keep the names category-qualified so a value is
+  // not accidentally passed to the wrong HYPRE MGR option family.
+  sim_params.attr("mgrWellEliminateBlock") = py::int_(0);
+  sim_params.attr("mgrWellKeepPrimary") = py::int_(1);
+
+  sim_params.attr("mgrBilu0FallbackIdentity") = py::int_(0);
+  sim_params.attr("mgrBilu0FallbackShiftedDense") = py::int_(1);
+  sim_params.attr("mgrBilu0FallbackBoundedDiagonal") = py::int_(2);
+  sim_params.attr("mgrBilu0FallbackShiftedDenseThenDiagonal") = py::int_(3);
+
+  sim_params.attr("mgrLocalSolverNone") = py::int_(0);
+  sim_params.attr("mgrLocalSolverBlockJacobi") = py::int_(1);
+  sim_params.attr("mgrLocalSolverBlockILU0") = py::int_(2);
+  sim_params.attr("mgrLocalSolverBlockILU1") = py::int_(3);
+
+  sim_params.attr("mgrCprReductionPressureRow") = py::int_(0);
+  sim_params.attr("mgrCprReductionTrueIMPES") = py::int_(1);
+  sim_params.attr("mgrCprReductionTrueIMPESWellElim") = py::int_(2);
+
+  sim_params.attr("mgrVarPressure") = py::int_(0);
+  sim_params.attr("mgrVarComposition") = py::int_(1);
+  sim_params.attr("mgrVarSaturation") = py::int_(2);
+  sim_params.attr("mgrVarTemperature") = py::int_(3);
+  sim_params.attr("mgrVarVolumeConstraint") = py::int_(4);
+  sim_params.attr("mgrVarWellPressure") = py::int_(100);
+  sim_params.attr("mgrVarWellSecondary") = py::int_(101);
+  sim_params.attr("mgrVarFacility") = py::int_(200);
+  sim_params.attr("mgrVarRockMechanics") = py::int_(300);
+  sim_params.attr("mgrVarDisplacement") = py::int_(301);
+  sim_params.attr("mgrVarStress") = py::int_(302);
+  sim_params.attr("mgrVarOther") = py::int_(999);
+
+  sim_params.attr("mgrFRelaxNone") = py::int_(-1);
+  sim_params.attr("mgrFRelaxWeightedJacobi") = py::int_(0);
+  sim_params.attr("mgrFRelaxSingleVCycle") = py::int_(1);
+  sim_params.attr("mgrFRelaxAMG") = py::int_(2);
+  sim_params.attr("mgrFRelaxHybridGaussSeidelForward") = py::int_(3);
+  sim_params.attr("mgrFRelaxHybridGaussSeidelBackward") = py::int_(4);
+  sim_params.attr("mgrFRelaxHybridChaoticGaussSeidel") = py::int_(5);
+  sim_params.attr("mgrFRelaxHybridSymmetricGaussSeidel") = py::int_(6);
+  sim_params.attr("mgrFRelaxJacobi") = py::int_(7);
+  sim_params.attr("mgrFRelaxL1HybridSymmetricGaussSeidel") = py::int_(8);
+  sim_params.attr("mgrFRelaxGaussianElimination") = py::int_(9);
+  sim_params.attr("mgrFRelaxL1GaussSeidelForward") = py::int_(13);
+  sim_params.attr("mgrFRelaxL1GaussSeidelBackward") = py::int_(14);
+  sim_params.attr("mgrFRelaxFCFJacobi") = py::int_(17);
+  sim_params.attr("mgrFRelaxL1Jacobi") = py::int_(18);
+  sim_params.attr("mgrFRelaxSparseDirectSolver") = py::int_(29);
+  sim_params.attr("mgrFRelaxILU") = py::int_(32);
+  sim_params.attr("mgrFRelaxGaussianEliminationWithPivoting") = py::int_(99);
+  sim_params.attr("mgrFRelaxDirectInverse") = py::int_(199);
+
+  sim_params.attr("mgrInterpInjection") = py::int_(0);
+  sim_params.attr("mgrInterpL1Jacobi") = py::int_(1);
+  sim_params.attr("mgrInterpJacobi") = py::int_(2);
+  sim_params.attr("mgrInterpClassicalModified") = py::int_(3);
+  sim_params.attr("mgrInterpApproximateInverse") = py::int_(4);
+  sim_params.attr("mgrInterpBlockJacobi") = py::int_(12);
+  sim_params.attr("mgrInterpBlockRowSum") = py::int_(13);
+  sim_params.attr("mgrInterpBlockRowSumAbs") = py::int_(14);
+
+  sim_params.attr("mgrRestrictInjection") = py::int_(0);
+  sim_params.attr("mgrRestrictUnscaled") = py::int_(1);
+  sim_params.attr("mgrRestrictJacobi") = py::int_(2);
+  sim_params.attr("mgrRestrictApproximateInverse") = py::int_(3);
+  sim_params.attr("mgrRestrictPAIRDistance1") = py::int_(4);
+  sim_params.attr("mgrRestrictPAIRDistance2") = py::int_(5);
+  sim_params.attr("mgrRestrictBlockJacobi") = py::int_(12);
+  sim_params.attr("mgrRestrictCPRLike") = py::int_(13);
+  sim_params.attr("mgrRestrictBlockColLumped") = py::int_(14);
+  sim_params.attr("mgrRestrictPartialColLumped") = py::int_(15);
+
+  sim_params.attr("mgrCoarseGalerkin") = py::int_(0);
+  sim_params.attr("mgrCoarseNonGalerkinBlockDiag") = py::int_(1);
+  sim_params.attr("mgrCoarseNonGalerkinCPRDiag") = py::int_(2);
+  sim_params.attr("mgrCoarseNonGalerkinCPRBlockDiag") = py::int_(3);
+  sim_params.attr("mgrCoarseNonGalerkinSparseApproxInv") = py::int_(4);
+  sim_params.attr("mgrCoarseNonGalerkinA_CC") = py::int_(5);
+
+  sim_params.attr("mgrSmootherNone") = py::int_(-1);
+  sim_params.attr("mgrSmootherBlockJacobi") = py::int_(0);
+  sim_params.attr("mgrSmootherBlockGaussSeidel") = py::int_(1);
+  sim_params.attr("mgrSmootherJacobi") = py::int_(2);
+  sim_params.attr("mgrSmootherGaussSeidelSequential") = py::int_(3);
+  sim_params.attr("mgrSmootherGaussSeidelParallel") = py::int_(4);
+  sim_params.attr("mgrSmootherHybridGaussSeidelForward") = py::int_(5);
+  sim_params.attr("mgrSmootherHybridGaussSeidelBackward") = py::int_(6);
+  sim_params.attr("mgrSmootherEuclidILU") = py::int_(8);
+  sim_params.attr("mgrSmootherHypreILU") = py::int_(16);
+  sim_params.attr("mgrSmootherL1Jacobi") = py::int_(18);
+
 
   // timer_node is registered by darts.interpolators (imported at module init).
   // Re-export it so that `from darts.engines import timer_node` still works.
@@ -245,14 +266,25 @@ void pybind_globals(py::module &m)
 
   m.def("print_build_info", &print_build_info, "Print build information: date, user, machine, git hash");
 
+  m.def("write_to_darts_output", &write_to_darts_output,
+        "Write a string to the darts output stream (the file set by redirect_darts_output, "
+        "the terminal if not redirected, or nothing if redirected to an empty filename).",
+        "text"_a);
+
 
 #ifdef _OPENMP
-  m.def("get_num_threads", &omp_get_num_threads, "Get the number of OpenMP threads to be used");
+  // omp_get_max_threads() is the configured team size ("threads to be used");
+  // omp_get_num_threads() returns 1 outside a parallel region, which made
+  // every Python-side thread-count check (e.g. the THMCModel no-OpenMP guard)
+  // dead code.
+  m.def("get_num_threads", &omp_get_max_threads, "Get the number of OpenMP threads to be used");
   m.def("set_num_threads", &omp_set_num_threads, "Set the number of OpenMP threads to be used", "num_threads"_a);
   // if the amount of threads is not defined explicitly, use a half of available threads
   if (!std::getenv("OMP_NUM_THREADS"))
     {
-      omp_set_num_threads(omp_get_max_threads() / 2);
+      // std::max keeps single-core hosts at 1 (omp_set_num_threads(0) is
+      // non-conforming and silently mutates the ICV on some runtimes).
+      omp_set_num_threads(std::max(1, omp_get_max_threads() / 2));
     }
 #endif
 

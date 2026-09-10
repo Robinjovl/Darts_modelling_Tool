@@ -3,8 +3,9 @@ import os
 import h5py
 import warnings
 from darts.models.output import Output
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, sim_params, well_control_iface, timer_node
+from darts.engines import copy_data_to_device
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.chemistry.property_container import (
@@ -12,8 +13,9 @@ from darts.physics.chemistry.property_container import (
     PropertyContainer,
 )
 from darts.physics.chemistry.physics import ElementBasedReactiveFlow
+from darts.nonlinear_solvers import NewtonSolver
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.input.input_data import linear_solver_types
+from darts.linear_solvers import SuperLUSolverSpec
 from darts.physics.properties.kinetics import (
     KineticRate,
     LinearReactionSurfaceArea,
@@ -109,7 +111,7 @@ class MyOutput(Output):
         return timesteps, property_array
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, n_obl_mult: int = 9):
         super().__init__()
         self.n_obl_mult = n_obl_mult
@@ -117,11 +119,27 @@ class Model(CICDModel):
         self.timer.node["initialization"].start()
         self.set_reservoir()
         self.set_physics()
-        self.set_sim_params(first_ts=1e-5, max_ts=1e-3, tol_newton=1e-5, tol_linear=1e-6, it_newton=15, it_linear=200)
-        self.params.linear_type = sim_params.cpu_superlu
-
-        self.runtime = 1
+        # Time-stepping and the linear solver are configured in set_solver()
+        # (the unified self.linear_solver.spec = <LinearSolverSpec> pattern), which the base
+        # reset() calls before engine.init.
+        self.ts_control.runtime = 1
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 1e-5
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_max = 1e-3
+        self.ts_control.runtime = 1000
+        # SuperLU direct solve for this small, stiff chemistry system, declared solely
+        # through self.linear_solver (replaces the params.linear_type = cpu_superlu carrier,
+        # which the base FGMRES+CPR default had been shadowing). proprietary_linear_type
+        # carries the same enum for the proprietary build's engine factory. Set on the
+        # composed self.linear_solver (created in DartsModel.__init__) -- no platform
+        # default is ever materialized and discarded.
+        self.linear_solver.spec = SuperLUSolverSpec(tolerance=1e-6, max_iterations=200,
+                                    proprietary_linear_type=sim_params.cpu_superlu)
+        super().set_solver()  # platform default nonlinear solver
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=15)
 
     def set_reservoir(self):
 
@@ -231,9 +249,15 @@ class Model(CICDModel):
 
         output_property_container = MyOutputPropertyContainer(property_container)
 
+        axes_min_arr = np.asarray(self.axes_min, dtype=float)
+        axes_max_arr = np.asarray(self.axes_max, dtype=float)
+        n_points_arr = np.asarray(self.n_points, dtype=float)
+        axes_step = ((axes_max_arr - axes_min_arr) / np.maximum(n_points_arr - 1, 1)).tolist()
+        axes_origin = axes_min_arr.tolist()
+
         # Create instance of (own) physics class:
         self.physics = ElementBasedReactiveFlow(timer=self.timer, elements=self.elements, phases=phase_name,
-                                                n_points=self.n_points, axes_min=self.axes_min, axes_max=self.axes_max,
+                                                axes_step=axes_step, axes_origin=axes_origin,
                                                 epsilon_z=property_container.eps_z, extrapolation_flag=False,
                                                 cache=False)
 
@@ -278,9 +302,15 @@ class Model(CICDModel):
         :param verbose: Switch for verbose, default is True
         :type verbose: bool
         """
-        max_newt = self.data_ts.newton_max_iter
+        max_newt = self.nonlinear_solver.spec.max_iterations
         max_residual = np.zeros(max_newt + 1)
-        self.physics.engine.n_linear_last_dt = 0
+        solver = self.nonlinear_solver
+        status = solver.status
+        status.reset()
+        # This loop never computes a well residual (the old C++ member stayed at
+        # its initial value, so the well check in post_newtonloop never failed);
+        # keep that behavior by zeroing it instead of leaving reset()'s inf.
+        status.well_residual = 0.0
         self.timer.node["simulation"].start()
         residual_history = []
         for i in range(max_newt + 1):
@@ -297,16 +327,16 @@ class Model(CICDModel):
 
             # calc norm of residual
             RHS = np.asarray(self.physics.engine.RHS)
-            self.physics.engine.newton_residual_last_dt = np.linalg.norm(RHS)
-            # self.physics.engine.newton_residual_last_dt = self.physics.engine.calc_newton_residual()
+            status.newton_residual = np.linalg.norm(RHS)
+            # status.newton_residual = self.physics.engine.calc_newton_residual()
 
-            max_residual[i] = self.physics.engine.newton_residual_last_dt
+            max_residual[i] = status.newton_residual
             counter = 0
             for j in range(i):
                 denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
                 if (
                     abs(max_residual[i] - max_residual[j]) / denom
-                    < self.data_ts.newton_tol_stationary
+                    < self.nonlinear_solver.spec.stationary_point_tolerance
                 ):
                     counter += 1
             if counter > 2:
@@ -314,37 +344,39 @@ class Model(CICDModel):
                     print("Stationary point detected!")
                 break
 
-            residual_history.append(self.physics.engine.newton_residual_last_dt)
-            print(f'Newton iteration {i}: residual = {self.physics.engine.newton_residual_last_dt}')
+            residual_history.append(status.newton_residual)
+            print(f'Newton iteration {i}: residual = {status.newton_residual}')
 
-            self.physics.engine.n_newton_last_dt = i
+            status.n_newton = i
             #  check tolerance if it converges
-            if self.physics.engine.newton_residual_last_dt < self.data_ts.newton_tol or \
-                    self.physics.engine.n_newton_last_dt == max_newt:
+            if status.newton_residual < self.nonlinear_solver.spec.tolerance or \
+                    status.n_newton == max_newt:
                 if i > 0:  # min_i_newton
                     break
 
-            if (
-                type(self.data_ts.linear_type) is linear_solver_types
-            ):  # solvers via Python interface
-                if self.data_ts.linear_type in [
-                    linear_solver_types.CPU_PETSC_CPR,
-                    linear_solver_types.CPU_PETSC_FS,
-                ]:
-                    self.petsc_solve_linear_equation()
-                elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                    self.pardiso_solve_linear_equation()
-                else:
-                    raise Exception(
-                        "Unknown linear solver type", self.data_ts.linear_type
-                    )
-            else:  # compile-tyme C++ linear solvers
-                self.physics.engine.solve_linear_equation()
+            # Unified spec-driven dispatch (!280) + (rc, n_iters, residual) contract (!327)
+
+            r_code, n_lin, _ = self.linear_solver._solve_linear_equation()
+
+            status.linear_solver_rc = r_code
+
+            if r_code != 0:
+
+                self._linear_solver_rc_last = r_code
+
+                break
+
+            status.n_linear += n_lin
             self.timer.node["newton update"].start()
             self.physics.engine.apply_newton_update(dt)
             self.timer.node["newton update"].stop()
-        # End of newton loop
-        converged = self.physics.engine.post_newtonloop(dt, t)
+        # End of newton loop: convergence verdict previously made by the C++
+        # post_newtonloop (linear solver rc + residual re-check), now in Python.
+        converged = not (status.linear_solver_rc != 0 or
+                         status.newton_residual >= self.nonlinear_solver.spec.tolerance or
+                         status.well_residual > 1e2 * self.nonlinear_solver.spec.tolerance)
+        converged = self.physics.engine.post_newtonloop(dt, t, converged)
+        solver.stats.update(converged, status)
 
         self.timer.node["simulation"].stop()
         return converged

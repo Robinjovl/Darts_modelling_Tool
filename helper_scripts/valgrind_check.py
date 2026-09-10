@@ -1,3 +1,4 @@
+import glob
 import importlib
 import os
 import re
@@ -62,7 +63,9 @@ def run_model(model):
         m = mod.Model()
         m.init(platform='cpu')
         m.set_output()
-        m.run(days=m.data_ts.dt_first, save_well_data=False, save_reservoir_data=False)
+        m.run(
+            days=m.ts_control.dt_first, save_well_data=False, save_reservoir_data=False
+        )
         print(f"[OK] {model}")
         success = True
     except Exception as e:
@@ -145,7 +148,11 @@ def run_valgrind_for_model(model, timeout=1800):
         '--error-exitcode=0',
         f'--suppressions={abs_suppression_file}',
         '--gen-suppressions=all',
-        f'--log-file={vg_log}',
+        # Write one log per traced PID (%p -> pid). A single shared --log-file
+        # under --trace-children=yes is corrupted by concurrent writers (it ends
+        # up with NUL holes), which makes whole-process HEAP SUMMARY blocks
+        # unparseable and silently drops their errors from analyze_log.
+        f'--log-file={vg_log}.%p',
         '--',
         'darts',
         '-c',
@@ -189,6 +196,18 @@ def run_valgrind_for_model(model, timeout=1800):
         except subprocess.TimeoutExpired:
             print(f'ERROR: timeout profiling model {model}')
             return True  # failed
+
+    # Merge the per-PID logs (vg_log.<pid>) into a single clean vg_log so the
+    # artifact stays one file and analyze_log sees every traced process. Each
+    # per-PID file is written by a single writer, so it is free of the NUL
+    # corruption that a shared --log-file produced.
+    parts = sorted(glob.glob(f'{vg_log}.*'))
+    if parts:
+        with open(vg_log, 'w') as merged:
+            for part in parts:
+                with open(part) as pf:
+                    merged.write(pf.read())
+                os.remove(part)
 
     # analyze and write summary
     summary_list, total_errors = analyze_log(vg_log)

@@ -1,10 +1,11 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
-from darts.engines import sim_params, value_vector, ms_well
+from darts.models.darts_model import DartsModel
+from darts.engines import value_vector, ms_well
+from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.flash import ConstantK
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
@@ -13,7 +14,7 @@ from darts.physics.properties.kinetics import KineticBasic
 
 
 # Model class creation here!
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -24,11 +25,22 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.001, mult_ts=2, max_ts=1, runtime=1000, tol_newton=1e-5, tol_linear=1e-6,
-                            it_newton=10, it_linear=50, newton_type=sim_params.newton_local_chop)
-        self.data_ts.newton_tol_stationary = 1e-5
+        # Solver/time-stepping configuration moved to set_solver() (called from base reset()).
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 0.001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 1
+        self.ts_control.runtime = 1000
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-5, max_iterations=10, chop=ChopSpec(mode='local'))
+        self.nonlinear_solver.spec.stationary_point_tolerance = 1e-5
+        self.linear_solver.spec.tolerance = 1e-6
+        self.linear_solver.spec.max_iterations = 50
+        self.nonlinear_solver.spec.stationary_point_tolerance = 1e-5
 
     def set_reservoir(self):
         perm = 100
@@ -91,10 +103,12 @@ class Model(CICDModel):
 
         """ Activate physics """
         thermal = False
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=101, min_p=1, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
-                                     extrapolation_flag=True)
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        # 4 components → 3 z axes
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
+                                     axes_step=[10.0, 1e-2, 1e-2, 1e-2],
+                                     axes_origin=[1.0, epsilon, epsilon, epsilon],
+                                     epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return

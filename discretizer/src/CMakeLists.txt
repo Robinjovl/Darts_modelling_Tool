@@ -30,7 +30,7 @@ add_library(discretizer_build_info OBJECT "")
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(discretizer_build_info PUBLIC OPENDARTS_LINEAR_SOLVERS)
 endif()
 
@@ -59,7 +59,7 @@ target_include_directories(discretizer_build_info
 
 # Install the library file of discretizer_build_info
 install(TARGETS discretizer_build_info
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
@@ -99,7 +99,7 @@ add_library(opendarts_discretizer STATIC "")
 
 # We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(opendarts_discretizer PUBLIC OPENDARTS_LINEAR_SOLVERS)
 endif()
 
@@ -131,7 +131,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_PUBLIC_HEAD
 
 # Install the library file of opendarts_discretizer
 install(TARGETS opendarts_discretizer
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
@@ -184,7 +184,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_LINALG_PUBL
 
 # Install the library file of discretizer_linalg
 install(TARGETS discretizer_linalg
-  CONFIGURATIONS RELEASE
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 

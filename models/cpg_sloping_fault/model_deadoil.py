@@ -2,9 +2,10 @@ import numpy as np
 import pandas as pd
 from scipy import interpolate
 
+from darts.input.dead_oil import DeadOilFluidProps
 from darts.input.input_data import InputData
 from darts.engines import value_vector
-from darts.physics.deadoil import DeadOil, DeadOil2PFluidProps
+from darts.physics.dead_oil import DeadOil
 from darts.engines import well_control_iface
 
 from model_cpg import Model_CPG, fmt
@@ -43,7 +44,7 @@ class ModelDeadOil(Model_CPG):
                 for z in z_range:
                     # state is pressure and 1 molar fractions out of 2
                     state = [p, z]
-                    sat = self.physics.property_containers[0].compute_saturation_full(state, evaluate_PT_from_PHflash=True)
+                    sat = self.physics.property_containers[0].compute_saturation(state, evaluate_PT_from_PHflash=True)
                     if sat > s:
                         break
                 return z
@@ -121,7 +122,7 @@ class ModelDeadOil(Model_CPG):
         self.idata.geom.burden_layers = 0
 
         # this sets default properties
-        self.idata.fluid = DeadOil2PFluidProps() #if twophase else DeadOil3PFluidProps
+        self.idata.fluid = DeadOilFluidProps(n_phases=2) #if twophase else DeadOilFluidProps(n_phases=3)
 
         # example - how to change the properties
         # self.idata.fluid.density['water'] = DensityBasic(compr=1e-5, dens0=1014)
@@ -153,12 +154,11 @@ class ModelDeadOil(Model_CPG):
                     wdata.add_prd_rate_control(time=0*y2d, name=w, rate=1e5, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
                     wdata.add_prd_rate_control(time=1*y2d, name=w, rate=1e6, rate_type=well_control_iface.MOLAR_RATE, phase_name='oil', bhp_constraint=70)  # kmol/day | bars
 
-        self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-13
         self.idata.obl.epsilon_z = 1e-14
-        self.idata.obl.min_p = 0.
-        self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = 10.
-        self.idata.obl.max_t = 100.
-        self.idata.obl.min_z = 0.
-        self.idata.obl.max_z = 1.
+        self.idata.obl.p_step = 2.5
+        self.idata.obl.p_origin = 0.0
+        self.idata.obl.z_step = 2.5e-3
+        self.idata.obl.z_origin = self.idata.obl.epsilon_z
+        self.idata.obl.t_step = 0.25
+        self.idata.obl.t_origin = 10.0

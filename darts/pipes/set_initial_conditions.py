@@ -1,9 +1,9 @@
 import numpy as np
 from scipy.integrate import solve_ivp
-from scipy.interpolate import interp1d
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.units import *
+from darts.tools.interpolation import linear_interp_extrapolate
 
 g = 9.80665 * meter() / second() ** 2  # Gravitational acceleration
 
@@ -82,7 +82,7 @@ class SingleAmbientTemperature:
         pc = self.physics.property_containers[0]
         for phase_name in initial_conditions_dict["phases_names"]:
             assert phase_name in pc.phases_name[: pc.np_fl], (
-                "Initial pipe phase names must be mobile phases."
+                f'The specified phase "{phase_name}" is not in the list of mobile phases defined in the physics!'
             )
 
         for phase_composition in initial_conditions_dict["phases_compositions"]:
@@ -280,7 +280,7 @@ class LinearAmbientTemperature:
         pc = self.physics.property_containers[0]
         for phase_name in initial_conditions_dict["phases_names"]:
             assert phase_name in pc.phases_name[: pc.np_fl], (
-                "Initial pipe phase names must be mobile phases."
+                f'The specified phase "{phase_name}" is not in the list of mobile phases defined in the physics!'
             )
 
         for phase_composition in initial_conditions_dict["phases_compositions"]:
@@ -350,11 +350,10 @@ class LinearAmbientTemperature:
             TVD_head2 = self.pipe_geom.TVD_segments[-1]
             TVD_seg_interfaces = self.pipe_geom.TVD_seg_interfaces
 
-            temp_func = interp1d(
-                TVD_seg_interfaces,
-                self.temp_init_seg_interfaces,
-                fill_value="extrapolate",
-            )
+            def temp_func(tvd):
+                return linear_interp_extrapolate(
+                    tvd, TVD_seg_interfaces, self.temp_init_seg_interfaces
+                )
 
             # Seg and face together
             sol_seg_interfaces = solve_ivp(
@@ -370,9 +369,11 @@ class LinearAmbientTemperature:
             TVD_seg_interfaces = self.pipe_geom.TVD_seg_interfaces[::-1]
 
             temp_init_seg_interfaces = self.temp_init_seg_interfaces[::-1]
-            temp_func = interp1d(
-                TVD_seg_interfaces, temp_init_seg_interfaces, fill_value="extrapolate"
-            )
+
+            def temp_func(tvd):
+                return linear_interp_extrapolate(
+                    tvd, TVD_seg_interfaces, temp_init_seg_interfaces
+                )
 
             # Seg and face together
             sol_seg_interfaces = solve_ivp(

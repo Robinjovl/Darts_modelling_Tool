@@ -3,7 +3,7 @@
 ## Overview
 
 open-DARTS is a hybrid Python/C++ project. Building involves two phases:
-1. **C++ extensions** — compiled via CMake (engines, discretizer, solvers).
+1. **C++ extensions** — compiled via CMake (engines, discretizer, linear_solvers).
 2. **Python package** — installed via pip/setuptools from `pyproject.toml`.
 
 ---
@@ -33,13 +33,13 @@ the rest of the session.
 Default session environment:
 
 ```bash
-conda create -y -n open-darts-session python=3.10
+conda create -y -n open-darts-session python=3.11
 conda activate open-darts-session
 ```
 
 Guidance:
 
-- Prefer Python 3.10 unless the task explicitly targets a different supported
+- Prefer Python 3.11 unless the task explicitly targets a different supported
   version.
 - Keep build, install, test, lint, docs, and follow-up smoke tests in the same
   session environment.
@@ -175,7 +175,7 @@ Windows uses MSVC compiler with `/MP` and `/std:c++20` flags.
 # Install Python tooling and optional dependency groups
 ./helper_scripts/install_darts_dev.sh
 # or
-pip install -e .[dev,docs,solvers]
+pip install -e .[dev,docs,linear_solvers]
 
 # Install Reaktoro (requires conda, Python 3.10-3.12)
 conda install -c conda-forge reaktoro

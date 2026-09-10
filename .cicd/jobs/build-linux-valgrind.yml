@@ -6,6 +6,9 @@ build-linux-valgrind:
     tags:
         - linux
     rules:
+        # Skip on .pkl reference-upload runs: valgrind instrumentation is irrelevant there.
+        - if: $UPLOAD_PKL == "1"
+          when: never
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
@@ -13,7 +16,10 @@ build-linux-valgrind:
         - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-linux
     variables:
-        ODLS: '-a'
+        # Open-source in-tree solvers (the proprietary `-a` variant was
+        # dropped with the ODLS/non-ODLS job consolidation) -- valgrind now
+        # instruments the solver stack that actually ships.
+        ODLS: ''
         PY_VER: "$DEFAULT_PY_VER"
     script:
         - echo ">>> Starting debug build (valgrind instrumentation) <<<"

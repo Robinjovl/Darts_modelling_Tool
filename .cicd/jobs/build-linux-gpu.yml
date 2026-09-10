@@ -9,13 +9,16 @@
         - if: $TEST_CUSTOM_BRANCH == "1"
     variables:
         GIT_SUBMODULE_STRATEGY: recursive
-        ODLS: '-a'
+        ODLS: ''   # vestigial for the GPU build (GSELINSOLVERSPATH drives bos linkage); kept '' for pkl-suffix consistency
         TEST_GPU: '1'
         PY_VER: $DEFAULT_PY_VER
         CONDA_ENV: "darts_gpu_${CI_JOB_ID}"
+        # cuDSS GPU direct solver: NOT built in CI by default. The oahu job
+        # overrides this to '--cudss' and pip-installs the prebuilt cuDSS library.
+        CUDSS_FLAG: '--no-cudss'
     script:
         - echo "build *.so on linux GPU started with ODLS=$ODLS"
-        - ./helper_scripts/build_install_darts_gpu.sh -c -p -j 20
+        - ./helper_scripts/build_install_darts_gpu.sh -c -p $CUDSS_FLAG -j 20
         - |
           WARN_COUNT=$(grep -oP 'OPENDARTS_WARNING_COUNT=\K[0-9]+' make_darts.log 2>/dev/null | tail -1)
           WARN_COUNT=${WARN_COUNT:-0}
@@ -37,11 +40,17 @@ build-linux-oahu-gpu:
     variables:
         CONDAPATH: /oahu/data/gitlabrunner/anaconda3
         GSELINSOLVERSPATH: /oahu/data/gitlabrunner/darts-gitlab-runner-data/darts-linear-solvers-gpu-hypre
+        CUDSS_FLAG: '--cudss'   # oahu builds WITH the cuDSS GPU direct solver
     before_script:
-        - module load cuda/23.5
+        - module load cuda/13.3
         - source ${CONDAPATH}/bin/activate
         - conda create -n ${CONDA_ENV} python=${PY_VER} --yes
         - conda activate ${CONDA_ENV}
+        # cuDSS is a prebuilt C++ library (cudss.h + libcudss.so). The
+        # nvidia-cudss-cu13 wheel is just the delivery channel -- it unpacks the
+        # C++ lib into the env's site-packages/nvidia/cu13/{include,lib}, which
+        # thirdparty/thirdparty_cudss.cmake then discovers and links at build time.
+        - pip install nvidia-cudss-cu13
     after_script:
         - source ${CONDAPATH}/bin/activate
         - conda env remove -n ${CONDA_ENV} -y || true
@@ -108,8 +117,8 @@ build-linux-tahiti-image-gpu:
                 source /opt/conda/etc/profile.d/conda.sh && \
                 # activate your env
                 conda activate ${CONDA_ENV} && \
-                # _this_ is your real build
-                ./helper_scripts/build_install_darts_gpu.sh -c -p -j 16
+                # _this_ is your real build (--no-cudss: cuDSS not built in CI)
+                ./helper_scripts/build_install_darts_gpu.sh -c -p --no-cudss -j 16
             "
         - |
           WARN_COUNT=$(grep -oP 'OPENDARTS_WARNING_COUNT=\K[0-9]+' make_darts.log 2>/dev/null | tail -1)

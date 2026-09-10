@@ -1,7 +1,33 @@
 from model import Model
 import numpy as np
 import os
+import sys
 from darts.engines import redirect_darts_output, timer_node
+
+
+def _pkl_suffix():
+    """Solver/platform suffix of the reference file: ``_odls`` / ``_iter`` / ``_gpu``.
+
+    Shares the suite-wide helper so the name matches what ``models/archive_pkl.sh``
+    collects into the CI artifact. This model used to compute the suffix itself and
+    returned an empty string on the open-source lane, where the rest of the suite
+    uses ``_odls`` -- those references fell outside the ``perf_lin_odls*.pkl`` glob
+    and never reached the artifact. Falls back to the same rule when ``main.py`` is
+    run standalone from this directory, where ``models/`` is not on ``sys.path``.
+
+    :returns: the suffix string
+    :rtype: str
+    """
+    models_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if models_dir not in sys.path:
+        sys.path.append(models_dir)
+    try:
+        from compare_well_time_series import get_pkl_suffix
+        return get_pkl_suffix()
+    except ImportError:
+        if os.getenv('TEST_GPU') == '1':
+            return '_gpu'
+        return '_iter' if os.getenv('ODLS') == '-a' else '_odls'
 
 try:
     # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
@@ -14,10 +40,10 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
     if days:
         runtime = days
     else:
-        runtime = m.runtime
+        runtime = m.ts_control.runtime
 
-    mult_dt = m.params.mult_ts
-    max_dt = m.params.max_ts
+    mult_dt = m.ts_control.dt_mult
+    max_dt = m.ts_control.dt_max
     m.e = m.physics.engine
 
     # get current engine time
@@ -25,11 +51,11 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
 
     # same logic as in engine.run
     if np.fabs(t) < 1e-15:
-        dt = m.params.first_ts
+        dt = m.ts_control.dt_first
     elif restart_dt > 0:
         dt = restart_dt
     else:
-        dt = m.params.max_ts
+        dt = m.ts_control.dt_max
 
     # evaluate end time
     runtime += t
@@ -49,12 +75,12 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
             m.reservoir.update_trans(dt, m.physics.engine.X)
             m.timer.node["update"].stop()
 
-        converged = run_timestep_python(m, dt, t)
+        converged = m.nonlinear_solver.run_timestep(dt, t)
         if converged:
             t += dt
             ts = ts + 1
             print("# %d \tT = %f\tDT = %f\tNI = %d\tLI=%d"
-                  % (ts, t, dt, m.e.n_newton_last_dt, m.e.n_linear_last_dt))
+                  % (ts, t, dt, m.nonlinear_solver.status.n_newton, m.nonlinear_solver.status.n_linear))
 
             dt *= 1.5
             if dt > max_dt:
@@ -70,54 +96,10 @@ def run_python(m, days=0, restart_dt=0, init_step = False):
     # update current engine time
     m.e.t = runtime
 
-    print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (m.e.stat.n_timesteps_total, m.e.stat.n_timesteps_wasted,
-                                                     m.e.stat.n_newton_total, m.e.stat.n_newton_wasted,
-                                                     m.e.stat.n_linear_total, m.e.stat.n_linear_wasted))
-def run_timestep_python(m, dt, t):
-    self = m
-    max_newt = self.params.max_i_newton
-    self.e.n_linear_last_dt = 0
-    well_tolerance_coefficient = 1e2
-    self.timer.node['simulation'].start()
-    for i in range(max_newt + 1):
-        self.e.assemble_linear_system(dt)
-        res = self.e.calc_newton_dev()#self.e.calc_newton_residual()
-        self.e.dev_p = res[0]
-        self.e.dev_u = res[1]
-        dev_e = 0
-        if self.reservoir.thermoporoelasticity:
-            self.e.dev_e = res[2]
-            dev_e = res[2]
-
-        self.e.newton_residual_last_dt = np.sqrt(self.e.dev_u ** 2 + self.e.dev_p ** 2 + dev_e ** 2)        #self.e.newton_residual_last_dt = self.e.calc_newton_residual()
-        self.e.well_residual_last_dt = self.e.calc_well_residual()
-        print(str(i) + ': ' + 'rp = ' + str(self.e.dev_p) + '\t' + 'ru = ' + str(self.e.dev_u) + '\t' + \
-                    're = ' + str(dev_e) + '\t' + 'rwell = ' + str(self.e.well_residual_last_dt) + '\t' + 'CFL = ' + str(self.e.CFL_max))
-
-        self.e.n_newton_last_dt = i
-        #  check tolerance if it converges
-        if ((self.e.dev_p < self.params.tolerance_newton and self.e.dev_u < self.params.tolerance_newton and dev_e < self.params.tolerance_newton
-           and self.e.well_residual_last_dt < well_tolerance_coefficient * self.params.tolerance_newton )
-              or self.e.n_newton_last_dt == self.params.max_i_newton):
-            if (i > 0):  # min_i_newton
-                if i < max_newt:
-                    converged = 1
-                else:
-                    converged = 0
-                break
-
-        r_code = self.e.solve_linear_equation()
-        self.timer.node["newton update"].start()
-        self.e.apply_newton_update(dt)
-        self.timer.node["newton update"].stop()
-        if i < max_newt:
-            converged = 1
-
-    # End of newton loop
-    converged = self.e.post_newtonloop(dt, t, converged)
-    self.timer.node['simulation'].stop()
-    return converged
-
+    stats = m.nonlinear_solver.stats
+    print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (stats.n_timesteps_total, stats.n_timesteps_wasted,
+                                                     stats.n_newton_total, stats.n_newton_wasted,
+                                                     stats.n_linear_total, stats.n_linear_wasted))
 def run(model_folder, physics_type, is_finalize=True):
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=False)
     m.params.finalize_mpi = is_finalize
@@ -131,7 +113,7 @@ def run(model_folder, physics_type, is_finalize=True):
     m.reservoir.set_equilibrium(zero_conduction=True)
     m.physics.engine.find_equilibrium = True
     dt_init = 1.e+8
-    m.params.first_ts = dt_init
+    m.ts_control.dt_first = dt_init
     run_python(m, dt_init, init_step=True)
     m.reinit(zero_conduction=True)
     m.physics.engine.find_equilibrium = False
@@ -139,9 +121,9 @@ def run(model_folder, physics_type, is_finalize=True):
     size_report_step = 1
     max_dt = size_report_step
     m.max_dt = max_dt
-    m.params.max_ts = max_dt
+    m.ts_control.dt_max = max_dt
     first_ts = size_report_step
-    m.params.first_ts = first_ts
+    m.ts_control.dt_first = first_ts
     m.set_boundary_conditions_after_initialization()
 
     sim_time = 20 # days
@@ -178,9 +160,7 @@ def test(mesh_type, physics_type, overwrite='0'):
 
     m, data = run(mesh_type, physics_type)
 
-    pkl_suffix = ''
-    if os.getenv('ODLS') != None and os.getenv('ODLS') == '-a':
-        pkl_suffix = '_iter'
+    pkl_suffix = _pkl_suffix()
     file_name = os.path.join('ref', 'perf_' + platform.system().lower()[:3] + pkl_suffix +
                              '_' + mesh_type + '_' + physics_type + '.pkl')
     failed = 0

@@ -18,9 +18,9 @@ set(DISCRETIZER_MESH_PUBLIC_HEADER_FILES
 # This is always a static library since we wish to use it internally only
 add_library(discretizer_mesh OBJECT "")
 
-# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with 
+# We need to specify OPENDARTS_LINEAR_SOLVERS so that the compile is with
 # the opendarts linear solvers, otherwise it uses the old linear solvers
-if(NOT DEFINED BOS_SOLVERS_DIR)
+if(NOT ENABLE_BOS_SOLVERS)
   target_compile_definitions(discretizer_mesh PUBLIC OPENDARTS_LINEAR_SOLVERS)
 endif()
 
@@ -36,7 +36,7 @@ target_link_libraries(discretizer_mesh
     #auxiliary
     #engines_global
     discretizer_linalg
-  PRIVATE 
+  PRIVATE
 	  mshio
 )
 
@@ -54,12 +54,12 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/.. FILES ${DISCRETIZER_MESH_PUBLIC
 
 # Install the library file of discretizer_mesh
 install(TARGETS discretizer_mesh
-  CONFIGURATIONS RELEASE    
+  CONFIGURATIONS RELEASE RELWITHDEBINFO
   DESTINATION lib
 )
 
 install(TARGETS discretizer_mesh
-  CONFIGURATIONS DEBUG     
+  CONFIGURATIONS DEBUG
   DESTINATION lib
 )
 # ------------------------------------------------------------------------------

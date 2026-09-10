@@ -7,7 +7,8 @@ from darts.tools.keyword_file_tools import load_single_keyword
 import numpy as np
 import os
 
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.property_container import PropertyContainer
+from darts.physics.dead_oil import DeadOilProperties
 from darts.physics.properties.flash import SinglePhase
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
@@ -30,18 +31,60 @@ class Model(THMCModel):
             self.thermal = False
 
         # call base class constructor
+        # NOTE: solver / time-stepping / Newton / linear-solver configuration moved
+        # to set_solver() (called at the top of reset()) per the new convention.
         super().__init__()
 
-    def set_solver_params(self):
-        super().set_solver_params()
-        self.params.linear_type = sim_params.cpu_gmres_fs_cpr
-        #self.params.linear_type = sim_params.cpu_superlu
-        self.params.first_ts = 0.0001
-        self.params.mult_ts = 2
-        self.params.max_ts = 5
-        self.params.tolerance_newton = 1e-6
+    def set_solver(self):
+        # Open-source FS-CPR by default -- inject the spec; the engine bypasses
+        # sim_params.linear_type. FS-CPR is a PRECONDITIONER (single application),
+        # not an outer Krylov loop -- wrap it in GMRES to mirror the proprietary
+        # path (bos_gmres + bos_fs_cpr).
+        from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        mesh = self.reservoir.mesh
+        n_blocks = mesh.n_blocks
+        n_res_blks = mesh.n_res_blocks
+        n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
+        n_fracs_mesh = getattr(self.reservoir, 'n_fracs', 0)
+        # Match proprietary engine_pm_cpu.cpp:136 convention:
+        #   n_res  = n_matrix + n_fracs  (matrix + fracture cells treated as "reservoir")
+        #   n_fracs= 0   (zero gap-DOF rows -- FS_UPG not yet supported)
+        #   n_wells= n_blocks - n_res_blocks
+        fs_cpr = FSCPRSolverSpec(
+            force_amg_asymmetric=True,
+            n_res=n_matrix + n_fracs_mesh,
+            n_fracs=0,
+            n_wells=n_blocks - n_res_blks,
+        )
+        # Single solver declaration: the FS-CPR spec drives _apply_solver on the
+        # open-source CPU build; on the proprietary build _apply_solver applies
+        # proprietary_linear_type (bos_fs_cpr) to params.linear_type. No model-level
+        # params.linear_type needed -- its open-source value was the engine default
+        # (cpu_superlu) anyway. The spec is set here, before super().set_solver()
+        # below, so the platform default is never materialized.
+        self.linear_solver.spec = GMRESSolverSpec(
+            prec=fs_cpr,
+            # Pre-!280 this model solved at tolerance_linear=1e-8 with
+            # max_i_linear=5000 (THMCModel's mech_discretizer params, tightened
+            # here). Until !280 the engine overwrote a spec's tolerance /
+            # max_iterations at init() with sim_params, so those params -- not
+            # the spec -- were what the model actually ran. The spec owns them
+            # now, so it must carry the same values: at the 1e-5 / 50 sim_params
+            # default every solve exits at ~0.7 relative residual and the
+            # dead-oil physics never advance.
+            tolerance=1e-8,
+            max_iterations=5000,
+            restart=50,
+            proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
+        )
+        super().set_solver()
+
+        self.ts_control.dt_first = 0.0001
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 5
+        self.nonlinear_solver.spec.tolerance = 1e-6
         self.params.tolerance_linear = 1e-8
-        self.params.max_i_newton = 20
+        self.nonlinear_solver.spec.max_iterations = 20
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, fluid_vars=self.physics.vars,
@@ -113,14 +156,13 @@ class Model(THMCModel):
         bnd_tags['BND_Z+'] = 996
         self.idata.mesh.matrix_tags = [99991]
 
-        self.idata.obl.n_points = 400
         self.idata.obl.zero = 1e-9
-        self.idata.obl.min_p = 0.0
-        self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = 273.15 + 20
-        self.idata.obl.max_t = 273.15 + 200
-        self.idata.obl.min_z = 0.
-        self.idata.obl.max_z = 1.
+        self.idata.obl.p_step = 2.5
+        self.idata.obl.p_origin = 0.0
+        self.idata.obl.z_step = 2.5e-3
+        self.idata.obl.z_origin = self.idata.obl.zero / 10
+        self.idata.obl.t_step = 0.45
+        self.idata.obl.t_origin = 273.15 + 20
         self.idata.obl.epsilon_z = self.idata.obl.zero/10
         super().set_input_data()
 
@@ -171,7 +213,9 @@ class Model(THMCModel):
             phases = ['wat', 'oil']
             self.cell_property = ['pressure'] + ['water']
 
-            property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=self.idata.obl.epsilon_z)
+            property_container = ModelProperties(phases_name=phases, components_name=components,
+                                                 Mw=np.ones(len(phases)), eps_z=self.idata.obl.epsilon_z,
+                                                 temperature=None if self.thermal else t_ref)
 
             # Define property evaluators based on custom properties
             property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
@@ -186,13 +230,17 @@ class Model(THMCModel):
                                                        ('oil', ConstFunc(1.))])
 
         property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
-        # create physics
+        # create physics: [p, z_1, ..., z_{nc-1}, T?]
         state_spec = Poroelasticity.StateSpecification.PT if self.thermal else Poroelasticity.StateSpecification.P
-        self.physics = Poroelasticity(components, phases, self.timer, state_spec=state_spec, n_points=self.idata.obl.n_points,
-                                      min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
-                                      min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
+        nz = len(components) - 1
+        ax_step = [self.idata.obl.p_step] + [self.idata.obl.z_step] * nz
+        ax_origin = [self.idata.obl.p_origin] + [self.idata.obl.z_origin] * nz
+        if self.thermal:
+            ax_step.append(self.idata.obl.t_step)
+            ax_origin.append(self.idata.obl.t_origin)
+        self.physics = Poroelasticity(components, phases, self.timer, state_spec=state_spec,
+                                      axes_step=ax_step, axes_origin=ax_origin,
                                       epsilon_z=self.idata.obl.epsilon_z,
-                                      min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
                                       discretizer=self.discretizer_name)
         self.physics.add_property_region(property_container)
 
@@ -302,64 +350,7 @@ class Model(THMCModel):
                                                        input_displacement=input_displacement)
         return 0
 
-class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, eps_z=1e-11):
-        # Call base class constructor
-        self.nph = len(phases_name)
-        Mw = np.ones(self.nph)
-        super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z, temperature=None)
-
+class ModelProperties(DeadOilProperties):
     def evaluate(self, state):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
-        """
-        # Composition vector and pressure from state:
-        vec_state_as_np = np.asarray(state)
-        self.pressure = vec_state_as_np[0]
-        if self.thermal:
-            self.temperature = vec_state_as_np[-1]
-
-        zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
-
-        self.clean_arrays()
-        # two-phase flash - assume water phase is always present and water component last
-        for i in range(self.nph):
-            self.x[i, i] = 1
-
-        self.ph = np.array([0, 1], dtype=np.intp)
-
-        for j in self.ph:
-            # molar weight of mixture
-            M = np.sum(self.x[j, :] * self.Mw)
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure)  # output in [kg/m3]
-            self.dens_m[j] = self.dens[j] / M
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
-
-        self.nu = zc
-        self.compute_saturation(self.ph)
-
-        for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
-            self.pc[j] = 0
-
-        mass_source = np.zeros(self.nc)
-
-        return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
-
-    def evaluate_at_cond(self, pressure, zc):
-
-        self.sat[:] = 0
-
-        ph = [0, 1]
-        for j in ph:
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
-
-        self.dens_m = [1025, 0.77]  # to match DO based on PVT
-
-        self.nu = zc
-        self.compute_saturation(ph)
-
-        return self.sat, self.dens_m
+        super().evaluate(state)
+        return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, self.mass_source

@@ -1,9 +1,9 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import DartsModel
+from darts.models.darts_model import DartsModel
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc
 from darts.physics.properties.density import DensityBasic
@@ -53,15 +53,23 @@ class Model(DartsModel):
 
         """Create physics"""
         thermal = True
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=0, max_p=1000, min_z=0.0, max_z=1.0, epsilon_z=epsilon,
-                                     min_t=273.15 + 20, max_t=273.15 + 200)
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
+                                     axes_step=[2.5, 2.5e-3, 0.45],  # p [bar], z, T [K]
+                                     axes_origin=[0.0, epsilon, 273.15 + 20],
+                                     epsilon_z=epsilon)
         self.physics.add_property_region(property_container)
-        self.set_sim_params(first_ts=1e-4, mult_ts=2, max_ts=1)
+        # solver/time-stepping configuration moved to set_solver()
 
         # end of initialization
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 1e-4
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 1
+        self.ts_control.runtime = 1000
 
 
     def set_wells(self):

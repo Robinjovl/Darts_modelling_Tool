@@ -1,112 +1,40 @@
 # SuperLU ----------------------------------------------------------------------
-# Imports SuperLU library so that they can be used in the project.
+# Imports SuperLU so that it can be used in the project.
+#
+# SuperLU is consumed as a pinned git submodule (thirdparty/superlu, upstream
+# xiaoyeli/superlu) that the build scripts compile with SuperLU's own CMake and
+# install into thirdparty/install -- exactly like HYPRE. Here we simply locate
+# that installed package and expose its CONFIG target superlu::superlu (which
+# transitively carries the bundled reference CBLAS `blas` target, so no system
+# BLAS is required and the build stays self-contained).
 # ------------------------------------------------------------------------------
 
 # Initialize reporting ---------------------------------------------------------
-# Reports we started looking for thirdparty libraries and initializes the flag 
-# that checks if all have been found 
 message(CHECK_START "   Importing SuperLU")
-unset(thirdparty_missing_components)
-# ------------------------------------------------------------------------------
 
-# Adds SuperLU -----------------------------------------------------------------
-add_library(SuperLU STATIC IMPORTED GLOBAL)
-# When setting the library files to import, we need to do it in different ways for
-# Windows and linux/macOS
-if(import_externals_as_msvc)
-  # For Windows we need to set the .lib file, which has a different name from the .a file
-  
-  # Check if the required files and paths exist
-  set(SuperLU_library_path "${CMAKE_CURRENT_LIST_DIR}/SuperLU_5.2.1/x64/Release/SuperLU.lib")  # set the location of blas library file (full path)
-  set(SuperLU_headers_path "${CMAKE_CURRENT_LIST_DIR}/SuperLU_5.2.1/SRC")  # set the location of blas header files 
-  set(SuperLU_header_file_to_check "slu_ddefs.h")  # check for this header file inside the header files  TODO: Need to find a header file that is relevant
+# Locate the installed superlu CMake package (mirror of thirdparty_hypre.cmake).
+# GNUInstallDirs may place the package config under lib or lib64.
+if (NOT DEFINED superlu_DIR)
+  message(STATUS "      Setting default superlu_DIR")
+  if(EXISTS "${CMAKE_SOURCE_DIR}/thirdparty/install/lib/cmake/superlu")
+    set(superlu_DIR "${CMAKE_SOURCE_DIR}/thirdparty/install/lib/cmake/superlu")
+  elseif(EXISTS "${CMAKE_SOURCE_DIR}/thirdparty/install/lib64/cmake/superlu")
+    set(superlu_DIR "${CMAKE_SOURCE_DIR}/thirdparty/install/lib64/cmake/superlu")
+  else()
+    message(FATAL_ERROR "SuperLU package not found under thirdparty/install/lib(64)/cmake/superlu. Build thirdparty first (helper_scripts/build_darts_cmake.sh, with -c to force a fresh thirdparty build).")
+  endif()
+endif(NOT DEFINED superlu_DIR)
 
-  if(NOT EXISTS ${SuperLU_library_path})
-    message(FATAL_ERROR "   SuperLU library not found: ${SuperLU_library_path}")
-  endif()
-  
-  if(NOT EXISTS "${SuperLU_headers_path}/${SuperLU_header_file_to_check}")
-    message(FATAL_ERROR "   SuperLU headers not found in: ${SuperLU_headers_path}")
-  endif()
-  
-  set(blas_header_file_to_check "slu_ddefs.h")  # check for this header file inside the header files  
-  set_target_properties(SuperLU
-    PROPERTIES
-      IMPORTED_LOCATION ${SuperLU_library_path}
-      INTERFACE_INCLUDE_DIRECTORIES ${SuperLU_headers_path})
+# find_package requires absolute paths to work, make sure the path is absolute
+file(REAL_PATH "${superlu_DIR}" superlu_DIR BASE_DIRECTORY "${CMAKE_BINARY_DIR}")
+message(STATUS "      SuperLU search path: ${superlu_DIR}")
+
+find_package(superlu REQUIRED CONFIG)
+if (TARGET superlu::superlu)
+  message(STATUS "      Found SuperLU: TRUE")
 else()
-  # For Linux and macOS, we provide the .a file
-  
-  # Check if the required files and paths exist
-  set(SuperLU_library_path "${CMAKE_CURRENT_LIST_DIR}/SuperLU_5.2.1/libsuperlu_5.1.a")  # set the location of blas library file (full path)
-  set(SuperLU_headers_path "${CMAKE_CURRENT_LIST_DIR}/SuperLU_5.2.1/SRC")  # set the location of blas header files 
-  set(SuperLU_header_file_to_check "slu_ddefs.h")  # check for this header file inside the header files  TODO: Need to find a header file that is relevant
+  message(FATAL_ERROR "      Found SuperLU: FALSE")
+endif (TARGET superlu::superlu)
 
-  if(NOT EXISTS ${SuperLU_library_path})
-    message(FATAL_ERROR "   SuperLU library not found: ${SuperLU_library_path}")
-  endif()
-  
-  if(NOT EXISTS "${SuperLU_headers_path}/${SuperLU_header_file_to_check}")
-    message(FATAL_ERROR "   SuperLU headers not found in: ${SuperLU_headers_path}")
-  endif()
-  
-  set_target_properties(SuperLU
-    PROPERTIES
-      IMPORTED_LOCATION ${SuperLU_library_path}
-    INTERFACE_INCLUDE_DIRECTORIES ${SuperLU_headers_path})
-endif()
-
-message(CHECK_PASS "done!")
-# ------------------------------------------------------------------------------
-
-# Adds cBLAS, which is required by SuperLU -------------------------------------
-message(CHECK_START "   Importing cblas")
-
-add_library(cblas STATIC IMPORTED GLOBAL)
-# When setting the library files to import, we need to do it in different ways for
-# Windows and linux/macOS
-if(import_externals_as_msvc)
-  # For Windows we need to set the .lib file, which has a different name from the .a file
-  
-  # Check if the required files and paths exist
-  set(blas_library_path "${CMAKE_CURRENT_LIST_DIR}/SuperLU_5.2.1/x64/Release/slu_blas.lib")  # set the location of blas library file (full path)
-  set(blas_headers_path "${CMAKE_CURRENT_LIST_DIR}/SuperLU_5.2.1/SRC")  # set the location of blas header files 
-  # set(blas_header_file_to_check "slu_ddefs.h")  # check for this header file inside the header files  TODO: Need to find a header file that is relevant
-
-  if(NOT EXISTS ${blas_library_path})
-    message(FATAL_ERROR "   cblas library was not found: ${blas_library_path}")
-  endif()
-  
-  if(NOT EXISTS ${blas_headers_path})
-    message(FATAL_ERROR "   cblas headers not found in: ${blas_headers_path}")
-  endif()
-    
-  set_target_properties(cblas
-    PROPERTIES
-      IMPORTED_LOCATION ${blas_library_path}
-      INTERFACE_INCLUDE_DIRECTORIES ${blas_headers_path})
-else()
-  # For Linux and macOS, we provide the .a file
-  
-  # Check if the required files and paths exist
-  set(blas_library_path "${CMAKE_CURRENT_LIST_DIR}/SuperLU_5.2.1/libblas.a")  # set the location of blas library file (full path)
-  set(blas_headers_path "${CMAKE_CURRENT_LIST_DIR}/SuperLU_5.2.1/SRC")  # set the location of blas header files 
-  # set(blas_header_file_to_check "slu_ddefs.h")  # check for this header file inside the header files  TODO: Need to find a header file that is relevant
-
-  if(NOT EXISTS ${blas_library_path})
-    message(FATAL_ERROR "   cblas library was not found: ${blas_library_path}")
-  endif()
-  
-  if(NOT EXISTS ${blas_headers_path})
-    message(FATAL_ERROR "   cblas headers not found in: ${blas_headers_path}")
-  endif()
-  
-  set_target_properties(cblas
-    PROPERTIES
-      IMPORTED_LOCATION ${blas_library_path}
-      INTERFACE_INCLUDE_DIRECTORIES ${blas_headers_path})
-endif()
-
-# Finalize reporting and check if all libraries have been added ----------------
 message(CHECK_PASS "done!")
 # ------------------------------------------------------------------------------

@@ -7,16 +7,26 @@ from darts.reservoirs.cpg_reservoir import read_int_array, read_float_array
 
 from darts.tools.gen_cpg_grid import gen_cpg_grid
 
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 
 def fmt(x):
     return '{:.3}'.format(x)
 
 #####################################################
 
-class Model_CPG(CICDModel):
+class Model_CPG(DartsModel):
     def __init__(self):
         super().__init__()
+
+    def set_solver(self):
+        # Linear-solver settings live on self.linear_solver (the LinearSolverSpec), not in
+        # ts_control. The case files (case_*.py) may set idata.sim.linear_tol / linear_max_iter.
+        super().set_solver()  # platform default nonlinear + linear solvers
+        sim = self.idata.sim
+        if getattr(sim, 'newton_tolerance', None) is not None:
+            self.nonlinear_solver.spec.tolerance = sim.newton_tolerance
+        self.linear_solver.spec.tolerance = getattr(sim, 'linear_tol', self.linear_solver.spec.tolerance)
+        self.linear_solver.spec.max_iterations = getattr(sim, 'linear_max_iter', self.linear_solver.spec.max_iterations)
 
     def init_input_arrays(self):
         if self.idata.generate_grid:

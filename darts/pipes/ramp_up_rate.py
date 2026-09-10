@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.physics.super.physics import Compositional
+from darts.physics.base.physics import PhysicsBase
 from darts.pipes.define_pipe_geometry import PipeGeometry
 
 
@@ -28,7 +28,7 @@ class RampUpRate:
         :param pipe_geom: Pipe geometry object of the pipe for which the RampUpRate is going to be defined. It is used for assertion purposes.
         :type pipe_geom: PipeGeometry
         :param physics: physics object is used for assertion purposes and for evaluation of molar enthalpy for thermal scenarios
-        :param first_ts_size: Size of the first time step from the class DataTS in darts_model.py [day]
+        :param first_ts_size: Size of the first time step from the class TimestepControl in darts_model.py [day]
         :type first_ts_size: float
         :param segment_idx: The index of the segment which fluid will be injected into or produced from
         :type segment_idx: int
@@ -125,17 +125,17 @@ class RampUpRate:
                     assert isinstance(inj_fluid_props["temperature"], float), (
                         "Specified temperature must be a float!"
                     )
-                    assert inj_fluid_props["temperature"] > 273.15, (
+                    assert inj_fluid_props["temperature"] > 200.0, (
                         "Specified temperature must be in Kelvin!"
                     )
 
                 if "phase_name" in inj_fluid_props:
                     ph_name = inj_fluid_props["phase_name"]
                     assert isinstance(ph_name, str), (
-                        "Specified phase_name is not a string!"
+                        "The specified phase is not a string!"
                     )
                     assert ph_name in pc.phases_name[: pc.np_fl], (
-                        "Specified phase_name is not in the list of mobile phase names in physics!"
+                        f'The specified phase "{ph_name}" is not in the list of mobile phases defined in the physics!'
                     )
 
                 if "molar_enthalpy" in inj_fluid_props:
@@ -179,7 +179,7 @@ class RampUpRate:
             assert inj_fluid_props is None, (
                 "For outflow, inj_fluid_props must not be specified!"
             )
-            assert physics.state_spec == Compositional.StateSpecification.PH, (
+            assert physics.state_spec == PhysicsBase.StateSpecification.PH, (
                 "Thermal production only work with the PH formulation for multiphase flow accurately!"
             )
 

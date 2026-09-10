@@ -1,17 +1,18 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, ms_well
+from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
-from darts.physics.super.physics import Compositional
-from darts.physics.super.property_container import PropertyContainer
+from darts.physics.base.physics import PhysicsBase
+from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # call base class constructor
         super().__init__()
@@ -22,9 +23,19 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1000, tol_newton=1e-3, tol_linear=1e-6)
+        # solver/time-stepping configuration moved to set_solver() (called from base reset())
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 0.0001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 5
+        self.ts_control.runtime = 1000
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
+        self.linear_solver.spec.tolerance = 1e-6
 
     def set_reservoir(self):
         nx = 500
@@ -64,10 +75,11 @@ class Model(CICDModel):
 
         # create physics
         thermal = True
-        state_spec = Compositional.StateSpecification.PT if thermal else Compositional.StateSpecification.P
-        self.physics = Compositional(components, phases, self.timer, state_spec=state_spec,
-                                     n_points=400, min_p=0, max_p=1000, min_z=0., max_z=1., epsilon_z=epsilon,
-                                     min_t=273.15, max_t=273.15 + 200, extrapolation_flag=True)
+        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
+        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
+                                     axes_step=[2.5, 0.5],  # p [bar], T [K]
+                                     axes_origin=[0.0, 273.15],
+                                     epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
 
         return
@@ -123,25 +135,10 @@ class ModelProperties(PropertyContainer):
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
 
         self.nu[0] = 1
-        self.compute_saturation(self.ph)
+        self.compute_saturation()
 
         for j in self.ph:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc[j] = 0
 
         return
-
-    def evaluate_at_cond(self, pressure, zc):
-
-        self.sat[:] = 0
-
-        ph = [0]
-        for j in ph:
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
-
-        self.dens_m = [1025, 0.77]  # to match DO based on PVT
-
-        self.nu[0] = 1
-        self.compute_saturation(ph)
-
-        return self.sat, self.dens_m

@@ -1,10 +1,14 @@
 import functools
 
 import numpy as np
+import pytest
 
 from darts.engines import *
 from darts.interpolators import *
-from darts.physics.base.parallel_evaluator import ParallelEvaluator
+from darts.physics.base.parallel_evaluator import (
+    ParallelEvaluator,
+    SharedEvaluatorPool,
+)
 
 
 class Linear(operator_set_evaluator_iface):
@@ -68,22 +72,43 @@ class Nonlinear(operator_set_evaluator_iface):
         return 0
 
 
-def get_interpolator_name(algorithm, mode, platform, precision, n_dims, n_ops):
-    itor_name = (
-        f"{algorithm}_{mode}_{platform}_interpolator_l_{precision}_{n_dims}_{n_ops}"
-    )
+def get_interpolator_name(algorithm, platform, precision, n_dims, n_ops):
+    # Letterless naming: the index-type template parameter was dropped from the
+    # interpolators, so exposed names carry no _i_/_l_ index-type letter. The
+    # interpolation-mode token is gone too -- !280 removed the static interpolators,
+    # so interpolation is always adaptive and the names no longer spell it out.
+    itor_name = f"{algorithm}_{platform}_interpolator_{precision}_{n_dims}_{n_ops}"
     return itor_name
 
 
-def test_interpolator_convergence(
-    itor_type, itor_mode, n_dim, is_barycentric: bool = None, norm=None
-):
+def get_interpolator_class(algorithm, platform, precision, n_dims, n_ops):
+    itor_name = get_interpolator_name(algorithm, platform, precision, n_dims, n_ops)
+    itor_cls = globals().get(itor_name)
+    if itor_cls is None:
+        # The 'linear' family is optional: -DOPENDARTS_INTERPOLATOR_PROFILE=MINIMAL omits
+        # those templates, and the Windows CI build uses such a profile. Skip rather than
+        # fail there. 'multilinear' is present in every profile, so a miss is a real error.
+        if algorithm == 'linear':
+            pytest.skip(f'{itor_name} is not exposed in this build')
+        pytest.fail(f'{itor_name} is not exposed in darts.interpolators')
+    return itor_name, itor_cls
+
+
+@pytest.mark.parametrize(
+    "itor_type, n_dim, is_barycentric, norm",
+    [
+        ("multilinear", 4, None, np.inf),
+        ("linear", 4, False, np.inf),
+        ("linear", 4, True, np.inf),
+    ],
+)
+def test_interpolator_convergence(itor_type, n_dim, is_barycentric, norm):
     zero = 1.0e-9
     n_ops = 6 * n_dim + 17
     axes_min = n_dim * [-1 - zero]
     axes_max = n_dim * [1 + zero]
     evaluator = Nonlinear(n_dim, n_ops)
-    itor_name = get_interpolator_name(itor_type, itor_mode, 'cpu', 'd', n_dim, n_ops)
+    _, itor_cls = get_interpolator_class(itor_type, 'cpu', 'd', n_dim, n_ops)
     resolutions = [n_dim * [8], n_dim * [32], n_dim * [128]]
 
     # generate random states
@@ -120,21 +145,24 @@ def test_interpolator_convergence(
     # calculate interpolated values with interpolators of multiple resolutions
     diff = np.zeros((2, len(resolutions)))
     for i in range(len(resolutions)):
-        # initialize interpolator
+        # initialize interpolator. New adaptive ctor is (evaluator, axes_origin,
+        # axes_step); derive per-axis step from this resolution so the convergence
+        # sweep still refines the cell size as before.
+        axes_step = [
+            (axes_max[d] - axes_min[d]) / (resolutions[i][d] - 1) for d in range(n_dim)
+        ]
         if itor_type == 'linear':
-            itor = eval(itor_name)(
+            itor = itor_cls(
                 evaluator,
-                index_vector(resolutions[i]),
                 value_vector(axes_min),
-                value_vector(axes_max),
+                value_vector(axes_step),
                 is_barycentric,
             )
         else:
-            itor = eval(itor_name)(
+            itor = itor_cls(
                 evaluator,
-                index_vector(resolutions[i]),
                 value_vector(axes_min),
-                value_vector(axes_max),
+                value_vector(axes_step),
             )
         timer = timer_node()
         itor.init()
@@ -158,22 +186,28 @@ def test_interpolator_convergence(
     # print(diff)
     if itor_type == 'linear' and is_barycentric:
         print(
-            f'{itor_type} {itor_mode} barycentric interpolation with Delaunay triangulation (n_dim={n_dim}): {test_status}'
+            f'{itor_type} barycentric interpolation with Delaunay triangulation (n_dim={n_dim}): {test_status}'
         )
     elif itor_type == 'linear' and not is_barycentric:
         print(
-            f'{itor_type} {itor_mode} interpolation with standard triangulation (n_dim={n_dim}): {test_status}'
+            f'{itor_type} interpolation with standard triangulation (n_dim={n_dim}): {test_status}'
         )
     else:
-        print(f'{itor_type} {itor_mode} interpolation (n_dim={n_dim}): {test_status}')
+        print(f'{itor_type} interpolation (n_dim={n_dim}): {test_status}')
     # print('Conv. order: val = ' + str(orders[0]) + ', der = ' + str(orders[1]))
 
     assert success, 'Conv. order: val = ' + str(orders[0]) + ', der = ' + str(orders[1])
 
 
-def test_linearity_preservation(
-    itor_type, itor_mode, n_dim, is_barycentric: bool = None
-):
+@pytest.mark.parametrize(
+    "itor_type, n_dim, is_barycentric",
+    [
+        ("multilinear", 4, None),
+        ("linear", 4, False),
+        ("linear", 4, True),
+    ],
+)
+def test_linearity_preservation(itor_type, n_dim, is_barycentric):
     zero = 1.0e-9
     n_ops = 6 * n_dim + 17
     n_axes_points = n_dim * [128]
@@ -181,22 +215,24 @@ def test_linearity_preservation(
     axes_max = [300] + (n_dim - 1) * [1.0 - zero]
     evaluator = Linear(n_dim, n_ops)
 
-    # initialize interpolator
-    itor_name = get_interpolator_name(itor_type, itor_mode, 'cpu', 'd', n_dim, n_ops)
+    # initialize interpolator. New adaptive ctor is (evaluator, axes_origin,
+    # axes_step); derive step from the (n_axes_points, axes_min, axes_max) window.
+    _, itor_cls = get_interpolator_class(itor_type, 'cpu', 'd', n_dim, n_ops)
+    axes_step = [
+        (axes_max[d] - axes_min[d]) / (n_axes_points[d] - 1) for d in range(n_dim)
+    ]
     if itor_type == 'linear':
-        itor = eval(itor_name)(
+        itor = itor_cls(
             evaluator,
-            index_vector(n_axes_points),
             value_vector(axes_min),
-            value_vector(axes_max),
+            value_vector(axes_step),
             is_barycentric,
         )
     else:
-        itor = eval(itor_name)(
+        itor = itor_cls(
             evaluator,
-            index_vector(n_axes_points),
             value_vector(axes_min),
-            value_vector(axes_max),
+            value_vector(axes_step),
         )
     timer = timer_node()
     itor.init()
@@ -255,14 +291,14 @@ def test_linearity_preservation(
 
     if itor_type == 'linear' and is_barycentric:
         print(
-            f'{itor_type} {itor_mode} barycentric interpolation with Delaunay triangulation (n_dim={n_dim}): {test_status}'
+            f'{itor_type} barycentric interpolation with Delaunay triangulation (n_dim={n_dim}): {test_status}'
         )
     elif itor_type == 'linear' and not is_barycentric:
         print(
-            f'{itor_type} {itor_mode} interpolation with standard triangulation (n_dim={n_dim}): {test_status}'
+            f'{itor_type} interpolation with standard triangulation (n_dim={n_dim}): {test_status}'
         )
     else:
-        print(f'{itor_type} {itor_mode} interpolation (n_dim={n_dim}): {test_status}')
+        print(f'{itor_type} interpolation (n_dim={n_dim}): {test_status}')
 
 
 # ── Tests for the parallel operator update (MR297) ──────────────────────────
@@ -281,14 +317,16 @@ def _build_multilinear_adaptive(
     No timer node is attached on purpose: this exercises the null-timer path of
     the three-phase adaptive update (the ``if (this->timer)`` guards added in MR297).
     """
-    itor_name = get_interpolator_name(
-        'multilinear', 'adaptive', 'cpu', 'd', n_dim, n_ops
-    )
-    itor = eval(itor_name)(
+    _, itor_cls = get_interpolator_class('multilinear', 'cpu', 'd', n_dim, n_ops)
+    # New adaptive ctor is (evaluator, axes_origin, axes_step); derive step from the
+    # legacy (n_axes_points, axes_min, axes_max) window so cell spacing is unchanged.
+    axes_step = [
+        (axes_max[d] - axes_min[d]) / (n_axes_points[d] - 1) for d in range(n_dim)
+    ]
+    itor = itor_cls(
         evaluator,
-        index_vector(n_axes_points),
-        value_vector(axes_min),
-        value_vector(axes_max),
+        value_vector(list(axes_min)),
+        value_vector(axes_step),
     )
     itor.init()
     return itor
@@ -325,7 +363,8 @@ def test_evaluate_batch_consistency(n_dim=4):
     assert success
 
 
-def test_parallel_evaluator(n_dim=4, start_method=None):
+@pytest.mark.parametrize("start_method", [None, "spawn"])
+def test_parallel_evaluator(start_method, n_dim=4):
     """ParallelEvaluator.evaluate_batch() must reproduce serial evaluation.
 
     The factory is functools.partial(Linear, ...) — a top-level picklable
@@ -359,6 +398,84 @@ def test_parallel_evaluator(n_dim=4, start_method=None):
     success = np.allclose(np.asarray(out), reference, rtol=0.0, atol=1e-12)
     label = start_method if start_method else 'default'
     print(f'ParallelEvaluator ({label} start method): {"OK" if success else "FAILED"}')
+    assert success
+
+
+def test_shared_evaluator_pool(n_dim=4):
+    """SharedEvaluatorPool must dispatch per-key to the right worker evaluator.
+
+    Covers the multi-wrap pattern used by PhysicsBase._wrap_evaluators_parallel:
+    one pool of n_workers processes, several ParallelEvaluator wrappers each
+    routing batches through the shared pool with their own key.
+    """
+    n_ops = 6 * n_dim + 17
+    factory_lin = functools.partial(Linear, n_dim, n_ops)
+    factory_nlin = functools.partial(Nonlinear, n_dim, n_ops)
+
+    sp = SharedEvaluatorPool(
+        {
+            ('reservoir_operators', 0): factory_lin,
+            ('reservoir_operators', 1): factory_nlin,
+            ('property_operators', 0): factory_lin,
+        },
+        n_workers=3,
+    )
+    pe_lin = ParallelEvaluator(
+        evaluator_factory=factory_lin, shared_pool=sp, key=('reservoir_operators', 0)
+    )
+    pe_nlin = ParallelEvaluator(
+        evaluator_factory=factory_nlin, shared_pool=sp, key=('reservoir_operators', 1)
+    )
+    pe_prop = ParallelEvaluator(
+        evaluator_factory=factory_lin, shared_pool=sp, key=('property_operators', 0)
+    )
+
+    n_pts = 300
+    rng = np.random.default_rng(8)
+    states_np = rng.uniform(-1.0, 1.0, size=n_pts * n_dim)
+
+    def per_point_ref(ev):
+        ref = np.zeros(n_pts * n_ops)
+        for i in range(n_pts):
+            buf = value_vector(np.zeros(n_ops))
+            ev.evaluate(
+                value_vector(states_np[i * n_dim : (i + 1) * n_dim].copy()), buf
+            )
+            ref[i * n_ops : (i + 1) * n_ops] = np.asarray(buf)
+        return ref
+
+    ref_lin = per_point_ref(Linear(n_dim, n_ops))
+    ref_nlin = per_point_ref(Nonlinear(n_dim, n_ops))
+
+    out_lin = value_vector(np.zeros(n_pts * n_ops))
+    out_nlin = value_vector(np.zeros(n_pts * n_ops))
+    out_prop = value_vector(np.zeros(n_pts * n_ops))
+    pe_lin.evaluate_batch(value_vector(states_np.copy()), n_pts, out_lin, n_ops)
+    pe_nlin.evaluate_batch(value_vector(states_np.copy()), n_pts, out_nlin, n_ops)
+    pe_prop.evaluate_batch(value_vector(states_np.copy()), n_pts, out_prop, n_ops)
+
+    lin_ok = np.allclose(np.asarray(out_lin), ref_lin, rtol=0.0, atol=1e-12)
+    nlin_ok = np.allclose(np.asarray(out_nlin), ref_nlin, rtol=0.0, atol=1e-12)
+    prop_ok = np.allclose(np.asarray(out_prop), ref_lin, rtol=0.0, atol=1e-12)
+
+    # Unknown key must raise eagerly (catches typos in wrap-target plumbing).
+    try:
+        ParallelEvaluator(
+            evaluator_factory=factory_lin, shared_pool=sp, key=('bogus', None)
+        )
+        bad_key_ok = False
+    except ValueError:
+        bad_key_ok = True
+
+    sp.shutdown()
+
+    success = lin_ok and nlin_ok and prop_ok and bad_key_ok
+    print(
+        f'SharedEvaluatorPool multi-key dispatch: '
+        f'{"OK" if success else "FAILED"} '
+        f'(Linear={lin_ok}, Nonlinear={nlin_ok}, property={prop_ok}, '
+        f'bad-key-rejected={bad_key_ok})'
+    )
     assert success
 
 
@@ -419,11 +536,10 @@ def test_interpolator_thread_consistency(n_dim=4):
     if not (
         hasattr(_engines, 'set_num_threads') and hasattr(_engines, 'get_num_threads')
     ):
-        print(
-            'interpolator thread-count consistency: SKIPPED '
-            '(single-threaded build — no OpenMP thread control)'
+        pytest.skip(
+            'single-threaded build — no OpenMP thread control '
+            '(set/get_num_threads absent)'
         )
-        return
 
     zero = 1.0e-9
     n_ops = 4 * n_dim  # 16 for n_dim=4: an instantiated (N_DIMS, N_OPS) template
@@ -463,38 +579,6 @@ def test_interpolator_thread_consistency(n_dim=4):
 
 
 if __name__ == '__main__':
-    print('Linearity-preserving tests for interpolators:')
-    test_linearity_preservation(itor_type='multilinear', itor_mode='adaptive', n_dim=4)
-    test_linearity_preservation(
-        itor_type='linear', itor_mode='adaptive', n_dim=4, is_barycentric=False
-    )
-    test_linearity_preservation(
-        itor_type='linear', itor_mode='adaptive', n_dim=4, is_barycentric=True
-    )
+    import sys
 
-    print('Convergence tests for interpolators:')
-    test_interpolator_convergence(
-        itor_type='multilinear', itor_mode='adaptive', n_dim=4, norm=np.inf
-    )
-    # test_interpolator_convergence(itor_type='multilinear', itor_mode='static', n_dim=4, norm=np.inf)
-    test_interpolator_convergence(
-        itor_type='linear',
-        itor_mode='adaptive',
-        n_dim=4,
-        is_barycentric=False,
-        norm=np.inf,
-    )
-    test_interpolator_convergence(
-        itor_type='linear',
-        itor_mode='adaptive',
-        n_dim=4,
-        is_barycentric=True,
-        norm=np.inf,
-    )
-
-    print('Parallel operator update tests:')
-    test_evaluate_batch_consistency(n_dim=4)
-    test_parallel_evaluator(n_dim=4, start_method=None)
-    test_parallel_evaluator(n_dim=4, start_method='spawn')
-    test_parallel_interpolator(n_dim=4)
-    test_interpolator_thread_consistency(n_dim=4)
+    sys.exit(pytest.main([__file__, '-v']))

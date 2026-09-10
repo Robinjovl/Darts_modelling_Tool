@@ -18,8 +18,8 @@
 //    License along with DARTS. If not, see <http://www.gnu.org/licenses/>.
 // *************************************************************************
 
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/data_types.hpp"
+#include "csr_matrix.hpp"
+#include "linear_solvers_data_types.hpp"
 
 namespace opendarts
 {
