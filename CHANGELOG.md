@@ -1,3 +1,5 @@
+# #.#.# [Future]
+
 # 2.0.0 [10-09-2026]
 - Bumped `open-darts-flash` dependency to 0.14.0 (from 0.13.0). The new darts-flash release adds kinetic (solid) phases (`DARTSFlash.set_kinetic_phase()`, `kinetic=True` in `Mixture.set_ice_eos()`/`set_salt_eos()`/`set_h_eos()`), the `lnK_theta` split variable set and the `component_specific_reference_phase` `FlashParams` option; see the [darts-flash changelog](https://gitlab.com/open-darts/darts-flash/-/blob/main/CHANGELOG.md).
 - Solvers ([!280](https://gitlab.com/open-darts/open-darts/-/merge_requests/280)):
