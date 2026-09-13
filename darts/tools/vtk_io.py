@@ -115,3 +115,131 @@ def write_pvd(path: str, entries: list[tuple]):
 
     with open(path, "w") as fh:
         fh.write("\n".join(xml))
+
+
+def _block_shapes_match(cur_blocks, ref_blocks):
+    if len(cur_blocks) != len(ref_blocks):
+        return False
+    return all(c.shape == r.shape for c, r in zip(cur_blocks, ref_blocks, strict=True))
+
+
+def write_vtk_difference(
+    vtk_cur_fname: str,
+    vtk_ref_fname: str,
+    vtk_diff_fname: str,
+    props: list = None,
+    include_values: bool = True,
+    relative: bool = True,
+    eps_div: float = 1e-15,
+    compression: str = 'zlib',
+    verbose: bool = True,
+):
+    """
+    Write the difference between two vtk solutions into a separate vtk file.
+
+    The output carries the mesh of the current solution and, for every compared
+    property, a ``<prop>_diff`` array (current - reference). This makes a visual
+    comparison of two runs a matter of opening one file in ParaView instead of
+    switching back and forth between two.
+
+    :param vtk_cur_fname: current solution.
+    :param vtk_ref_fname: reference solution to subtract.
+    :param vtk_diff_fname: file to write; its directory is created if missing.
+    :param props: property names to compare, all properties present in both files if None.
+    :param include_values: also store the compared values themselves, as ``<prop>``
+                           (current) and ``<prop>_ref`` (reference).
+    :param relative: also store ``<prop>_reldiff`` = diff / (|reference| + eps_div).
+    :param eps_div: regularization of the relative difference denominator.
+    :param compression: meshio compression of the output file, None to switch it off.
+    :param verbose: print the maximum absolute and relative difference of every property.
+    :return: dict prop -> (max absolute difference, max relative difference).
+    """
+    import os
+
+    import meshio
+
+    cur = meshio.read(vtk_cur_fname)
+    ref = meshio.read(vtk_ref_fname)
+
+    if cur.points.shape != ref.points.shape:
+        raise ValueError(
+            f'Meshes differ: {cur.points.shape[0]} points in {vtk_cur_fname} vs '
+            f'{ref.points.shape[0]} in {vtk_ref_fname}; the two solutions cannot be subtracted.'
+        )
+    max_point_shift = (
+        float(np.abs(cur.points - ref.points).max()) if cur.points.size else 0.0
+    )
+    if verbose and max_point_shift > 0.0:
+        print(
+            f'write_vtk_difference: warning: node coordinates differ, max shift {max_point_shift:.3e}'
+        )
+
+    if props is None:
+        names = [name for name in cur.cell_data if name in ref.cell_data]
+    else:
+        names = list(props)
+
+    stats = {}
+    cell_data = {}
+    for name in names:
+        if name not in cur.cell_data:
+            if verbose:
+                print(
+                    f'write_vtk_difference: no property "{name}" in {vtk_cur_fname}, skipped'
+                )
+            continue
+        if name not in ref.cell_data:
+            if verbose:
+                print(
+                    f'write_vtk_difference: no property "{name}" in {vtk_ref_fname}, skipped'
+                )
+            continue
+        cur_blocks = [np.asarray(b, dtype=float) for b in cur.cell_data[name]]
+        ref_blocks = [np.asarray(b, dtype=float) for b in ref.cell_data[name]]
+        if not _block_shapes_match(cur_blocks, ref_blocks):
+            if verbose:
+                print(
+                    f'write_vtk_difference: property "{name}" has a different shape in the two files, skipped'
+                )
+            continue
+
+        diff_blocks = [c - r for c, r in zip(cur_blocks, ref_blocks, strict=True)]
+        rel_blocks = [
+            d / (np.abs(r) + eps_div)
+            for d, r in zip(diff_blocks, ref_blocks, strict=True)
+        ]
+
+        if include_values:
+            cell_data[name] = cur_blocks
+            cell_data[name + '_ref'] = ref_blocks
+        cell_data[name + '_diff'] = diff_blocks
+        if relative:
+            cell_data[name + '_reldiff'] = rel_blocks
+
+        max_abs = max(
+            (float(np.abs(d).max()) for d in diff_blocks if d.size), default=0.0
+        )
+        max_rel = max(
+            (float(np.abs(d).max()) for d in rel_blocks if d.size), default=0.0
+        )
+        stats[name] = (max_abs, max_rel)
+        if verbose:
+            print(f'{name}: max abs diff {max_abs:.6e}, max rel diff {max_rel:.6e}')
+
+    if not cell_data:
+        raise ValueError(
+            f'No comparable cell property found in {vtk_cur_fname} and {vtk_ref_fname}.'
+        )
+
+    diff_dir = os.path.dirname(vtk_diff_fname)
+    if diff_dir:
+        os.makedirs(diff_dir, exist_ok=True)
+    meshio.write(
+        vtk_diff_fname,
+        meshio.Mesh(cur.points, cur.cells, cell_data=cell_data),
+        binary=True,
+        compression=compression,
+    )
+    if verbose:
+        print('SAVED DIFFERENCE VTK FILE', vtk_diff_fname)
+    return stats
