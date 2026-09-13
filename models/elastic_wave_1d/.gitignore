@@ -1,0 +1,5 @@
+# run outputs of main.py / compare_schemes.py / run_test
+sol_*/
+sweep_*/
+meshes/*.msh
+figures/convergence_runs/

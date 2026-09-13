@@ -66,6 +66,11 @@ class Model(THMCModel):
         self.depletion_value = config['depletion']['value']
         self.friction_law = config['friction_law']
         self.mesh_file = config['mesh_file']
+        # time integration of the inertia term in the dynamic stage (see
+        # darts.nonlinear_solvers.mechanics.configure_time_integration): dict with key 'scheme'
+        # ('backward_euler' default, 'newmark', 'generalized_alpha', 'hht', 'bathe') and its parameters
+        # (gamma/beta, rho_inf, alpha, bathe_gamma, kv_damping)
+        self.time_integration = dict(config.get('time_integration', {'scheme': 'backward_euler'}))
         # enable Pardiso (pypardiso / Intel MKL) direct linear solver if it was set in config.
         self.use_pardiso = config.get('use_pardiso', False)
         if 'cache_discretizer' in config:

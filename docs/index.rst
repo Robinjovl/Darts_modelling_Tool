@@ -39,6 +39,7 @@ Welcome to open-DARTS documentation!
    technical_reference/reservoir.md
    technical_reference/wells.md
    technical_reference/solvers.md
+   technical_reference/dynamic_mechanics.md
 
 .. toctree::
    :maxdepth: 2

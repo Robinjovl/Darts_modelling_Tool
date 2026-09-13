@@ -1,0 +1,7 @@
+# models/ is outside the pre-commit ruff hooks; this lets `ruff check` classify the compiled
+# darts.engines / darts.discretizer modules as first-party and model/reservoir as local imports.
+extend = "../../pyproject.toml"
+
+[lint.isort]
+known-first-party = ["darts"]
+known-local-folder = ["model", "reservoir"]

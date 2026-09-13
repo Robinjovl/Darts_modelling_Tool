@@ -45,6 +45,14 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	momentum_inertia = 0.0;
 	EXPLICIT_SCHEME = false;
 	active_linear_solver_id = 0;
+	// time integration of the inertia term: legacy backward Euler by default
+	time_integration = BACKWARD_EULER;
+	newmark_gamma = 0.5;
+	newmark_beta = 0.25;
+	alpha_f = alpha_m = 0.0;
+	kv_damping = 0.0;
+	bathe_gamma = 0.5;
+	bathe_substep = 1;
 
 	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
 	// publish the assembled Jacobian to Python (as engine_super_elastic_cpu does),
@@ -249,6 +257,7 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
   eps_vol.resize(mesh->n_matrix);
   max_row_values.resize(n_vars * mesh->n_blocks);
   jacobian_explicit_scheme.resize(n_vars * mesh->n_blocks);
+  reset_dynamic_state();
 
   for (index_t i = 0; i < mesh->n_res_blocks; i++)
   {
@@ -393,9 +402,163 @@ int engine_pm_cpu::init_jacobian_structure_pm(csr_matrix_base *jacobian)
 	return 0;
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Time integration of the momentum inertia term
+// ---------------------------------------------------------------------------------------------------------------------
+void engine_pm_cpu::set_newmark(value_t gamma, value_t beta)
+{
+  time_integration = NEWMARK;
+  newmark_gamma = gamma;
+  newmark_beta = beta;
+  alpha_f = alpha_m = 0.0;
+}
+
+void engine_pm_cpu::set_generalized_alpha(value_t rho_inf)
+{
+  // Chung & Hulbert (1993): optimal high-frequency dissipation for a given rho_inf in [0, 1]
+  // rho_inf = 1 -> no dissipation (alpha_m = alpha_f = 1/2, trapezoidal-like), rho_inf = 0 -> asymptotic annihilation
+  time_integration = GENERALIZED_ALPHA;
+  alpha_m = (2.0 * rho_inf - 1.0) / (rho_inf + 1.0);
+  alpha_f = rho_inf / (rho_inf + 1.0);
+  newmark_gamma = 0.5 - alpha_m + alpha_f;
+  newmark_beta = 0.25 * (1.0 - alpha_m + alpha_f) * (1.0 - alpha_m + alpha_f);
+}
+
+void engine_pm_cpu::set_hht_alpha(value_t alpha)
+{
+  // Hilber, Hughes & Taylor (1977): alpha in [-1/3, 0]; alpha = 0 -> trapezoidal rule
+  time_integration = GENERALIZED_ALPHA;
+  alpha_m = 0.0;
+  alpha_f = -alpha;
+  newmark_gamma = 0.5 - alpha;
+  newmark_beta = 0.25 * (1.0 - alpha) * (1.0 - alpha);
+}
+
+void engine_pm_cpu::reset_dynamic_state()
+{
+  const size_t n = static_cast<size_t>(ND_) * mesh->n_blocks;
+  vel.assign(n, 0.0);
+  acc.assign(n, 0.0);
+  vel_n1.assign(n, 0.0);
+  bathe_substep = 1;
+}
+
+void engine_pm_cpu::update_time_integration_coefs(value_t dt_)
+{
+  ti.active = (!FIND_EQUILIBRIUM && momentum_inertia != 0.0 && dt_ > 0.0);
+  ti.w_f = ti.w_m = 1.0;
+  ti.q_kv = 0.0;
+  ti.gamma = 0.5; ti.beta = 0.25;
+  ti.ca_u = ti.ca_v = ti.ca_a = 0.0;
+  ti.c1 = ti.c2 = ti.c3 = 0.0;
+  ti.da_du = 0.0;
+  if (!ti.active)
+	return;
+
+  ti.q_kv = kv_damping;
+  bool newmark_like = false;
+  switch (time_integration)
+  {
+  case BACKWARD_EULER:
+	ti.da_du = 1.0 / dt_ / dt_;
+	break;
+  case NEWMARK:
+	ti.gamma = newmark_gamma; ti.beta = newmark_beta;
+	newmark_like = true;
+	break;
+  case GENERALIZED_ALPHA:
+	ti.gamma = newmark_gamma; ti.beta = newmark_beta;
+	ti.w_f = 1.0 - alpha_f;
+	ti.w_m = 1.0 - alpha_m;
+	newmark_like = true;
+	break;
+  case BATHE:
+	if (bathe_substep != 2)
+	{
+	  // first sub-step: trapezoidal rule over gamma_b * dt (dt_ is the sub-step length)
+	  ti.gamma = 0.5; ti.beta = 0.25;
+	  newmark_like = true;
+	}
+	else
+	{
+	  // second sub-step: 3-point backward formula over the full step, dt_ = (1 - gamma_b) * Dt
+	  const value_t g = bathe_gamma;
+	  const value_t Dt = dt_ / (1.0 - g);
+	  ti.c1 = (1.0 - g) / (g * Dt);
+	  ti.c2 = -1.0 / ((1.0 - g) * g * Dt);
+	  ti.c3 = (2.0 - g) / ((1.0 - g) * Dt);
+	  ti.da_du = ti.c3 * ti.c3;
+	}
+	break;
+  }
+  if (newmark_like)
+  {
+	ti.ca_u = 1.0 / (ti.beta * dt_ * dt_);
+	ti.ca_v = 1.0 / (ti.beta * dt_);
+	ti.ca_a = (1.0 - 2.0 * ti.beta) / (2.0 * ti.beta);
+	ti.da_du = ti.ca_u;
+  }
+}
+
+value_t engine_pm_cpu::scheme_acceleration(index_t i, uint8_t d) const
+{
+  const index_t k = ND_ * i + d;
+  const index_t iu = N_VARS * i + U_VAR + d;
+  if (time_integration == BACKWARD_EULER)
+  {
+	value_t a = (X[iu] - Xn[iu]) / dt / dt;
+	if (dt1 > 0.0)
+	  a -= (Xn[iu] - Xn1[iu]) / dt / dt1;
+	return a;
+  }
+  else if (time_integration == BATHE && bathe_substep == 2)
+  {
+	const value_t v_new = ti.c1 * Xn1[iu] + ti.c2 * Xn[iu] + ti.c3 * X[iu];
+	return ti.c1 * vel_n1[k] + ti.c2 * vel[k] + ti.c3 * v_new;
+  }
+  // Newmark in displacement form (also generalized-alpha and the first Bathe sub-step)
+  return ti.ca_u * (X[iu] - Xn[iu]) - ti.ca_v * vel[k] - ti.ca_a * acc[k];
+}
+
+value_t engine_pm_cpu::scheme_velocity(index_t i, uint8_t d, value_t a_new) const
+{
+  const index_t k = ND_ * i + d;
+  const index_t iu = N_VARS * i + U_VAR + d;
+  if (time_integration == BACKWARD_EULER)
+	return (X[iu] - Xn[iu]) / dt;
+  else if (time_integration == BATHE && bathe_substep == 2)
+	return ti.c1 * Xn1[iu] + ti.c2 * Xn[iu] + ti.c3 * X[iu];
+  return vel[k] + dt * ((1.0 - ti.gamma) * acc[k] + ti.gamma * a_new);
+}
+
+void engine_pm_cpu::commit_dynamic_state(value_t deltat)
+{
+  // called from post_newtonloop on convergence BEFORE Xn/Xn1 are rotated: X = u^{n+1}, Xn = u^n
+  if (vel.size() < static_cast<size_t>(ND_) * mesh->n_blocks)
+	reset_dynamic_state();
+  dt = deltat;
+  update_time_integration_coefs(deltat);
+  if (!ti.active)
+	return;
+  for (index_t i = 0; i < mesh->n_matrix; i++)
+  {
+	for (uint8_t d = 0; d < ND_; d++)
+	{
+	  const index_t k = ND_ * i + d;
+	  const value_t a_new = scheme_acceleration(i, d);
+	  const value_t v_new = scheme_velocity(i, d, a_new);
+	  vel_n1[k] = vel[k];
+	  vel[k] = v_new;
+	  acc[k] = a_new;
+	}
+  }
+}
+
 int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
 {
 	dt = _dt;
+	update_time_integration_coefs(dt);
 	// We need extended connection list for that with all connections for each block
 
 	index_t n_blocks = mesh->n_blocks;
@@ -479,11 +642,19 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 
 		//jac_idx = N_VARS_SQ * csr_idx_start;
 		CFL_mech[0] = CFL_mech[1] = CFL_mech[2] = biot_mult = 0.0;
+		// time integration weights of this row: only matrix cells carry inertia / alpha-weighted internal forces;
+		// fault (contact) rows are constraints at t^{n+1} and well rows are untouched
+		const bool dyn_i = ti.active && (i < n_matrix);
+		const value_t wf_i = dyn_i ? ti.w_f : 1.0;
+		const value_t wkv_i = dyn_i ? ti.q_kv : 0.0;
+		const bool weighted_i = dyn_i && (wf_i != 1.0 || wkv_i != 0.0);
+		value_t kv_conn[ND_], acc_cur[ND_];
 		for (; block_m[conn_id] == i && conn_id < n_conns; conn_id++)
 		{
 			j = block_p[conn_id];
 			if (j >= n_res_blocks && j < n_blocks)
 				connected_with_well = 1;
+			kv_conn[0] = kv_conn[1] = kv_conn[2] = 0.0;
 
 			// Fluid flux evaluation & biot flux
 			gamma = 0.0;
@@ -545,15 +716,17 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 																	tran_ref[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * Xref[stencil[conn_st_id] * N_VARS + U_VAR + v];
 							fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * X[stencil[conn_st_id] * N_VARS + U_VAR + v] -
 																			tran_biot_ref[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * Xref[stencil[conn_st_id] * N_VARS + U_VAR + v];
-							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
-							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
+							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += (wf_i + wkv_i) * tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
+							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += wf_i * tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
+							if (wkv_i != 0.0)
+								kv_conn[d] += wkv_i * tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * (X[stencil[conn_st_id] * N_VARS + U_VAR + v] - Xn[stencil[conn_st_id] * N_VARS + U_VAR + v]);
 						}
 						fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * X[stencil[conn_st_id] * N_VARS + P_VAR] -
 																tran_ref[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * p_ref_cur;
 						fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * X[stencil[conn_st_id] * N_VARS + P_VAR] -
 																		tran_biot_ref[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * p_ref_cur;
-						Jac[st_id * N_VARS_SQ + d * N_VARS + P_VAR] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR];
-						Jac[st_id * N_VARS_SQ + d * N_VARS + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR];
+						Jac[st_id * N_VARS_SQ + d * N_VARS + P_VAR] += wf_i * tran[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR];
+						Jac[st_id * N_VARS_SQ + d * N_VARS + P_VAR] += wf_i * tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR];
 					}
 					// mass balance
 					for (v = 0; v < N_VARS; v++)
@@ -588,6 +761,9 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 							fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + v] * cur_bc[v] -
 																			tran_biot_ref[conn_st_id * N_VARS_SQ + d * N_VARS + v] * ref_bc[v];
 						}
+						if (wkv_i != 0.0)
+							for (v = 0; v < ND_; v++)
+								kv_conn[d] += wkv_i * tran[conn_st_id * N_VARS_SQ + d * N_VARS + v] * (cur_bc[v] - cur_bc_n[v]);
 					}
 					// mass balance
 					for (v = 0; v < N_VARS; v++)
@@ -614,9 +790,15 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 			{
 				RHS[i * N_VARS + U_VAR + d] += fluxes_ref[N_VARS * conn_id + U_VAR + d] + fluxes[N_VARS * conn_id + U_VAR + d];
 				RHS[i * N_VARS + U_VAR + d] += fluxes_biot_ref[N_VARS * conn_id + U_VAR + d] + fluxes_biot[N_VARS * conn_id + U_VAR + d];
+				if (weighted_i)
+				{
+					// generalized-alpha: (1 - alpha_f) F(u^{n+1}) + alpha_f F(u^n); Kelvin-Voigt: q K (u^{n+1} - u^n)
+					RHS[i * N_VARS + U_VAR + d] += (1.0 - wf_i) * (fluxes_n[N_VARS * conn_id + U_VAR + d] + fluxes_biot_n[N_VARS * conn_id + U_VAR + d] -
+						fluxes[N_VARS * conn_id + U_VAR + d] - fluxes_biot[N_VARS * conn_id + U_VAR + d]) + kv_conn[d];
+				}
 				CFL_mech[d] += fluxes_ref[N_VARS * conn_id + U_VAR + d] + fluxes[N_VARS * conn_id + U_VAR + d] +
-								fluxes_biot_ref[N_VARS * conn_id + U_VAR + d] + fluxes_biot[N_VARS * conn_id + U_VAR + d];
-				Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += (rhs[NT_ * conn_id + U_VAR + d] + rhs_biot[NT_ * conn_id + U_VAR + d]) * op_ders_arr[(i * N_OPS + GRAV_OP) * NC_];
+					fluxes_biot_ref[N_VARS * conn_id + U_VAR + d] + fluxes_biot[N_VARS * conn_id + U_VAR + d];
+				Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += wf_i * (rhs[NT_ * conn_id + U_VAR + d] + rhs_biot[NT_ * conn_id + U_VAR + d]) * op_ders_arr[(i * N_OPS + GRAV_OP) * NC_];
 			}
 			RHS[i * N_VARS + P_VAR] += dt * op_vals_arr[upwd_idx * N_OPS + FLUX_OP] * gamma;
 			//RHS[i * N_VARS + P_VAR] += op_vals_arr[i * N_OPS + ACC_OP] * (fluxes_biot_ref[N_VARS * conn_id + P_VAR] + fluxes_biot[N_VARS * conn_id + P_VAR]) -
@@ -661,31 +843,37 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 			Jac[diag_idx + P_VAR * N_VARS + P_VAR] += V[i] * comp_mult * op_vals_arr[i * N_OPS + ACC_OP];
 		}
 
-		if (!FIND_EQUILIBRIUM)
+		if (dyn_i)
 		{
-			// momentum inertia
-			if (dt > 0.0)
+			// momentum inertia: rho * V * [(1 - alpha_m) a^{n+1} + alpha_m a^n], with a^{n+1}(u^{n+1}) given by time_integration
+			for (d = 0; d < ND_; d++)
 			{
-				for (d = 0; d < ND_; d++)
-				{
-					RHS[i * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] * (X[i * N_VARS + U_VAR + d] - Xn[i * N_VARS + U_VAR + d]) / dt / dt / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-					Jac[diag_idx + (U_VAR + d) * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] / dt / dt / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-				}
-
-				if (dt1 > 0.0)
-				{
-					for (d = 0; d < ND_; d++)
-					{
-						RHS[i * N_VARS + U_VAR + d] += -momentum_inertia * mesh->volume[i] * (Xn[i * N_VARS + U_VAR + d] - Xn1[i * N_VARS + U_VAR + d]) / dt / dt1 / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-					}
-				}
+				acc_cur[d] = scheme_acceleration(i, d);
+				RHS[i * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] * (ti.w_m * acc_cur[d] + (1.0 - ti.w_m) * acc[ND_ * i + d]) / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
+				Jac[diag_idx + (U_VAR + d) * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] * ti.w_m * ti.da_du / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
 			}
 		}
 
 		// calc CFL for reservoir cells, not connected with wells
 		if (i < n_res_blocks)
 		{
-			if (fabs(momentum_inertia) > 0.0 && dt > 0.0)
+			if (dyn_i && time_integration != BACKWARD_EULER)
+			{
+				CFL_max_local = 0.0;
+				bool moving = false;
+				for (uint8_t dd = 0; dd < ND_; dd++)
+				{
+					if (fabs(acc_cur[dd]) > 0.0)
+					{
+						tmp = engine_pm_cpu::BAR_DAY2_TO_PA_S2 * CFL_mech[dd] / momentum_inertia / mesh->volume[i] / acc_cur[dd];
+						CFL_max_local += tmp * tmp;
+						moving = true;
+					}
+				}
+				if (moving)
+					CFL_max_global = std::max(CFL_max_global, sqrt(CFL_max_local));
+			}
+			else if (fabs(momentum_inertia) > 0.0 && dt > 0.0)
 			{
 				CFL_max_local = 0.0;
 				for (uint8_t d = 0; d < ND_; d++)
@@ -747,6 +935,7 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS)
 {
 	dt = _dt;
+	update_time_integration_coefs(dt);
 	// We need extended connection list for that with all connections for each block
 
 	index_t n_blocks = mesh->n_blocks;
@@ -818,11 +1007,19 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 
 		//jac_idx = N_VARS_SQ * csr_idx_start;
 		CFL_mech[0] = CFL_mech[1] = CFL_mech[2] = biot_mult = 0.0;
+		// time integration weights of this row: only matrix cells carry inertia / alpha-weighted internal forces;
+		// fault (contact) rows are constraints at t^{n+1} and well rows are untouched
+		const bool dyn_i = ti.active && (i < n_matrix);
+		const value_t wf_i = dyn_i ? ti.w_f : 1.0;
+		const value_t wkv_i = dyn_i ? ti.q_kv : 0.0;
+		const bool weighted_i = dyn_i && (wf_i != 1.0 || wkv_i != 0.0);
+		value_t kv_conn[ND_], acc_cur[ND_];
 		for (; block_m[conn_id] == i && conn_id < n_conns; conn_id++)
 		{
 			j = block_p[conn_id];
 			if (j >= n_res_blocks && j < n_blocks)
 				connected_with_well = 1;
+			kv_conn[0] = kv_conn[1] = kv_conn[2] = 0.0;
 
 			// Fluid flux evaluation & biot flux
 			gamma = 0.0;
@@ -881,13 +1078,15 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 						{
 							fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * (X[stencil[conn_st_id] * N_VARS + U_VAR + v] - Xref[stencil[conn_st_id] * N_VARS + U_VAR + v]);
 							fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * (X[stencil[conn_st_id] * N_VARS + U_VAR + v] - Xref[stencil[conn_st_id] * N_VARS + U_VAR + v]);
-							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
-							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
+							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += (wf_i + wkv_i) * tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
+							Jac[st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] += wf_i * tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v];
+							if (wkv_i != 0.0)
+								kv_conn[d] += wkv_i * tran[conn_st_id * N_VARS_SQ + d * N_VARS + U_VAR + v] * (X[stencil[conn_st_id] * N_VARS + U_VAR + v] - Xn[stencil[conn_st_id] * N_VARS + U_VAR + v]);
 						}
 						fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * (X[stencil[conn_st_id] * N_VARS + P_VAR] - p_ref_cur);
 						fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR] * (X[stencil[conn_st_id] * N_VARS + P_VAR] - p_ref_cur);
-						Jac[st_id * N_VARS_SQ + d * N_VARS + P_VAR] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR];
-						Jac[st_id * N_VARS_SQ + d * N_VARS + P_VAR] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR];
+						Jac[st_id * N_VARS_SQ + d * N_VARS + P_VAR] += wf_i * tran[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR];
+						Jac[st_id * N_VARS_SQ + d * N_VARS + P_VAR] += wf_i * tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + P_VAR];
 					}
 					// mass balance
 					for (v = 0; v < N_VARS; v++)
@@ -920,6 +1119,9 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 							fluxes[N_VARS * conn_id + U_VAR + d] += tran[conn_st_id * N_VARS_SQ + d * N_VARS + v] * (cur_bc[v] - ref_bc[v]);
 							fluxes_biot[N_VARS * conn_id + U_VAR + d] += tran_biot[conn_st_id * N_VARS_SQ + d * N_VARS + v] * (cur_bc[v] - ref_bc[v]);
 						}
+						if (wkv_i != 0.0)
+							for (v = 0; v < ND_; v++)
+								kv_conn[d] += wkv_i * tran[conn_st_id * N_VARS_SQ + d * N_VARS + v] * (cur_bc[v] - cur_bc_prev[v]);
 					}
 					// mass balance
 					for (v = 0; v < N_VARS; v++)
@@ -945,9 +1147,15 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 			{
 				RHS[i * N_VARS + U_VAR + d] += fluxes_ref[N_VARS * conn_id + U_VAR + d] + fluxes[N_VARS * conn_id + U_VAR + d];
 				RHS[i * N_VARS + U_VAR + d] += fluxes_biot_ref[N_VARS * conn_id + U_VAR + d] + fluxes_biot[N_VARS * conn_id + U_VAR + d];
+				if (weighted_i)
+				{
+					// generalized-alpha: (1 - alpha_f) F(u^{n+1}) + alpha_f F(u^n); Kelvin-Voigt: q K (u^{n+1} - u^n)
+					RHS[i * N_VARS + U_VAR + d] += (1.0 - wf_i) * (fluxes_n[N_VARS * conn_id + U_VAR + d] + fluxes_biot_n[N_VARS * conn_id + U_VAR + d] -
+						fluxes[N_VARS * conn_id + U_VAR + d] - fluxes_biot[N_VARS * conn_id + U_VAR + d]) + kv_conn[d];
+				}
 				CFL_mech[d] += fluxes_ref[N_VARS * conn_id + U_VAR + d] + fluxes[N_VARS * conn_id + U_VAR + d] +
 					fluxes_biot_ref[N_VARS * conn_id + U_VAR + d] + fluxes_biot[N_VARS * conn_id + U_VAR + d];
-				Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += (rhs[NT_ * conn_id + U_VAR + d] + rhs_biot[NT_ * conn_id + U_VAR + d]) * op_ders_arr[(i * N_OPS + GRAV_OP) * NC_];
+				Jac[diag_idx + (U_VAR + d) * N_VARS + P_VAR] += wf_i * (rhs[NT_ * conn_id + U_VAR + d] + rhs_biot[NT_ * conn_id + U_VAR + d]) * op_ders_arr[(i * N_OPS + GRAV_OP) * NC_];
 			}
 			RHS[i * N_VARS + P_VAR] += dt * op_vals_arr[upwd_idx * N_OPS + FLUX_OP] * gamma;
 			//RHS[i * N_VARS + P_VAR] += op_vals_arr[i * N_OPS + ACC_OP] * (fluxes_biot_ref[N_VARS * conn_id + P_VAR] + fluxes_biot[N_VARS * conn_id + P_VAR]) -
@@ -992,31 +1200,37 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 			Jac[diag_idx + P_VAR * N_VARS + P_VAR] += V[i] * comp_mult * op_vals_arr[i * N_OPS + ACC_OP];
 		}
 
-		if (!FIND_EQUILIBRIUM)
+		if (dyn_i)
 		{
-			// momentum inertia
-			if (dt > 0.0)
+			// momentum inertia: rho * V * [(1 - alpha_m) a^{n+1} + alpha_m a^n], with a^{n+1}(u^{n+1}) given by time_integration
+			for (d = 0; d < ND_; d++)
 			{
-				for (d = 0; d < ND_; d++)
-				{
-					RHS[i * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] * (X[i * N_VARS + U_VAR + d] - Xn[i * N_VARS + U_VAR + d]) / dt / dt / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-					Jac[diag_idx + (U_VAR + d) * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] / dt / dt / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-				}
-
-				if (dt1 > 0.0)
-				{
-					for (d = 0; d < ND_; d++)
-					{
-						RHS[i * N_VARS + U_VAR + d] += -momentum_inertia * mesh->volume[i] * (Xn[i * N_VARS + U_VAR + d] - Xn1[i * N_VARS + U_VAR + d]) / dt / dt1 / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
-					}
-				}
+				acc_cur[d] = scheme_acceleration(i, d);
+				RHS[i * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] * (ti.w_m * acc_cur[d] + (1.0 - ti.w_m) * acc[ND_ * i + d]) / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
+				Jac[diag_idx + (U_VAR + d) * N_VARS + U_VAR + d] += momentum_inertia * mesh->volume[i] * ti.w_m * ti.da_du / engine_pm_cpu::BAR_DAY2_TO_PA_S2;
 			}
 		}
 
 		// calc CFL for reservoir cells, not connected with wells
 		if (i < n_res_blocks)
 		{
-			if (fabs(momentum_inertia) > 0.0 && dt > 0.0)
+			if (dyn_i && time_integration != BACKWARD_EULER)
+			{
+				CFL_max_local = 0.0;
+				bool moving = false;
+				for (uint8_t dd = 0; dd < ND_; dd++)
+				{
+					if (fabs(acc_cur[dd]) > 0.0)
+					{
+						tmp = engine_pm_cpu::BAR_DAY2_TO_PA_S2 * CFL_mech[dd] / momentum_inertia / mesh->volume[i] / acc_cur[dd];
+						CFL_max_local += tmp * tmp;
+						moving = true;
+					}
+				}
+				if (moving)
+					CFL_max_global = std::max(CFL_max_global, sqrt(CFL_max_local));
+			}
+			else if (fabs(momentum_inertia) > 0.0 && dt > 0.0)
 			{
 				CFL_max_local = 0.0;
 				for (uint8_t d = 0; d < ND_; d++)
@@ -1855,6 +2069,9 @@ int engine_pm_cpu::post_newtonloop(value_t deltat, value_t time, index_t converg
 		// fault contacts
 		for (auto& contact : contacts)
 			contact.states_n = contact.states;
+
+		// velocity / acceleration of the dynamic scheme (uses X = u^{n+1}, Xn = u^n: must precede the rotation below)
+		commit_dynamic_state(deltat);
 
 		Xn1 = Xn;
 		Xn = X;

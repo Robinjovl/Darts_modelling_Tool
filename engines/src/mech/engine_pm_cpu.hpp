@@ -97,6 +97,48 @@ public:
   value_t dt1;
   value_t momentum_inertia;
 
+  // ---- time integration of the momentum inertia term (active only when momentum_inertia != 0) ----
+  // BACKWARD_EULER   : legacy 3-point backward scheme on (Xn1, Xn, X) with (dt1, dt), first order
+  // NEWMARK          : Newmark-beta in displacement form (Chopra 2012 / Jacobsen et al. 2024), parameters newmark_gamma, newmark_beta
+  // GENERALIZED_ALPHA: Chung & Hulbert (1993); alpha_f weights the internal forces, alpha_m the inertia;
+  //                    use set_generalized_alpha(rho_inf) or set_hht_alpha(alpha) to set consistent (alpha_m, alpha_f, gamma, beta)
+  // BATHE            : Bathe composite scheme (Bathe 2007): sub-step 1 = trapezoidal rule over bathe_gamma*dt,
+  //                    sub-step 2 = 3-point backward formula over the remaining (1-bathe_gamma)*dt; the driver must call the two
+  //                    sub-steps as consecutive timesteps with bathe_substep = 1 and 2
+  enum TimeIntegration : int { BACKWARD_EULER = 0, NEWMARK = 1, GENERALIZED_ALPHA = 2, BATHE = 3 };
+  TimeIntegration time_integration;
+  value_t newmark_gamma, newmark_beta;
+  value_t alpha_f, alpha_m;
+  // Kelvin-Voigt (stiffness-proportional) artificial viscosity: adds q * K * (u^{n+1} - u^n) to the momentum balance of
+  // matrix cells, i.e. eta_KV = q * dt (Day et al. 2005); q = 0 disables it
+  value_t kv_damping;
+  value_t bathe_gamma;
+  int bathe_substep;
+  // velocity [m/day] and acceleration [m/day^2] at the last converged time level (n), and velocity at level n-1
+  // (only the ND_ * n_matrix leading entries are used; sized ND_ * n_blocks)
+  std::vector<value_t> vel, acc, vel_n1;
+
+  void set_newmark(value_t gamma, value_t beta);
+  void set_generalized_alpha(value_t rho_inf);
+  void set_hht_alpha(value_t alpha);
+  void reset_dynamic_state();
+
+  struct TimeIntegrationCoefs
+  {
+	bool active;            // inertia term is assembled
+	value_t w_f, w_m;       // 1 - alpha_f, 1 - alpha_m
+	value_t q_kv;           // Kelvin-Voigt coefficient
+	value_t gamma, beta;    // Newmark parameters in use
+	value_t ca_u, ca_v, ca_a; // a^{n+1} = ca_u (u^{n+1} - u^n) - ca_v v^n - ca_a a^n
+	value_t c1, c2, c3;     // Bathe second sub-step: v^{n+1} = c1 u^n + c2 u^{n+g} + c3 u^{n+1}
+	value_t da_du;          // d a^{n+1} / d u^{n+1}
+  };
+  TimeIntegrationCoefs ti;
+  void update_time_integration_coefs(value_t dt_);
+  value_t scheme_acceleration(index_t i, uint8_t d) const;
+  value_t scheme_velocity(index_t i, uint8_t d, value_t a_new) const;
+  void commit_dynamic_state(value_t deltat);
+
   // maximum absolute values in rows of jacobian
   std::vector<value_t> max_row_values;
 

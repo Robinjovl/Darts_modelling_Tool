@@ -64,7 +64,11 @@ from darts.nonlinear_solvers.base import (
     SolverStats,
     write_to_log,
 )
-from darts.nonlinear_solvers.mechanics import MechanicsNewtonSolver
+from darts.nonlinear_solvers.mechanics import (
+    TIME_INTEGRATION_SCHEMES,
+    MechanicsNewtonSolver,
+    configure_time_integration,
+)
 from darts.nonlinear_solvers.newton import (
     NewtonSolver,
     NewtonSpec,
@@ -84,6 +88,8 @@ __all__ = [
     "NonlinearSolver",
     "NewtonSolver",
     "MechanicsNewtonSolver",
+    "configure_time_integration",
+    "TIME_INTEGRATION_SCHEMES",
     "NonlinearStatus",
     "SolverStats",
     "write_to_log",

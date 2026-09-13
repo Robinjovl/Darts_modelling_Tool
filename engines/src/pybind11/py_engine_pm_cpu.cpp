@@ -51,6 +51,21 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_readwrite("dt", &engine_pm_cpu::dt) \
 		.def_readwrite("dt1", &engine_pm_cpu::dt1) \
 		.def_readwrite("momentum_inertia", &engine_pm_cpu::momentum_inertia) \
+		.def_readwrite("time_integration", &engine_pm_cpu::time_integration) \
+		.def_readwrite("newmark_gamma", &engine_pm_cpu::newmark_gamma) \
+		.def_readwrite("newmark_beta", &engine_pm_cpu::newmark_beta) \
+		.def_readwrite("alpha_f", &engine_pm_cpu::alpha_f) \
+		.def_readwrite("alpha_m", &engine_pm_cpu::alpha_m) \
+		.def_readwrite("kv_damping", &engine_pm_cpu::kv_damping) \
+		.def_readwrite("bathe_gamma", &engine_pm_cpu::bathe_gamma) \
+		.def_readwrite("bathe_substep", &engine_pm_cpu::bathe_substep) \
+		.def_readwrite("vel", &engine_pm_cpu::vel) \
+		.def_readwrite("acc", &engine_pm_cpu::acc) \
+		.def_readwrite("vel_n1", &engine_pm_cpu::vel_n1) \
+		.def("set_newmark", &engine_pm_cpu::set_newmark, "Newmark-beta (displacement form): gamma, beta") \
+		.def("set_generalized_alpha", &engine_pm_cpu::set_generalized_alpha, "Chung-Hulbert generalized-alpha from rho_inf in [0,1]") \
+		.def("set_hht_alpha", &engine_pm_cpu::set_hht_alpha, "Hilber-Hughes-Taylor alpha in [-1/3, 0]") \
+		.def("reset_dynamic_state", &engine_pm_cpu::reset_dynamic_state, "zero velocities/accelerations (call when switching to dynamic mode)") \
 		.def_readwrite("Xref", &engine_pm_cpu::Xref) \
 		.def_readwrite("Xn_ref", &engine_pm_cpu::Xn_ref) \
 		.def_readwrite("dX", &engine_pm_cpu::dX) \
@@ -68,6 +83,13 @@ void pybind_engine_pm_cpu(py::module& m)
 		.def_property_readonly_static("ACC_OP", [](py::object) {return engine_pm_cpu::ACC_OP; }) \
 		.def_property_readonly_static("FLUX_OP", [](py::object) {return engine_pm_cpu::FLUX_OP; }) \
 		.def_property_readonly_static("GRAV_OP", [](py::object) {return engine_pm_cpu::GRAV_OP; });
+
+	py::enum_<engine_pm_cpu::TimeIntegration>(m, "time_integration")
+		.value("BACKWARD_EULER", engine_pm_cpu::BACKWARD_EULER)
+		.value("NEWMARK", engine_pm_cpu::NEWMARK)
+		.value("GENERALIZED_ALPHA", engine_pm_cpu::GENERALIZED_ALPHA)
+		.value("BATHE", engine_pm_cpu::BATHE)
+		.export_values();
 
 	py::bind_vector<std::vector<pm::contact>>(m, "contact_vector")
 		.def(py::pickle(

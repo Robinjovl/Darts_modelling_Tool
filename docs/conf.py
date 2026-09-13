@@ -37,7 +37,7 @@ extensions = [
     'sphinxcontrib.bibtex'
 ]
 
-myst_enable_extensions = ["linkify"]
+myst_enable_extensions = ["linkify", "dollarmath"]
 
 # bibtex file containing references (in same directory as conf.py)
 bibtex_bibfiles = ['./references.bib']

@@ -1,4 +1,6 @@
 from darts.models.darts_model import DartsModel
+from darts.nonlinear_solvers.mechanics import configure_time_integration
+from darts.engines import time_integration
 
 from model import Model
 from darts.engines import *
@@ -23,6 +25,8 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     mult_dt = m.ts_control.dt_mult
     max_dt = m.ts_control.dt_max
     m.e = m.physics.engine
+    # dynamic stage: below this dt a failing Newmark-family step is redone with backward Euler (see below)
+    dt_dyn_fallback = getattr(m, 'dt_dyn_fallback', 0.2 * 5.e-4 / 86400)
 
     # get current engine time
     t = m.e.t
@@ -54,15 +58,30 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
         converged = m.nonlinear_solver.run_timestep(dt, t)
 
         if converged:
+            if getattr(m, '_be_fallback', False):
+                m.physics.engine.time_integration = m._saved_scheme
+                m._be_fallback = False
             t += dt
             ts = ts + 1
             print("# %d \tT = %3g\tDT = %2g\tNI = %d\tLI=%d"
                    % (ts, t, dt, m.nonlinear_solver.status.n_newton, m.nonlinear_solver.status.n_linear))
             if not init_step:
-                m.reservoir.write_to_vtk(m.output_directory, m.ith_step + 1, m.physics.engine, dt)
+                dynamic = m.physics.engine.momentum_inertia > 0.0
+                if dynamic:
+                    m.n_dynamic_steps = getattr(m, 'n_dynamic_steps', 0) + 1
+                vtk_every = getattr(m, 'vtk_every_dynamic', 1) if dynamic else 1
+                if vtk_every > 0 and (m.ith_step + 1) % vtk_every == 0:
+                    m.reservoir.write_to_vtk(m.output_directory, m.ith_step + 1, m.physics.engine, dt)
                 m.ith_step += 1
-                if m.ith_step > 1000:
+                step_callback = getattr(m, 'step_callback', None)
+                if step_callback is not None:
+                    step_callback(m, t, dt, dynamic)
+                if m.ith_step > getattr(m, 'max_steps', 1000):
                     exit(0)
+                if dynamic and m.n_dynamic_steps >= getattr(m, 'max_dynamic_steps', np.inf):
+                    print('Reached max_dynamic_steps = %d, stopping the run' % m.n_dynamic_steps)
+                    m.stop_requested = True
+                    break
 
             if m.nonlinear_solver.status.n_newton < 4:
                 dt *= 1.5
@@ -76,11 +95,31 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
             exit(-1)
         else:
             new_time -= dt
-            if dt / mult_dt > 1.e-8 / 86400:
+            engine = m.physics.engine
+            dynamic = engine.momentum_inertia > 0.0
+            if dynamic and not getattr(m, '_be_fallback', False) and dt < dt_dyn_fallback and \
+                    engine.time_integration != time_integration.BACKWARD_EULER:
+                # A velocity-state scheme (Newmark / generalized-alpha / Bathe) cannot be relaxed by cutting dt:
+                # the free-flight motion u^n + dt v^n is imposed at any dt, so a stick/slip Newton limit cycle of the
+                # contact return mapping at the rupture front persists (and below ~1e-6 s the 1/(beta dt^2)
+                # amplification of displacement round-off floors the momentum residual). Backward Euler freezes the
+                # matrix for small dt and converges, so the failing step is redone with backward Euler (its
+                # velocity/acceleration state is carried on), after which the selected scheme is restored.
+                m._be_fallback = True
+                m._saved_scheme = engine.time_integration
+                engine.time_integration = time_integration.BACKWARD_EULER
+                m.n_be_fallbacks = getattr(m, 'n_be_fallbacks', 0) + 1
+                print("Dynamic step failed with the %s scheme at dt = %.3e s: retrying with backward Euler"
+                      % (str(m._saved_scheme).split('.')[-1], dt * 86400.0))
+            elif dt / mult_dt > 1.e-8 / 86400:
                 dt /= mult_dt
 
             if dt < 1.e-2 / 86400.0 and m.physics.engine.momentum_inertia == 0.0 and m.enable_dynamic_mode: # less than smth -> go to fully dynamic (implicit) stepping
                 m.physics.engine.momentum_inertia = 2406.0
+                # time integration of the inertia term (velocity/acceleration state starts from rest)
+                ti = dict(m.time_integration)
+                configure_time_integration(m.physics.engine, ti.pop('scheme', 'backward_euler'), **ti)
+                print('Time integration: ' + str(m.time_integration))
                 dt = 5.e-4 / 86400 # 500 microseconds
                 max_dt = 5.e-4 / 86400 # 500 microseconds
                 m.solver_phase = 'dynamic'
@@ -124,7 +163,11 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
                                                         stats.n_newton_total, stats.n_newton_wasted,
                                                         stats.n_linear_total, stats.n_linear_wasted))
 def get_output_folder(config={'mode': 'quasi_static', 'depletion': {'mode': 'uniform'}, 'friction_law': 'static'}):
-    return 'sol_' + config['mode'] + '_' + config['depletion']['mode'] + '_' + config['friction_law']
+    name = 'sol_' + config['mode'] + '_' + config['depletion']['mode'] + '_' + config['friction_law']
+    ti = config.get('time_integration')
+    if ti and ti.get('scheme', 'backward_euler') != 'backward_euler':
+        name += '_' + '_'.join(str(v) for v in ti.values())
+    return name
 def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=False):
     t = config['timesteps']
 
@@ -188,6 +231,8 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
         m.ts_control.dt_mult = 10.0
         run_python(m, dt)
         ith_step += 1
+        if getattr(m, 'stop_requested', False):
+            break
 
     m.print_timers()
     m.print_stat()

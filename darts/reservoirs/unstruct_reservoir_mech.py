@@ -1607,9 +1607,26 @@ class UnstructReservoirMech:
                             )
                         self.strain_prev = cell_data['strain'][-1]
 
-                # if engine.momentum_inertia > 0.0 and dt != 0:  # dynamic simulation
-                if dt != 0:
-                    # velocity
+                vel = np.asarray(getattr(engine, 'vel', []))
+                n_dim = 3
+                if getattr(
+                    engine, 'momentum_inertia', 0.0
+                ) > 0.0 and vel.size >= n_dim * (start_geom_cell_id + cell_size):
+                    # dynamic simulation: velocity at the last converged time level from the
+                    # engine's time-integration state [m/day] -> [m/s]
+                    days2sec = 86400
+                    for d, key in enumerate(['v_x', 'v_y', 'v_z']):
+                        if key not in cell_data:
+                            cell_data[key] = []
+                        cell_data[key].append(
+                            vel[
+                                n_dim * start_geom_cell_id + d : n_dim
+                                * (cell_size + start_geom_cell_id) : n_dim
+                            ]
+                            / days2sec
+                        )
+                elif dt != 0:
+                    # velocity from the last Newton update (exact only for single-iteration steps)
                     days2sec = 86400
                     if 'v_x' not in cell_data:
                         cell_data['v_x'] = []

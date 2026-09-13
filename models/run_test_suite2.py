@@ -115,6 +115,10 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
 
     test_dirs_mech += ['1ph_1comp_poroelastic_convergence']  # NE = 2
     test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
+    # 1D elastic wave pulse (dynamic poromechanics, inertia time integration): backward Euler,
+    # generalized-alpha and Bathe schemes compared against small npz references
+    test_dirs_mech += ['elastic_wave_1d']
+    test_args_mech += [[[case] for case in ('backward_euler', 'generalized_alpha_0.5', 'bathe')]]
 
     if platform == 'cpu':
         test_dirs_mech += ['SPE10_mech']

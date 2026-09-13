@@ -23,11 +23,91 @@ gating) is added by subclassing and overriding the hooks
 :meth:`compute_mech_residual`, :meth:`on_mech_iteration`,
 :meth:`check_early_break` and :meth:`finalize_convergence` — not by copying the
 loop again.
+
+Dynamic (inertial) runs of ``engine_pm_cpu`` select the time integration of the
+momentum inertia term with :func:`configure_time_integration`; the Bathe
+composite scheme needs two consecutive engine sub-steps per timestep, which
+:meth:`MechanicsNewtonSolver.run_timestep` drives transparently (the
+:meth:`on_substep` hook lets a model update time-dependent boundary data at the
+sub-step time).
 """
 
 import numpy as np
 
 from darts.nonlinear_solvers.newton import NewtonSolver
+
+#: known schemes for :func:`configure_time_integration`
+TIME_INTEGRATION_SCHEMES = (
+    "backward_euler",
+    "newmark",
+    "generalized_alpha",
+    "hht",
+    "bathe",
+)
+
+
+def configure_time_integration(engine, scheme: str = "backward_euler", **params):
+    """Select the time integration of the inertia term of ``engine_pm_cpu``.
+
+    Call it when switching a run to dynamic mode (after ``engine.momentum_inertia``
+    is set). It zeroes the engine's velocity/acceleration state
+    (``reset_dynamic_state``: the quasi-static state is at rest) and sets:
+
+    - ``'backward_euler'``: legacy 3-point backward Euler (first order, strongly
+      dissipative); no parameters.
+    - ``'newmark'``: Newmark-beta in displacement form; ``gamma`` (0.5),
+      ``beta`` (0.25). ``gamma > 0.5`` with ``beta = (gamma + 0.5)**2 / 4`` gives
+      first-order numerical damping.
+    - ``'generalized_alpha'``: Chung-Hulbert generalized-alpha from ``rho_inf``
+      in [0, 1] (default 0.8; 1 = no dissipation).
+    - ``'hht'``: Hilber-Hughes-Taylor from ``alpha`` in [-1/3, 0] (default
+      -0.05).
+    - ``'bathe'``: Bathe composite scheme (trapezoidal sub-step over
+      ``bathe_gamma * dt`` followed by a 3-point backward sub-step), driven by
+      :meth:`MechanicsNewtonSolver.run_timestep`; ``bathe_gamma`` (0.5).
+
+    Common option ``kv_damping`` (default 0): Kelvin-Voigt artificial viscosity
+    ``q`` adding ``q * K * (u^{n+1} - u^n)`` (eta = q dt) to the momentum balance
+    of matrix cells -- the stiffness-proportional damping that removes grid-scale
+    ringing behind sharp wave fronts (Day et al. 2005 use q ~ 0.1-0.25).
+    """
+    from darts.engines import time_integration as TI
+
+    if scheme not in TIME_INTEGRATION_SCHEMES:
+        raise ValueError(
+            f"unknown time integration scheme {scheme!r}; "
+            f"choose from {TIME_INTEGRATION_SCHEMES}"
+        )
+    known = {"gamma", "beta", "rho_inf", "alpha", "bathe_gamma", "kv_damping"}
+    unknown = set(params) - known
+    if unknown:
+        raise ValueError(f"unknown time integration parameter(s): {sorted(unknown)}")
+    engine.reset_dynamic_state()
+    if scheme == "backward_euler":
+        engine.time_integration = TI.BACKWARD_EULER
+    elif scheme == "newmark":
+        engine.set_newmark(params.get("gamma", 0.5), params.get("beta", 0.25))
+    elif scheme == "generalized_alpha":
+        engine.set_generalized_alpha(params.get("rho_inf", 0.8))
+    elif scheme == "hht":
+        engine.set_hht_alpha(params.get("alpha", -0.05))
+    elif scheme == "bathe":
+        engine.time_integration = TI.BATHE
+        engine.bathe_gamma = params.get("bathe_gamma", 0.5)
+        engine.bathe_substep = 1
+    engine.kv_damping = params.get("kv_damping", 0.0)
+
+
+def _uses_bathe(engine) -> bool:
+    """True when the engine integrates inertia with the Bathe composite scheme."""
+    ti = getattr(engine, "time_integration", None)
+    if ti is None or getattr(engine, "momentum_inertia", 0.0) == 0.0:
+        return False
+    try:
+        from darts.engines import time_integration as TI
+    except ImportError:  # pragma: no cover - fake engines in unit tests
+        return False
+    return ti == TI.BATHE
 
 
 class MechanicsNewtonSolver(NewtonSolver):
@@ -76,8 +156,48 @@ class MechanicsNewtonSolver(NewtonSolver):
         slip-area gating). Default: pass the verdict through unchanged."""
         return converged
 
+    def on_substep(self, substep: int, dt_sub: float, t_sub: float):
+        """Hook run before each Bathe sub-step (``substep`` 1 or 2) covering
+        ``[t_sub, t_sub + dt_sub]``: a model with time-dependent boundary data
+        should update it here for the sub-step end time. Default: nothing
+        (boundary data set once per timestep by the driver applies to both
+        sub-steps)."""
+        return None
+
     # ------------------------------------------------------------ loop
     def run_timestep(self, dt: float, t: float, verbose: int | None = None) -> bool:
+        """Solve one timestep. With the Bathe composite scheme the timestep is
+        split into two engine sub-steps (trapezoidal over ``bathe_gamma * dt``,
+        then 3-point backward over the rest), each committed by the engine; a
+        failed sub-step leaves the engine at the last committed sub-state and the
+        driver cuts ``dt`` as usual (after a failed second sub-step the engine
+        state is at ``t + bathe_gamma * dt``)."""
+        engine = self.engine
+        if not _uses_bathe(engine):
+            return self._run_single_step(dt, t, verbose)
+
+        gamma = engine.bathe_gamma
+        n_newton = n_linear = 0
+        t_sub = t
+        converged = False
+        for substep, dt_sub in ((1, gamma * dt), (2, (1.0 - gamma) * dt)):
+            engine.bathe_substep = substep
+            self.on_substep(substep, dt_sub, t_sub)
+            converged = self._run_single_step(dt_sub, t_sub, verbose)
+            # status.n_newton reports the Newton count of the harder sub-step (the per-solve
+            # measure that timestep-growth rules compare against), status.n_linear the total;
+            # self.stats accumulates both sub-steps as separate solves
+            n_newton = max(n_newton, self.status.n_newton)
+            n_linear += self.status.n_linear
+            if not converged:
+                break
+            t_sub += dt_sub
+        engine.bathe_substep = 1
+        self.status.n_newton = n_newton
+        self.status.n_linear = n_linear
+        return converged
+
+    def _run_single_step(self, dt: float, t: float, verbose: int | None = None) -> bool:
         model = self.model
         engine = self.engine
         spec = self.spec
