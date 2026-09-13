@@ -101,8 +101,8 @@ class Model(THMCModel):
         self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-8, max_iterations=5000, restart=50,
                                   proprietary_linear_type=sim_params.cpu_gmres_fs_cpr)
         super().set_solver()
-        self.ts_control.dt_first = 0.0001
-        self.ts_control.dt_mult = 2
+        self.ts_control.dt_first = 0.01
+        self.ts_control.dt_mult = 8
         self.ts_control.dt_max = 5
         self.nonlinear_solver.spec.tolerance = 1e-6
         self.params.tolerance_linear = self.linear_solver.spec.tolerance

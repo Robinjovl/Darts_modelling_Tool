@@ -297,7 +297,8 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     max_dt = report_step
     m.max_dt = max_dt
     m.ts_control.dt_max = max_dt
-    first_ts = report_step
+
+    first_ts = min(transient_first_ts, report_step)
     m.ts_control.dt_first = first_ts
     m.set_boundary_conditions_after_initialization()
 
