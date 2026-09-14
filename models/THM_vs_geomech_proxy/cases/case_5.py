@@ -90,7 +90,11 @@ def input_data_case_5(physics_type='single_phase_thermal', mesh_dir='case_5'):
     idata.rock.E = E_sand + E_heterogeneity * shale_tags * (E_shale - E_sand)
 
     nu_sand  = 0.20  # Poisson ratio
-    nu_shale = 0.30
+    # 0.25 rather than 0.30, matching input_data_case_4: a nu contrast of 0.10
+    # stalls the FS-CPR preconditioner, 0.05 stays solvable. Inert while
+    # nu_heterogeneity is 0.0, but it is this value that applies once the dial
+    # is turned up.
+    nu_shale = 0.25
     idata.rock.nu = nu_sand + nu_heterogeneity * shale_tags * (nu_shale - nu_sand)
 
     biot_sand  = 0.8

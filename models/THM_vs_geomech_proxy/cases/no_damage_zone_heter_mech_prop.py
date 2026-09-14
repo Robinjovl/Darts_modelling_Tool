@@ -19,7 +19,7 @@ def input_data_no_damage_zone_heter_mech_prop(physics_type='single_phase_thermal
     E_shale = 10.0 * 1e4  # [bars]
     idata.rock.E = np.array([E_sand, E_shale, E_shale])
 
-    nu_sand  = 0.25  # Poisson ratio
+    nu_sand  = 0.20  # Poisson ratio
     nu_shale = 0.25
     idata.rock.nu = np.array([nu_sand, nu_shale, nu_shale])
 
