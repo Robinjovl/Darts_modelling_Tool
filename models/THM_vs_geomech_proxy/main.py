@@ -9,6 +9,8 @@ from datetime import datetime
 from darts.engines import redirect_darts_output, timer_node
 from plot_vtk import plot_vtk_pyvista
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 def is_struct_like_case(case):
     # struct-like cases end in NX_NY_NZ (e.g. '17_17_15', 'zero_rate_17_17_15') and are
@@ -16,6 +18,67 @@ def is_struct_like_case(case):
     # and must not take the mesh-generation path (which reads idata.other.nx/ny/nz).
     parts = os.path.basename(case).split('_')
     return len(parts) >= 3 and all(p.isdigit() for p in parts[-3:])
+
+
+def is_unstructured_generated_case(case):
+    # Named cases whose mesh is built by a dedicated gmsh script rather than by
+    # the structured box path in reservoir.py. Listing them here is what lets a
+    # single generate_mesh flag cover every case that can regenerate its mesh.
+    base = os.path.basename(case)
+    return (base == 'case_5' or base.startswith('case_5_mesh_')
+            or base.startswith('no_damage_zone'))
+
+
+def supports_mesh_generation(case):
+    # True when the mesh of `case` can be (re)generated from the scripts in this
+    # folder. case_1..case_4 are not included: they share meshes/case_1/mesh.msh,
+    # a committed tetrahedral mesh with no generator in the repo (generate_box_3d
+    # produces hexahedra), so they keep loading the committed file.
+    return is_struct_like_case(case) or is_unstructured_generated_case(case)
+
+
+def generate_unstructured_mesh(case, idata=None, physics_type='single_phase_thermal',
+                               wells_type=None, bulk_mesh_size=200.0):
+    """
+    (Re)generate the mesh of a named unstructured case.
+
+    Structured NX_NY_NZ cases are meshed inside the reservoir instead - see
+    UnstructReservoirCustom.field_reservoir.
+
+    :param case: case name, e.g. 'case_5' or 'no_damage_zone'.
+    :param idata: input data of the case; read via set_case.set_input_data when None.
+    :param physics_type: physics used to build idata when it is not supplied.
+    :param wells_type: well configuration used to build idata when it is not supplied.
+    :param bulk_mesh_size: far-field Gmsh size [m]; the well size keeps the 1:20 ratio.
+    :return: the mesh file that was written, or None when the case has no generator.
+    """
+    base = os.path.basename(case)
+    if not is_unstructured_generated_case(base):
+        return None
+
+    from set_case import set_input_data
+    if idata is None:
+        idata = set_input_data(base, physics_type=physics_type, wells_type=wells_type)
+    # several cases share one mesh (no_damage_zone_heter_mech_prop reuses
+    # no_damage_zone), so the folder comes from idata rather than the case name
+    mesh_dir = getattr(idata.other, 'mesh_dir', None) or base
+    mesh_filename = os.path.join(BASE_DIR, 'meshes', mesh_dir, 'mesh.msh')
+    os.makedirs(os.path.dirname(mesh_filename), exist_ok=True)
+
+    if base.startswith('no_damage_zone'):
+        from gen_fault_msh_no_damage_zone import gen_fault_msh_no_damage_zone
+        print(f'Generating mesh for {mesh_dir}')
+        # the fault-tagged twin is what fault.py reads when post-processing
+        gen_fault_msh_no_damage_zone(fault=False)
+        gen_fault_msh_no_damage_zone(fault=True)
+        return mesh_filename
+
+    from gen_fault_msh import generate_3d_fault_mesh
+    print(f'Generating {mesh_dir}: bulk={bulk_mesh_size:g} m, well={bulk_mesh_size / 20:g} m')
+    generate_3d_fault_mesh(idata, msh_filename=mesh_filename,
+                           bulk_mesh_size=bulk_mesh_size,
+                           well_mesh_size=bulk_mesh_size / 20.0)
+    return mesh_filename
 
 
 def case_5_mesh_name(mesh_size):
@@ -238,6 +301,13 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     except:
         pass
 
+    # Structured NX_NY_NZ cases are meshed inside the reservoir; the named
+    # unstructured ones need their gmsh script run first, so one generate_mesh
+    # flag covers both.
+    if generate_mesh:
+        generate_unstructured_mesh(model_folder, physics_type=physics_type,
+                                   wells_type=wells_type)
+
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type,
               decouple_geomech=decouple_geomech, generate_mesh=generate_mesh, solver_type=solver_type)
 
@@ -406,8 +476,9 @@ def run_test(args: list = [], platform='cpu'):
     overwrite = os.getenv('UPLOAD_PKL') == '1'
     thermal = physics_type == 'single_phase_thermal'
     wells_type = 'doublet' if thermal else 'inj'
-    # structured NX_NY_NZ cases need mesh generation; named cases have a committed mesh
-    generate_mesh = is_struct_like_case(case)
+    # every case that owns a generator regenerates its mesh; case_1..case_4 share
+    # the committed meshes/case_1/mesh.msh and have none, so they load it as is
+    generate_mesh = supports_mesh_generation(case)
     t0 = time.time()
     try:
         run(
@@ -508,43 +579,22 @@ if __name__ == '__main__':
     #sim_time = 30 # days
     #report_step = sim_time  # days
 
-    has_case_5 = any(
-        case == 'case_5' or case.startswith('case_5_mesh_') for case in cases
-    )
-    if has_case_5 and generate_mesh:
-        from set_case import set_input_data
-        from gen_fault_msh import generate_3d_fault_mesh
-        for mesh_size in case_5_mesh_sizes if case_5_mesh_study else [200.0]:
-            mesh_case = case_5_mesh_name(mesh_size) if case_5_mesh_study else 'case_5'
-            idata_case_5 = set_input_data(
-                mesh_case, physics_type=physics_type, wells_type=wells_type
-            )
-            mesh_filename = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                'meshes', mesh_case, 'mesh.msh',
-            )
-            os.makedirs(os.path.dirname(mesh_filename), exist_ok=True)
-            print(
-                f'Generating {mesh_case}: bulk={mesh_size:g} m, '
-                f'well={mesh_size / 20:g} m'
-            )
-            generate_3d_fault_mesh(
-                idata_case_5,
-                msh_filename=mesh_filename,
-                bulk_mesh_size=mesh_size,
-                well_mesh_size=mesh_size / 20.0,
-            )
-
-    if 'no_damage_zone' in cases:
-        from gen_fault_msh_no_damage_zone import gen_fault_msh_no_damage_zone
-        gen_fault_msh_no_damage_zone()
+    # The mesh-size study needs one mesh per resolution, so it drives the
+    # generator directly; every other case is meshed by run() below.
+    if case_5_mesh_study and generate_mesh:
+        for mesh_size in case_5_mesh_sizes:
+            generate_unstructured_mesh(case_5_mesh_name(mesh_size),
+                                       physics_type=physics_type,
+                                       wells_type=wells_type,
+                                       bulk_mesh_size=mesh_size)
 
     for case in cases:
         os.system("title thm_proxy: " + case + " PID=" + str(os.getpid())) # set the window title
 
-        # generate_mesh only applies to struct-like NX_NY_NZ cases; named cases
-        # (zero_rate, case_*, no_damage_zone*) ship a committed mesh and have no nx/ny/nz.
-        case_generate_mesh = generate_mesh and is_struct_like_case(case)
+        # struct-like NX_NY_NZ cases are meshed in the reservoir, case_5 and
+        # no_damage_zone by their own gmsh script (run() dispatches); case_1..case_4
+        # have no generator and keep loading the committed meshes/case_1/mesh.msh.
+        case_generate_mesh = generate_mesh and supports_mesh_generation(case)
 
         run(model_folder=case, physics_type=physics_type, generate_mesh=case_generate_mesh,
             wells_type=wells_type, decouple_geomech=decouple_geomech,

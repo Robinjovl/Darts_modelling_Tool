@@ -2,6 +2,8 @@ import gmsh
 import math
 import os
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 def gen_fault_msh_no_damage_zone(fault=False):
     gmsh.initialize()
@@ -238,7 +240,9 @@ def gen_fault_msh_no_damage_zone(fault=False):
     mesh_filename = "mesh.msh"
     if fault:
         mesh_filename = "mesh_fault.msh"
-    mesh_filename = os.path.join('meshes', 'no_damage_zone', mesh_filename)
+    # absolute, so the mesh lands next to this script whatever the cwd is
+    mesh_filename = os.path.join(BASE_DIR, 'meshes', 'no_damage_zone', mesh_filename)
+    os.makedirs(os.path.dirname(mesh_filename), exist_ok=True)
 
     gmsh.write(mesh_filename)
     gmsh.finalize()
