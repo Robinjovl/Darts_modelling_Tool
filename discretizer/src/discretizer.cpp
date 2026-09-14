@@ -10,6 +10,7 @@
 #include <chrono>
 #include <numeric>
 #include <iomanip>
+#include <stdexcept>
 #include <functional>
 #include <unordered_set>
 #include "discretizer.h"
@@ -23,6 +24,70 @@ using std::vector;
 using std::chrono::steady_clock;
 using std::chrono::duration_cast;
 using std::cout;
+
+namespace
+{
+  //! True when every entry of a matrix is a finite number.
+  template <class M>
+  bool all_finite(const M& m)
+  {
+	for (const auto& val : m.values)
+	  if (!(val == val) || !std::isfinite(val))
+		return false;
+	return true;
+  }
+
+  //! Report the cell whose least-squares gradient reconstruction produced a
+  //! non-finite (A^T*A)^-1, then let the caller fail.
+  //!
+  //! A bare assert() is a poor diagnostic here: on Windows it opens a modal
+  //! dialog, which silently blocks unattended and CI runs, and under NDEBUG it
+  //! is compiled out entirely so the NaNs travel on into the transmissibilities.
+  //! Printing the offending cell, its stencil and the singular normal matrix is
+  //! what actually identifies the bad geometry or coefficients.
+  template <class MeshT, class MatA, class MatI, class Stencil>
+  void report_gradient_lsq_failure(const char* what, int cell_id,
+	  const MeshT* msh, const MatA& A, const MatI& ata,
+	  const Stencil& stencil, int stencil_size)
+  {
+	std::ostream& os = cout;
+	const auto flags = os.flags();
+	os << "\n==== " << what << " gradient least-squares failed ====\n";
+	os << "  cell id      : " << cell_id << '\n';
+	if (msh && cell_id >= 0 && static_cast<size_t>(cell_id) < msh->centroids.size())
+	{
+	  const auto& c = msh->centroids[cell_id];
+	  os << "  centroid     : (" << c.x << ", " << c.y << ", " << c.z << ")\n";
+	}
+	os << "  stencil size : " << stencil_size << "\n  stencil      :";
+	for (int k = 0; k < stencil_size && static_cast<size_t>(k) < stencil.size(); k++)
+	  os << ' ' << stencil[k];
+	os << '\n';
+
+	os << std::scientific << std::setprecision(6);
+	os << "  A (" << A.M << " x " << A.N << "):\n";
+	for (int r = 0; r < A.M; r++)
+	{
+	  os << "    ";
+	  for (int c = 0; c < A.N; c++) os << std::setw(15) << A(r, c);
+	  os << '\n';
+	}
+	os << "  A^T*A inverse (" << ata.M << " x " << ata.N << "):\n";
+	for (int r = 0; r < ata.M; r++)
+	{
+	  os << "    ";
+	  for (int c = 0; c < ata.N; c++) os << std::setw(15) << ata(r, c);
+	  os << '\n';
+	}
+	os << "  A^T*A is singular or nearly so: the connection vectors of this cell\n"
+	   << "  do not span enough independent directions, or a coefficient fed into\n"
+	   << "  A is already non-finite.\n";
+	os << "================================================\n";
+	os.flush();
+	os.flags(flags);
+  }
+}
+
 using std::endl;
 using std::fill;
 using std::pair;
@@ -440,9 +505,15 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 			try {
 				to_invert.inv();
 
-				// check inversion
-				for (const auto& val : to_invert.values)
-					assert(val == val && std::isfinite(val));
+				// check inversion -- a singular normal matrix makes inv() yield NaN/Inf
+				// rather than throw. Report the offending cell instead of asserting:
+				// assert() is compiled out under NDEBUG (the NaNs would then reach the
+				// transmissibilities unnoticed) and pops a modal dialog on Windows.
+				if (!all_finite(to_invert))
+				{
+					report_gradient_lsq_failure("pressure", i, mesh, A, to_invert, temp_stencil, stencil_size);
+					throw std::runtime_error("non-finite pressure gradient least-squares inverse");
+				}
 
 				auto& cur_grad = p_grads[i];
 				cur_grad.a = to_invert * A.transpose() * R;
@@ -452,7 +523,7 @@ void Discretizer::reconstruct_pressure_gradients_per_cell(const BoundaryConditio
 			}
 			catch (const std::exception&)
 			{
-				throw "Matrix is not invertible";
+				throw std::runtime_error("Matrix is not invertible");
 			}
 
 #ifdef DEBUG_TRANS
@@ -868,9 +939,15 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 	  try {
 		to_invert.inv();
 
-		// check inversion
-		for (const auto& val : to_invert.values)
-		  assert(val == val && std::isfinite(val));
+		// check inversion -- a singular normal matrix makes inv() yield NaN/Inf
+		// rather than throw. Report the offending cell instead of asserting:
+		// assert() is compiled out under NDEBUG (the NaNs would then reach the
+		// transmissibilities unnoticed) and pops a modal dialog on Windows.
+		if (!all_finite(to_invert))
+		{
+		  report_gradient_lsq_failure("pressure", i, mesh, A_p, to_invert, temp_stencil, stencil_size);
+		  throw std::runtime_error("non-finite pressure gradient least-squares inverse");
+		}
 
 		auto& cur_grad = p_grads[i];
 		cur_grad.a = to_invert * A_p.transpose() * R_p;
@@ -880,7 +957,7 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 	  }
 	  catch (const std::exception&)
 	  {
-		throw "Pressure gradient matrix is not invertible";
+		throw std::runtime_error("Pressure gradient matrix is not invertible");
 	  }
 
 	  // computing the least squares solution for nabla \theta = (A^T * A) ^(-1) * (A^T) * R
@@ -888,9 +965,15 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 	  try {
 		to_invert.inv();
 
-		// check inversion
-		for (const auto& val : to_invert.values)
-		  assert(val == val && std::isfinite(val));
+		// check inversion -- a singular normal matrix makes inv() yield NaN/Inf
+		// rather than throw. Report the offending cell instead of asserting:
+		// assert() is compiled out under NDEBUG (the NaNs would then reach the
+		// transmissibilities unnoticed) and pops a modal dialog on Windows.
+		if (!all_finite(to_invert))
+		{
+		  report_gradient_lsq_failure("temperature", i, mesh, A_th, to_invert, temp_stencil, stencil_size);
+		  throw std::runtime_error("non-finite temperature gradient least-squares inverse");
+		}
 
 		Matrix tempGrad = to_invert * A_th.transpose() * R_th;
 
@@ -901,7 +984,7 @@ void Discretizer::reconstruct_pressure_temperature_gradients_per_cell(const Boun
 	  }
 	  catch (const std::exception&)
 	  {
-		throw "Temperature gradient matrix is not invertible";
+		throw std::runtime_error("Temperature gradient matrix is not invertible");
 	  }
 
 #ifdef DEBUG_TRANS
