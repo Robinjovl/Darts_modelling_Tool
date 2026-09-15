@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "mech_discretizer.h"
 #include "utils.h"
 #include <chrono>
@@ -580,30 +581,41 @@ void MechDiscretizer<MODE>::calc_interface_approximations()
   fourier.clear();
   thermal_traction.clear();
 
+  // compute maximal stencil from the mesh for memory allocation below
+  index_t max_grad_stencil = 0;
+  for (index_t i = 0; i < static_cast<index_t>(u_grads.size()); i++)
+	max_grad_stencil = std::max<index_t>(max_grad_stencil, static_cast<index_t>(u_grads[i].stencil.size()));
+  const index_t est_stencil = std::min<index_t>(std::max<index_t>(2 * max_grad_stencil, 1), MAX_STENCIL);
+  cout << "Stencil reserve: cells " << u_grads.size()
+	   << " (matrix " << mesh->region_ranges.at(mesh::MATRIX).second << ")"
+	   << ", max gradient stencil " << static_cast<int>(max_grad_stencil)
+	   << ", reserving for " << static_cast<int>(est_stencil)
+	   << " of MAX_STENCIL " << static_cast<int>(MAX_STENCIL) << endl;
+
   // reserve memory
   cell_m.reserve(mesh->adj_matrix.size());
   cell_p.reserve(mesh->adj_matrix.size());
-  flux_stencil.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
+  flux_stencil.reserve(mesh->adj_matrix.size() * est_stencil);
   flux_offset.reserve(mesh->adj_matrix.size() + 1);
 
-  hooke.reserve(mesh->adj_matrix.size() * ND * n_unknowns * MAX_STENCIL);
+  hooke.reserve(mesh->adj_matrix.size() * ND * n_unknowns * est_stencil);
   hooke_rhs.reserve(mesh->adj_matrix.size() * ND);
 
-  biot_traction.reserve(mesh->adj_matrix.size() * ND * MAX_STENCIL);
+  biot_traction.reserve(mesh->adj_matrix.size() * ND * est_stencil);
   biot_traction_rhs.reserve(mesh->adj_matrix.size() * ND);
 
-  biot_vol_strain.reserve(mesh->adj_matrix.size() * n_unknowns * MAX_STENCIL);
+  biot_vol_strain.reserve(mesh->adj_matrix.size() * n_unknowns * est_stencil);
   biot_vol_strain.reserve(mesh->adj_matrix.size());
 
-  darcy.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
+  darcy.reserve(mesh->adj_matrix.size() * est_stencil);
   darcy_rhs.reserve(mesh->adj_matrix.size());
 
-  fick.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
+  fick.reserve(mesh->adj_matrix.size() * est_stencil);
   fick_rhs.reserve(mesh->adj_matrix.size());
 
-  fourier.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
+  fourier.reserve(mesh->adj_matrix.size() * est_stencil);
 
-  thermal_traction.reserve(mesh->adj_matrix.size() * ND * MAX_STENCIL);
+  thermal_traction.reserve(mesh->adj_matrix.size() * ND * est_stencil);
 
   value_t sign;
   index_t cell_id1, cell_id2;
