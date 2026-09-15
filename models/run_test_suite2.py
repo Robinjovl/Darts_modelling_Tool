@@ -434,10 +434,16 @@ if __name__ == '__main__':
     if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = '1'
 
-    # run larger set of models (takes longer)
-    test_all_models = False
-    if os.getenv('TEST_ALL_MODELS') != None and os.getenv('TEST_ALL_MODELS') == '1':
-        test_all_models = True
+    # run larger set of models (takes longer): on request (TEST_ALL_MODELS=1),
+    # when regenerating reference .pkl files (UPLOAD_PKL=1) so the uploaded
+    # references cover the full set, or in the final check of a non-draft merge
+    # request (MR_NON_DRAFT=1, set by workflow:rules in .gitlab-ci.yml)
+    test_all_models = (
+        os.getenv('TEST_ALL_MODELS') == '1'
+        or os.getenv('UPLOAD_PKL') == '1'
+        or os.getenv('MR_NON_DRAFT') == '1'
+    )
+    print('test_all_models=', test_all_models)
 
     # Keep the ODLS env normalization for its side effect (reference-pkl
     # suffix selection via get_pkl_suffix), but no longer use it to gate the
