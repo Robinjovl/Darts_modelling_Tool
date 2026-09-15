@@ -14,6 +14,10 @@ variables:
   #   "1" (default) -> the BOS twins run exactly as before
   #   anything else -> all four BOS twins are skipped pipeline-wide
   RUN_BOS_JOBS: "1"
+  # TEMPORARY: force-enable build-linux-tsan / tsan-check for testing.
+  # TODO: revert before merging -- these are opt-in-only by design (see
+  # build-linux-tsan.yml / tsan-check.yml), not meant to run by default.
+  CHECK_DATA_RACES: "1"
 
 stages:
     - pre_commit
