@@ -521,6 +521,31 @@ void bind_unified_solver_api(py::module &m)
         .def_readwrite("u_var", &fs_cpr_solver_config::u_var)
         .def_readwrite("nc",    &fs_cpr_solver_config::nc);
 
+    // Device-resident (GPU) solver chains registered under the "gpu_*" names
+    // (available in a CUDA build only; the struct itself is always bound so
+    // GPUSolverSpec._make_config() works everywhere and the registry reports
+    // the missing name cleanly).
+    py::class_<gpu_solver_config, solver_config>(m, "GPUSolverConfig",
+        "Configuration for the GPU solver chains (gpu_cudss, gpu_cusolver, "
+        "gpu_gmres_ilu0, gpu_gmres_cpr_amgx, gpu_bicgstab_cpr_amgx). The "
+        "chains are wrapped in linsolv_host_adapter, so they accept the "
+        "host-assembled Jacobian and host RHS/solution vectors of a CPU engine.")
+        .def(py::init<>())
+        .def_readwrite("device_num", &gpu_solver_config::device_num,
+            "CUDA device the chain runs on (cudaSetDevice at init).")
+        .def_readwrite("restart", &gpu_solver_config::restart,
+            "Krylov restart length of the GMRES variants.")
+        .def_readwrite("ilu_single_precision", &gpu_solver_config::ilu_single_precision,
+            "Keep the cuSPARSE block-ILU(0) factors in single precision.")
+        .def_readwrite("cudss_ir_steps", &gpu_solver_config::cudss_ir_steps,
+            "gpu_cudss: iterative-refinement steps per solve (default 2; 0 = none).")
+        .def_readwrite("cudss_pivot_epsilon", &gpu_solver_config::cudss_pivot_epsilon,
+            "gpu_cudss: pivot-epsilon override (< 0 = cuDSS default).")
+        .def_readwrite("cudss_hybrid_memory", &gpu_solver_config::cudss_hybrid_memory,
+            "gpu_cudss: hybrid host/device memory mode for factorizations larger than the free device memory.")
+        .def_readwrite("cudss_hybrid_device_memory_limit", &gpu_solver_config::cudss_hybrid_device_memory_limit,
+            "gpu_cudss: device memory share in hybrid mode [bytes] (0 = cuDSS default).");
+
     // Unified solver handle returned by create_linear_solver(). Bound once,
     // exposed under two names: "LinearSolver" (new, preferred) and
     // "LinearSolverInterface" (back-compat alias). After the linear_solver /

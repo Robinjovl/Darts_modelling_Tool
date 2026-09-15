@@ -4,17 +4,47 @@ from darts.engines import time_integration
 
 from model import Model
 from darts.engines import *
+import glob
+import sys
 import numpy as np
 import meshio
 import os
 from math import fabs
 
 try:
-    # if compiled with OpenMP, set to run with 1 thread, as mech tests are not working in the multithread version yet
+    # one thread by default (the regression references were generated single-threaded; the multithreaded
+    # engine_pm_cpu assembly is bit-identical to it since the race fixes, so config['n_threads'] may raise it)
     from darts.engines import set_num_threads
     set_num_threads(1)
 except:
     pass
+
+def back_to_quasi_static(m, reason):
+    """End the co-seismic stage: switch the inertia term off, restore the selected time-integration scheme,
+    re-inject the quasi-static linear solver and restart the timestep from `dt_after_arrest` (days). Used both
+    on a natural rupture arrest and when the dynamic stage can no longer make progress at the timestep floor.
+    Returns the new timestep."""
+    engine = m.physics.engine
+    engine.momentum_inertia = 0.0
+    engine.dt1 = 0.0
+    if getattr(m, '_be_fallback', False):
+        engine.time_integration = m._saved_scheme
+        m._be_fallback = False
+    m.n_arrests = getattr(m, 'n_arrests', 0) + 1
+    m.n_dynamic_steps = 0
+    m.solver_phase = 'static'
+    if m.linear_solver.open_source_solvers_available():
+        qs_spec = getattr(m, 'stage_solver_specs', {}).get('quasi_static')
+        if qs_spec is not None:
+            m.linear_solver.update_solver(spec=qs_spec)
+        else:
+            m.linear_solver.update_solver(tolerance=1.e-10, max_iterations=500)
+    else:
+        engine.active_linear_solver_id = 0
+    dt = getattr(m, 'dt_after_arrest', 1.e-3)
+    print("Fully dynamic mode disabled (%s): back to quasi-static with dt = %.3e days" % (reason, dt))
+    return dt
+
 
 def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
@@ -113,6 +143,21 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
                       % (str(m._saved_scheme).split('.')[-1], dt * 86400.0))
             elif dt / mult_dt > 1.e-8 / 86400:
                 dt /= mult_dt
+            elif dynamic and m.enable_dynamic_mode:
+                # The timestep floor is reached and the dynamic step still fails, so the loop would retry the
+                # same dt forever. Below dt ~ 1e-8 s the inertia term rho V / dt^2 amplifies the round-off of
+                # the displacements above the momentum tolerance, so no smaller timestep can converge -- this
+                # is the stick/slip chatter of the contact return mapping at the rupture front, and with
+                # backward Euler there is no further fallback scheme. Treat it as the end of the co-seismic
+                # stage: switch the inertia off and continue quasi-statically, which removes the 1/dt^2
+                # amplification. Counted as `n_dynamic_stalls` (a natural arrest leaves it at zero).
+                m.n_dynamic_stalls = getattr(m, 'n_dynamic_stalls', 0) + 1
+                dt = back_to_quasi_static(
+                    m, 'dynamic stage stalled at the timestep floor dt = %.3e s, slip area %.4f'
+                       % (dt * 86400.0, m.slip_area[-1] if len(getattr(m, 'slip_area', [])) else 0.0))
+                max_dt = m.ts_control.dt_max
+                if t + dt > runtime:
+                    dt = runtime - t
 
             if dt < 1.e-2 / 86400.0 and m.physics.engine.momentum_inertia == 0.0 and m.enable_dynamic_mode: # less than smth -> go to fully dynamic (implicit) stepping
                 m.physics.engine.momentum_inertia = 2406.0
@@ -124,12 +169,21 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
                 max_dt = 5.e-4 / 86400 # 500 microseconds
                 m.solver_phase = 'dynamic'
                 if m.linear_solver.open_source_solvers_available():
-                    # Dynamic (inertial) stage: tighten the live GMRES+FS-CPR
-                    # stack in place -- the open-source equivalent of the
-                    # proprietary ls_params[1] switch (cpu_gmres_ilu0,
-                    # tol 1e-12, 500 iters). update_solver() reconfigures the
-                    # injected solver without touching the Jacobian.
-                    m.linear_solver.update_solver(tolerance=1.e-12, max_iterations=500)
+                    # Dynamic (inertial) stage: switch to the stage solver (rebuilt
+                    # and re-injected against the existing Jacobian -- a CPU or GPU
+                    # registry spec, e.g. cuDSS for the quasi-static stage and
+                    # GMRES+FS-CPR here; by default the quasi-static solver rebuilt
+                    # at tolerance 1e-12, which also refreshes the FS-CPR
+                    # displacement-block AMG for the inertial Jacobian). With
+                    # config['linear_solver']['dynamic'] = 'inplace' the live stack is
+                    # only tightened -- the open-source equivalent of the proprietary
+                    # ls_params[1] switch (cpu_gmres_ilu0, tol 1e-12, 500 iters).
+                    # update_solver() never touches the Jacobian.
+                    dyn_spec = getattr(m, 'stage_solver_specs', {}).get('dynamic')
+                    if dyn_spec is not None:
+                        m.linear_solver.update_solver(spec=dyn_spec)
+                    else:
+                        m.linear_solver.update_solver(tolerance=1.e-12, max_iterations=500)
                 else:
                     # Proprietary build: legacy engine-side solver bank switch.
                     m.physics.engine.active_linear_solver_id = 1
@@ -142,17 +196,19 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
                 m.ith_step_ready_for_reinjection == 0:
             m.ith_step_ready_for_reinjection = m.ith_step
 
-        # if m.ith_step + 1 > 500 and m.slip_area[-1] < 0.005 * max_slip_area and m.enable_dynamic_mode and \
-        #         m.ith_step - m.ith_step_ready_for_reinjection > 500:
-        #     m.physics.engine.momentum_inertia = 0.0
-        #     dt = 0.001
-        #     m.ts_control.dt_max = max_dt = 0.005
-        #     m.enable_dynamic_mode = False
-        #     m.reservoir.wells[0].control = m.physics.new_rate_prod(0.0)
-        #     #X = np.array(m.physics.engine.X, copy = False)
-        #     m.reservoir.wells[1].control = m.physics.new_bhp_inj(m.reservoir.p_init[m.id_inj])
-            # m.physics.engine.active_linear_solver_id = 0
-        #     print("Fully dynamic mode disabled!!!")
+        # Rupture arrest -> back to the quasi-static stage (thesis Sec. 6.3): once the dynamic stage has run
+        # for at least `min_dynamic_steps` steps and the slipping area has dropped below `arrest_area_fraction`
+        # of its peak, the inertia term is switched off, the quasi-static solver is re-injected and the timestep
+        # restarts from `dt_after_arrest` (days) with the schedule's dt_max; production continues. A later
+        # loss of convergence re-enters the dynamic stage through the criterion above.
+        if converged and m.physics.engine.momentum_inertia > 0.0 and m.enable_dynamic_mode and \
+                getattr(m, 'n_dynamic_steps', 0) >= getattr(m, 'min_dynamic_steps', m.max_newt_it_dynamic_mode) and \
+                m.slip_area[-1] < getattr(m, 'arrest_area_fraction', 0.005) * max_slip_area:
+            dt = back_to_quasi_static(m, 'rupture arrested, slip area %.4f of peak %.4f'
+                                      % (m.slip_area[-1], max_slip_area))
+            max_dt = m.ts_control.dt_max
+            if t + dt > runtime:
+                dt = runtime - t
 
 
     # update current engine time
@@ -193,6 +249,18 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
         m.cut_off_gap_residual = 0.01# if self.e.momentum_inertia else 0.01
     else:
         m.cut_off_gap_residual = 100.0
+
+    # optional run controls: VTK cadence in the dynamic stage (3D + fault files every n-th step; 1 = every step),
+    # the step cap (the loop exits at max_steps), the arrest criterion (min_dynamic_steps, arrest_area_fraction,
+    # dt_after_arrest) and OpenMP threads for the assembly / CPU solvers
+    m.vtk_every_dynamic = config.get('vtk_every_dynamic', 1)
+    m.max_steps = config.get('max_steps', 1000)
+    for key in ('min_dynamic_steps', 'arrest_area_fraction', 'dt_after_arrest', 'max_dynamic_steps'):
+        if key in config:
+            setattr(m, key, config[key])
+    if 'n_threads' in config:
+        from darts.engines import set_num_threads
+        set_num_threads(int(config['n_threads']))
 
     ## initialization
     # find equilibrium
@@ -240,7 +308,8 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     labels = ['DARTS: ' + config['friction_law']]
     plot_analytics = config['friction_law'] if plot_analytics else None
     animate = True if len(t) > 1 else False
-    plot_profiles(data_folder=m.output_directory, labels=labels, analytics=plot_analytics, animate=animate)
+    plot_profiles(data_folder=m.output_directory, labels=labels, analytics=plot_analytics, animate=animate,
+                  fps=config.get('animation_fps', 2), frame_stride=config.get('animation_stride', 1))
 
     ret_flag = 0
     if compare_with_ref:
@@ -323,7 +392,22 @@ def read_vtk(filename, props):
             point_data[prop_name] = prop
 
     return centers, cell_data, points, point_data
-def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=False):
+def find_ffmpeg():
+    """Path of an ffmpeg executable: FFMPEG_PATH, PATH, or the known Windows / conda locations (None if absent)."""
+    import shutil
+    candidates = [os.environ.get('FFMPEG_PATH'), shutil.which('ffmpeg'),
+                  r'C:\software\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe', r'c:\work\packages\ffmpeg-6.0\bin\ffmpeg.exe']
+    candidates += sorted(glob.glob(os.path.join(os.path.dirname(os.path.dirname(sys.executable)), '..', '*', 'bin', 'ffmpeg')))
+    for c in candidates:
+        if c and os.path.isfile(c):
+            return c
+    return None
+
+
+def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=False, fps: int=2, frame_stride: int=1):
+    """Fault profiles (slip, Coulomb / shear / normal stress, friction, pressure) from the fault VTK output;
+    animate=True writes fault_video.mp4 over every frame_stride-th snapshot of solution_fault.pvd at the given fps
+    (a GIF through Pillow when no ffmpeg is found), else fault_plot.png of solution_fault1.vtu."""
     from matplotlib import pyplot as plt
     ls = 13
     plt.rc('xtick', labelsize=15)
@@ -483,11 +567,13 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
             import matplotlib.animation as animation
             from matplotlib.animation import FuncAnimation
             from matplotlib import rcParams
-            # substitute with your own path to FFMPEG installation
-            # download link https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z
-            rcParams['animation.ffmpeg_path'] = r'c:\work\packages\ffmpeg-6.0\bin\ffmpeg.exe'
-            rcParams['animation.ffmpeg_path'] = r'C:\software\ffmpeg-8.0.1-full_build\bin\ffmpeg.exe'
+            # ffmpeg: FFMPEG_PATH env var, PATH, or the known locations (download link
+            # https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z); a Pillow GIF otherwise
+            ffmpeg = find_ffmpeg()
+            if ffmpeg:
+                rcParams['animation.ffmpeg_path'] = ffmpeg
             times, files = read_pvd(os.path.join(data_folder, 'solution_fault.pvd'))
+            times, files = times[::max(1, int(frame_stride))], files[::max(1, int(frame_stride))]
             max_nt = len(files)
             time_text = stress[0].text(0.07, 0.2, 'time = ' + str(24 * 60 * times[0]) + ' minutes', fontsize=12, rotation='horizontal', transform=fig.transFigure)
 
@@ -576,18 +662,151 @@ def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=
 
                 return lines  # not really necessary, but optional for blit algorithm
 
-            anim = FuncAnimation(fig, animate, interval=2000, frames=np.arange(max_nt))
-            writervideo = animation.FFMpegWriter(fps=2)
-            video_filename = os.path.join(data_folder, 'fault_video.mp4')
+            anim = FuncAnimation(fig, animate, interval=int(1000 / fps), frames=np.arange(max_nt))
+            if ffmpeg:
+                writervideo = animation.FFMpegWriter(fps=fps)
+                video_filename = os.path.join(data_folder, 'fault_video.mp4')
+            else:
+                writervideo = animation.PillowWriter(fps=fps)
+                video_filename = os.path.join(data_folder, 'fault_video.gif')
             anim.save(video_filename, writer=writervideo)
-        except:
-            print('Cannot do the animation! Skipped. Check ffmeg is installed:', rcParams['animation.ffmpeg_path'])
+            print('animation written:', video_filename, '(%d frames)' % max_nt)
+        except Exception as ex:  # noqa: BLE001
+            print('Cannot do the animation! Skipped (%s). Check ffmpeg is installed: %s' % (ex, rcParams.get('animation.ffmpeg_path')))
             animate = False
     if not animate:
         pic_filename = os.path.join(data_folder, 'fault_plot.png')
         fig.savefig(pic_filename)
     plt.close(fig)
     # plt.show()
+
+
+def coseismic_snapshots(data_folder: str, gap_days: float = 1.e-4):
+    """First co-seismic stage of a run from its fault output: (t0, [(t_days, file), ...]) where t0 is the time of
+    the last quasi-static snapshot before nucleation (the list starts with it) and the rest are the snapshots
+    closer together than gap_days (a dynamic step is at most 5e-4 s, a quasi-static one days). (None, []) if the
+    run has not reached the dynamic stage."""
+    times, files = read_pvd(os.path.join(data_folder, 'solution_fault.pvd'))
+    first = next((i + 1 for i in range(len(times) - 1) if 0 < times[i + 1] - times[i] < gap_days), None)
+    if first is None:
+        return None, []
+    snaps = [(times[first - 1], os.path.join(data_folder, files[first - 1]))]
+    for i in range(first, len(times)):
+        if times[i] - times[i - 1] >= gap_days:
+            break  # back to quasi-static stepping after the arrest
+        snaps.append((times[i], os.path.join(data_folder, files[i])))
+    return times[first - 1], snaps
+
+
+def plot_profiles_compare(data_folders: list, labels: list, out_file: str, fps: int = 5, frame_stride: int = 1,
+                          snapshot_times=()):
+    """plot_profiles for several runs at once: the same six panels (slip, Coulomb / shear / effective normal
+    stress, friction coefficient, pressure against depth) with its fixed stress limits and reservoir bands, one
+    colour per run (b, r, g, m, c, k), animated through the co-seismic stage. The runs are aligned on the start of
+    their dynamic stage: the frames follow the co-seismic snapshots of the run that lasts longest (every
+    frame_stride-th), every other run shows its snapshot nearest in time since its own start, and a run that has
+    ended keeps its last one. Writes out_file (a GIF through Pillow when no ffmpeg is found) and, for each time in
+    snapshot_times (seconds since the start of the dynamic stage), <out_file without extension>_<ms>ms.png of the
+    nearest frame. plot_profiles itself is left untouched: the regression test draws through it."""
+    from matplotlib import pyplot as plt
+    import matplotlib.animation as animation
+    from matplotlib import rcParams
+    runs = []
+    for folder, label in zip(data_folders, labels, strict=True):
+        t0, snaps = coseismic_snapshots(folder)
+        if t0 is None:
+            print('%s: still quasi-static, no co-seismic snapshot yet -- left out' % folder)
+        else:
+            runs.append((label, t0, snaps))
+    if not runs:
+        raise ValueError('none of the runs has reached the co-seismic stage')
+
+    # the configuration of plot_profiles
+    ls = 13
+    plt.rc('xtick', labelsize=15)
+    plt.rc('ytick', labelsize=15)
+    plt.rc('legend', fontsize=ls)
+    b1, b2, a1, a2 = 2250 - 150, 2250 + 150, 2250 - 75, 2250 + 75
+    colors = ['b', 'r', 'g', 'm', 'c', 'k']
+    lw = 1
+    x_labels = [r'slip, mm', r'Coulomb stress, MPa', r'shear stress, MPa', r'effective normal stress, MPa',
+                r'friction coefficient', r'pressure, MPa']
+    n_plots = 6
+    day = 86400.0
+
+    def profiles(filename):
+        c, fault_data, __, __ = read_vtk(filename=filename, props=['f_local', 'g_local', 'mu', 'p'])
+        ids = np.argsort(c[:, 1])
+        f, g = fault_data['f_local'][0][ids], fault_data['g_local'][0][ids]
+        mu, p = fault_data['mu'][0][ids], fault_data['p'][0][ids]
+        coulomb = np.sqrt(f[:, 1] ** 2 + f[:, 2] ** 2) - mu * np.fabs(f[:, 0])
+        return 2250 - c[ids, 1], [g[:, 1] * 1e+3, coulomb / 10, f[:, 1] / 10, f[:, 0] / 10, mu, p / 10]
+
+    fig, stress = plt.subplots(nrows=1, ncols=n_plots, sharey=True, figsize=(18, 8))
+    run_lines = [[stress[j].plot([], [], linewidth=lw, color=colors[k], linestyle='-',
+                                 label=run[0] if j == 0 else None)[0] for j in range(n_plots)]
+                 for k, run in enumerate(runs)]
+    depth = np.concatenate([profiles(run[2][0][1])[0] for run in runs])
+    margin = 0.05 * (depth.max() - depth.min())
+    stress[0].set_ylim(depth.max() + margin, depth.min() - margin)
+    stress[0].set_ylabel(r'depth, $y$, m', fontsize=20)
+    stress[0].legend(loc='upper left', prop={'size': ls})
+    fill_polys = []
+    for i in range(n_plots):
+        for y in (b1, b2, a1, a2):
+            stress[i].axhline(y=y, linestyle='--', color='k')
+        stress[i].set_xlabel(x_labels[i], fontsize=15)
+        x0, x1 = stress[i].get_xlim()
+        fill_polys.append(tuple(stress[i].fill_between(x=[x0, x1], y1=ya, y2=yb, color=col, interpolate=True, alpha=0.3)
+                                for ya, yb, col in ((a1, a2, 'palegoldenrod'), (b1, a1, 'olive'), (a2, b2, 'olive'))))
+    fig.tight_layout()
+    plt.subplots_adjust(wspace=0.05)
+    stress[0].set_zorder(1)  # the legend and the time label may reach over the next panel: keep them on top
+    time_text = stress[0].text(0.07, 0.2, '', fontsize=12, rotation='horizontal', transform=fig.transFigure)
+
+    longest = max(runs, key=lambda run: run[2][-1][0] - run[1])
+    frame_t = [(t - longest[1]) * day for t, __ in longest[2]][::max(1, int(frame_stride))]
+
+    def draw(i):
+        ts = frame_t[i]
+        slip, mu, ended = [], [], []
+        for k, (label, t0, snaps) in enumerate(runs):
+            __, f = min(snaps, key=lambda s: abs((s[0] - t0) * day - ts))
+            if ts > (snaps[-1][0] - t0) * day + 1.e-9:
+                ended.append(label)
+            d, prof = profiles(f)
+            for j in range(n_plots):
+                run_lines[k][j].set_data(prof[j], d)
+            slip.append(prof[0])
+            mu.append(prof[4])
+        slip, mu = np.concatenate(slip), np.concatenate(mu)
+        limits = [(slip.min(), slip.max()), (-20, 0), (0, 25), (20, 45), (0.95 * mu.min(), 1.05 * mu.max()), (0, 40)]
+        for j, (lo, hi) in enumerate(limits):
+            if hi - lo < 1.e-9:
+                lo, hi = lo - 1., hi + 1.
+            stress[j].set_xlim(lo, hi)
+            for poly, (ya, yb) in zip(fill_polys[j], ((a1, a2), (b1, a1), (a2, b2)), strict=True):
+                poly.set_paths([[[lo, ya], [hi, ya], [hi, yb], [lo, yb], [lo, ya]]])
+        time_text.set_text('step=%d time since nucleation = %.1f msec%s'
+                           % (i, 1e3 * ts, ('\nended: ' + ', '.join(ended)) if ended else ''))
+        return [ln for lines in run_lines for ln in lines]
+
+    ffmpeg = find_ffmpeg()
+    if ffmpeg:
+        rcParams['animation.ffmpeg_path'] = ffmpeg
+    else:
+        out_file = os.path.splitext(out_file)[0] + '.gif'
+    anim = animation.FuncAnimation(fig, draw, interval=int(1000 / fps), frames=np.arange(len(frame_t)))
+    anim.save(out_file, writer=animation.FFMpegWriter(fps=fps) if ffmpeg else animation.PillowWriter(fps=fps))
+    print('animation written:', out_file, '(%d frames)' % len(frame_t))
+    for ts in snapshot_times:
+        i = int(np.argmin([abs(x - ts) for x in frame_t]))
+        draw(i)
+        png = '%s_%dms.png' % (os.path.splitext(out_file)[0], int(round(1e3 * frame_t[i])))
+        fig.savefig(png)
+        print('frame written:', png)
+    plt.close(fig)
+
 
 def run_tests():
     test_args_fault = []

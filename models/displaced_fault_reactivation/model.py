@@ -73,6 +73,19 @@ class Model(THMCModel):
         self.time_integration = dict(config.get('time_integration', {'scheme': 'backward_euler'}))
         # enable Pardiso (pypardiso / Intel MKL) direct linear solver if it was set in config.
         self.use_pardiso = config.get('use_pardiso', False)
+        # linear solver per stage: {'quasi_static': <name or LinearSolverSpec>, 'dynamic': <name or spec or None>}
+        # names: 'fs_cpr' (GMRES + FS-CPR, default), 'superlu', 'pardiso', 'cudss' (GPU direct),
+        # 'gpu_gmres_ilu0' / 'gpu_gmres_ilu0_sp' (GPU GMRES + cuSPARSE block-ILU(0), double / single
+        # precision factors), 'gpu_cusolver'. The GPU solvers run on the CPU-assembled Jacobian through
+        # linsolv_host_adapter (see docs/technical_reference/solvers.md). 'dynamic' defaults to the
+        # quasi-static choice, REBUILT at the switch with tolerance 1e-12: the open-source FS-CPR sets up
+        # its displacement-block AMG once (first setup) and reuses it, so the solver that ran the
+        # quasi-static stage would carry a hierarchy built for the stiffness matrix into the inertial
+        # stage (5x more GMRES iterations per Newton step measured). 'dynamic': 'inplace' keeps the
+        # quasi-static solver and only tightens its tolerance (the pre-existing behaviour).
+        self.linear_solver_config = dict(config.get('linear_solver', {}))
+        if self.use_pardiso:
+            self.linear_solver_config.setdefault('quasi_static', 'pardiso')
         if 'cache_discretizer' in config:
             self.cache_discretizer = config['cache_discretizer']
         else:
@@ -136,6 +149,46 @@ class Model(THMCModel):
                 if cell.centroid[1] >= -150.0 and cell.centroid[1] <= 150.0:
                     X[4 * cell_id + 3] += p(cell.centroid[0])
                     Xn[4 * cell_id + 3] += p(cell.centroid[0])
+    @staticmethod
+    def make_stage_solver_spec(choice, fs_cpr, tolerance, max_iterations=500):
+        """LinearSolverSpec for one stage of the run from a name or a ready spec.
+
+        :param choice: None or 'inplace' (no stage solver: keep the live one), a LinearSolverSpec, or one of
+            'fs_cpr', 'superlu', 'pardiso', 'cudss', 'cudss_hybrid', 'gpu_gmres_ilu0', 'gpu_gmres_ilu0_sp', 'gpu_cusolver'.
+        :param fs_cpr: the FSCPRSolverSpec of this model (used by 'fs_cpr').
+        """
+        from darts.linear_solvers.specs import (LinearSolverSpec, GMRESSolverSpec, SuperLUSolverSpec,
+                                                CuDSSSolverSpec, GPUGMRESILU0SolverSpec, GPUCuSolverSpec)
+        if choice is None or str(choice).lower() == 'inplace':
+            return None
+        if isinstance(choice, LinearSolverSpec):
+            return choice
+        name = str(choice).lower()
+        if name in ('fs_cpr', 'gmres_fs_cpr', 'default'):
+            return GMRESSolverSpec(prec=fs_cpr, tolerance=tolerance, max_iterations=max_iterations, restart=50)
+        if name == 'superlu':
+            return SuperLUSolverSpec()
+        if name == 'pardiso':
+            # requires the optional pypardiso dependency (install darts with [linear_solvers])
+            from darts.linear_solvers.specs import PardisoSolverSpec
+            return PardisoSolverSpec()
+        if name in ('cudss', 'cudss_hybrid'):
+            # note: cuDSS is not bit-reproducible run to run (round-off level); cudss_hybrid keeps part of the
+            # LU factors in host memory (needed for the 2M-cell mesh on a shared 80 GB GPU). With the device
+            # limit left at 0 cuDSS decides for itself and, on the 8.3M-unknown system, still ran the device
+            # out of memory (CUDSS_STATUS_ALLOC_FAILED after taking 62 GB of an 80 GB card shared with other
+            # users), so DARTS_CUDSS_DEVICE_LIMIT_GB caps the device share and forces the rest to the host.
+            import os as _os
+            limit_gb = float(_os.environ.get('DARTS_CUDSS_DEVICE_LIMIT_GB', '0'))
+            return CuDSSSolverSpec(hybrid_memory=name.endswith('_hybrid'),
+                                   hybrid_device_memory_limit=int(limit_gb * 1024 ** 3))
+        if name in ('gpu_gmres_ilu0', 'gpu_gmres_ilu0_sp'):
+            return GPUGMRESILU0SolverSpec(tolerance=tolerance, max_iterations=max_iterations, restart=50,
+                                          ilu_single_precision=name.endswith('_sp'))
+        if name == 'gpu_cusolver':
+            return GPUCuSolverSpec()
+        raise ValueError("unknown linear solver '%s' for the displaced fault model" % choice)
+
     def set_solver(self):
         # Open-source FS-CPR by default (pm_discretizer / engine_pm_cpu). The
         # spec-built solver is injected via set_linear_solver and now genuinely
@@ -143,7 +196,7 @@ class Model(THMCModel):
         # solver over its ls_params bank); ls_params remains the
         # proprietary-build / factory path. Mid-run changes (e.g. the dynamic
         # rupture stage in main.py) go through model.linear_solver.update_solver().
-        from darts.linear_solvers.specs import FSCPRSolverSpec, GMRESSolverSpec
+        from darts.linear_solvers.specs import FSCPRSolverSpec
         mesh = self.reservoir.mesh
         n_res_blks = mesh.n_res_blocks
         n_matrix = getattr(self.reservoir, 'n_matrix', n_res_blks)
@@ -178,13 +231,17 @@ class Model(THMCModel):
         # it, at ~20% more wall time. The static case is insensitive (constant mu) and
         # passes either way. main.py tightens this further (1e-12 / 500) for the dynamic
         # rupture stage via update_solver().
-        # Optional Pardiso (pypardiso / Intel MKL) sparse direct solve,
-        # requires the optional pypardiso dependency (install darts with [linear_solvers])
-        if self.use_pardiso:
-            from darts.linear_solvers.specs import PardisoSolverSpec
-            self.linear_solver.spec = PardisoSolverSpec()
-        else:
-            self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-10, max_iterations=500, restart=50)
+        # Per-stage solver selection (config['linear_solver']): the quasi-static
+        # spec is injected here, the dynamic one (if any) by main.py at the
+        # rupture switch through model.linear_solver.update_solver(spec=...).
+        self.stage_solver_specs = {
+            'quasi_static': self.make_stage_solver_spec(
+                self.linear_solver_config.get('quasi_static', 'fs_cpr'), fs_cpr, tolerance=1e-10),
+            'dynamic': self.make_stage_solver_spec(
+                self.linear_solver_config.get('dynamic', self.linear_solver_config.get('quasi_static', 'fs_cpr')),
+                fs_cpr, tolerance=1e-12),
+        }
+        self.linear_solver.spec = self.stage_solver_specs['quasi_static']
         self.solver_phase = 'static'  # main.py flips to 'dynamic' at rupture
 
         # Mechanics model: the LINEAR solver comes from params.linear_type /
@@ -204,6 +261,11 @@ class Model(THMCModel):
         # (contact-gap residual + cut-off + slip-area gating), reusing the spec
         self.nonlinear_solver = DisplacedFaultNewtonSolver(self.nonlinear_solver.spec)
         self.nonlinear_solver.bind(self)
+        # Well-block Newton tolerance = coefficient * tol (default 1e2 -> 1e-4). The BHP-controlled producer's
+        # residual is O(1e12) at the depletion onset, so its converged floor in double precision (1e-5..2e-4)
+        # straddles 1e-4: with an exact (direct) solve half of the runs stalled on that floor, cut the timestep
+        # and left the rupturing trajectory. 1e3 (tol 1e-3, still 1e-15 relative) accepts the floor.
+        self.nonlinear_solver.well_tolerance_coefficient = 1e3
 
         # Idempotent: ls_params is appended once even though set_solver() runs on every reset().
         if len(self.physics.engine.ls_params) == 0:

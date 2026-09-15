@@ -161,9 +161,11 @@ if(CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusolv.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cpr_gpu.cu
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_mcsgs.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_host_adapter.cpp
   )
   set(OD_GPU_SOLVERS_HEADER_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/gpu_tools.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_host_adapter.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_bicgstab.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_gmres_gpu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/linsolv_cusparse_ilu.hpp
@@ -181,6 +183,7 @@ if(CUDA)
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusparse_ilu.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_cusolv.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_schur_elim.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/linsolv_host_adapter.cpp
     PROPERTIES LANGUAGE CUDA
   )
   # AMGX is opt-in (-D WITH_AMGX=ON); it is the only GPU solver with a heavy

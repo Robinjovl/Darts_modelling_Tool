@@ -54,6 +54,7 @@ A one-cell-wide column (`nxy = 1`) makes the `pm_discretizer` roller stencils de
 python main.py --scheme generalized_alpha --params '{"rho_inf": 0.5}' --nz 100 --cfl 0.706
 python compare_schemes.py --nz 100 --cfl 0.706     # sweep of 13 scheme/parameter cases (~2 min)
 python convergence_study.py                        # joint dz/dt refinement, step and smooth pulses (~15 min)
+python backward_euler_norms.py                     # backward Euler, step pulse, three error measures (~10 min)
 python main.py --test all                          # regression cases (see below)
 ```
 
@@ -71,7 +72,14 @@ python main.py --test all                          # regression cases (see below
   generalized-alpha, HHT and Bathe; first order for backward Euler, Newmark gamma = 0.6 and the
   Kelvin-Voigt-damped variants), with reference slopes 1 and 2 and the observed orders in the table.
 
-The `figures/convergence_runs/` directory with the individual runs is git-ignored.
+* `backward_euler_norms.png` / `backward_euler_norms.md` (from `backward_euler_norms.py`): backward Euler on
+  the rectangular pulse (nz = 50..800, CFL 0.706) at t = 2 ms and 12 ms in the mesh-weighted L2 norm (order
+  1/4: the L2 error of a diffusively smeared jump), the L1 norm (order 1/2) and the per-cell-normalised
+  Euclidean norm `|u_z - u_zh|_2 / N` of thesis Fig. 6.1b (order 3/4, which reads as "first order with
+  respect to sqrt(dz dt)" there); see `docs/technical_reference/dynamic_mechanics.md`.
+
+The `figures/convergence_runs/` and `figures/backward_euler_runs/` directories with the individual runs are
+git-ignored.
 
 ## Regression test (`run_test`)
 

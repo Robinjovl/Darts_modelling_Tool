@@ -353,21 +353,27 @@ void pm_discretizer::init(const index_t _n_matrix, const index_t _n_fracs, vecto
 		}
 	}
 
-	// Reserving memory for output arrays
-	cell_m.reserve(n_faces);
-	cell_p.reserve(n_faces);
-	offset.reserve(n_faces + 1);
-	stencil.reserve(n_faces * MAX_STENCIL);
-	tran.reserve(n_faces * MAX_STENCIL * BLOCK_SIZE * BLOCK_SIZE);
-	tran_biot.reserve(n_faces * MAX_STENCIL * BLOCK_SIZE * BLOCK_SIZE);
-	rhs.reserve(BLOCK_SIZE * n_faces);
-	rhs_biot.reserve(BLOCK_SIZE * n_faces);
+	// Reserving memory for output arrays. The products are formed in size_t: with
+	// int arithmetic n_faces * MAX_STENCIL * BLOCK_SIZE^2 overflows 2^31 at
+	// ~2.7M faces (~0.5M cells), and vector::reserve then throws length_error
+	// ("vector::reserve") -- which is how the ~1M-cell displaced-fault meshes failed.
+	const size_t nf = static_cast<size_t>(n_faces);
+	const size_t nst = nf * static_cast<size_t>(MAX_STENCIL);
+	const size_t nb2 = static_cast<size_t>(BLOCK_SIZE) * static_cast<size_t>(BLOCK_SIZE);
+	cell_m.reserve(nf);
+	cell_p.reserve(nf);
+	offset.reserve(nf + 1);
+	stencil.reserve(nst);
+	tran.reserve(nst * nb2);
+	tran_biot.reserve(nst * nb2);
+	rhs.reserve(static_cast<size_t>(BLOCK_SIZE) * nf);
+	rhs_biot.reserve(static_cast<size_t>(BLOCK_SIZE) * nf);
 
-	tran_th_cond.reserve(n_faces * MAX_STENCIL);
-	tran_th_expn.reserve(n_faces * MAX_STENCIL * ND);
+	tran_th_cond.reserve(nst);
+	tran_th_expn.reserve(nst * static_cast<size_t>(ND));
 
-	tran_face_unknown.reserve(n_faces * MAX_STENCIL * BLOCK_SIZE * BLOCK_SIZE);
-	rhs_face_unknown.reserve(BLOCK_SIZE * n_faces);
+	tran_face_unknown.reserve(nst * nb2);
+	rhs_face_unknown.reserve(static_cast<size_t>(BLOCK_SIZE) * nf);
 
 	// Preallocations for different number of cell faces
 	for (index_t fn = MIN_FACE_NUM; fn <= MAX_FACE_NUM; fn++)

@@ -140,6 +140,32 @@ namespace
         // clean rejection accepted
       }
     }
+#ifdef WITH_GPU
+    // CUDA build: the device-resident chains for host-assembled systems
+    // (linsolv_host_adapter) are registered under the gpu_* names.
+    ok = ok && opendarts::linear_solvers::is_solver_registered("gpu_gmres_ilu0");
+    ok = ok && opendarts::linear_solvers::is_solver_registered("gpu_cusolver");
+#ifdef WITH_CUDSS
+    ok = ok && opendarts::linear_solvers::is_solver_registered("gpu_cudss");
+#endif
+#ifdef WITH_AMGX
+    ok = ok && opendarts::linear_solvers::is_solver_registered("gpu_gmres_cpr_amgx");
+    ok = ok && opendarts::linear_solvers::is_solver_registered("gpu_bicgstab_cpr_amgx");
+#endif
+    if (ok)
+    {
+      // Building must succeed at any supported block size without touching a
+      // device (construction only allocates on init()).
+      opendarts::linear_solvers::gpu_solver_config gpu_cfg;
+      ok = ok && (opendarts::linear_solvers::create_linear_solver("gpu_gmres_ilu0", gpu_cfg, BS) != nullptr);
+      // A plain solver_config resolves to the gpu defaults.
+      opendarts::linear_solvers::solver_config base_cfg2;
+      ok = ok && (opendarts::linear_solvers::create_linear_solver("gpu_gmres_ilu0", base_cfg2, BS) != nullptr);
+    }
+#else
+    ok = ok && !opendarts::linear_solvers::is_solver_registered("gpu_gmres_ilu0");
+    ok = ok && !opendarts::linear_solvers::is_solver_registered("gpu_cudss");
+#endif
     // Unknown names must throw, not crash.
     if (ok)
     {

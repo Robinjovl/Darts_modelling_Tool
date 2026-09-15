@@ -369,6 +369,29 @@ namespace opendarts
       std::vector<int> elim_cols;
       double pivot_eps = 0.0;  // pivots <= eps disqualify a candidate / fail setup
     };
+
+    /** Configuration of the device-resident (GPU) solvers registered under the
+     *  "gpu_*" names (solver_factories.cpp): gpu_cudss, gpu_cusolver,
+     *  gpu_gmres_ilu0, gpu_gmres_cpr_amgx, gpu_bicgstab_cpr_amgx. These are the
+     *  same chains the GPU engines build from sim_params::linear_type, wrapped
+     *  in linsolv_host_adapter so they also serve host-assembled Jacobians
+     *  (CPU engines, e.g. engine_pm_cpu). The Python counterpart is
+     *  ``GPUSolverSpec`` and its subclasses.
+     */
+    struct gpu_solver_config : opendarts::linear_solvers::solver_config
+    {
+      int device_num = 0;                // CUDA device the chain runs on
+      int restart = 50;                  // Krylov restart length (GMRES variants)
+      bool ilu_single_precision = false; // cuSPARSE block-ILU(0) factors in float
+      // cuDSS (gpu_cudss) only: iterative-refinement steps per solve (0 = none)
+      // and pivot-epsilon override (< 0 = library default). See linsolv_cudss.hpp.
+      // (CUDSS_CONFIG_DETERMINISTIC_MODE is deliberately not exposed: cuDSS 0.8
+      // rejects it at the analysis phase with CUDSS_STATUS_NOT_SUPPORTED.)
+      int cudss_ir_steps = 2;
+      double cudss_pivot_epsilon = -1.0;
+      bool cudss_hybrid_memory = false;             // LU factors partly in host memory (large systems)
+      long long cudss_hybrid_device_memory_limit = 0; // bytes on the device in hybrid mode (0 = cuDSS default)
+    };
   } // namespace linear_solvers
 } // namespace opendarts
 

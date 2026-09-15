@@ -602,6 +602,13 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 	//const value_t *p_ref = mesh->ref_pressure.data();
 	const value_t *eps_vol_ref = mesh->ref_eps_vol.data();
 
+	// Zero the assembly targets ONCE, outside the parallel region: inside it every thread
+	// re-zeroed the shared arrays while the others were already accumulating (data race).
+	std::fill_n(Jac, N_VARS * N_VARS * mesh->n_links, 0.0);
+	std::fill(RHS.begin(), RHS.end(), 0.0);
+	std::fill(fluxes.begin(), fluxes.end(), 0.0);
+	std::fill(fluxes_biot.begin(), fluxes_biot.end(), 0.0);
+
 #ifdef _OPENMP
 	//#pragma omp parallel reduction (max: CFL_max)
 #pragma omp parallel
@@ -614,13 +621,13 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 	index_t end = n_blocks;
 #endif //_OPENMP
 
-	std::fill_n(Jac, N_VARS * N_VARS * mesh->n_links, 0.0);
-	std::fill(RHS.begin(), RHS.end(), 0.0);
-	std::fill(fluxes.begin(), fluxes.end(), 0.0);
-	std::fill(fluxes_biot.begin(), fluxes_biot.end(), 0.0);
 
 	int connected_with_well;
-	index_t i, j, upwd_jac_idx, upwd_idx, diag_idx, jac_idx = 0, conn_id = 0, st_id = 0, conn_st_id = 0, idx, csr_idx_start, csr_idx_end;
+	index_t i, j, upwd_jac_idx, upwd_idx, diag_idx, jac_idx = 0, st_id = 0, conn_st_id = 0, idx, csr_idx_start, csr_idx_end;
+	// first connection of this thread's first block (connections are grouped by block_m in
+	// increasing order): a cursor starting at 0 skipped every connection of the blocks of
+	// the threads with start > 0
+	index_t conn_id = static_cast<index_t>(std::lower_bound(block_m, block_m + n_conns, start) - block_m);
 	value_t CFL_mech[ND_];
 	value_t CFL_max_global = 0, CFL_max_local;
 	const value_t *cur_bc, *cur_bc_n, *ref_bc, *buf, *buf_n;
@@ -968,6 +975,13 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 	//const value_t *p_ref = mesh->ref_pressure.data();
 	const value_t *eps_vol_ref = mesh->ref_eps_vol.data();
 
+	// Zero the assembly targets ONCE, outside the parallel region: inside it every thread
+	// re-zeroed the shared arrays while the others were already accumulating (data race).
+	std::fill_n(Jac, N_VARS * N_VARS * mesh->n_links, 0.0);
+	std::fill(RHS.begin(), RHS.end(), 0.0);
+	std::fill(fluxes.begin(), fluxes.end(), 0.0);
+	std::fill(fluxes_biot.begin(), fluxes_biot.end(), 0.0);
+
 #ifdef _OPENMP
 	//#pragma omp parallel reduction (max: CFL_max)
 #pragma omp parallel
@@ -980,13 +994,10 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 	index_t end = n_blocks;
 #endif //_OPENMP
 
-	std::fill_n(Jac, N_VARS * N_VARS * mesh->n_links, 0.0);
-	std::fill(RHS.begin(), RHS.end(), 0.0);
-	std::fill(fluxes.begin(), fluxes.end(), 0.0);
-	std::fill(fluxes_biot.begin(), fluxes_biot.end(), 0.0);
 
 	int connected_with_well;
-	index_t i, j, upwd_jac_idx, upwd_idx, diag_idx, jac_idx = 0, conn_id = 0, st_id = 0, conn_st_id = 0, idx, csr_idx_start, csr_idx_end, cur_conn_id;
+	index_t i, j, upwd_jac_idx, upwd_idx, diag_idx, jac_idx = 0, st_id = 0, conn_st_id = 0, idx, csr_idx_start, csr_idx_end, cur_conn_id;
+	index_t conn_id = static_cast<index_t>(std::lower_bound(block_m, block_m + n_conns, start) - block_m);
 	value_t CFL_mech[ND_];
 	value_t CFL_max_global = 0, CFL_max_local = 0;
 	value_t p_diff, gamma, *cur_bc, *cur_bc_prev, *ref_bc, biot_mult, comp_mult, phi, phi_n, *buf, *buf_prev, p_ref_cur, *n;
@@ -1323,6 +1334,12 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 	//const value_t *p_ref = mesh->ref_pressure.data();
 	const value_t* eps_vol_ref = mesh->ref_eps_vol.data();
 
+	// Zero the assembly targets ONCE, outside the parallel region: inside it every thread
+	// re-zeroed the shared arrays while the others were already accumulating (data race).
+	std::fill(RHS.begin(), RHS.end(), 0.0);
+	std::fill(fluxes.begin(), fluxes.end(), 0.0);
+	std::fill(fluxes_biot.begin(), fluxes_biot.end(), 0.0);
+
 #ifdef _OPENMP
 	//#pragma omp parallel reduction (max: CFL_max)
 #pragma omp parallel
@@ -1335,12 +1352,10 @@ int engine_pm_cpu::solve_explicit_scheme(value_t _dt)
 	index_t end = n_blocks;
 #endif //_OPENMP
 
-	std::fill(RHS.begin(), RHS.end(), 0.0);
-	std::fill(fluxes.begin(), fluxes.end(), 0.0);
-	std::fill(fluxes_biot.begin(), fluxes_biot.end(), 0.0);
 
 	int connected_with_well;
-	index_t i, j, upwd_jac_idx, upwd_idx, diag_idx, jac_idx = 0, conn_id = 0, st_id = 0, conn_st_id = 0, idx, csr_idx_start, csr_idx_end, cur_conn_id;
+	index_t i, j, upwd_jac_idx, upwd_idx, diag_idx, jac_idx = 0, st_id = 0, conn_st_id = 0, idx, csr_idx_start, csr_idx_end, cur_conn_id;
+	index_t conn_id = static_cast<index_t>(std::lower_bound(block_m, block_m + n_conns, start) - block_m);
 	value_t CFL_mech[ND_];
 	value_t CFL_max_global = 0, CFL_max_local;
 	value_t p_diff, gamma, * cur_bc, * cur_bc_prev, * ref_bc, biot_mult, comp_mult, phi, phi_n, * buf, * buf_prev, p_ref_cur, * n;

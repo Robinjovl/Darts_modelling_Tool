@@ -24,18 +24,9 @@ class THMCModel(DartsModel):
     linear_solver_from_engine_factory = True
 
     def __init__(self):
-        try:
-            from darts.engines import get_num_threads
-
-            nt = get_num_threads()
-        except:
-            nt = 1
-        if nt != 1:
-            print(
-                'Geomechanical model does not support OpenMP yet. Please run with OMP_NUM_THREADS=1 or use darts.engines.set_num_threads(1).'
-            )
-            exit()
-
+        # Multithreaded runs are allowed: the OpenMP assembly of engine_pm_cpu is
+        # bit-identical to the single-threaded one since the race fixes (a guard
+        # here used to exit() for any thread count other than one).
         super().__init__()
         self.timer.node["initialization"].start()
         self.set_input_data()

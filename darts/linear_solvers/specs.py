@@ -838,40 +838,108 @@ class SchurEliminationSpec(LinearSolverSpec):
 
 @dataclass
 class GPUSolverSpec(LinearSolverSpec):
-    """Base spec for GPU linear solvers.
+    """Base spec for the device-resident (GPU) linear solvers.
 
-    GPU solvers are selected by the GPU engine factory through the
-    ``params.linear_type`` (``darts.engines.linear_solver_t``) enum, NOT through
-    the open-source ``darts.linear_solvers`` registry. A GPUSolverSpec therefore does not
-    build a C++ solver -- it names the enum value via :attr:`linear_type_name`, and
-    :meth:`~darts.linear_solvers.LinearSolver._apply_solver` translates
-    ``self.linear_solver.spec`` to ``params.linear_type`` on the GPU platform.
-    :meth:`build` raises.
+    The same GPU solver chain is reachable in two ways, selected by the model's
+    platform:
 
-    This keeps ``self.linear_solver.spec`` the single user-facing API on GPU too:
-    ``self.linear_solver.spec = AMGXCPRSolverSpec()`` selects the GPU solver, mirroring
-    the way a CPU spec selects a registry solver.
+    * platform ``'gpu'`` (GPU engines, device-assembled Jacobian): the spec names a
+      ``params.linear_type`` (``darts.engines.linear_solver_t``) enum value via
+      :attr:`linear_type_name`; :meth:`~darts.linear_solvers.LinearSolver._apply_solver`
+      translates it and the GPU engine factory builds the chain. This keeps
+      ``self.linear_solver.spec`` the single user-facing API on GPU too.
+    * platform ``'cpu'`` (host-assembled Jacobian: every mechanics / poromechanics
+      engine, or a flow engine run on the CPU): :meth:`build` creates the same chain
+      through the open-source registry (the ``gpu_*`` names, :attr:`registry_name`)
+      wrapped in ``linsolv_host_adapter``. The adapter mirrors the Jacobian values to
+      the device at every ``setup()`` (one H2D copy per Newton iteration) and stages
+      the host RHS / solution vectors, so the solver is injected and switched exactly
+      like the CPU registry specs (``engine.set_linear_solver`` /
+      ``model.linear_solver.update_solver(spec=...)``). A run can therefore switch
+      between CPU and GPU solvers mid-run, e.g. cuDSS for a quasi-static stage and
+      GMRES + FS-CPR for a dynamic one.
+
+    The registry path needs a CUDA build of open-DARTS (cuDSS additionally needs
+    ``WITH_CUDSS``, the AMGX-CPR variants ``WITH_AMGX``); :meth:`build` raises
+    ``NotImplementedError`` when the name is not registered in this build.
     """
 
     #: name of the ``darts.engines.sim_params`` ``linear_solver_t`` enum value
+    #: (platform 'gpu': selected by the GPU engine factory)
     linear_type_name: ClassVar[str] = ""
+
+    #: name in the open-source solver registry (platform 'cpu': built through
+    #: ``linear_solvers.create_linear_solver`` and wrapped in linsolv_host_adapter)
+    registry_name: ClassVar[str] = ""
 
     #: K > 0 wraps the GPU chain in an exact per-cell local (block-Schur)
     #: elimination of K cell-local (diagonal-block-only) equation/unknown pairs
     #: (``linsolv_schur_elim``); the chain is then built at the reduced block
-    #: size N-K. Honoured by the AMGX-CPR family of GPU solvers; mirrors
-    #: ``SchurEliminationSpec`` on the CPU side. When > 0, :attr:`schur_elim_rows`
-    #: / :attr:`schur_elim_cols` (each of length K) give the explicit eliminated
-    #: (row, column) pairs.
+    #: size N-K. Honoured by the AMGX-CPR family of GPU solvers on platform
+    #: 'gpu'; mirrors ``SchurEliminationSpec`` on the CPU side (on platform 'cpu'
+    #: compose ``SchurEliminationSpec(inner=<GPU spec>)`` instead). When > 0,
+    #: :attr:`schur_elim_rows` / :attr:`schur_elim_cols` (each of length K) give
+    #: the explicit eliminated (row, column) pairs.
     schur_elim_count: int = 0
     schur_elim_rows: list[int] | None = None
     schur_elim_cols: list[int] | None = None
 
+    #: CUDA device the chain runs on (registry path: ``cudaSetDevice`` at init;
+    #: combine with ``CUDA_VISIBLE_DEVICES`` to pick a physical GPU).
+    device_num: int = 0
+
+    def _make_config(self) -> linear_solvers.GPUSolverConfig:
+        config = linear_solvers.GPUSolverConfig()
+        config.tolerance = self.tolerance
+        config.max_iterations = self.max_iterations
+        config.device_num = self.device_num
+        config.restart = int(getattr(self, "restart", 50))
+        config.ilu_single_precision = bool(getattr(self, "ilu_single_precision", False))
+        config.cudss_ir_steps = int(getattr(self, "ir_steps", 2))
+        config.cudss_pivot_epsilon = float(getattr(self, "pivot_epsilon", -1.0))
+        # hybrid-memory fields exist in builds that carry the option; keep older
+        # compiled modules usable (they run the plain device-memory cuDSS).
+        if hasattr(config, "cudss_hybrid_memory"):
+            config.cudss_hybrid_memory = bool(getattr(self, "hybrid_memory", False))
+            config.cudss_hybrid_device_memory_limit = int(
+                getattr(self, "hybrid_device_memory_limit", 0)
+            )
+        return config
+
+    @classmethod
+    def available(cls) -> bool:
+        """True when this build's registry carries the solver (CUDA build with the
+        required optional library), i.e. :meth:`build` will succeed."""
+        return (
+            linear_solvers is not None
+            and bool(cls.registry_name)
+            and bool(linear_solvers.is_solver_registered(cls.registry_name))
+        )
+
     def build(self, block_size: int):
-        raise NotImplementedError(
-            f"{type(self).__name__} is a GPU spec; it is selected via "
-            f"params.linear_type ({self.linear_type_name or '<unset>'}) by the GPU "
-            f"engine factory, not built through the open-source registry."
+        """Build the GPU chain for a host-assembled system (platform 'cpu').
+
+        :raises NotImplementedError: when the registry of this build does not
+            carry :attr:`registry_name` (CPU-only build, or a GPU build without
+            the optional library the chain needs).
+        """
+        if not self.available():
+            raise NotImplementedError(
+                f"{type(self).__name__} ('{self.registry_name or self.linear_type_name}') "
+                "is not available in this build: the gpu_* registry solvers need a "
+                "CUDA build of open-DARTS (cuDSS also needs WITH_CUDSS, the AMGX-CPR "
+                "chains WITH_AMGX). On platform='gpu' the spec is selected via "
+                f"params.linear_type ({self.linear_type_name or '<unset>'}) by the GPU "
+                "engine factory instead."
+            )
+        if self.schur_elim_count:
+            raise NotImplementedError(
+                "schur_elim_count is honoured by the GPU engine factory (platform "
+                "'gpu') only; on the registry path compose "
+                "SchurEliminationSpec(inner=<GPU spec>, elim_rows=..., elim_cols=...)."
+            )
+        return linear_solvers.create_linear_solver(
+            self.registry_name, self._make_config(), block_size
         )
 
 
@@ -879,28 +947,56 @@ class GPUSolverSpec(LinearSolverSpec):
 class AMGXCPRSolverSpec(GPUSolverSpec):
     """GPU GMRES + AMGX-CPR -- the default GPU solver.
 
-    NVIDIA AMGX algebraic multigrid on the pressure subsystem + ILU on the full
-    system, wrapped in GMRES. Maps to ``linear_solver_t.gpu_gmres_cpr_amgx_ilu``.
+    NVIDIA AMGX algebraic multigrid on the pressure subsystem + cuSPARSE
+    block-ILU(0) on the full system, wrapped in the in-tree GPU GMRES. Maps to
+    ``linear_solver_t.gpu_gmres_cpr_amgx_ilu`` (platform 'gpu') / registry
+    ``gpu_gmres_cpr_amgx`` (platform 'cpu'; needs ``WITH_AMGX``). The CPR split
+    assumes the flow-engine variable layout (pressure first): for poromechanics
+    (``engine_pm_cpu``, ``[u_x, u_y, u_z, p]``) use ``FSCPRSolverSpec``, a direct
+    solver or :class:`GPUGMRESILU0SolverSpec` instead.
+
+    :param restart: GMRES restart length (registry path).
+    :param ilu_single_precision: keep the block-ILU(0) factors in float
+        (registry path).
     """
 
     linear_type_name: ClassVar[str] = "gpu_gmres_cpr_amgx_ilu"
+    registry_name: ClassVar[str] = "gpu_gmres_cpr_amgx"
+
+    restart: int = 50
+    ilu_single_precision: bool = False
 
 
 @dataclass
 class GPUBiCGStabCPRSolverSpec(GPUSolverSpec):
-    """GPU BiCGStab + AMGX-CPR. Maps to ``linear_solver_t.gpu_bicgstab_cpr_amgx``."""
+    """GPU BiCGStab + AMGX-CPR. Maps to ``linear_solver_t.gpu_bicgstab_cpr_amgx``
+    (platform 'gpu') / registry ``gpu_bicgstab_cpr_amgx`` (platform 'cpu'; needs
+    ``WITH_AMGX``; pressure-first layout, see :class:`AMGXCPRSolverSpec`)."""
 
     linear_type_name: ClassVar[str] = "gpu_bicgstab_cpr_amgx"
+    registry_name: ClassVar[str] = "gpu_bicgstab_cpr_amgx"
+
+    ilu_single_precision: bool = False
 
 
 @dataclass
 class GPUGMRESILU0SolverSpec(GPUSolverSpec):
-    """GPU GMRES + cuSPARSE-ILU(0) -- a single-stage GPU fallback (no AMG).
+    """GPU GMRES + cuSPARSE block-ILU(0) -- a single-stage GPU solver (no AMG).
 
-    Maps to ``linear_solver_t.gpu_gmres_ilu0``.
+    Layout-agnostic (the block-ILU(0) works on any block structure), so it is the
+    Krylov GPU option for poromechanics. Maps to ``linear_solver_t.gpu_gmres_ilu0``
+    (platform 'gpu') / registry ``gpu_gmres_ilu0`` (platform 'cpu').
+
+    :param restart: GMRES restart length (registry path).
+    :param ilu_single_precision: keep the block-ILU(0) factors in float
+        (registry path).
     """
 
     linear_type_name: ClassVar[str] = "gpu_gmres_ilu0"
+    registry_name: ClassVar[str] = "gpu_gmres_ilu0"
+
+    restart: int = 50
+    ilu_single_precision: bool = False
 
 
 @dataclass
@@ -910,17 +1006,49 @@ class CuDSSSolverSpec(GPUSolverSpec):
     cuDSS (https://docs.nvidia.com/cuda/cudss/) is NVIDIA's sparse
     direct-solver library, the successor of the deprecated cusolverSp QR
     wrapped by ``GPUCuSolverSpec``. Exact solve -- one "linear iteration" per
-    Newton step; intended as the GPU counterpart of ``SuperLUSolverSpec`` /
-    ``PardisoSolverSpec`` and as a robustness fallback when iterative GPU
-    solvers struggle. Memory-bound: feasible for small/medium systems, not
-    for million-cell models.
+    Newton step; the GPU counterpart of ``SuperLUSolverSpec`` /
+    ``PardisoSolverSpec`` and a robustness fallback when iterative GPU
+    solvers struggle. Memory-bound: the LU fill of a 3D problem grows
+    super-linearly with the system size (see the solver docs for measured
+    figures on the poromechanics fault model).
 
-    Requires a GPU build configured with ``-D WITH_CUDSS=ON`` (a build
-    without it falls back to the BiCGStab + cuSPARSE-ILU(0) GPU solver with
-    a console notice). Maps to ``linear_solver_t.gpu_cudss``.
+    Requires a GPU build configured with ``-D WITH_CUDSS=ON`` and the prebuilt
+    library (``pip install nvidia-cudss-cu13`` into the build's environment).
+    Maps to ``linear_solver_t.gpu_cudss`` (platform 'gpu'; a build without cuDSS
+    falls back to the BiCGStab + cuSPARSE-ILU(0) GPU solver with a console
+    notice) / registry ``gpu_cudss`` (platform 'cpu').
+
+    :param ir_steps: iterative-refinement steps after each solve (registry
+        path; default 2). cuDSS perturbs tiny pivots (static pivoting,
+        ``CUDSS_CONFIG_PIVOT_EPSILON``) and reports success regardless, so on a
+        badly scaled Jacobian (the poromechanics fault model's rows are scaled
+        to unit maximum with entries down to 1e-40) the refinement is a cheap
+        safeguard -- two extra triangular solves and one SpMV per solve.
+        Measured true residuals on that model were at round-off (1e-14) with
+        and without it.
+    :param pivot_epsilon: ``CUDSS_CONFIG_PIVOT_EPSILON`` override (``< 0`` =
+        library default).
+    :param hybrid_memory: ``CUDSS_CONFIG_HYBRID_MEMORY_MODE`` -- keep part of the
+        LU factors in host memory so that systems whose factorization does not
+        fit the free device memory still solve (slower); the 2M-cell
+        displaced-fault mesh (8M unknowns) needs it on a shared 80 GB GPU.
+    :param hybrid_device_memory_limit: device share in hybrid mode [bytes]
+        (0 = cuDSS default).
+
+    The solve is NOT bit-reproducible run to run (parallel factorization;
+    differences at the 1e-11 relative level, which a Newton loop poised at a
+    contact / well-control bifurcation can amplify into a different timestep
+    path); cuDSS 0.8 rejects its ``CUDSS_CONFIG_DETERMINISTIC_MODE`` for this
+    matrix type at the analysis phase, so no deterministic option is offered.
     """
 
     linear_type_name: ClassVar[str] = "gpu_cudss"
+    registry_name: ClassVar[str] = "gpu_cudss"
+
+    ir_steps: int = 2
+    pivot_epsilon: float = -1.0
+    hybrid_memory: bool = False
+    hybrid_device_memory_limit: int = 0
 
 
 @dataclass
@@ -929,7 +1057,9 @@ class GPUCuSolverSpec(GPUSolverSpec):
 
     Legacy GPU direct solve (``cusolverSpDcsrlsvqr``, deprecated by NVIDIA in
     favour of cuDSS -- prefer :class:`CuDSSSolverSpec` when available). Maps
-    to ``linear_solver_t.gpu_cusolver``.
+    to ``linear_solver_t.gpu_cusolver`` (platform 'gpu') / registry
+    ``gpu_cusolver`` (platform 'cpu').
     """
 
     linear_type_name: ClassVar[str] = "gpu_cusolver"
+    registry_name: ClassVar[str] = "gpu_cusolver"

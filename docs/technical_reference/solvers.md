@@ -240,22 +240,72 @@ stage or for the whole system.
 
 ## Linear solvers — GPU
 
-GPU specs name the backend that the GPU engine factory builds; the AMG configuration
-lives in the engine factory / AMGX JSON rather than in Python. The Python knobs are the
-inherited three plus local Schur elimination.
+The GPU specs describe device-resident solver chains. They are reachable from both
+platforms:
 
-| Spec | Role | Library | Type | Most important parameters |
+* **platform `'gpu'`** (GPU engines, device-assembled Jacobian): the spec names the
+  `params.linear_type` enum the GPU engine factory builds from; the AMG configuration
+  lives in the engine factory / AMGX JSON rather than in Python.
+* **platform `'cpu'`** (host-assembled Jacobian: every mechanics / poromechanics
+  engine, and any flow engine run on the CPU): `spec.build()` creates the same chain
+  through the open-source registry (`gpu_*` names) wrapped in `linsolv_host_adapter`.
+  The adapter mirrors the Jacobian values to the device at every `setup()` (one
+  host-to-device copy of `nnz × N² × 8` bytes per Newton iteration; the sparsity
+  structure once, at `init()`), stages the host RHS / solution vectors for the device
+  Krylov drivers, and forwards everything else. Neither the engines nor the GPU solver
+  classes change: the solver is injected through `engine.set_linear_solver` and can be
+  switched mid-run with `model.linear_solver.update_solver(spec=...)` exactly like the
+  CPU registry specs — so a run may use cuDSS for one stage and GMRES + FS-CPR for the
+  next (see `models/displaced_fault_reactivation`, `config['linear_solver']`).
+  Requires a CUDA build of open-DARTS; `Spec.available()` tells whether this build
+  carries the solver, and `build()` raises `NotImplementedError` otherwise.
+
+| Spec | Registry name (platform `'cpu'`) | Library | Type | Most important parameters |
 |---|---|---|---|---|
-| `AMGXCPRSolverSpec` | solver | AMGX + open-DARTS | GMRES + AMGX-CPR (**GPU default**) | `tolerance`, `max_iterations`, `print_level`, `schur_elim_count` / `schur_elim_rows` / `schur_elim_cols` |
-| `GPUBiCGStabCPRSolverSpec` | solver | AMGX + open-DARTS | BiCGStab + AMGX-CPR | as above |
-| `GPUGMRESILU0SolverSpec` | solver | cuSPARSE + open-DARTS | GMRES + cuSPARSE-ILU(0), single-stage fallback when the GPU build has no AMGX | as above |
-| `CuDSSSolverSpec` | solver | cuDSS | sparse **direct** solver | as above; `WITH_CUDSS` is ON by default, but the GPU build silently omits cuDSS if the prebuilt library is not found |
-| `GPUCuSolverSpec` | solver | cuSOLVER | QR sparse direct; NVIDIA deprecates this API in favour of cuDSS | as above |
+| `AMGXCPRSolverSpec` | `gpu_gmres_cpr_amgx` | AMGX + open-DARTS | GMRES + AMGX-CPR (**GPU default**) | `tolerance`, `max_iterations`, `restart`, `ilu_single_precision`, `device_num`; platform `'gpu'` also `schur_elim_count` / `schur_elim_rows` / `schur_elim_cols` |
+| `GPUBiCGStabCPRSolverSpec` | `gpu_bicgstab_cpr_amgx` | AMGX + open-DARTS | BiCGStab + AMGX-CPR | as above |
+| `GPUGMRESILU0SolverSpec` | `gpu_gmres_ilu0` | cuSPARSE + open-DARTS | GMRES + cuSPARSE block-ILU(0), single-stage (no AMG) | `tolerance`, `max_iterations`, `restart`, `ilu_single_precision`, `device_num` |
+| `CuDSSSolverSpec` | `gpu_cudss` | cuDSS | sparse **direct** solver | `device_num`, `ir_steps` (iterative refinement, default 2), `pivot_epsilon`, `hybrid_memory` / `hybrid_device_memory_limit` (part of the LU factors in host memory for systems larger than the free device memory); `WITH_CUDSS` is ON by default, but the GPU build silently omits cuDSS if the prebuilt library is not found (`pip install nvidia-cudss-cu13` into the build environment, or `CUDSS_ROOT`) |
+| `GPUCuSolverSpec` | `gpu_cusolver` | cuSOLVER | QR sparse direct; NVIDIA deprecates this API in favour of cuDSS | `device_num` |
+
+The two CPR variants take the pressure from the **first** block variable (flow-engine
+layout). For poromechanics (`engine_pm_cpu`, blocks `[u_x, u_y, u_z, p]`) use
+`FSCPRSolverSpec` (CPU), a direct solver or `GPUGMRESILU0SolverSpec`, whose block-ILU(0)
+is layout-agnostic. The ILU on the GPU is the cuSPARSE legacy block-CSR
+`bsrilu02` factorisation (`linsolv_cusparse_ilu`), i.e. an exact block ILU(0) with
+level-scheduled triangular solves; `ilu_single_precision=True` keeps its factors in
+float (halves the memory and the triangular-solve traffic, at the cost of a few
+extra Krylov iterations). `restart` and `ilu_single_precision` are honoured on the
+registry path; on platform `'gpu'` the engine factory keeps its defaults.
 
 `schur_elim_count` (`0` = off) statically condenses that many cell-local equations before
 the solve; `schur_elim_rows` / `schur_elim_cols` name the eliminated equation rows and
-unknown columns and must have `schur_elim_count` entries.
+unknown columns and must have `schur_elim_count` entries. It is honoured by the GPU
+engine factory only; on platform `'cpu'` compose `SchurEliminationSpec(inner=<GPU spec>)`.
 
+**cuDSS accuracy and reproducibility.** cuDSS replaces tiny pivots by a perturbation
+(static pivoting, `CUDSS_CONFIG_PIVOT_EPSILON`) and reports success regardless, so
+`ir_steps=2` (the registry default) adds two iterative-refinement sweeps after every solve
+as a safeguard (two extra triangular solves and one SpMV, a few percent of the
+factorization). On the poromechanics fault model (rows scaled to unit maximum, entries
+down to 1e-40, well and contact rows) 400 repeated solves gave true relative residuals of
+1e-14 to 1e-16 with and without refinement, identical to SuperLU to seven digits. cuDSS is
+however not bit-reproducible run to run (parallel factorization, 1e-11 relative
+differences), whereas FS-CPR and SuperLU are; a Newton loop poised at a bifurcation (the
+fault model's well-control residual sits at its round-off floor right at the well
+tolerance during the depletion onset) can amplify that into a different timestep path.
+cuDSS 0.8 rejects its `CUDSS_CONFIG_DETERMINISTIC_MODE` for this matrix type at the
+analysis phase (`CUDSS_STATUS_NOT_SUPPORTED`), so no deterministic option is offered.
+
+**Cost model of the host-assembly path.** Per Newton iteration the adapter uploads the
+Jacobian values (a 4-block poromechanics system with ~10 blocks per row is ~1.3 kB per
+cell: 14 MB on the 11 k-cell displaced-fault mesh, 190 MB at 116 k cells, ~1.3 GB per
+million cells, i.e. 0.01 s to ~0.1 s at PCIe bandwidth) and the RHS, and downloads the
+solution. This is negligible next to a direct factorisation or an FS-CPR setup, and
+small next to the CPU assembly itself (0.19 s per Newton iteration at 11 k cells,
+1.3–3.5 s at 116–162 k on one thread), which becomes the bottleneck once the solve is
+on the GPU. Measured solve times per solver and mesh size for the displaced-fault
+poromechanics model are in `docs/technical_reference/dynamic_mechanics.md`.
 
 `GMRESSolverSpec` is the only spec exposing a `prec` field, so it is the composition point
 on CPU. `MGRSolverSpec` is the exception to the pattern — see the note under the CPU table.
@@ -285,20 +335,22 @@ Two specs wrap another solver rather than being one:
 * `AdaptiveSolverSpec(candidates=[...], policy=..., on_timestep_failed=...)` — switches
   between candidate solvers during a run; `candidates[0]` is used first, and the policy
   decides per timestep from the previous step's state. At least one candidate is required.
-  Candidates must be **engine-resident CPU registry specs** (`MGRSolverSpec`,
-  `GMRESSolverSpec`, `CPRSolverSpec`, `SuperLUSolverSpec`, …): switching rebuilds the
+  Candidates must be **engine-resident registry specs** (`MGRSolverSpec`,
+  `GMRESSolverSpec`, `CPRSolverSpec`, `SuperLUSolverSpec`, and on a CUDA build the GPU
+  specs, which the registry builds behind `linsolv_host_adapter`): switching rebuilds the
   candidate through the open-source registry and injects it into the live engine, which a
-  `GPUSolverSpec` (enum-selected by the engine factory) and a Python-resident solver
-  (`PETScSolverSpec`, `PardisoSolverSpec`, owned by the model) cannot support. Both raise
-  `TypeError` at construction rather than hours into a run. To retune the *current* solver
+  Python-resident solver (`PETScSolverSpec`, `PardisoSolverSpec`, owned by the model)
+  cannot support. Those, and a GPU spec this build does not carry, raise `TypeError` at
+  construction rather than hours into a run. To retune the *current* solver
   instead of replacing it, call `model.linear_solver.update_solver(...)`, which reconfigures
   the injected solver in place without touching the Jacobian.
 
 So the two families are separated in both directions: HYPRE's MGR cannot serve as a
 preconditioner inside an in-tree Krylov driver (the `ValueError` above), and no in-tree
 component can be substituted into MGR's own cycle. Within a run you may switch between
-registry solvers or retune one, but you cannot hand the solve back and forth between a
-registry solver and a GPU or Python-resident one.
+registry solvers (CPU and, on platform `'cpu'` of a CUDA build, GPU ones) or retune one,
+but you cannot hand the solve back and forth between a registry solver and a
+Python-resident one.
 
 ## Build availability
 

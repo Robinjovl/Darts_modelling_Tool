@@ -86,8 +86,31 @@ class Diagnostics:
                      row['shear_traction_tv_bar'], row['n_newton']))
 
 
+TIMER_KEYS = ('jacobian assembly', 'linear solver setup', 'linear solver solve', 'send_to_device',
+              'host<->device', 'CUDSS', 'GMRES', 'ILU(0)', 'FS_CPR', 'newton update')
+
+
+def timer_snapshot(timer, prefix=''):
+    """Flatten the engine/model timer tree to {path: seconds} (only the nodes in TIMER_KEYS)."""
+    out = {}
+    for name, child in timer.node.items():
+        key = prefix + name
+        if any(name == k or name.startswith(k) for k in TIMER_KEYS):
+            try:
+                out[key] = float(child.get_timer())
+            except Exception:  # noqa: BLE001 -- diagnostics only
+                pass
+        out.update(timer_snapshot(child, key + '/'))
+    return out
+
+
 def run_benchmark(scheme='backward_euler', params=None, max_dynamic_steps=300, out_dir=None, vtk_every=25,
-                  mesh_file='meshes/new_setup_coarse.geo', cache_discretizer=True):
+                  mesh_file='meshes/new_setup_coarse.geo', cache_discretizer=True, qs_solver='fs_cpr',
+                  dyn_solver=None):
+    """Mixed quasi-static -> dynamic run of the well-depletion case with the given time integration scheme
+    and linear solver per stage (names as in Model.make_stage_solver_spec: 'fs_cpr', 'superlu', 'pardiso',
+    'cudss', 'gpu_gmres_ilu0', 'gpu_gmres_ilu0_sp', 'gpu_cusolver'; dyn_solver=None rebuilds the quasi-static
+    solver at tolerance 1e-12 for the dynamic stage, 'inplace' only tightens the live solver)."""
     params = params or {}
     config = {'mode': 'mixed',
               'timesteps': 5 * np.ones(4),
@@ -95,10 +118,13 @@ def run_benchmark(scheme='backward_euler', params=None, max_dynamic_steps=300, o
               'friction_law': 'slip_weakening',
               'mesh_file': mesh_file,
               'cache_discretizer': cache_discretizer,
-              'time_integration': {'scheme': scheme, **params}}
+              'time_integration': {'scheme': scheme, **params},
+              'linear_solver': {'quasi_static': qs_solver, 'dynamic': dyn_solver}}
     import main as drv  # the model driver (run_python, get_output_folder)
 
+    t_model0 = wall.time()
     m = Model(config=config)
+    t_model = wall.time() - t_model0
     m.init()
     m.output_directory = out_dir or ('bench_' + drv.get_output_folder(config))
     os.makedirs(m.output_directory, exist_ok=True)
@@ -131,9 +157,19 @@ def run_benchmark(scheme='backward_euler', params=None, max_dynamic_steps=300, o
     m.reservoir.apply_geomechanics_mode(physics=m.physics, mode=0)  # well depletion: flow persists
 
     diag = Diagnostics(m)
-    m.step_callback = diag
-    m.physics.engine.t = 0.0
+    timers = {'model_s': t_model, 'qs': None, 'total': None}
+    wall_marks = {'dynamic_start': None}
     t0 = wall.time()
+
+    def step_callback(model, t, dt, dynamic):
+        if dynamic and timers['qs'] is None:
+            # first dynamic step accepted: everything so far is the quasi-static stage
+            timers['qs'] = timer_snapshot(model.timer)
+            wall_marks['dynamic_start'] = wall.time() - t0
+        diag(model, t, dt, dynamic)
+
+    m.step_callback = step_callback
+    m.physics.engine.t = 0.0
     for dt in config['timesteps']:
         m.ts_control.dt_max = dt
         m.ts_control.dt_mult = 10.0
@@ -141,8 +177,13 @@ def run_benchmark(scheme='backward_euler', params=None, max_dynamic_steps=300, o
         if getattr(m, 'stop_requested', False):
             break
     stats = m.nonlinear_solver.stats
+    timers['total'] = timer_snapshot(m.timer)
+    if timers['qs'] is not None:
+        timers['dynamic'] = {k: v - timers['qs'].get(k, 0.0) for k, v in timers['total'].items()}
     summary = {'scheme': scheme, 'params': params, 'max_dynamic_steps': max_dynamic_steps,
+               'linear_solver': {'quasi_static': str(qs_solver), 'dynamic': str(dyn_solver)},
                'n_dynamic_steps': getattr(m, 'n_dynamic_steps', 0), 'wall_time_s': wall.time() - t0,
+               'wall_time_qs_s': wall_marks['dynamic_start'], 'timers': timers,
                'n_be_fallbacks': getattr(m, 'n_be_fallbacks', 0),
                'n_timesteps_total': stats.n_timesteps_total, 'n_timesteps_wasted': stats.n_timesteps_wasted,
                'n_newton_total': stats.n_newton_total, 'n_newton_wasted': stats.n_newton_wasted,
@@ -162,6 +203,10 @@ if __name__ == '__main__':
     ap.add_argument('--out', default=None)
     ap.add_argument('--vtk_every', type=int, default=25)
     ap.add_argument('--mesh', default='meshes/new_setup_coarse.geo')
+    ap.add_argument('--qs_solver', default='fs_cpr', help="quasi-static stage solver (fs_cpr, superlu, pardiso, "
+                                                          "cudss, gpu_gmres_ilu0, gpu_gmres_ilu0_sp, gpu_cusolver)")
+    ap.add_argument('--dyn_solver', default=None, help='dynamic stage solver (same names, or inplace); default: the '
+                                                       'quasi-static solver rebuilt at tolerance 1e-12')
     args = ap.parse_args()
     run_benchmark(scheme=args.scheme, params=json.loads(args.params), max_dynamic_steps=args.max_dynamic_steps,
-                  out_dir=args.out, vtk_every=args.vtk_every, mesh_file=args.mesh)
+                  out_dir=args.out, vtk_every=args.vtk_every, mesh_file=args.mesh, qs_solver=args.qs_solver, dyn_solver=args.dyn_solver)

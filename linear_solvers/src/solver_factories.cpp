@@ -32,6 +32,20 @@
 #include "linsolv_iface_bos.hpp"
 #include "linsolv_mgr.hpp"
 #include "linsolv_superlu.hpp"
+#ifdef WITH_GPU
+#include "linsolv_host_adapter.hpp"
+#include "linsolv_gmres_gpu.hpp"
+#include "linsolv_bicgstab.hpp"
+#include "linsolv_cusparse_ilu.hpp"
+#include "linsolv_cusolv.hpp"
+#include "linsolv_cpr_gpu.hpp"
+#ifdef WITH_AMGX
+#include "linsolv_amgx.hpp"
+#endif
+#ifdef WITH_CUDSS
+#include "linsolv_cudss.hpp"
+#endif
+#endif // WITH_GPU
 #include "solver_config.hpp"
 #include "solver_configs.hpp"
 #include "solver_registry.hpp"
@@ -603,6 +617,182 @@ namespace opendarts
         return build_fs_cpr_for_block_size(block_size, *fs_config,
             P_VAR, Z_VAR, U_VAR, NC);
       }
+
+#ifdef WITH_GPU
+      // ---- GPU chains for host-assembled systems ---------------------------
+      //
+      // The same solver chains engine_base_gpu builds from sim_params::linear_type,
+      // but constructed here from a gpu_solver_config and wrapped in
+      // linsolv_host_adapter, so that a CPU engine (host Jacobian, host RHS/dX)
+      // can run them through engine_base::set_linear_solver. Registered as
+      //   gpu_cudss             cuDSS sparse direct (WITH_CUDSS)
+      //   gpu_cusolver          cuSOLVER QR sparse direct (deprecated by NVIDIA)
+      //   gpu_gmres_ilu0        GPU GMRES + cuSPARSE block-ILU(0)
+      //   gpu_gmres_cpr_amgx    GPU GMRES + CPR(AMGX pressure / block-ILU(0) full)
+      //   gpu_bicgstab_cpr_amgx GPU BiCGStab + the same CPR                  (WITH_AMGX)
+      // The CPR variants assume the flow-engine variable layout (pressure first);
+      // poromechanics ([u, p] blocks) should use fs_cpr, the direct solvers or
+      // gpu_gmres_ilu0.
+
+      using adapter_ptr = std::shared_ptr<opendarts::linear_solvers::linsolv_host_adapter>;
+
+      template <class Builder>
+      solver_handle build_gpu_for_block_size(int block_size,
+          const opendarts::linear_solvers::gpu_solver_config &config, const char *name)
+      {
+        switch (block_size)
+        {
+          case 1:  return Builder::template build<1>(config);
+          case 2:  return Builder::template build<2>(config);
+          case 3:  return Builder::template build<3>(config);
+          case 4:  return Builder::template build<4>(config);
+          case 5:  return Builder::template build<5>(config);
+          case 6:  return Builder::template build<6>(config);
+          case 7:  return Builder::template build<7>(config);
+          case 8:  return Builder::template build<8>(config);
+          case 9:  return Builder::template build<9>(config);
+          case 10: return Builder::template build<10>(config);
+          case 11: return Builder::template build<11>(config);
+          case 12: return Builder::template build<12>(config);
+          case 13: return Builder::template build<13>(config);
+          default:
+            throw std::runtime_error(std::string(name) + ": unsupported block size " +
+                std::to_string(block_size) + " (supported: " +
+                std::to_string(MIN_BLOCK_SIZE) + ".." + std::to_string(MAX_BLOCK_SIZE) + ").");
+        }
+      }
+
+#ifdef WITH_CUDSS
+      struct cudss_builder
+      {
+        template <uint8_t N>
+        static solver_handle build(const opendarts::linear_solvers::gpu_solver_config &config)
+        {
+          auto solver = std::make_shared<opendarts::linear_solvers::linsolv_cudss<N>>();
+          solver->device_num = config.device_num;
+          solver->ir_n_steps = config.cudss_ir_steps;
+          solver->pivot_epsilon = config.cudss_pivot_epsilon;
+          solver->hybrid_memory = config.cudss_hybrid_memory;
+          solver->hybrid_device_memory_limit = config.cudss_hybrid_device_memory_limit;
+          // linsolv_cudss::solve() stages host B/X itself.
+          return std::make_shared<opendarts::linear_solvers::linsolv_host_adapter>(
+              solver, /*inner_takes_host_vectors=*/true, config.device_num);
+        }
+      };
+
+      solver_handle make_gpu_cudss_solver(
+          const opendarts::linear_solvers::solver_config &config, int block_size)
+      {
+        const auto cfg = resolve_config<opendarts::linear_solvers::gpu_solver_config>(config, "gpu_cudss");
+        return build_gpu_for_block_size<cudss_builder>(block_size, cfg, "gpu_cudss");
+      }
+#endif // WITH_CUDSS
+
+      struct cusolver_builder
+      {
+        template <uint8_t N>
+        static solver_handle build(const opendarts::linear_solvers::gpu_solver_config &config)
+        {
+          auto solver = std::make_shared<opendarts::linear_solvers::linsolv_cusolv<N>>();
+          solver->device_num = config.device_num;
+          // linsolv_cusolv::solve() stages host B/X itself.
+          return std::make_shared<opendarts::linear_solvers::linsolv_host_adapter>(
+              solver, /*inner_takes_host_vectors=*/true, config.device_num);
+        }
+      };
+
+      solver_handle make_gpu_cusolver_solver(
+          const opendarts::linear_solvers::solver_config &config, int block_size)
+      {
+        const auto cfg = resolve_config<opendarts::linear_solvers::gpu_solver_config>(config, "gpu_cusolver");
+        return build_gpu_for_block_size<cusolver_builder>(block_size, cfg, "gpu_cusolver");
+      }
+
+      // Ownership inside the GPU chains follows the GPU engine factory: the
+      // Krylov drivers (linsolv_gmres_gpu / linsolv_bicgstab) and linsolv_cpr_gpu
+      // DELETE the stages handed to set_prec() / set_p_system_prec() in their
+      // destructors, so the stages are created with plain new and only the chain
+      // head is shared with the adapter.
+      struct gmres_ilu0_builder
+      {
+        template <uint8_t N>
+        static solver_handle build(const opendarts::linear_solvers::gpu_solver_config &config)
+        {
+          auto gmres = std::make_shared<opendarts::linear_solvers::linsolv_gmres_gpu<N>>();
+          gmres->set_restart(config.restart);
+          gmres->set_prec(new opendarts::linear_solvers::linsolv_cusparse_ilu<N>(
+              /*factorize_in_place=*/0, config.ilu_single_precision ? 1 : 0));
+          return std::make_shared<opendarts::linear_solvers::linsolv_host_adapter>(
+              gmres, /*inner_takes_host_vectors=*/false, config.device_num);
+        }
+      };
+
+      solver_handle make_gpu_gmres_ilu0_solver(
+          const opendarts::linear_solvers::solver_config &config, int block_size)
+      {
+        const auto cfg = resolve_config<opendarts::linear_solvers::gpu_solver_config>(config, "gpu_gmres_ilu0");
+        return build_gpu_for_block_size<gmres_ilu0_builder>(block_size, cfg, "gpu_gmres_ilu0");
+      }
+
+#ifdef WITH_AMGX
+      template <bool USE_BICGSTAB>
+      struct cpr_amgx_builder
+      {
+        template <uint8_t N>
+        static solver_handle build(const opendarts::linear_solvers::gpu_solver_config &config)
+        {
+          if constexpr (N < 2)
+          {
+            // linsolv_cpr_gpu is instantiated for N >= 2 only (no CPR split of a
+            // 1x1 block); keep the switch above uniform without instantiating it.
+            throw std::runtime_error("gpu CPR-AMGX chain: block size 1 has no pressure split.");
+          }
+          else
+          {
+            // Same chain as make_gpu_amgx_cpr_chain (engine_base_gpu.h); the CPR
+            // owns its two stages, the Krylov driver owns the CPR.
+            auto *cpr = new opendarts::linear_solvers::linsolv_cpr_gpu<N>;
+            cpr->p_solver_setup_gpu = 1;
+            cpr->p_solver_solve_gpu = 1;
+            cpr->p_solver_requires_diag_first = 0;
+            cpr->set_p_system_prec(new opendarts::linear_solvers::linsolv_amgx<1>(config.device_num, 1, -1));
+            cpr->set_prec(new opendarts::linear_solvers::linsolv_cusparse_ilu<N>(
+                /*factorize_in_place=*/0, config.ilu_single_precision ? 1 : 0));
+            std::shared_ptr<opendarts::linear_solvers::linear_solver> outer;
+            if constexpr (USE_BICGSTAB)
+            {
+              auto bicgstab = std::make_shared<opendarts::linear_solvers::linsolv_bicgstab<N>>();
+              bicgstab->set_prec(cpr);
+              outer = bicgstab;
+            }
+            else
+            {
+              auto gmres = std::make_shared<opendarts::linear_solvers::linsolv_gmres_gpu<N>>();
+              gmres->set_restart(config.restart);
+              gmres->set_prec(cpr);
+              outer = gmres;
+            }
+            return std::make_shared<opendarts::linear_solvers::linsolv_host_adapter>(
+                outer, /*inner_takes_host_vectors=*/false, config.device_num);
+          }
+        }
+      };
+
+      solver_handle make_gpu_gmres_cpr_amgx_solver(
+          const opendarts::linear_solvers::solver_config &config, int block_size)
+      {
+        const auto cfg = resolve_config<opendarts::linear_solvers::gpu_solver_config>(config, "gpu_gmres_cpr_amgx");
+        return build_gpu_for_block_size<cpr_amgx_builder<false>>(block_size, cfg, "gpu_gmres_cpr_amgx");
+      }
+
+      solver_handle make_gpu_bicgstab_cpr_amgx_solver(
+          const opendarts::linear_solvers::solver_config &config, int block_size)
+      {
+        const auto cfg = resolve_config<opendarts::linear_solvers::gpu_solver_config>(config, "gpu_bicgstab_cpr_amgx");
+        return build_gpu_for_block_size<cpr_amgx_builder<true>>(block_size, cfg, "gpu_bicgstab_cpr_amgx");
+      }
+#endif // WITH_AMGX
+#endif // WITH_GPU
     } // anonymous namespace
 
     void register_builtin_solvers()
@@ -620,6 +810,18 @@ namespace opendarts
       register_solver("cpr", make_cpr_solver);
       register_solver("schur_elim", make_schur_elim_solver);
       register_solver("fs_cpr", make_fs_cpr_solver);
+#ifdef WITH_GPU
+      // Device-resident chains usable from CPU engines (linsolv_host_adapter).
+#ifdef WITH_CUDSS
+      register_solver("gpu_cudss", make_gpu_cudss_solver);
+#endif
+      register_solver("gpu_cusolver", make_gpu_cusolver_solver);
+      register_solver("gpu_gmres_ilu0", make_gpu_gmres_ilu0_solver);
+#ifdef WITH_AMGX
+      register_solver("gpu_gmres_cpr_amgx", make_gpu_gmres_cpr_amgx_solver);
+      register_solver("gpu_bicgstab_cpr_amgx", make_gpu_bicgstab_cpr_amgx_solver);
+#endif
+#endif // WITH_GPU
     }
   } // namespace linear_solvers
 } // namespace opendarts

@@ -3,3 +3,4 @@ sol_*/
 sweep_*/
 meshes/*.msh
 figures/convergence_runs/
+figures/backward_euler_runs/

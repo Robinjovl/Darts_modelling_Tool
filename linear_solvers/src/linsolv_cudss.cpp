@@ -9,6 +9,7 @@
 #if defined(WITH_GPU) && defined(WITH_CUDSS)
 
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 
 #include <cuda_runtime.h>
@@ -195,6 +196,35 @@ namespace opendarts
         return -1;
       if (!check_cudss(cudssConfigCreate(&config_), "cudssConfigCreate"))
         return -1;
+      // Optional accuracy / reproducibility knobs (see the header).
+      if (ir_n_steps > 0)
+      {
+        const int n = ir_n_steps;
+        if (!check_cudss(cudssConfigSet(config_, CUDSS_CONFIG_IR_N_STEPS, &n, sizeof(n)),
+              "cudssConfigSet(IR_N_STEPS)"))
+          return -1;
+      }
+      if (pivot_epsilon >= 0.0)
+      {
+        const double eps = pivot_epsilon;
+        if (!check_cudss(cudssConfigSet(config_, CUDSS_CONFIG_PIVOT_EPSILON, &eps, sizeof(eps)),
+              "cudssConfigSet(PIVOT_EPSILON)"))
+          return -1;
+      }
+      if (hybrid_memory)
+      {
+        const int one = 1;
+        if (!check_cudss(cudssConfigSet(config_, CUDSS_CONFIG_HYBRID_MEMORY_MODE, &one, sizeof(one)),
+              "cudssConfigSet(HYBRID_MEMORY_MODE)"))
+          return -1;
+        if (hybrid_device_memory_limit > 0)
+        {
+          const int64_t limit = static_cast<int64_t>(hybrid_device_memory_limit);
+          if (!check_cudss(cudssConfigSet(config_, CUDSS_CONFIG_HYBRID_DEVICE_MEMORY_LIMIT, &limit, sizeof(limit)),
+                "cudssConfigSet(HYBRID_DEVICE_MEMORY_LIMIT)"))
+            return -1;
+        }
+      }
       if (!check_cudss(cudssDataCreate(handle_, &data_), "cudssDataCreate"))
         return -1;
 

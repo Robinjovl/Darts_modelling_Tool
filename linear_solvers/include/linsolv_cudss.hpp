@@ -111,6 +111,24 @@ namespace opendarts
       opendarts::config::index_t n_scalar_rows = 0;
       opendarts::config::index_t n_scalar_nnz = 0;
 
+      /** Iterative-refinement steps after each solve (CUDSS_CONFIG_IR_N_STEPS;
+          0 = library default, i.e. none). Refinement recovers the accuracy
+          lost to the perturbed (static) pivots cuDSS applies to tiny pivots --
+          on badly scaled Jacobians (rows scaled to unit max with entries down
+          to 1e-40, well rows, contact rows) a plain factorization occasionally
+          returns a solution with a large true residual while reporting
+          success; two refinement steps bring it back to round-off. Set before
+          init(). */
+      int ir_n_steps = 0;
+      /** CUDSS_CONFIG_PIVOT_EPSILON override (< 0 keeps the library default). */
+      double pivot_epsilon = -1.0;
+      /** CUDSS_CONFIG_HYBRID_MEMORY_MODE: keep part of the LU factors in host
+          memory so systems whose factorization exceeds the free device memory
+          still solve (slower); hybrid_device_memory_limit (bytes, 0 = let
+          cuDSS choose) caps the device share. Set before init(). */
+      bool hybrid_memory = false;
+      long long hybrid_device_memory_limit = 0;
+
     private:
       // (Re)bind the cudssMatrix_t CSR descriptor to the matrix's current
       // scalar-CSR device pointers; creates the descriptor on first use.
