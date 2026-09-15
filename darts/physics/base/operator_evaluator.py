@@ -652,7 +652,7 @@ class ReservoirOperators(OperatorsSuper):
         ]
 
         # E4-> capillarity
-        values_np[self.PC_OP + self.property.ph] = self.property.pc[self.property.ph]
+        values_np[self.PC_OP : self.PC_OP + self.property.np_fl] = self.property.pc
 
         """ Permeability multiplier k/kmax """
         # E5_> permeability multiplier due to permporo relationship
