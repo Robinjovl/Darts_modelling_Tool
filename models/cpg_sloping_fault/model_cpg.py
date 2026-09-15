@@ -101,8 +101,8 @@ class Model_CPG(DartsModel):
         l2g = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
         g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
         if 'RCOND' in arrays and 'HCAP' in arrays: # rock thermal properties specified in a file
-            self.reservoir.conduction = arrays['RCOND'][g2l >= 0]
-            self.reservoir.hcap = arrays['HCAP'][g2l >= 0]
+            self.reservoir.conduction[:] = arrays['RCOND'][g2l >= 0]
+            self.reservoir.hcap[:] = arrays['HCAP'][g2l >= 0]
             # add hcap and rcond to be saved into mesh.vtu
             self.reservoir.global_data.update({'heat_capacity': arrays['HCAP'], 'rock_conduction': arrays['RCOND']})
         else:  # specify rock thermal properties based on porosity
