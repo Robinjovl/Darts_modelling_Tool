@@ -100,9 +100,11 @@ def resolve_libtsan():
         if not cc or not shutil.which(cc):
             continue
         try:
-            path = subprocess.check_output(
-                [cc, '-print-file-name=libtsan.so']
-            ).decode().strip()
+            path = (
+                subprocess.check_output([cc, '-print-file-name=libtsan.so'])
+                .decode()
+                .strip()
+            )
         except subprocess.CalledProcessError:
             continue
         if path and path != 'libtsan.so' and os.path.exists(path):
@@ -186,10 +188,14 @@ def run_tsan_for_model(model, libtsan, timeout=1800):
     elapsed = time.time() - starting_time
 
     if proc.returncode != 0:
-        print(f'[FAIL] {model} returned exit code {proc.returncode},\t\t{elapsed:.2f} s')
+        print(
+            f'[FAIL] {model} returned exit code {proc.returncode},\t\t{elapsed:.2f} s'
+        )
         return True  # failed: model itself errored/crashed
     elif n_races != 0:
-        print(f'[FAIL] ThreadSanitizer found {n_races} data race(s) for model {model},\t\t{elapsed:.2f} s')
+        print(
+            f'[FAIL] ThreadSanitizer found {n_races} data race(s) for model {model},\t\t{elapsed:.2f} s'
+        )
         return True  # failed: found races
     else:
         print(f'[OK] TSan check finished for {model},\t\t{elapsed:.2f} s')
@@ -199,7 +205,9 @@ def run_tsan_for_model(model, libtsan, timeout=1800):
 def main():
     libtsan = resolve_libtsan()
     if not libtsan:
-        print('Error: could not locate libtsan.so via any of gcc/cc/clang -print-file-name')
+        print(
+            'Error: could not locate libtsan.so via any of gcc/cc/clang -print-file-name'
+        )
         sys.exit(1)
     print(f'Using TSan runtime: {libtsan}')
 
