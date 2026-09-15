@@ -417,6 +417,7 @@ class WellData:
             bhp_constraint=bhp_constraint,
             temperature=temperature,
             phase_name=phase_name,
+            inj_composition=inj_composition,
         )
         self.wells[name].controls.append((time, wctrl))
 
@@ -426,7 +427,12 @@ class WellData:
         if inj_composition is None:
             inj_composition = []
         wctrl = WellControl()
-        wctrl.inj_bhp_control(bhp=bhp, temperature=temperature, phase_name=phase_name)
+        wctrl.inj_bhp_control(
+            bhp=bhp,
+            temperature=temperature,
+            phase_name=phase_name,
+            inj_composition=inj_composition,
+        )
         self.wells[name].controls.append((time, wctrl))
 
 
