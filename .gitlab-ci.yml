@@ -13,6 +13,9 @@ workflow:
       variables:
         MR_NON_DRAFT: "1"
       when: always
+    # Branch push while an MR is open for that branch -> the MR pipeline above covers it; skip the duplicate branch pipeline.
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
     - when: always
 
 # ---------------------------------------------------------------------------
