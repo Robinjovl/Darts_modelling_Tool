@@ -1,5 +1,5 @@
 from darts.engines import *
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
@@ -14,7 +14,7 @@ from darts.physics.properties.flash import ConstantK
 import numpy as np
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -30,7 +30,11 @@ class Model(CICDModel):
         self.timer.node["initialization"].stop()
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-4, mult_ts=1.5, max_ts=1, runtime=10  )
+        self.ts_control.dt_first = 1e-4
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 1.5
+        self.ts_control.dt_max = 1
+        self.ts_control.runtime = 10
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
             chop=ChopSpec(mode='local', factor=0.25))

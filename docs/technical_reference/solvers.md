@@ -9,18 +9,23 @@ solvers available on CPU and GPU with their most important parameters.
 `set_solver()` is called at the start of `reset()` — after the reservoir/mesh and the
 engine object exist, but before `engine.init()`. Override it in a model to declare:
 
-* time-stepping, via `self.set_sim_params(...)` (time-stepping parameters **only**);
+* time-stepping, via `self.ts_control.dt_first` / `.dt_mult` / `.dt_max` / `.runtime`
+  etc.;
 * the nonlinear solver, via `self.nonlinear_solver = NewtonSolver(...)`;
-* the linear solver, via `self.linear_solver = <LinearSolverSpec>`.
+* the linear solver, via `self.linear_solver.spec = <LinearSolverSpec>`.
 
-Both attributes hold a *runtime* object: `nonlinear_solver` holds a `NewtonSolver`, and
-`linear_solver` holds a `darts.linear_solvers.LinearSolver`. Assigning a linear **spec**
-is the normal way to choose a solver — the setter wraps it automatically, so these two
-forms are equivalent:
+`nonlinear_solver` holds a *runtime* `NewtonSolver`, which a model replaces outright to
+change the Newton driver — so it is (re)bound to the model on every `init()`/`reset()`.
+`linear_solver` is a composed `darts.linear_solvers.LinearSolver` instance, created once
+by `DartsModel.__init__` **with the model already attached** and never reassigned — so
+there is no bind step. It owns the declarative `spec` as well as every method that binds a
+model to its linear solver (`update_solver()`, `get_linear_system()`, ...). Because it
+exists from construction, it is safe to touch
+before `init()` — from a subclass `__init__` or a driver script. Assign a **spec** to
+`.spec` to choose a solver:
 
 ```python
-self.linear_solver = MGRSolverSpec(tolerance=1e-4)               # spec (auto-wrapped)
-self.linear_solver = LinearSolver(MGRSolverSpec(tolerance=1e-4))  # explicit instance
+self.linear_solver.spec = MGRSolverSpec(tolerance=1e-4)
 ```
 
 Assigning a spec is **build-safe**: in proprietary and GPU builds no C++ backend is
@@ -32,14 +37,15 @@ There are two idiomatic ways to override. Replace a solver outright:
 def set_solver(self):
     super().set_solver()
     self.nonlinear_solver = NewtonSolver(tolerance=1e-4, chop=ChopSpec(mode='global'))
-    self.linear_solver = MGRSolverSpec(tolerance=1e-4)
+    self.linear_solver.spec = MGRSolverSpec(tolerance=1e-4)
 ```
 
 or keep the defaults and tune them through `.spec`:
 
 ```python
 def set_solver(self):
-    self.set_sim_params(first_ts=..., max_ts=...)   # time-stepping
+    self.ts_control.dt_first = ...                  # time-stepping
+    self.ts_control.dt_max = ...
     super().set_solver()                            # default solvers
     self.nonlinear_solver.spec.tolerance = 1e-4
     self.linear_solver.spec.tolerance = 1e-6
@@ -279,12 +285,27 @@ Two specs wrap another solver rather than being one:
 * `AdaptiveSolverSpec(candidates=[...], policy=..., on_timestep_failed=...)` — switches
   between candidate solvers during a run; `candidates[0]` is used first, and the policy
   decides per timestep from the previous step's state. At least one candidate is required.
+  Candidates must be **engine-resident CPU registry specs** (`MGRSolverSpec`,
+  `GMRESSolverSpec`, `CPRSolverSpec`, `SuperLUSolverSpec`, …): switching rebuilds the
+  candidate through the open-source registry and injects it into the live engine, which a
+  `GPUSolverSpec` (enum-selected by the engine factory) and a Python-resident solver
+  (`PETScSolverSpec`, `PardisoSolverSpec`, owned by the model) cannot support. Both raise
+  `TypeError` at construction rather than hours into a run. To retune the *current* solver
+  instead of replacing it, call `model.linear_solver.update_solver(...)`, which reconfigures
+  the injected solver in place without touching the Jacobian.
+
+So the two families are separated in both directions: HYPRE's MGR cannot serve as a
+preconditioner inside an in-tree Krylov driver (the `ValueError` above), and no in-tree
+component can be substituted into MGR's own cycle. Within a run you may switch between
+registry solvers or retune one, but you cannot hand the solve back and forth between a
+registry solver and a GPU or Python-resident one.
 
 ## Build availability
 
 The open-source solver stack is in-tree and needs no proprietary library. The proprietary
 BOS backends remain optional behind the CMake switch `ENABLE_BOS_SOLVERS` (default `OFF`).
 For fine control, a model may build a raw C++ solver object directly into
-`self.linear_solver` (for example `linear_solvers.create_mgr_solver_for_block_size(...)`);
+`self.linear_solver.handle` (for example `linear_solvers.create_mgr_solver_for_block_size(...)`);
 this is valid only in the open-source build, so guard it with
-`open_source_solvers_available()` and name it via `self.solver_label` for the log.
+`self.linear_solver.open_source_solvers_available()` and name it via
+`self.linear_solver.label` for the log.

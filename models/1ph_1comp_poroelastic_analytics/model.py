@@ -17,10 +17,8 @@ class Model(THMCModel):
         super().__init__()
 
     def set_solver(self):
-        super().set_solver()
-
-        # data_ts is used only for linear solver params for PETSc
-        self.data_ts = self.idata.sim.DataTS  # this needed as mech models have their own run_python implementation
+        # ts_control is used only for linear solver params for PETSc
+        self.ts_control = self.idata.sim.TimestepControl  # this needed as mech models have their own run_python implementation
 
         # Open-source FS-CPR by default for BOTH discretizers -- inject the spec;
         # the engine bypasses sim_params.linear_type. FS-CPR is a PRECONDITIONER
@@ -70,13 +68,14 @@ class Model(THMCModel):
             lin_tol, lin_max_it = 1e-10, 5000
         else:
             lin_tol, lin_max_it = 1e-12, 500
-        self.linear_solver = GMRESSolverSpec(
+        self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
             tolerance=lin_tol,
             max_iterations=lin_max_it,
             restart=50,
             proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
         )
+        super().set_solver()
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
@@ -283,10 +282,10 @@ class Model(THMCModel):
 
         # optional: use PETSc / Pardiso linear solver (set in set_solver())
         #   from darts.linear_solvers import PETScSolverSpec, PardisoSolverSpec
-        #   self.linear_solver = PETScSolverSpec(variant="fs")
-        #   self.linear_solver = PardisoSolverSpec()
-        from darts.models.darts_model import DataTS
-        self.idata.sim.DataTS = DataTS(n_vars=0)
+        #   self.linear_solver.spec = PETScSolverSpec(variant="fs")
+        #   self.linear_solver.spec = PardisoSolverSpec()
+        from darts.timestep_control import TimestepControl
+        self.idata.sim.TimestepControl = TimestepControl(n_vars=0)
 
         self.idata.obl.zero = 1e-9
         self.idata.obl.epsilon_z = 1e-10
