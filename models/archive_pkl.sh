@@ -41,8 +41,18 @@ pkl_files=(
     ./*/*/ref/"$pklname"*.pkl
     ./*/ref/"$wellpklname"*.pkl
     ./*/*/ref/"$wellpklname"*.pkl
+    # vtk references (THM_vs_geomech_proxy, displaced_fault_reactivation) live in
+    # ref/<output folder>/<solution>.vtu and are written by save_vtk_ref during the
+    # same UPLOAD_PKL=1 run, so they belong in the same archive. Unlike the pkl names
+    # they carry no _odls/_iter/_gpu suffix: one reference serves every lane. Matching
+    # on the ref/ path is what keeps the run outputs under results/ out of the archive.
+    ./*/ref/*/*.vtu
+    ./*/*/ref/*/*.vtu
 )
 
 if [[ ${#pkl_files[@]} -gt 0 ]]; then
     tar -czf "$fname" "${pkl_files[@]}"
+    echo "archive_pkl: archived ${#pkl_files[@]} file(s) into $fname"
+else
+    echo "archive_pkl: no reference files matched, $fname not created"
 fi
