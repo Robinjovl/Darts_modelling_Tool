@@ -31,9 +31,7 @@ variables:
   #   anything else -> all four BOS twins are skipped pipeline-wide
   RUN_BOS_JOBS: "1"
   # Set by workflow:rules above: "1" only for merge-request pipelines whose MR is NOT a draft.
-  # Enables the longer valgrind job in MR pipelines and the test_all_models selection in
-  # models/run_test_suite2.py (extra fracture_network cases; the expensive solver-specific
-  # cases are governed separately by `heavy_models` there and run regardless of draft status).
+  # Enables the longer valgrind job in MR pipelines and the test_all_models selection in models/run_test_suite2.py.
   # Marking an MR ready does not start a pipeline by itself - push a commit or trigger it manually.
   MR_NON_DRAFT: "0"
 
@@ -42,6 +40,11 @@ stages:
     - build_images
     - build
     - test
+    # Gate + final validation: present in EVERY merge-request pipeline. In a draft
+    # pipeline the gate is a blocking manual job, so the pipeline stays "blocked"
+    # (not green) and the valgrind jobs behind it wait until the gate is played.
+    - validation_gate
+    - final_validation
     - deploy
     - ingest
 

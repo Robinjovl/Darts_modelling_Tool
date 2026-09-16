@@ -1,5 +1,8 @@
 .linux-profiler-base:
-    stage: test
+    # Same stage as build-linux-valgrind: same-stage `needs` is allowed, and the
+    # gate in validation_gate already sequences both in an MR pipeline.
+    stage: final_validation
+    interruptible: true
     tags:
     - linux
     image: "python:$PY_VER"
@@ -11,13 +14,11 @@
         # (and build-linux-valgrind, which it needs, is also skipped).
         - if: $UPLOAD_PKL == "1"
           when: never
-        # Manual overrides still force the valgrind check, even for a draft MR.
+        # Eligibility must mirror build-linux-valgrind.yml (this job `needs` it).
+        # In an MR pipeline the job is always created; it starts after the gate
+        # because the valgrind build it depends on does.
         - if: $TEST_CUSTOM_BRANCH == "1"
         - if: $TEST_ALL_PYTHONS == "1"
-        # Draft MRs skip valgrind; it runs only as the final (non-draft) check.
-        # Must mirror build-linux-valgrind.yml (this job `needs` it).
-        - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $MR_NON_DRAFT != "1"
-          when: never
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
