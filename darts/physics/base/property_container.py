@@ -451,7 +451,7 @@ class PropertyContainer:
         # evaluators can accept any subset of history variables by name (e.g. sg_max=...).
         # Plain evaluators without the mixin are called with sat only, unchanged.
         if isinstance(self.capillary_pressure_ev, dict):
-            for j in self.ph:
+            for j in range(self.np_fl):
                 pc_ev = self.capillary_pressure_ev[self.phases_name[j]]
                 if self.history_values and isinstance(pc_ev, HistoryAwareCapPressure):
                     self.pc[j] = pc_ev.evaluate(self.sat[j], **self.history_values)
