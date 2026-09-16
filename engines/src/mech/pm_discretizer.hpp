@@ -163,7 +163,7 @@ namespace pm
 
 		std::vector<Approximation> fluxes, fluxes_th_cond, face_unknowns;
 	public:
-		int n_matrix, n_cells, n_fracs, n_faces, nb_faces;
+		int n_matrix = 0, n_cells = 0, n_fracs = 0, n_faces = 0, nb_faces = 0;
 		static const Matrix I3;
 		static const Matrix I4;
 
@@ -252,6 +252,17 @@ namespace pm
 
 		std::tuple<std::vector<index_t>, std::valarray<value_t>> get_gradient(const index_t cell_id);
 		std::tuple<std::vector<index_t>, std::valarray<value_t>> get_thermal_gradient(const index_t cell_id);
+
+		// Checks the displacement-displacement (U-U) diagonal blocks of the momentum balance of the matrix cells, as they
+		// enter the engine_pm_cpu Jacobian; AMG-based preconditioners (e.g. FS-CPR) can diverge where one is not positive definite.
+		// Fills the two lists below (a block with a non-finite entry goes into both) and returns the number of cells with an
+		// indefinite block, or -1 if there is no consistent discretization to check (e.g. before calc_all_fluxes_once());
+		// both lists are then empty. Called at the end of calc_all_fluxes_once(). The lists are empty until the check has run
+		// (a fresh object, an unpickled pm_discretizer, or a cache path that skips calc_all_fluxes_once()), and every call
+		// refills them. From numpy, copy them (np.array(...)) rather than keeping a view (np.asarray(...)): a later call can
+		// reallocate the storage under the view.
+		index_t check_displacement_diagonal(bool verbose = true);
+		std::vector<index_t> u_diag_nonpositive_cells, u_diag_indefinite_cells;
 	};
 };
 

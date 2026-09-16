@@ -1,6 +1,8 @@
 from model import Model, fmt_e, fmt
+from reservoir import file_sha256
 from darts.tools.memory import print_allocated_memory
 from darts.tools.cicd_tools import compare_vtk_with_ref, save_vtk_ref
+import json
 import numpy as np
 import os
 import shutil
@@ -37,10 +39,36 @@ def supports_mesh_generation(case):
     return is_struct_like_case(case) or is_unstructured_generated_case(case)
 
 
+def mesh_key_file(mesh_filename):
+    # .cache/ is git-ignored
+    return os.path.join(os.path.dirname(mesh_filename), '.cache', 'mesh_key.json')
+
+
+def mesh_up_to_date(mesh_files, key):
+    """True when mesh_files were generated from `key` and have not changed since."""
+    try:
+        with open(mesh_key_file(mesh_files[0])) as f:
+            stored = json.load(f)
+        return stored['key'] == key and all(
+            stored['files'][os.path.basename(fn)] == file_sha256(fn) for fn in mesh_files)
+    except (OSError, ValueError, KeyError):
+        return False
+
+
+def store_mesh_key(mesh_files, key):
+    key_file = mesh_key_file(mesh_files[0])
+    os.makedirs(os.path.dirname(key_file), exist_ok=True)
+    with open(key_file, 'w') as f:
+        json.dump({'key': key, 'files': {os.path.basename(fn): file_sha256(fn) for fn in mesh_files}},
+                  f, indent=1)
+
+
 def generate_unstructured_mesh(case, idata=None, physics_type='single_phase_thermal',
-                               wells_type=None, bulk_mesh_size=200.0):
+                               wells_type=None, bulk_mesh_size=None, force=False):
     """
-    (Re)generate the mesh of a named unstructured case.
+    (Re)generate the mesh of a named unstructured case. The mesh on disk is kept
+    when it was generated from the same input: generator arguments, well
+    coordinates, generator source and gmsh version (stored in .cache/mesh_key.json).
 
     Structured NX_NY_NZ cases are meshed inside the reservoir instead - see
     UnstructReservoirCustom.field_reservoir.
@@ -50,12 +78,15 @@ def generate_unstructured_mesh(case, idata=None, physics_type='single_phase_ther
     :param physics_type: physics used to build idata when it is not supplied.
     :param wells_type: well configuration used to build idata when it is not supplied.
     :param bulk_mesh_size: far-field Gmsh size [m]; the well size keeps the 1:20 ratio.
-    :return: the mesh file that was written, or None when the case has no generator.
+        None takes it from a case_5_mesh_<size>m case name, 200 m otherwise.
+    :param force: regenerate even when the mesh is up to date.
+    :return: the mesh file, or None when the case has no generator.
     """
     base = os.path.basename(case)
     if not is_unstructured_generated_case(base):
         return None
 
+    import gmsh
     from set_case import set_input_data
     if idata is None:
         idata = set_input_data(base, physics_type=physics_type, wells_type=wells_type)
@@ -66,18 +97,37 @@ def generate_unstructured_mesh(case, idata=None, physics_type='single_phase_ther
     os.makedirs(os.path.dirname(mesh_filename), exist_ok=True)
 
     if base.startswith('no_damage_zone'):
-        from gen_fault_msh_no_damage_zone import gen_fault_msh_no_damage_zone
-        print(f'Generating mesh for {mesh_dir}')
+        import gen_fault_msh_no_damage_zone as generator
         # the fault-tagged twin is what fault.py reads when post-processing
-        gen_fault_msh_no_damage_zone(fault=False)
-        gen_fault_msh_no_damage_zone(fault=True)
+        mesh_files = [mesh_filename, os.path.join(os.path.dirname(mesh_filename), 'mesh_fault.msh')]
+        key = {'generator_sha256': file_sha256(generator.__file__), 'gmsh': gmsh.__version__}
+        if not force and mesh_up_to_date(mesh_files, key):
+            print(f'Mesh of {mesh_dir} is up to date, not regenerated')
+            return mesh_filename
+        print(f'Generating mesh for {mesh_dir}')
+        generator.gen_fault_msh_no_damage_zone(fault=False)
+        generator.gen_fault_msh_no_damage_zone(fault=True)
+        store_mesh_key(mesh_files, key)
         return mesh_filename
 
-    from gen_fault_msh import generate_3d_fault_mesh
-    print(f'Generating {mesh_dir}: bulk={bulk_mesh_size:g} m, well={bulk_mesh_size / 20:g} m')
-    generate_3d_fault_mesh(idata, msh_filename=mesh_filename,
-                           bulk_mesh_size=bulk_mesh_size,
-                           well_mesh_size=bulk_mesh_size / 20.0)
+    import gen_fault_msh as generator
+    if bulk_mesh_size is None:
+        bulk_mesh_size = case_5_mesh_size(base)
+    well_mesh_size = bulk_mesh_size / 20.0
+    # generate_3d_fault_mesh reads only the well coordinates from idata
+    key = {'generator_sha256': file_sha256(generator.__file__), 'gmsh': gmsh.__version__,
+           'bulk_mesh_size': float(bulk_mesh_size), 'well_mesh_size': float(well_mesh_size),
+           'prod_well_coords': [float(c) for c in idata.other.prod_well_coords],
+           'inj_well_coords': [float(c) for c in idata.other.inj_well_coords]}
+    if not force and mesh_up_to_date([mesh_filename], key):
+        print(f'Mesh of {mesh_dir} is up to date (bulk={bulk_mesh_size:g} m, well={well_mesh_size:g} m), '
+              f'not regenerated')
+        return mesh_filename
+    print(f'Generating {mesh_dir}: bulk={bulk_mesh_size:g} m, well={well_mesh_size:g} m')
+    generator.generate_3d_fault_mesh(idata, msh_filename=mesh_filename,
+                                     bulk_mesh_size=bulk_mesh_size,
+                                     well_mesh_size=well_mesh_size)
+    store_mesh_key([mesh_filename], key)
     return mesh_filename
 
 
@@ -93,8 +143,22 @@ def case_5_mesh_name(mesh_size):
     size = float(mesh_size)
     if size <= 0.0:
         raise ValueError('case_5 mesh sizes must be positive')
-    size_label = f'{size:g}'.replace('.', 'p')
+    size_label = f'{size:g}'
+    if float(size_label) != size:  # keep the name lossless: case_5_mesh_size() parses it back
+        size_label = repr(size)
+    size_label = size_label.replace('.', 'p')
     return f'case_5_mesh_{size_label}m'
+
+
+def case_5_mesh_size(case, default=200.0):
+    """
+    Far-field Gmsh size [m] encoded in a case_5_mesh_name() case name, e.g. 300.0
+    for 'case_5_mesh_300m'; `default` for any other case name.
+    """
+    base = os.path.basename(case)
+    if base.startswith('case_5_mesh_') and base.endswith('m'):
+        return float(base[len('case_5_mesh_'):-1].replace('p', '.'))
+    return default
 
 
 def plot_results(model, time_data_dict, out_dir):
@@ -208,7 +272,7 @@ def plot_results(model, time_data_dict, out_dir):
 
 
 def run_python(m, days=0, restart_dt=0, init_step = False,
-               save_well_data_after_run=True):
+               save_well_data_after_run=True, max_init_cuts=1):
     if days:
         runtime = days
     else:
@@ -232,6 +296,7 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
     # evaluate end time
     runtime += t
     ts = 0
+    n_init_cuts = 0
 
     while t < runtime:
         if init_step:   new_time = t
@@ -263,6 +328,16 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
             if t + dt > runtime:
                 dt = runtime - t
         else:
+            if init_step:
+                # The equilibrium step is static (find_equilibrium): a smaller dt leaves the
+                # mechanical system and the state unchanged, so a retry repeats the same failed
+                # solve and cutting dt would loop forever.
+                n_init_cuts += 1
+                if n_init_cuts >= max_init_cuts:
+                    raise RuntimeError(
+                        'Geomechanical equilibrium did not converge after %d attempt(s); cutting dt does '
+                        'not change this static problem. Check the linear solver output above (e.g. '
+                        '"displacement stage diverged" from FS-CPR).' % n_init_cuts)
             new_time -= dt
             dt /= mult_dt
             print("Cut timestep to %.5e" % dt)
@@ -279,16 +354,18 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
                                                      stats.n_linear_total, stats.n_linear_wasted))
 def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90., plot_vtk_timesteps=[],
-        clear_output_dir=False, solver_type='fs_cpr', save_well_time_data=True):
+        clear_output_dir=False, solver_type='fs_cpr', save_well_time_data=True, cache_discretization=None):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
     :param physics_type: 'single_phase', 'single_phase_thermal'
     :param uniform_props: if False then set other values for perm and porosity out of the reservoir
     :param wells_type: 'prod', 'inj', 'doublet'
     :param decouple_geomech: turn off mechanics->porosity (so pressure and flow) influence
-    :param generate_mesh: if True, mesh will be generated, otherwise it will be loaded from the model_folder/meshes
+    :param generate_mesh: if True, mesh will be generated (unless it is up to date), otherwise it will be loaded from the model_folder/meshes
     :param solver_type: 'superlu', 'fs_cpr', or 'by_env_var' (see Model.set_solver_params)
-    :param save_well_time_data: if True, write the well time-series files (pkl/xlsx). 
+    :param save_well_time_data: if True, write the well time-series files (pkl/xlsx).
+    :param cache_discretization: reuse the discretization of an earlier run with the same input;
+        None: on unless the environment variable DARTS_DISCR_CACHE=0
     :return:
     '''
 
@@ -309,7 +386,8 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
                                    wells_type=wells_type)
 
     m = Model(model_folder=model_folder, physics_type=physics_type, uniform_props=uniform_props, wells_type=wells_type,
-              decouple_geomech=decouple_geomech, generate_mesh=generate_mesh, solver_type=solver_type)
+              decouple_geomech=decouple_geomech, generate_mesh=generate_mesh, solver_type=solver_type,
+              cache_discretization=cache_discretization)
 
     m.timer.node["model.init()"] = timer_node()
     m.timer.node["model.init()"].start()
@@ -492,6 +570,7 @@ def run_test(args: list = [], platform='cpu'):
             clear_output_dir=True,
             solver_type='by_env_var',
             save_well_time_data=True,
+            cache_discretization=False,  # tests exercise the discretizer, and a cache would only cost disk
         )
     except Exception as e:
         import traceback

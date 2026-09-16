@@ -57,8 +57,11 @@ class Model(THMCModel):
     def __init__(self, model_folder, physics_type='single_phase',
                  uniform_props=False, wells_type=None,
                  decouple_geomech=False, generate_mesh=False, dummy='no',
-                 solver_type='by_env_var'):
+                 solver_type='by_env_var', cache_discretization=None):
         self.model_folder = model_folder
+        # reuse the discretization of an earlier run with the same input, see
+        # UnstructReservoirCustom.discretization_cache_key; None: on unless DARTS_DISCR_CACHE=0
+        self.cache_discretization = cache_discretization
         self.uniform_props = uniform_props
         self.physics_type = physics_type
         self.discretizer_name = 'mech_discretizer'
@@ -113,7 +116,8 @@ class Model(THMCModel):
         mesh_folder = self.idata.other.mesh_dir if self.idata.other.mesh_dir is not None else self.model_folder
         self.reservoir = UnstructReservoirCustom(timer=self.timer, fluid_vars=self.physics.vars,
                                                  idata=self.idata, model_folder=mesh_folder,
-                                                 uniform_props=self.uniform_props, generate_mesh=self.generate_mesh)
+                                                 uniform_props=self.uniform_props, generate_mesh=self.generate_mesh,
+                                                 cache_discretization=self.cache_discretization)
 
     def set_input_data(self):
         from set_case import set_input_data

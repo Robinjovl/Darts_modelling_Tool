@@ -1,11 +1,15 @@
 import numpy as np
 import os
 import time
+import glob
+import hashlib
+import json
 import meshio
 from darts.discretizer import elem_type, elem_loc
 from darts.discretizer import matrix33 as disc_matrix33
 from darts.discretizer import Stiffness as disc_stiffness
-from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_biot_modulus
+from darts.discretizer import vector_matrix33, stf_vector
+from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_biot_modulus, get_rock_compressibility
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 from darts.input.input_data import InputData
 from darts.engines import timer_node, ms_well, ms_well_vector
@@ -15,9 +19,55 @@ from functools import reduce
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# The expensive discretization steps (displacement gradients, interface and
+# cell-centered stress approximations) are cached in meshes/<case>/.cache/ and
+# reused while nothing they depend on changes, see
+# UnstructReservoirCustom.discretization_cache_key. DARTS_DISCR_CACHE=0 disables it.
+DISCR_CACHE_FORMAT = 1
+DISCR_CACHE_KEEP = 2  # cache files kept per mesh folder (most recently used); they are large
+
+
+def file_sha256(filename):
+    h = hashlib.sha256()
+    with open(filename, 'rb') as f:
+        for chunk in iter(lambda: f.read(1 << 24), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def hash_update(h, obj):
+    """Feed obj (None, scalars, strings, arrays, lists, dicts) into the hash h, values bit-exact."""
+    if isinstance(obj, dict):
+        for k in sorted(obj, key=str):
+            h.update(repr(str(k)).encode())
+            hash_update(h, obj[k])
+        return
+    if obj is None or isinstance(obj, str):
+        h.update(repr(obj).encode())
+        return
+    try:
+        a = np.asarray(obj)
+    except ValueError:  # ragged nested lists
+        a = None
+    if a is None or a.dtype == object:
+        if isinstance(obj, (list, tuple)) or (isinstance(obj, np.ndarray) and obj.ndim > 0):
+            h.update(b'[%d]' % len(obj))
+            for x in obj:
+                hash_update(h, x)
+        else:
+            h.update(repr(obj).encode())
+        return
+    h.update(('%s%s' % (a.dtype.str, a.shape)).encode())
+    h.update(np.ascontiguousarray(a).tobytes())
+
+
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False, generate_mesh=False):
+    def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False, generate_mesh=False,
+                 cache_discretization=None):
         self.idata = idata
+        if cache_discretization is None:
+            cache_discretization = os.getenv('DARTS_DISCR_CACHE', '1') != '0'
+        self.cache_discretization = cache_discretization
 
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         thermoporoelasticity = True if 'temperature' in fluid_vars else False
@@ -105,17 +155,21 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         print('Mesh reading finished')
 
         print('Init reservoir (incl. mesh processing)...', flush=True)
-        time.sleep(1)
         #self.set_uniform_initial_conditions(idata=idata)
         self.u_init = [0., 0., 0.]  # [m]
         self.p_init = None
         self.z_init = None
         self.set_boundary_conditions(idata=idata)
 
+        # hash the mesh around its read, so the cache key describes the content gmsh actually read
+        self.mesh_sha256 = file_sha256(self.mesh_filename) if self.cache_discretization else None
         self.timer.node["initialization"].node["init_mech_discretizer"] = timer_node()
         self.timer.node["initialization"].node["init_mech_discretizer"].start()
         self.init_mech_discretizer(idata=idata)
         self.timer.node["initialization"].node["init_mech_discretizer"].stop()
+        if self.mesh_sha256 is not None and file_sha256(self.mesh_filename) != self.mesh_sha256:
+            print('[WARN] %s changed while it was read, the discretization is not cached' % self.mesh_filename)
+            self.cache_discretization = False
 
         self.grav = 9.80665e-5
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
@@ -130,12 +184,13 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         if uniform_props:
             self.init_uniform_properties(idata=idata)
         elif idata.other.set_props_by_tags:
-            # per-tag rock properties via the parent class: set_props_tags builds self.props from
-            # idata.rock arrays (one value per matrix tag), and init_heterogeneous_properties
-            # applies them per cell using self.tags. This model specifies permeability as per-tag
+            # per-tag rock properties: the parent's set_props_tags builds self.props from
+            # idata.rock arrays (one value per matrix tag), and init_heterogeneous_properties_by_tags
+            # applies them per cell using self.tags (the parent's init_heterogeneous_properties
+            # without its Python loop over cells). This model specifies permeability as per-tag
             # permx/permy/permz (leaving the 'perm' tensor unset), which the base handles.
             super().set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
-            super().init_heterogeneous_properties()
+            self.init_heterogeneous_properties_by_tags()
         else:  # don't use mesh tags, set by interpolation
             self.set_heterogeneous_props_by_interpolation(
                 idata=idata, generate_mesh=generate_structured_mesh
@@ -158,15 +213,165 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         print('Discretization (trans calc, etc) ...')
         self.timer.node["initialization"].node["discretization"] = timer_node()
         self.timer.node["initialization"].node["discretization"].start()
+        # The pressure(/temperature) gradients are cheap and the engine reads them
+        # (eval_stresses_and_velocities), so they are always reconstructed; the
+        # expensive steps below come from the cache when it is up to date.
         if self.thermoporoelasticity:
             self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow, self.cpp_heat)
         else:
             self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
-        self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
-        self.discr.calc_interface_approximations()
-        self.discr.calc_cell_centered_stress_velocity_approximations()
+        cache_file = self.discretization_cache_file(idata, uniform_props) if self.cache_discretization else None
+        if cache_file is None or not self.load_discretization(cache_file):
+            self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
+            self.discr.calc_interface_approximations()
+            self.discr.calc_cell_centered_stress_velocity_approximations()
+            if cache_file is not None:
+                self.save_discretization(cache_file)
+        elif hasattr(self.discr, 'check_displacement_diagonal'):  # older darts builds lack it
+            # calc_interface_approximations runs this check; a cache hit skips it
+            self.discr.check_displacement_diagonal()
         self.timer.node["initialization"].node["discretization"].stop()
         print('Discretization finished')
+
+    # ------------------------------------------------------------------
+    # Discretization cache
+    # ------------------------------------------------------------------
+    def discretization_cache_arrays(self):
+        """
+        The discretizer arrays used after the discretization: by
+        conn_mesh.init_p(m)e_mech_discretizer in init_reservoir_main and by the
+        engine in eval_stresses_and_velocities (with discr.p_grads, discr.biots).
+        """
+        names = ['cell_m', 'cell_p', 'flux_stencil', 'flux_offset', 'hooke', 'hooke_rhs',
+                 'biot_traction', 'biot_traction_rhs', 'darcy', 'darcy_rhs',
+                 'biot_vol_strain', 'biot_vol_strain_rhs', 'stress_approx', 'velocity_approx']
+        if self.thermoporoelasticity:
+            names += ['thermal_traction', 'fourier']
+        return names
+
+    def discretization_cache_key(self, idata, uniform_props):
+        """
+        What the discretization depends on: mesh file content (as read), domain tags,
+        boundary-condition coefficients, the per-cell discretizer inputs (perms, biots,
+        stiffness, heat conductions, thermal expansions) as set by the Python property
+        code, rock input and its mapping to cells, gravity, discretizer type and flags,
+        and the discretizer build. The rock input is hashed as a whole (all of
+        idata.rock), so changing any rock property invalidates the cache, including
+        those the discretizer ignores.
+        """
+        import darts.discretizer
+        h_bc = hashlib.sha256()
+        bcs = [self.cpp_bc.flow, self.cpp_bc.mech_normal, self.cpp_bc.mech_tangen]
+        if self.thermoporoelasticity:
+            bcs.append(self.cpp_bc.thermal)
+        for bc in bcs:
+            hash_update(h_bc, np.asarray(bc.a))
+            hash_update(h_bc, np.asarray(bc.b))
+        h_rock = hashlib.sha256()
+        hash_update(h_rock, vars(idata.rock))
+        hash_update(h_rock, list(idata.mesh.matrix_tags))  # per-tag rock arrays follow this order
+        hash_update(h_rock, [bool(uniform_props), bool(getattr(idata.other, 'set_props_by_tags', False))])
+        hash_update(h_rock, self.tags)
+        # the per-cell discretizer inputs themselves: Python code (init_heterogeneous_properties_by_tags,
+        # get_lambda_mu, set_props_tags, ...) derives them from idata.rock, and the rest of the key does not cover it
+        for name in ['perms', 'biots', 'stfs'] + (['heat_conductions', 'thermal_expansions']
+                                                  if self.thermoporoelasticity else []):
+            hash_update(h_rock, np.array([v.values for v in getattr(self.discr, name)]))
+        build_info_file = os.path.join(os.path.dirname(darts.discretizer.__file__), 'build_info.txt')
+        build_info = ''
+        if os.path.exists(build_info_file):
+            with open(build_info_file) as f:
+                build_info = f.read().strip()
+        return {'format': DISCR_CACHE_FORMAT,
+                'mesh_sha256': self.mesh_sha256,
+                'domain_tags': {str(k): sorted(int(t) for t in v) for k, v in self.domain_tags.items()},
+                'discretizer': type(self.discr).__name__,
+                'neumann_boundaries_grad_reconstruction': bool(self.discr.neumann_boundaries_grad_reconstruction),
+                'gradients_extended_stencil': bool(self.discr.gradients_extended_stencil),
+                'gravity': [float(g) for g in self.discr.grav_vec.values],
+                'boundary_conditions_sha256': h_bc.hexdigest(),
+                'rock_sha256': h_rock.hexdigest(),
+                'darts_discretizer_sha256': file_sha256(darts.discretizer.__file__),
+                'darts_build_info': build_info}
+
+    def discretization_cache_file(self, idata, uniform_props):
+        self.discr_cache_key = self.discretization_cache_key(idata, uniform_props)
+        digest = hashlib.sha256(json.dumps(self.discr_cache_key, sort_keys=True).encode()).hexdigest()
+        # .cache/ is git-ignored
+        return os.path.join(os.path.dirname(self.mesh_filename), '.cache', 'discretization_%s.npz' % digest[:16])
+
+    def load_discretization(self, cache_file):
+        """
+        Restore the discretizer arrays from cache_file.
+        :return: True on success; False (nothing restored) when the file is missing or unusable
+        """
+        from darts.discretizer import index_vector as disc_index_vector, value_vector as disc_value_vector
+        if not os.path.exists(cache_file):
+            print('No discretization cache yet, it will be written to', cache_file)
+            return False
+        t0 = time.time()
+        names = self.discretization_cache_arrays()
+        int_names = ('cell_m', 'cell_p', 'flux_stencil', 'flux_offset')
+        try:
+            with np.load(cache_file) as data:
+                meta = json.loads(str(data['meta']))
+                if meta['key'] != self.discr_cache_key or meta['n_conns'] != len(self.adj_matrix):
+                    raise ValueError('it belongs to another input')
+                for name in names:
+                    vec_type = disc_index_vector if name in int_names else disc_value_vector
+                    setattr(self.discr, name, vec_type(data[name]))
+            if len(self.discr.cell_m) != len(self.adj_matrix) or \
+                    self.discr.flux_offset[len(self.discr.flux_offset) - 1] != len(self.discr.flux_stencil):
+                raise ValueError('inconsistent array sizes')
+        except Exception as e:  # truncated, corrupt or foreign file
+            print('[WARN] discretization cache %s is unusable (%s), discretizing' % (cache_file, e))
+            for name in names:  # the discretizer appends to some of these arrays
+                setattr(self.discr, name, disc_index_vector() if name in int_names else disc_value_vector())
+            return False
+        try:
+            os.utime(cache_file)  # mark as recently used, see save_discretization
+        except OSError:
+            pass
+        print('Discretization loaded from cache %s (%.1f s)' % (cache_file, time.time() - t0))
+        return True
+
+    def save_discretization(self, cache_file):
+        t0 = time.time()
+        folder = os.path.dirname(cache_file)
+        tmp_file = '%s.tmp%d' % (cache_file, os.getpid())
+        try:
+            os.makedirs(folder, exist_ok=True)
+            # zero-copy views of the C++ arrays
+            arrays = {name: np.asarray(getattr(self.discr, name)) for name in self.discretization_cache_arrays()}
+            meta = json.dumps({'key': self.discr_cache_key, 'n_conns': len(self.adj_matrix),
+                               'mesh_file': self.mesh_filename})
+            with open(tmp_file, 'wb') as f:
+                np.savez(f, meta=np.array(meta), **arrays)
+            os.replace(tmp_file, cache_file)  # a reader never sees a partial file
+        except Exception as e:  # read-only folder, full disk, ...
+            print('[WARN] discretization cache is not saved (%s)' % e)
+            if os.path.exists(tmp_file):
+                os.remove(tmp_file)
+            return
+        print('Discretization cached in %s (%.1f s, %.0f MB)'
+              % (cache_file, time.time() - t0, os.path.getsize(cache_file) / 1e6))
+
+        # keep the most recently used caches only, and drop leftovers of killed runs
+        def mtime(fn):
+            try:
+                return os.path.getmtime(fn)
+            except OSError:
+                return 0.0
+        caches = sorted(glob.glob(os.path.join(folder, 'discretization_*.npz')), key=mtime, reverse=True)
+        leftovers = [fn for fn in glob.glob(os.path.join(folder, 'discretization_*.npz.tmp*'))
+                     if time.time() - mtime(fn) > 3600]
+        for fn in caches[DISCR_CACHE_KEEP:] + leftovers:
+            if fn != cache_file:
+                try:
+                    os.remove(fn)
+                    print('Removed old discretization cache', fn)
+                except OSError:
+                    pass
 
     def set_boundary_conditions(self, idata: InputData):
         self.boundary_conditions = {}
@@ -208,6 +413,42 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 if n.dot(conn_c - c1) < 0: n *= -1.0
                 self.bc_rhs[self.n_bc_vars * id + self.u_bc_var:self.n_bc_vars * id + self.u_bc_var + self.n_dim] = \
                     bc['mech']['rn'] * n + bc['mech']['rt']
+
+    def init_heterogeneous_properties_by_tags(self):
+        """
+        UnstructReservoirMech.init_heterogeneous_properties (mech discretizer) with the
+        same result, but the properties are evaluated once per tag and the per-cell
+        discretizer arrays are filled from those, instead of a Python loop over cells.
+        """
+        m0, m1 = self.discr_mesh.region_ranges[elem_loc.MATRIX]
+        tags, tag_ids = np.unique(self.tags[m0:m1], return_inverse=True)
+        perms, biots, stfs, rconds, th_expns = [], [], [], [], []
+        poro, cs, hcap = np.zeros(len(tags)), np.zeros(len(tags)), np.zeros(len(tags))
+        for i, tag in enumerate(tags):
+            p = self.props[tag]
+            kx, ky, kz = (p['perm'],) * 3 if 'perm' in p else (p['permx'], p['permy'], p['permz'])
+            lam, mu = get_lambda_mu(p['E'], p['nu'])
+            perms.append(disc_matrix33(kx, ky, kz))
+            biots.append(disc_matrix33(p['biot']))
+            stfs.append(disc_stiffness(lam, mu))
+            if self.thermoporoelasticity:
+                rconds.append(disc_matrix33(p['thermal_conductivity']))
+                th_expns.append(disc_matrix33(p['th_expn']))
+                hcap[i] = p['heat_capacity']
+            poro[i] = p['porosity']
+            cs[i] = get_rock_compressibility(kd=p['kd'], biot=p['biot'], poro0=p['porosity'])
+        self.discr.perms = vector_matrix33([perms[i] for i in tag_ids])
+        self.discr.biots = vector_matrix33([biots[i] for i in tag_ids])
+        self.discr.stfs = stf_vector([stfs[i] for i in tag_ids])
+        if self.thermoporoelasticity:
+            self.discr.heat_conductions = vector_matrix33([rconds[i] for i in tag_ids])
+            self.discr.thermal_expansions = vector_matrix33([th_expns[i] for i in tag_ids])
+        self.porosity = np.zeros(self.n_matrix + self.n_fracs)
+        self.cs = np.zeros(self.n_matrix + self.n_fracs)
+        self.hcap = np.zeros(self.n_matrix + self.n_fracs)
+        self.porosity[m0:m1] = poro[tag_ids]
+        self.cs[m0:m1] = cs[tag_ids]
+        self.hcap[m0:m1] = hcap[tag_ids]
 
     def init_heterogeneous_properties(self, idata: InputData):
         '''

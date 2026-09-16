@@ -45,6 +45,9 @@ struct mech_discretizer_exposer
 	  .def("reconstruct_displacement_gradients_per_cell", &MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell)
 	  .def("calc_interface_approximations", &MechDiscretizer<MODE>::calc_interface_approximations)
 	  .def("calc_cell_centered_stress_velocity_approximations", &MechDiscretizer<MODE>::calc_cell_centered_stress_velocity_approximations)
+	  .def("check_displacement_diagonal", &MechDiscretizer<MODE>::check_displacement_diagonal, py::arg("verbose") = true)
+	  .def_readonly("u_diag_nonpositive_cells", &MechDiscretizer<MODE>::u_diag_nonpositive_cells)
+	  .def_readonly("u_diag_indefinite_cells", &MechDiscretizer<MODE>::u_diag_indefinite_cells)
 	  ;
   }
 };
