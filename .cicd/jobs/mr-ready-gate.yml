@@ -1,0 +1,61 @@
+# Blocking gate for merge requests.
+#
+# Purpose: make "pipeline is green" mean "the final-check jobs ran in THIS pipeline".
+# Marking an MR ready does not start a new pipeline, so without this gate the
+# last (draft) pipeline -- which skipped valgrind and the extra test_all_models
+# cases -- would satisfy the "Pipelines must succeed" merge check.
+#
+# Note on scope: MR_NON_DRAFT=1 enables valgrind plus the test_all_models
+# selection, which at this revision adds only the fracture_network cases case_4
+# and case_5. The expensive solver-specific cases (displaced_fault_reactivation,
+# the extra CPG geometries, SPE11b) are governed by the separate `heavy_models`
+# switch in models/run_test_suite2.py and run regardless of draft status.
+#
+# Behaviour in an MR pipeline:
+#   * non-draft (MR_NON_DRAFT == "1"): runs after the heavy jobs and succeeds
+#     only if they succeeded -> pipeline can go green.
+#   * draft: exists as a BLOCKING MANUAL job, so the pipeline never reaches
+#     "success" on its own. If someone starts it manually it fails, because the
+#     script re-checks MR_NON_DRAFT.
+# Outside merge requests the job does not exist (protected-branch, tag, and
+# scheduled pipelines are unaffected).
+mr-ready-gate:
+    stage: deploy
+    tags:
+        - linux
+    image: "python:$DEFAULT_PY_VER"
+    rules:
+        - if: $CI_PIPELINE_SOURCE != "merge_request_event"
+          when: never
+        - if: $MR_NON_DRAFT == "1"
+          when: on_success
+        - when: manual
+          allow_failure: false
+    # `optional: true` is required: in a draft pipeline the valgrind jobs are not
+    # created at all, and a non-optional `needs` on a missing job would make the
+    # whole pipeline fail to be created. The draft case is covered by the manual
+    # gate plus the MR_NON_DRAFT check in the script below.
+    needs:
+        - job: pre-commit
+          optional: true
+        - job: test-linux
+          optional: true
+        - job: test-windows
+          optional: true
+        - job: test-linux-oahu-gpu
+          optional: true
+        - job: valgrind-check
+          optional: true
+    script:
+        - |
+          set -eu
+          if [ "${MR_NON_DRAFT:-0}" != "1" ]; then
+            echo "FAILED: this pipeline was created for a DRAFT merge request."
+            echo "Valgrind and the extra test_all_models cases were skipped, so this"
+            echo "pipeline is not a valid final validation."
+            echo "Mark the MR as ready, then push a commit or press 'Run pipeline'"
+            echo "on the MR to get a final-check pipeline."
+            exit 1
+          fi
+          echo "Final validation completed for a non-draft merge request:"
+          echo "  valgrind-check and the test_all_models cases ran in this pipeline."

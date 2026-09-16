@@ -13,8 +13,10 @@ workflow:
       variables:
         MR_NON_DRAFT: "1"
       when: always
-    # Branch push while an MR is open for that branch -> the MR pipeline above covers it; skip the duplicate branch pipeline.
-    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+    # Push to an UNPROTECTED branch that has an open MR -> the MR pipeline above covers it; skip the duplicate branch pipeline.
+    # Protected branches (development, main) are excluded: they are MR sources themselves (e.g. development -> main),
+    # and their push pipelines are the integration check, not a duplicate.
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_COMMIT_REF_PROTECTED != "true"'
       when: never
     - when: always
 
@@ -29,7 +31,9 @@ variables:
   #   anything else -> all four BOS twins are skipped pipeline-wide
   RUN_BOS_JOBS: "1"
   # Set by workflow:rules above: "1" only for merge-request pipelines whose MR is NOT a draft.
-  # Enables the longer valgrind job in MR pipelines and the larger model set in models/run_test_suite2.py
+  # Enables the longer valgrind job in MR pipelines and the test_all_models selection in
+  # models/run_test_suite2.py (extra fracture_network cases; the expensive solver-specific
+  # cases are governed separately by `heavy_models` there and run regardless of draft status).
   # Marking an MR ready does not start a pipeline by itself - push a commit or trigger it manually.
   MR_NON_DRAFT: "0"
 
@@ -74,6 +78,9 @@ include:
   # - local: '.cicd/jobs/vtune-profile.yml'
     # rules:
     # - if: $MCP_TRIGGER_TAHITI_GPU != "1"
+  - local: '.cicd/jobs/mr-ready-gate.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/upload-wheels.yml'
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
