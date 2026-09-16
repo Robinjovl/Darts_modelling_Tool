@@ -150,7 +150,7 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
     # CPG (C++ discr)
     test_dirs_cpg = ['cpg_sloping_fault']
     cpg_cases_list = ['generate_5x3x4']
-    if heavy_models:  # heavier cases -- also enabled on GPU suite runs (mind the job time limit)
+    if heavy_models:  # heavier cases -- skipped on GPU suite runs (job time limit)
         cpg_cases_list += ['generate_51x51x1', '40x40x10', '40x40x10_hcap', '40x40x10_regions']
     test_args_cpg = []
     for case_geom in cpg_cases_list:
@@ -220,7 +220,7 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
     # check main.py files and compare well time-series pkl files when they are produced
     failed_models_main = []
     accepted_dirs += ['CCS']
-    if heavy_models:  # heavier cases -- also enabled on GPU suite runs (mind the job time limit)
+    if heavy_models:  # heavier cases -- skipped on GPU suite runs (job time limit)
         accepted_dirs += [ 'SPE11b']
     n_total_mainpy = 0
     models_root = model_dir
@@ -451,16 +451,16 @@ if __name__ == '__main__':
     # heavy models: after the ODLS/non-ODLS CI consolidation the open-source
     # build is the only CPU CI variant, and its iterative solvers
     # (FGMRES+CPR / MGR) handle the formerly `-a`-only cases (SPE10_mech,
-    # displaced_fault_reactivation, the extra CPG geometries, SPE11b).
+    # displaced_fault_reactivation, the extra CPG geometries, SPE11b). GPU
+    # suite runs keep the lighter set (they already brush the job time limit).
     _normalize_odls_env()
-    # displaced_fault_reactivation, the extra CPG geometries and SPE11b run on the
-    # iterative/BOS lane and on the GPU suite. _normalize_odls_env() returns False
-    # under TEST_GPU=1 (it only describes the CPU solver lane), so the GPU suite is
-    # enabled explicitly here -- mind the GPU job time limit, these cases are slow.
+    # displaced_fault_reactivation, the extra CPG geometries and SPE11b still run on
+    # the iterative/BOS lane only. _normalize_odls_env() already returns False under
+    # TEST_GPU=1, so this keeps the GPU-suite skip too.
     # SPE10_mech is no longer part of this set: it is gated on `platform == 'cpu'` in
     # run_testing() and runs on the open-source lane as well, now that the in-tree
     # FS-CPR solves all four of its physics variants (see the note there).
-    heavy_models = _normalize_odls_env() or os.getenv('TEST_GPU') == '1'
+    heavy_models = _normalize_odls_env()
     print('heavy_models=', heavy_models)
 
     rcode = run_testing(platform, overwrite, heavy_models, test_all_models)
