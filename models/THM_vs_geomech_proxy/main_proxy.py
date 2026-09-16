@@ -304,6 +304,12 @@ def run_geomech_proxy(case, physics_type='single_phase',
     g.thermal_expansion = scalar_or_mean(m.idata.rock.th_expn_orig)
     g.biot = scalar_or_mean(m.idata.rock.biot)
 
+    # Mohr-Coulomb parameters from idata, so the proxy uses the same fault strength
+    # as the THM post-processing instead of the class defaults.
+    g.friction = scalar_or_mean(m.idata.rock.friction)
+    g.cohesion = scalar_or_mean(m.idata.rock.cohesion)
+    print(f'Mohr-Coulomb from idata: friction={g.friction:g}, cohesion={g.cohesion:g}')
+
     g.set_num_threads(n_threads)
     print('N_THREADS =', n_threads)
     if use_gpu:

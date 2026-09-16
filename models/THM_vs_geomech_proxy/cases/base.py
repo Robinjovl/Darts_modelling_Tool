@@ -58,6 +58,7 @@ def input_data_base(thermal=True):
     # reference points [x, y, label] drawn as a black line in plot_vtk (empty = no line)
     idata.other.points_xy = [[250., 250., '(250,250)']]
     idata.other.use_mesh_bounds_in_plot = False
+    idata.other.plot_slice_origin = None  # [x, y, z] the 2D slice plots pass through; None: the mesh center
 
     _set_obl(idata)
     return idata
@@ -72,6 +73,13 @@ def _set_rock_data(idata):
     # rock properties outside the reservoir coordinate bounds
     idata.rock.poro_non_rsv = 0.001
     idata.rock.perm_non_rsv = 0.01        # [mD]
+
+    # Mohr-Coulomb fault strength, read by BOTH the THM fault post-processing
+    # (fault.py via main.postprocess_fault) and the geomechanical proxy
+    # (geomechanics.geomech via main_proxy.run_geomech_proxy), so the two always
+    # evaluate the slip criterion with the same parameters.
+    idata.rock.friction = 0.6   # fault friction coefficient [-]
+    idata.rock.cohesion = 0.0   # fault cohesion [bar]; 0 assumes healing is absent
 
     if idata.other.perm_frac:
         # fracture mode: treat the fracture as fully open (poro=1) with very high perm
