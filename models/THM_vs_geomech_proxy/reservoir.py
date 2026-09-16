@@ -542,10 +542,18 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 for j in range(6):
                     cell_data['tot_stress'][-1][:, j] = total_stresses[j::6]
 
+                # Terzaghi/Biot: sigma'_ij = sigma_ij - biot * p * delta_ij, so the pore
+                # pressure comes off the NORMAL components only - shear stress is
+                # unaffected by pore pressure. Components are ordered
+                # xx, yy, zz, xy, xz, yz, so the first three are the normal ones.
+                # This used to subtract biot * p from all six and wrap every component
+                # in np.fabs(), which discarded the sign of the whole tensor and left
+                # the shear slots holding -biot * p instead of a shear stress.
                 if 'eff_stress' not in cell_data: cell_data['eff_stress'] = []
-                cell_data['eff_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
-                for j in range(6):
-                    cell_data['eff_stress'][-1][:, j] = np.fabs(cell_data['tot_stress'][-1][:, j]) - self.biot_cell * pressure
+                cell_data['eff_stress'].append(cell_data['tot_stress'][-1].copy())
+                biot_pressure = self.biot_cell * pressure
+                for j in range(3):
+                    cell_data['eff_stress'][-1][:, j] -= biot_pressure
 
                 if 'delta_tot_stress' not in cell_data: cell_data['delta_tot_stress'] = []
                 cell_data['delta_tot_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
@@ -557,10 +565,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 cell_data['delta_pressure'].append(np.zeros(self.n_matrix, dtype=np.float64))
                 cell_data['delta_pressure'][-1][:] = delta_pressure
 
+                # same rule as eff_stress above: the normal components only
                 if 'delta_eff_stress' not in cell_data: cell_data['delta_eff_stress'] = []
-                cell_data['delta_eff_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
-                for j in range(6):
-                    cell_data['delta_eff_stress'][-1][:, j] = cell_data['delta_tot_stress'][-1][:, j] - self.biot_cell * delta_pressure
+                cell_data['delta_eff_stress'].append(cell_data['delta_tot_stress'][-1].copy())
+                biot_delta_pressure = self.biot_cell * delta_pressure
+                for j in range(3):
+                    cell_data['delta_eff_stress'][-1][:, j] -= biot_delta_pressure
 
                 if hasattr(self, 'temperature_initial'): # if thermal simulation
                     if 'delta_temperature' not in cell_data: cell_data['delta_temperature'] = []
@@ -619,150 +629,113 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         time = engine.t if ith_step > 0 else 0.0
         self.write_pvd_file(ith_step, time, output_directory)
 
-        # save hooke_forces-based fault traction for post-processing (see fault.py)
-        try:
-            self.save_fault_traction(output_directory, ith_step, engine, pressure)
-        except Exception as e:
-            print('[WARN] fault traction save skipped:', e)
+        # fault surface with tractions for the FSP post-processing (see fault.py)
+        self.save_fault_traction(output_directory, ith_step, engine, time)
 
         return 0
 
     # ------------------------------------------------------------------
-    # Fault traction from the mechanical (Hooke) forces
+    # Fault surface with tractions for the FSP post-processing (fault.py)
     # ------------------------------------------------------------------
     def _setup_fault_mapping(self, fault_mesh_filename):
         """
-        One-time setup: read the fault faces from the *_fault.msh companion mesh
-        and precompute, for every fault face, the directed mesh connection it
-        maps to (for hooke_forces) and the matrix cell it maps to (for pore
-        pressure). Geometry is fixed across timesteps, so this is done once.
+        One-time setup: read the fault surface from the *_fault.msh companion mesh
+        (same geometry as mesh.msh plus the FAULT physical group) and map every
+        fault face to the engine connection lying on it. Fault faces must be faces
+        of the simulation mesh; they are matched to the discretizer connections by
+        their centroids.
         """
-        self._fault_setup_done = True
         self._fault_ok = False
         if not os.path.exists(fault_mesh_filename):
-            print('[INFO] no fault mesh (%s); fault traction not saved' % fault_mesh_filename)
+            print('[INFO] no fault mesh %s: fault tractions are not saved' % fault_mesh_filename)
             return
 
         from scipy.spatial import cKDTree
-        from fault import read_fault_faces
+        from fault import read_fault_mesh
 
-        centers, fault_normal, _ = read_fault_faces(fault_mesh_filename)
-        self.frac_points_x = np.ascontiguousarray(centers[:, 0])
-        self.frac_points_y = np.ascontiguousarray(centers[:, 1])
-        self.frac_points_z = np.ascontiguousarray(centers[:, 2])
-        self.fault_normal = fault_normal
+        fault = read_fault_mesh(fault_mesh_filename)
 
-        cell_centers = np.array([np.array(c.values)
-                                 for c in self.discr_mesh.centroids[:self.n_matrix]])
-
-        # --- geometry from the discretizer connections (for area only) ---
-        adj = np.array(self.discr_mesh.adj_matrix)
-        conns = self.discr_mesh.conns
-        geom_centers = np.array([np.array(conns[int(adj[k])].c.values) for k in range(len(adj))])
-        geom_areas = np.array([conns[int(adj[k])].area for k in range(len(adj))])
-        gi = cKDTree(geom_centers).query(centers)[1]
-        self._fault_area = geom_areas[gi]
-
-        # --- force index from the ENGINE connections (aligned with hooke_forces) ---
-        # engine.hooke_forces is ordered like mesh.block_m/block_p (which include
-        # well connections), NOT like discr_mesh.adj_matrix. Map each fault face to
-        # the engine connection by its cell-pair midpoint so the force index is
-        # correct. Restrict to matrix-matrix connections (both cells < n_matrix).
-        block_m = np.array(self.mesh.block_m)
-        block_p = np.array(self.mesh.block_p)
-        self._n_directed = len(adj)
-        mm = (block_m < self.n_matrix) & (block_p < self.n_matrix)
-        eng_idx = np.where(mm)[0]
-        mids = 0.5 * (cell_centers[block_m[mm]] + cell_centers[block_p[mm]])
-        dist, k = cKDTree(mids).query(centers)
-        ej = eng_idx[k]                      # engine connection index per fault face
-        self._fault_engine_idx = ej
-        print('[fault-map] faces=%d  nearest-midpoint dist mean/max=%.3g/%.3g'
-              % (len(centers), dist.mean(), dist.max()))
-
-        # Orient each traction to a COMMON reference (+fault_normal): the engine
-        # connection is directed block_m -> block_p; use that direction's sign
-        # relative to the fault normal so the normal stress has a consistent sign.
-        dir_mp = cell_centers[block_p[ej]] - cell_centers[block_m[ej]]
-        s = np.sign(dir_mp @ fault_normal)
-        s[s == 0.0] = 1.0
-        self._fault_sign = s
-        self._fault_conn_normal = np.broadcast_to(fault_normal, (len(centers), 3)).copy()
-        # nearest matrix cell for each fault face (for pore pressure)
-        self._fault_cell_idx = cKDTree(cell_centers).query(centers)[1]
-        self._fault_ok = True
-
-    def save_fault_traction(self, output_directory, ith_step, engine, pressure):
-        """
-        Write results/<case>/fault<ith_step>.vtu with the Hooke-forces fault
-        traction (and pore pressure) at each fault-face center, for the
-        traction-based Mohr-Coulomb / FSP post-processing in fault.py.
-        """
-        base, ext = os.path.splitext(self.mesh_filename)
-        fault_mesh_filename = base + '_fault' + ext
-        if not getattr(self, '_fault_setup_done', False):
-            self._setup_fault_mapping(fault_mesh_filename)
-        if not getattr(self, '_fault_ok', False):
+        # matrix-matrix interfaces of the discretizer mesh
+        conns = [c for c in self.discr_mesh.conns if c.elem_id1 < self.n_matrix and c.elem_id2 < self.n_matrix]
+        dist, k = cKDTree(np.array([c.c.values for c in conns])).query(fault['centers'])
+        conns = [conns[i] for i in k]
+        conn_n = np.array([c.n.values for c in conns])
+        matched = (dist < 0.1 * np.sqrt(fault['areas'])) & (np.abs(np.einsum('ij,ij->i', conn_n, fault['normals'])) > 0.99)
+        if not matched.all():
+            print('[WARN] %d of %d fault faces are not faces of the simulation mesh: fault tractions are not saved'
+                  % ((~matched).sum(), matched.size))
             return
 
-        # Per directed connection, already multiplied by area (bars * m^2);
-        # size == n_directed * 3. hooke_forces is the elastic (Hooke) part; the
-        # TOTAL stress traction also needs the Biot (pressure) and thermal
-        # contributions. The lab models use hooke only; at reservoir scale the
-        # Biot/thermal parts are significant, so we save both.
-        ej = self._fault_engine_idx
-        # THM convention: compressive stresses are NEGATIVE. The lab mohr_coulomb
-        # expects compressive POSITIVE, so invert the sign of the forces after
-        # reading (the leading factor). _fault_sign orients every face to the
-        # common +fault_normal reference so the normal stress has a consistent sign.
-        sign_over_area = (self._fault_sign / self._fault_area)[:, None]
+        cells = np.array([[c.elem_id1, c.elem_id2] for c in conns], dtype=np.int64)
 
-        def _traction(force_attr):
-            arr = getattr(engine, force_attr, None)
-            if arr is None:
-                return None
-            # forces are connection-major: [fx,fy,fz] per connection, engine order
-            f = np.asarray(arr, copy=False).reshape(-1, 3)[ej]
-            return sign_over_area * f * 0.1  # bars -> MPa
+        # engine connection directed elem_id1 -> elem_id2 (forces are stored per directed connection)
+        block_m = np.array(self.mesh.block_m, dtype=np.int64)
+        block_p = np.array(self.mesh.block_p, dtype=np.int64)
+        n_ids = max(block_m.max(), block_p.max()) + 1
+        keys = block_m * n_ids + block_p
+        order = np.argsort(keys)
+        face_keys = cells[:, 0] * n_ids + cells[:, 1]
+        pos = np.minimum(np.searchsorted(keys[order], face_keys), len(keys) - 1)
+        assert np.all(keys[order[pos]] == face_keys), 'fault faces are not found among the engine connections'
 
-        hooke_tr = _traction('hooke_forces')
-        biot_tr = _traction('biot_forces')
-        thermal_tr = _traction('thermal_forces')
+        # The engine force of connection (i, j) is -(sigma . n_out) * area, n_out being the
+        # outward normal of cell i. Orient it along the fault-face normal and make it
+        # compression positive: traction = sign(n_out . normal) * force / area.
+        c1 = np.array([self.discr_mesh.centroids[i].values for i in cells[:, 0]])
+        n_out = conn_n * np.sign(np.einsum('ij,ij->i', np.array([c.c.values for c in conns]) - c1, conn_n))[:, None]
+        sign = np.sign(np.einsum('ij,ij->i', n_out, fault['normals']))
 
-        # One-time sanity check: the Biot force must be ~normal to the fault
-        # (biot*p*n). |tangential|/|normal| ~ 0 confirms the force<->connection
-        # mapping and array layout are correct.
-        if not getattr(self, '_fault_diag_done', False) and biot_tr is not None:
-            self._fault_diag_done = True
-            n = self.fault_normal
-            bn = np.abs(biot_tr @ n)
-            bt = np.linalg.norm(biot_tr - (biot_tr @ n)[:, None] * n, axis=1)
-            print('[fault-diag] biot |tangential|/|normal| = %.3f (should be ~0)'
-                  % (bt.mean() / max(bn.mean(), 1e-12)))
+        self._fault = fault
+        self._fault_conn = order[pos]
+        self._fault_cells = cells
+        self._fault_scale = (sign / np.array([c.area for c in conns]))[:, None]
+        self._fault_pvd = {}
+        self._fault_ok = True
+        print('[INFO] fault tractions are saved for %d fault faces' % matched.size)
 
-        total_tr = hooke_tr.copy()
-        if biot_tr is not None:
-            total_tr += biot_tr
-        if thermal_tr is not None:
-            total_tr += thermal_tr
+    def save_fault_traction(self, output_directory, ith_step, engine, time):
+        """
+        Write <output_directory>/fault<ith_step>.vtu: the fault surface with cell data
+          traction (3) total-stress traction [bar], compression positive
+          normal   (3) unit fault normal
+          pressure     pore pressure, mean of both sides of the fault [bar]
+          temperature  temperature, mean of both sides of the fault [K] (thermal runs only)
+        and update <output_directory>/fault.pvd.
+        """
+        if not hasattr(self, '_fault_ok'):
+            base, ext = os.path.splitext(self.mesh_filename)
+            self._setup_fault_mapping(base + '_fault' + ext)
+        if not self._fault_ok:
+            return
 
-        p_fault = pressure[self._fault_cell_idx] * 0.1  # bars -> MPa
+        force = np.zeros((self._fault_conn.size, 3))
+        for name in ['hooke_forces', 'biot_forces', 'thermal_forces']:
+            f = np.array(getattr(engine, name), copy=False)
+            if f.size:  # thermal_forces is empty for isothermal engines
+                force += f.reshape(-1, 3)[self._fault_conn]
+        traction = self._fault_scale * force
 
-        # `fault_traction_*` is the TOTAL-stress traction (used by fault.py);
-        # `hooke_traction_*` keeps the elastic-only traction (lab convention).
-        data = {'fault_traction_x': np.ascontiguousarray(total_tr[:, 0]),
-                'fault_traction_y': np.ascontiguousarray(total_tr[:, 1]),
-                'fault_traction_z': np.ascontiguousarray(total_tr[:, 2]),
-                'hooke_traction_x': np.ascontiguousarray(hooke_tr[:, 0]),
-                'hooke_traction_y': np.ascontiguousarray(hooke_tr[:, 1]),
-                'hooke_traction_z': np.ascontiguousarray(hooke_tr[:, 2]),
-                'p': np.ascontiguousarray(p_fault)}
+        X = np.array(engine.X, copy=False)
+        p_id = self.cell_property.index('pressure')
+        pressure = X[self.n_vars * self._fault_cells + p_id].mean(axis=1)
 
-        from pyevtk.hl import pointsToVTK
-        out = os.path.join(output_directory, 'fault%d' % ith_step)
-        pointsToVTK(out,
-                    self.frac_points_x.copy(), self.frac_points_y.copy(), self.frac_points_z.copy(),
-                    data=data)
+        from fault import split_by_blocks
+        cells = self._fault['cells']
+        cell_data = {'traction': split_by_blocks(traction, cells),
+                     'normal': split_by_blocks(self._fault['normals'], cells),
+                     'pressure': split_by_blocks(pressure, cells)}
+        if 'temperature' in self.cell_property:
+            t_id = self.cell_property.index('temperature')
+            cell_data['temperature'] = split_by_blocks(X[self.n_vars * self._fault_cells + t_id].mean(axis=1), cells)
+        meshio.write(os.path.join(output_directory, 'fault%d.vtu' % ith_step),
+                     meshio.Mesh(self._fault['points'], cells, cell_data=cell_data))
+
+        self._fault_pvd[ith_step] = time
+        with open(os.path.join(output_directory, 'fault.pvd'), 'w') as f:
+            f.write('<?xml version="1.0"?>\n<VTKFile type="Collection" version="0.1">\n  <Collection>\n')
+            for step, t in sorted(self._fault_pvd.items()):
+                f.write('    <DataSet timestep="%s" file="fault%d.vtu"/>\n' % (t, step))
+            f.write('  </Collection>\n</VTKFile>\n')
 
     def set_heterogeneous_props_by_interpolation(self, idata, generate_mesh):
         # set different values in the reservoir and lateral surrounding+over/under-burden
