@@ -27,7 +27,7 @@ def is_unstructured_generated_case(case):
     # the structured box path in reservoir.py. Listing them here is what lets a
     # single generate_mesh flag cover every case that can regenerate its mesh.
     base = os.path.basename(case)
-    return (base == 'case_5' or base.startswith('case_5_mesh_')
+    return (base == 'case_5'
             or base.startswith('no_damage_zone'))
 
 
@@ -78,7 +78,7 @@ def generate_unstructured_mesh(case, idata=None, physics_type='single_phase_ther
     :param physics_type: physics used to build idata when it is not supplied.
     :param wells_type: well configuration used to build idata when it is not supplied.
     :param bulk_mesh_size: far-field Gmsh size [m]; the well size keeps the 1:20 ratio.
-        None takes it from a case_5_mesh_<size>m case name, 200 m otherwise.
+        None uses a size-encoded case name or idata.other.bulk_mesh_size.
     :param force: regenerate even when the mesh is up to date.
     :return: the mesh file, or None when the case has no generator.
     """
@@ -112,7 +112,8 @@ def generate_unstructured_mesh(case, idata=None, physics_type='single_phase_ther
 
     import gen_fault_msh as generator
     if bulk_mesh_size is None:
-        bulk_mesh_size = case_5_mesh_size(base)
+        bulk_mesh_size = case_5_mesh_size(
+            base, default=getattr(idata.other, 'bulk_mesh_size', 200.0))
     well_mesh_size = bulk_mesh_size / 20.0
     # generate_3d_fault_mesh reads only the well coordinates from idata
     key = {'generator_sha256': file_sha256(generator.__file__), 'gmsh': gmsh.__version__,
@@ -626,13 +627,6 @@ if __name__ == '__main__':
     #cases += ['no_damage_zone_heter_mech_prop']
     # cases += ['zero_rate_17_17_15']
 
-    # Run the same coupled thermal-geomechanical case on multiple meshes.
-    # well size keeps the same 1:20 ratio used by the 200 m reference mesh.
-    case_5_mesh_study = True
-    case_5_mesh_sizes = [600.0]
-    if case_5_mesh_study:
-        cases = [case_5_mesh_name(mesh_size) for mesh_size in case_5_mesh_sizes]
-
     # thermal = False
     thermal = True
 
@@ -658,22 +652,13 @@ if __name__ == '__main__':
     #sim_time = 30 # days
     #report_step = sim_time  # days
 
-    # The mesh-size study needs one mesh per resolution, so it drives the
-    # generator directly; every other case is meshed by run() below.
-    if case_5_mesh_study and generate_mesh:
-        for mesh_size in case_5_mesh_sizes:
-            generate_unstructured_mesh(case_5_mesh_name(mesh_size),
-                                       physics_type=physics_type,
-                                       wells_type=wells_type,
-                                       bulk_mesh_size=mesh_size)
-
     for case in cases:
         os.system("title thm_proxy: " + case + " PID=" + str(os.getpid())) # set the window title
 
         # struct-like NX_NY_NZ cases are meshed in the reservoir, case_5 and
         # no_damage_zone by their own gmsh script (run() dispatches); case_1..case_4
         # have no generator and keep loading the committed meshes/case_1/mesh.msh.
-        case_generate_mesh = generate_mesh and supports_mesh_generation(case) and not case_5_mesh_study
+        case_generate_mesh = generate_mesh and supports_mesh_generation(case)
 
         run(model_folder=case, physics_type=physics_type, generate_mesh=case_generate_mesh,
             wells_type=wells_type, decouple_geomech=decouple_geomech,

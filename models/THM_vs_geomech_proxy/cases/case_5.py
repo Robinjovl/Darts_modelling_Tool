@@ -11,7 +11,16 @@ from darts.reservoirs.unstruct_reservoir_mech import (
 )
 
 
-def input_data_case_5(physics_type='single_phase_thermal', mesh_dir='case_5'):
+def input_data_case_5(physics_type='single_phase_thermal', mesh_dir='case_5',
+                      bulk_mesh_size=1000.0):
+    """
+    Build case 5 inputs.
+
+    :param physics_type: Simulation physics.
+    :param mesh_dir: Mesh folder name.
+    :param bulk_mesh_size: Far-field Gmsh mesh size in metres.
+    :return: Case 5 input data.
+    """
     idata = input_data_base(thermal='thermal' in physics_type)
 
     # override permeability (default is 10 mD)
@@ -35,6 +44,10 @@ def input_data_case_5(physics_type='single_phase_thermal', mesh_dir='case_5'):
 
     # case_2 and case_3 inherit this, so all three cases share one mesh
     idata.other.mesh_dir = mesh_dir
+    # Well mesh size retains the 1:20 ratio of the reference mesh.
+    idata.other.bulk_mesh_size = float(bulk_mesh_size)
+    if not np.isfinite(idata.other.bulk_mesh_size) or idata.other.bulk_mesh_size <= 0.0:
+        raise ValueError('case_5 mesh size must be finite and positive')
 
     # recompute derived values that depend on the overridden parameters above
     _set_reservoir_bounds(idata)
