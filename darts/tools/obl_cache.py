@@ -40,17 +40,79 @@ as a plain pickle via :meth:`_atomic_pickle_dump` / :meth:`_safe_pickle_load`.
 (The _MAGIC bytes are retained verbatim so cache files written by earlier builds still load.)
 """
 
-from contextlib import contextmanager
-import fcntl
 import json
 import os
 import pickle
 import struct
 import tempfile
 import zlib
+from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
+
+if os.name == "nt":
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    class _Overlapped(ctypes.Structure):
+        _fields_ = [
+            ("Internal", ctypes.c_size_t),
+            ("InternalHigh", ctypes.c_size_t),
+            ("Offset", wintypes.DWORD),
+            ("OffsetHigh", wintypes.DWORD),
+            ("hEvent", wintypes.HANDLE),
+        ]
+
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _lock_file_ex = _kernel32.LockFileEx
+    _lock_file_ex.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(_Overlapped),
+    ]
+    _lock_file_ex.restype = wintypes.BOOL
+    _unlock_file_ex = _kernel32.UnlockFileEx
+    _unlock_file_ex.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(_Overlapped),
+    ]
+    _unlock_file_ex.restype = wintypes.BOOL
+else:
+    import fcntl
+
+
+def _lock_cache_file(lock_fp, exclusive: bool):
+    """Acquire a blocking one-byte advisory lock and return its platform token."""
+    if os.name == "nt":
+        overlapped = _Overlapped()
+        flags = 0x00000002 if exclusive else 0  # LOCKFILE_EXCLUSIVE_LOCK
+        handle = wintypes.HANDLE(msvcrt.get_osfhandle(lock_fp.fileno()))
+        if not _lock_file_ex(handle, flags, 0, 1, 0, ctypes.byref(overlapped)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return overlapped
+
+    mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+    fcntl.flock(lock_fp.fileno(), mode)
+    return None
+
+
+def _unlock_cache_file(lock_fp, token) -> None:
+    """Release a lock acquired by :func:`_lock_cache_file`."""
+    if os.name == "nt":
+        handle = wintypes.HANDLE(msvcrt.get_osfhandle(lock_fp.fileno()))
+        if not _unlock_file_ex(handle, 0, 1, 0, ctypes.byref(token)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return
+
+    fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
 
 
 class OblCacheCodec:
@@ -74,12 +136,11 @@ class OblCacheCodec:
         lock_path = path + '.lock'
         os.makedirs(os.path.dirname(lock_path) or '.', exist_ok=True)
         with open(lock_path, 'a+b') as lock_fp:
-            mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
-            fcntl.flock(lock_fp.fileno(), mode)
+            lock_token = _lock_cache_file(lock_fp, exclusive)
             try:
                 yield
             finally:
-                fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
+                _unlock_cache_file(lock_fp, lock_token)
 
     @staticmethod
     def _point_data_size(itor) -> int:

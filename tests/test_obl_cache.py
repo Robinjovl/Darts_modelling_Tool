@@ -107,6 +107,14 @@ def _locked_append_worker(path, first_key):
         codec._append_frame(path, codec._KIND_DELTA, keys, vals)
 
 
+@pytest.mark.parametrize("exclusive", [False, True])
+def test_cache_lock_roundtrip(tmp_path, exclusive):
+    path = str(tmp_path / "obl_point_data_test.pkl")
+
+    with OblCacheCodec().cache_lock(path, exclusive=exclusive):
+        assert os.path.exists(path + ".lock")
+
+
 def test_cache_write_reload_roundtrip(tmp_path):
     cls = _itor_cls()
     ev = _make_evaluator()
@@ -342,7 +350,9 @@ def test_interprocess_locked_appends_are_complete(tmp_path):
     p.write_cache()
 
     workers = [
-        multiprocessing.Process(target=_locked_append_worker, args=(str(path), 1000 + i * ND))
+        multiprocessing.Process(
+            target=_locked_append_worker, args=(str(path), 1000 + i * ND)
+        )
         for i in range(4)
     ]
     for worker in workers:
