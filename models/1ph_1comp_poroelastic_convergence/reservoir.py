@@ -371,8 +371,9 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         fluxes = np.array(engine.fluxes, copy=False)
         # fluxes_n = np.array(engine.fluxes_n, copy=False)
         fluxes_biot = np.array(engine.fluxes_biot, copy=False)
-        #vels = self.reconstruct_velocities(fluxes[engine.P_VAR::engine.N_VARS],
-        #                                  fluxes_biot[engine.P_VAR::engine.N_VARS])
+        # engine_n_vars = engine.get_n_vars()
+        #vels = self.reconstruct_velocities(fluxes[engine.P_VAR::engine_n_vars],
+        #                                  fluxes_biot[engine.P_VAR::engine_n_vars])
         # self.mech_operators.eval_porosities(engine.X, self.mesh.bc)
         # self.mech_operators.eval_stresses(engine.fluxes, engine.fluxes_biot, engine.X,
         #                                   self.mesh.bc, engine.op_vals_arr)

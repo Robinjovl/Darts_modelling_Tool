@@ -280,11 +280,13 @@ if __name__ == "__main__":
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_57')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_inj_34_34_57')
 
-    output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
+    #output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_34_34_66')
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_34_34_66')
 
     #output_dir = os.path.join('results', 'sol_cpp_single_phase_thermal_doublet_42_42_90')
     #output_dir = r'\\wsl.localhost\Ubuntu-24.04\root\projects\open-darts_dev_debug\models\SPE10_mech\results\sol_cpp_single_phase_inj_42_42_66'
+
+    output_dir = os.path.join('results', 'sol_cpp_single_phase_inj_zero_rate_17_17_15')
 
     plot_vtk_pyvista(output_dir, contour=contour, tstep_to_plot=0)
     plot_vtk_pyvista(output_dir, contour=contour, tstep_to_plot=-1)

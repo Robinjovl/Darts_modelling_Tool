@@ -37,7 +37,7 @@ void pybind_pm_discretizer (py::module &m)
 			[](py::tuple t) { // __setstate__
 				index_t M = t[t.size() - 2].cast<index_t>();
 				index_t N = t[t.size() - 1].cast<index_t>();
-				
+
 				Matrix p(M, N);
 
 				for (int i = 0; i < t.size() - 2; i++)
@@ -122,7 +122,7 @@ void pybind_pm_discretizer (py::module &m)
 		.def(py::pickle(
 			[](const Face& f) { // __getstate__
 				py::tuple t(10);
-				
+
 				t[0] = f.type;
 				t[1] = f.cell_id1;
 				t[2] = f.cell_id2;
@@ -264,7 +264,7 @@ void pybind_pm_discretizer (py::module &m)
 				p.stencil = t[0].cast<std::vector<index_t>>();
 				p.mat = t[1].cast<Matrix>();
 				p.rhs = t[2].cast<Matrix>();
-				
+
 				return p;
 			}));
 	py::bind_vector<std::vector<pm_discretizer::Gradients>>(m, "grad_vector")
@@ -293,6 +293,9 @@ void pybind_pm_discretizer (py::module &m)
 		.def("reconstruct_gradients_thermal_per_cell", &pm_discretizer::reconstruct_gradients_thermal_per_cell)
 		//.def("calc_all_fluxes", &pm_discretizer::calc_all_fluxes)
 		.def("calc_all_fluxes_once", &pm_discretizer::calc_all_fluxes_once)
+		.def("check_displacement_diagonal", &pm_discretizer::check_displacement_diagonal, py::arg("verbose") = true)
+		.def_readonly("u_diag_nonpositive_cells", &pm_discretizer::u_diag_nonpositive_cells)
+		.def_readonly("u_diag_indefinite_cells", &pm_discretizer::u_diag_indefinite_cells)
 		.def("get_gradient", &pm_discretizer::get_gradient)
 		.def("get_thermal_gradient", &pm_discretizer::get_thermal_gradient)
 		.def_readwrite("faces", &pm_discretizer::faces)

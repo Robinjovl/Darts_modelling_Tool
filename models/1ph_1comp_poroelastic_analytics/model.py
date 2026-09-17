@@ -60,7 +60,7 @@ class Model(THMCModel):
                 p_var=engine.P_VAR,
                 z_var=engine.Z_VAR,
                 u_var=engine.U_VAR,
-                nc=engine.N_VARS - 3,
+                nc=engine.get_n_vars() - 3,
             )
         fs_cpr = FSCPRSolverSpec(**fs_cpr_kwargs)
 

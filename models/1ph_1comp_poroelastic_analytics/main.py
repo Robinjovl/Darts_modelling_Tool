@@ -300,26 +300,27 @@ def run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect', con
         run_python(m, dt)
 
         X = np.array(m.physics.engine.X, copy=False)
+        engine_n_vars = m.physics.engine.get_n_vars()
         if case == 'mandel':
-            pres['darts'][ith_step + 1] = X[m.physics.engine.P_VAR::m.physics.engine.N_VARS][::ny]  # for rectangular grid
-            disp['darts'][ith_step + 1] = X[m.physics.engine.U_VAR::m.physics.engine.N_VARS][::ny]  # for rectangular grid
+            pres['darts'][ith_step + 1] = X[m.physics.engine.P_VAR::engine_n_vars][::ny]  # for rectangular grid
+            disp['darts'][ith_step + 1] = X[m.physics.engine.U_VAR::engine_n_vars][::ny]  # for rectangular grid
             pres['analytics'][ith_step + 1] = m.reservoir.mandel_exact_pressure(idata=m.idata, t=time, xc=x)
             p,ux,uy = m.reservoir.mandel_exact_displacements(idata=m.idata, t=time, xc=xc)
             disp['analytics'][ith_step + 1] = ux
         elif case == 'terzaghi':
-            pres['darts'][ith_step + 1] = X[m.physics.engine.P_VAR::m.physics.engine.N_VARS][::ny]  # for rectangular grid
-            disp['darts'][ith_step + 1] = X[m.physics.engine.U_VAR::m.physics.engine.N_VARS][::ny]  # for rectangular grid
+            pres['darts'][ith_step + 1] = X[m.physics.engine.P_VAR::engine_n_vars][::ny]  # for rectangular grid
+            disp['darts'][ith_step + 1] = X[m.physics.engine.U_VAR::engine_n_vars][::ny]  # for rectangular grid
             pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_pressure(idata=m.idata, t=time, xc=x)
             disp['analytics'][ith_step + 1] = m.reservoir.terzaghi_exact_displacements(idata=m.idata,t=time, xc=x)
         elif case == 'terzaghi_two_layers':
-            pres['darts'][ith_step + 1] = X[m.physics.engine.P_VAR::m.physics.engine.N_VARS][::ny]  # for rectangular grid
-            disp['darts'][ith_step + 1] = X[m.physics.engine.U_VAR::m.physics.engine.N_VARS][::ny]  # for rectangular grid
+            pres['darts'][ith_step + 1] = X[m.physics.engine.P_VAR::engine_n_vars][::ny]  # for rectangular grid
+            disp['darts'][ith_step + 1] = X[m.physics.engine.U_VAR::engine_n_vars][::ny]  # for rectangular grid
             pres['analytics'][ith_step + 1] = m.reservoir.terzaghi_two_layers_exact_pressure(t=time, xc=x)
             disp['analytics'][ith_step + 1] = m.reservoir.terzaghi_two_layers_exact_displacement(t=time, xc=x)
         elif case == 'bai':
-            p_num = X[m.physics.engine.P_VAR::m.physics.engine.N_VARS][id_num]
-            t_num = X[m.physics.engine.T_VAR::m.physics.engine.N_VARS][id_num]
-            u_num = X[m.physics.engine.U_VAR + 1::m.physics.engine.N_VARS][id_num]
+            p_num = X[m.physics.engine.P_VAR::engine_n_vars][id_num]
+            t_num = X[m.physics.engine.T_VAR::engine_n_vars][id_num]
+            u_num = X[m.physics.engine.U_VAR + 1::engine_n_vars][id_num]
             fp = interp1d(y_num, p_num, kind='linear', fill_value='extrapolate')
             ft = interp1d(y_num, t_num, kind='linear', fill_value='extrapolate')
             fu = interp1d(y_num, u_num, kind='linear', fill_value='extrapolate')
@@ -550,7 +551,7 @@ def get_analytic_solution(m, discr_name, t):
         pressure = m.reservoir.terzaghi_two_layers_exact_pressure(t=t, xc=x)
         ux = m.reservoir.terzaghi_two_layers_exact_displacement(t=t, xc=x)
 
-    nvars = 4 # m.physics.n_vars #TODO why m.physics.n_vars == 1 ?
+    nvars = m.physics.engine.get_n_vars()
     ref_data['solution'] = np.zeros(nvars * nx)
     ref_data['solution'][m.reservoir.p_var::nvars] = pressure
     ref_data['solution'][m.reservoir.u_var::nvars] = ux
@@ -560,7 +561,7 @@ def get_analytic_solution(m, discr_name, t):
 
 def get_solution_slice(m, discr_name, mesh, sol_data):
     nx, ny, x, xc = get_x(m, discr_name)
-    nvars = m.physics.engine.N_VARS
+    nvars = m.physics.engine.get_n_vars()
     sol_data_slice = sol_data.copy()  # copy keys of the dictionary
     sol_data_slice['solution'] = np.zeros(nx * nvars)
     for v in range(nvars):
@@ -573,13 +574,13 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
 
 if __name__ == '__main__':
     # Rectangular grid, comparison to analytics
-    #run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
+    run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
     #run_and_plot(case='terzaghi', discretizer='pm_discretizer', mesh='rect')
-    #run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect')
+    run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect')
     #run_and_plot(case='mandel', discretizer='pm_discretizer', mesh='rect')
     #run_and_plot(case='terzaghi_two_layers', discretizer='pm_discretizer', mesh='rect')
-    #run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer', mesh='rect')
-    #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
+    run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer', mesh='rect')
+    run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
 
     # Wedge (triangular) grid
     #run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
@@ -596,7 +597,7 @@ if __name__ == '__main__':
     #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='hex')
 
     test_all = False
-    test_all = True
+    #test_all = True
     cases_list = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']
     if test_all:
         for case in cases_list:

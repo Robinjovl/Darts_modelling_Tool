@@ -1,9 +1,13 @@
-from darts.models.darts_model import DartsModel
+# for regression tests:
+from darts.tools.cicd_tools import compare_vtk_with_ref, read_vtk
+# Fault properties compared with the reference solution: local traction and gap,
+# friction coefficient and pressure.
+REF_PROPS = ['f_local', 'g_local', 'mu', 'p']
+REF_TIMESTEP = 1  # reported timestep to compare (the last one of the test configuration)
 
 from model import Model
 from darts.engines import *
 import numpy as np
-import meshio
 import os
 from math import fabs
 
@@ -199,48 +203,12 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
 
     ret_flag = 0
     if compare_with_ref:
-        ret_flag = compare_solution_with_ref(m)
+        vtk_fname = 'solution_fault' + str(REF_TIMESTEP) + '.vtu'  # fault data
+        ret_flag = compare_vtk_with_ref(os.path.join(m.output_directory, vtk_fname),
+                                        os.path.join('ref', m.output_directory, vtk_fname),
+                                        props=REF_PROPS)
     return ret_flag
 
-
-def compare_solution_with_ref(m : DartsModel, verbose = True):
-    ith_step = 1  # compare only the last timestep result
-    ith_step = str(ith_step)
-
-    vtk_fname = 'solution_fault' + ith_step + '.vtu'  # a filename to read and compare (fault data)
-    vtk_ref_fname = os.path.join(os.path.join('ref', m.output_directory), vtk_fname)
-    vtk_cur_fname = os.path.join(m.output_directory, vtk_fname)
-
-    props=['f_local', 'g_local', 'mu', 'p']  # property list (need for printing purposes)
-
-    ref = read_vtk(vtk_ref_fname, props)  # the reference solution
-    cur = read_vtk(vtk_cur_fname, props)  # the current solution
-    names = ['centers', 'cell_data', 'points', 'point_data']  # object names to be compared
-
-    rel_diff_tolerance = 1e-6
-    abs_diff_tolerance = 1e-8
-    eps_div = 1e-15  # to avoid division by zero
-    ret_flag = 0
-    for n, r, c in zip(names, ref, cur):
-        if type(r) == dict: # cell_data is a dict, so check each item there
-            if len(r) == 0:  # point_data is empty, skip it
-                continue
-            ns, rs, cs = r.keys(), r.values(), c.values()  # dict to list
-        else:
-            ns, rs, cs =  [n], [r], [c]  # create a list just to have a loop below for both cases
-        for ni, ri, ci in zip(ns, rs, cs):
-            r1 = np.array(ri)
-            c1 = np.array(ci)
-            diff = np.fabs(r1 - c1) / (np.fabs(r1) + eps_div) # relative difference
-            diff_max = diff.max()
-            if np.isclose(r1, c1, rtol=rel_diff_tolerance, atol=abs_diff_tolerance).all():
-                if verbose:
-                    print('Comparing', ni, 'diff', diff_max)
-            else:
-                ret_flag = 1
-                print('There is a rel.difference', diff_max, 'for', ni)
-    print('compare:', 'OK' if ret_flag == 0 else 'FAILED')
-    return ret_flag
 
 def run_test(args: dict, platform='cpu'):
     return run_and_plot(config=args, compare_with_ref=True), 0.0
@@ -255,29 +223,6 @@ def read_pvd(filename):
         timesteps.append(float(step.getAttribute('timestep')))
         files.append(step.getAttribute('file'))
     return timesteps, files
-def read_vtk(filename, props):
-    import meshio
-
-    mesh = meshio.read(filename=filename)
-
-    # cell data
-    centers = np.empty([0, 3])
-    cell_data = {}
-    for geom_name, geom in mesh.cells_dict.items():
-        centers = np.append(centers, np.average(mesh.points[geom], axis=1), axis=0)
-        for prop in props:
-            if prop in mesh.cell_data_dict:
-                if prop not in cell_data: cell_data[prop] = []
-                cell_data[prop].append(mesh.cell_data_dict[prop][geom_name])
-
-    # point data
-    points = mesh.points
-    point_data = {}
-    for prop_name, prop in mesh.point_data.items():
-        if prop_name in props:
-            point_data[prop_name] = prop
-
-    return centers, cell_data, points, point_data
 def plot_profiles(data_folder: str, labels: list, analytics=None, animate: bool=False):
     from matplotlib import pyplot as plt
     ls = 13

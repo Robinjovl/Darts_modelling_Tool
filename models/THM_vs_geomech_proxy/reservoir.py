@@ -1,5 +1,9 @@
 import numpy as np
 import os
+import time
+import glob
+import hashlib
+import json
 import meshio
 from darts.discretizer import elem_type, elem_loc
 from darts.discretizer import matrix33 as disc_matrix33
@@ -12,9 +16,57 @@ import copy
 from scipy.interpolate import griddata as gd
 from functools import reduce
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# The expensive discretization steps (displacement gradients, interface and
+# cell-centered stress approximations) are cached in meshes/<case>/.cache/ and
+# reused while nothing they depend on changes, see
+# UnstructReservoirCustom.discretization_cache_key. DARTS_DISCR_CACHE=0 disables it.
+DISCR_CACHE_FORMAT = 1
+DISCR_CACHE_KEEP = 2  # cache files kept per mesh folder (most recently used); they are large
+
+
+def file_sha256(filename):
+    h = hashlib.sha256()
+    with open(filename, 'rb') as f:
+        for chunk in iter(lambda: f.read(1 << 24), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def hash_update(h, obj):
+    """Feed obj (None, scalars, strings, arrays, lists, dicts) into the hash h, values bit-exact."""
+    if isinstance(obj, dict):
+        for k in sorted(obj, key=str):
+            h.update(repr(str(k)).encode())
+            hash_update(h, obj[k])
+        return
+    if obj is None or isinstance(obj, str):
+        h.update(repr(obj).encode())
+        return
+    try:
+        a = np.asarray(obj)
+    except ValueError:  # ragged nested lists
+        a = None
+    if a is None or a.dtype == object:
+        if isinstance(obj, (list, tuple)) or (isinstance(obj, np.ndarray) and obj.ndim > 0):
+            h.update(b'[%d]' % len(obj))
+            for x in obj:
+                hash_update(h, x)
+        else:
+            h.update(repr(obj).encode())
+        return
+    h.update(('%s%s' % (a.dtype.str, a.shape)).encode())
+    h.update(np.ascontiguousarray(a).tobytes())
+
+
 class UnstructReservoirCustom(UnstructReservoirMech):
-    def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False, generate_mesh=False):
+    def __init__(self, timer, idata: InputData, model_folder, fluid_vars=['p'], uniform_props=False, generate_mesh=False,
+                 cache_discretization=None):
         self.idata = idata
+        if cache_discretization is None:
+            cache_discretization = os.getenv('DARTS_DISCR_CACHE', '1') != '0'
+        self.cache_discretization = cache_discretization
 
         # Create mesh object (C++ object used by DARTS for all mesh related quantities):
         thermoporoelasticity = True if 'temperature' in fluid_vars else False
@@ -33,10 +85,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.wells = []
 
 
-    #def init_reservoir(self, verbose=False): # dummy, just to make run
-    #    pass
-    #    #super.init_reservoir()
-
     def get_reservoir_initial_pressure(self, depths):
         return self.idata.initial.pressure_at_ref_depth + self.idata.initial.pressure_gradient * depths
 
@@ -45,23 +93,30 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
     def field_reservoir(self, idata: InputData, model_folder, uniform_props=False, generate_mesh=False):
 
-        self.mesh_filename = os.path.join(model_folder, 'mesh.msh')
-        nx, ny, nz = idata.other.nx, idata.other.ny, idata.other.nz
-
-        if generate_mesh:
-            print('Mesh generation started')
-            # define permeable reservoir geometric boundaries
-            self.rsv_top = idata.other.rsv_top
-            self.rsv_bottom = idata.other.rsv_bottom
-            self.rsv_xy = idata.other.rsv_xy
-            self.rsv_x1 = idata.other.rsv_x1
-            self.rsv_x2 = idata.other.rsv_x2
-            self.rsv_y1 = idata.other.rsv_y1
-            self.rsv_y2 = idata.other.rsv_y2
+        self.mesh_filename = os.path.join(BASE_DIR, 'meshes', model_folder, 'mesh.msh')
+        # Structured cases generate their box mesh here. Unstructured cases
+        # such as case_5 generate their mesh externally in main.py and do not
+        # define nx/ny/nz or Xc/Yc/Zc.
+        generate_structured_mesh = generate_mesh and hasattr(idata.other, 'nx')
+        if generate_structured_mesh:
+            nx, ny, nz = idata.other.nx, idata.other.ny, idata.other.nz
             self.Xc = idata.other.Xc
             self.Yc = idata.other.Yc
             self.Zc = idata.other.Zc
 
+        # define permeable reservoir geometric boundaries
+        self.rsv_top = idata.other.rsv_top
+        self.rsv_bottom = idata.other.rsv_bottom
+        self.rsv_xy = idata.other.rsv_xy
+        self.rsv_x1 = idata.other.rsv_x1
+        self.rsv_x2 = idata.other.rsv_x2
+        self.rsv_y1 = idata.other.rsv_y1
+        self.rsv_y2 = idata.other.rsv_y2
+
+        if generate_structured_mesh:
+            print('Mesh generation started')
+            self.timer.node["initialization"].node["mesh_generation"] = timer_node()
+            self.timer.node["initialization"].node["mesh_generation"].start()
             # refine by Z also around rsv
             #self.Zc = np.hstack([np.arange(0, self.rsv_top-100, 100), np.arange(self.rsv_top-100, self.rsv_bottom+100, 20),np.arange(self.rsv_bottom+100, 6000, 100)])
 
@@ -82,22 +137,38 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             print('self.rsv_top', self.rsv_top)
             print('self.rsv_bottom', self.rsv_bottom)
             print('self.rsv_xy', self.rsv_xy)
-            print('Zc', self.Zc)
+            #print('Zc', self.Zc)
 
             from gen_msh import generate_box_3d
             generate_box_3d(X=2000, Y=2000, Z=4000, NX=21, NY=21, NZ=21, tags=idata.mesh.tags,  # XYZ are ignored since Xc, Yc, Zc are passed
-                                       is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc)# msh_ver=4.1)
+                            is_transfinite=True, is_recombine=True, Xc=self.Xc, Yc=self.Yc, Zc=self.Zc,
+                            filename=self.mesh_filename)# msh_ver=4.1)
+            self.timer.node["initialization"].node["mesh_generation"].stop()
             print('Mesh generation finished')
 
         print('Mesh reading...')
+        self.timer.node["initialization"].node["mesh_reading"] = timer_node()
+        self.timer.node["initialization"].node["mesh_reading"].start()
         self.mesh_data = meshio.read(self.mesh_filename)
-        print('Init reservoir...')
+        self.timer.node["initialization"].node["mesh_reading"].stop()
+        print('Mesh reading finished')
+
+        print('Init reservoir (incl. mesh processing)...', flush=True)
         #self.set_uniform_initial_conditions(idata=idata)
         self.u_init = [0., 0., 0.]  # [m]
         self.p_init = None
         self.z_init = None
         self.set_boundary_conditions(idata=idata)
+
+        # hash the mesh around its read, so the cache key describes the content gmsh actually read
+        self.mesh_sha256 = file_sha256(self.mesh_filename) if self.cache_discretization else None
+        self.timer.node["initialization"].node["init_mech_discretizer"] = timer_node()
+        self.timer.node["initialization"].node["init_mech_discretizer"].start()
         self.init_mech_discretizer(idata=idata)
+        self.timer.node["initialization"].node["init_mech_discretizer"].stop()
+        if self.mesh_sha256 is not None and file_sha256(self.mesh_filename) != self.mesh_sha256:
+            print('[WARN] %s changed while it was read, the discretization is not cached' % self.mesh_filename)
+            self.cache_discretization = False
 
         self.grav = 9.80665e-5
         self.init_gravity(gravity_on=True, gravity_coeff=self.grav)
@@ -111,24 +182,193 @@ class UnstructReservoirCustom(UnstructReservoirMech):
 
         if uniform_props:
             self.init_uniform_properties(idata=idata)
-        else:
-            self.set_heterogeneous_props_by_interpolation(idata=idata)
+        elif idata.other.set_props_by_tags:
+            # per-tag rock properties: the parent's set_props_tags builds self.props
+            # from idata.rock arrays (one value per matrix tag), and its
+            # init_heterogeneous_properties applies them per cell using self.tags.
+            super().set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
+            super().init_heterogeneous_properties()
+        else:  # don't use mesh tags, set by interpolation
+            self.set_heterogeneous_props_by_interpolation(
+                idata=idata, generate_mesh=generate_structured_mesh
+            )
             self.init_heterogeneous_properties(idata=idata)
+
+        # per-cell biot array used by write_to_vtk (eff_stress = tot_stress - biot * pressure).
+        # idata.rock.biot may be a scalar (homogeneous) or a per-tag array (e.g. case_4);
+        # expand the per-tag case to one value per matrix cell so it broadcasts against pressure.
+        if np.isscalar(idata.rock.biot):
+            self.biot_cell = idata.rock.biot
+        else:
+            self.biot_cell = np.array([self.props[tag]['biot'] for tag in self.tags[:self.n_matrix]])
+
         self.init_arrays_boundary_condition()
         self.update_boundary_conditions()
+        print('Init reservoir finished')
 
         # Discretization
-        self.timer.node["discretization"] = timer_node()
-        self.timer.node["discretization"].start()
+        print('Discretization (trans calc, etc) ...')
+        self.timer.node["initialization"].node["discretization"] = timer_node()
+        self.timer.node["initialization"].node["discretization"].start()
+        # The pressure(/temperature) gradients are cheap and the engine reads them
+        # (eval_stresses_and_velocities), so they are always reconstructed; the
+        # expensive steps below come from the cache when it is up to date.
         if self.thermoporoelasticity:
             self.discr.reconstruct_pressure_temperature_gradients_per_cell(self.cpp_flow, self.cpp_heat)
         else:
             self.discr.reconstruct_pressure_gradients_per_cell(self.cpp_flow)
-        self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
-        self.discr.calc_interface_approximations()
-        self.discr.calc_cell_centered_stress_velocity_approximations()
-        self.timer.node["discretization"].stop()
-        print('Init reservoir finished')
+        cache_file = self.discretization_cache_file(idata, uniform_props) if self.cache_discretization else None
+        if cache_file is None or not self.load_discretization(cache_file):
+            self.discr.reconstruct_displacement_gradients_per_cell(self.cpp_bc)
+            self.discr.calc_interface_approximations()
+            self.discr.calc_cell_centered_stress_velocity_approximations()
+            if cache_file is not None:
+                self.save_discretization(cache_file)
+        elif hasattr(self.discr, 'check_displacement_diagonal'):  # older darts builds lack it
+            # calc_interface_approximations runs this check; a cache hit skips it
+            self.discr.check_displacement_diagonal()
+        self.timer.node["initialization"].node["discretization"].stop()
+        print('Discretization finished')
+
+    # ------------------------------------------------------------------
+    # Discretization cache
+    # ------------------------------------------------------------------
+    def discretization_cache_arrays(self):
+        """
+        The discretizer arrays used after the discretization: by
+        conn_mesh.init_p(m)e_mech_discretizer in init_reservoir_main and by the
+        engine in eval_stresses_and_velocities (with discr.p_grads, discr.biots).
+        """
+        names = ['cell_m', 'cell_p', 'flux_stencil', 'flux_offset', 'hooke', 'hooke_rhs',
+                 'biot_traction', 'biot_traction_rhs', 'darcy', 'darcy_rhs',
+                 'biot_vol_strain', 'biot_vol_strain_rhs', 'stress_approx', 'velocity_approx']
+        if self.thermoporoelasticity:
+            names += ['thermal_traction', 'fourier']
+        return names
+
+    def discretization_cache_key(self, idata, uniform_props):
+        """
+        What the discretization depends on: mesh file content (as read), domain tags,
+        boundary-condition coefficients, the per-cell discretizer inputs (perms, biots,
+        stiffness, heat conductions, thermal expansions) as set by the Python property
+        code, rock input and its mapping to cells, gravity, discretizer type and flags,
+        and the discretizer build. The rock input is hashed as a whole (all of
+        idata.rock), so changing any rock property invalidates the cache, including
+        those the discretizer ignores.
+        """
+        import darts.discretizer
+        h_bc = hashlib.sha256()
+        bcs = [self.cpp_bc.flow, self.cpp_bc.mech_normal, self.cpp_bc.mech_tangen]
+        if self.thermoporoelasticity:
+            bcs.append(self.cpp_bc.thermal)
+        for bc in bcs:
+            hash_update(h_bc, np.asarray(bc.a))
+            hash_update(h_bc, np.asarray(bc.b))
+        h_rock = hashlib.sha256()
+        hash_update(h_rock, vars(idata.rock))
+        hash_update(h_rock, list(idata.mesh.matrix_tags))  # per-tag rock arrays follow this order
+        hash_update(h_rock, [bool(uniform_props), bool(getattr(idata.other, 'set_props_by_tags', False))])
+        hash_update(h_rock, self.tags)
+        # the per-cell discretizer inputs themselves: Python code (init_heterogeneous_properties,
+        # get_lambda_mu, set_props_tags, ...) derives them from idata.rock, and the rest of the key does not cover it
+        for name in ['perms', 'biots', 'stfs'] + (['heat_conductions', 'thermal_expansions']
+                                                  if self.thermoporoelasticity else []):
+            hash_update(h_rock, np.array([v.values for v in getattr(self.discr, name)]))
+        build_info_file = os.path.join(os.path.dirname(darts.discretizer.__file__), 'build_info.txt')
+        build_info = ''
+        if os.path.exists(build_info_file):
+            with open(build_info_file) as f:
+                build_info = f.read().strip()
+        return {'format': DISCR_CACHE_FORMAT,
+                'mesh_sha256': self.mesh_sha256,
+                'domain_tags': {str(k): sorted(int(t) for t in v) for k, v in self.domain_tags.items()},
+                'discretizer': type(self.discr).__name__,
+                'neumann_boundaries_grad_reconstruction': bool(self.discr.neumann_boundaries_grad_reconstruction),
+                'gradients_extended_stencil': bool(self.discr.gradients_extended_stencil),
+                'gravity': [float(g) for g in self.discr.grav_vec.values],
+                'boundary_conditions_sha256': h_bc.hexdigest(),
+                'rock_sha256': h_rock.hexdigest(),
+                'darts_discretizer_sha256': file_sha256(darts.discretizer.__file__),
+                'darts_build_info': build_info}
+
+    def discretization_cache_file(self, idata, uniform_props):
+        self.discr_cache_key = self.discretization_cache_key(idata, uniform_props)
+        digest = hashlib.sha256(json.dumps(self.discr_cache_key, sort_keys=True).encode()).hexdigest()
+        # .cache/ is git-ignored
+        return os.path.join(os.path.dirname(self.mesh_filename), '.cache', 'discretization_%s.npz' % digest[:16])
+
+    def load_discretization(self, cache_file):
+        """
+        Restore the discretizer arrays from cache_file.
+        :return: True on success; False (nothing restored) when the file is missing or unusable
+        """
+        from darts.discretizer import index_vector as disc_index_vector, value_vector as disc_value_vector
+        if not os.path.exists(cache_file):
+            print('No discretization cache yet, it will be written to', cache_file)
+            return False
+        t0 = time.time()
+        names = self.discretization_cache_arrays()
+        int_names = ('cell_m', 'cell_p', 'flux_stencil', 'flux_offset')
+        try:
+            with np.load(cache_file) as data:
+                meta = json.loads(str(data['meta']))
+                if meta['key'] != self.discr_cache_key or meta['n_conns'] != len(self.adj_matrix):
+                    raise ValueError('it belongs to another input')
+                for name in names:
+                    vec_type = disc_index_vector if name in int_names else disc_value_vector
+                    setattr(self.discr, name, vec_type(data[name]))
+            if len(self.discr.cell_m) != len(self.adj_matrix) or \
+                    self.discr.flux_offset[len(self.discr.flux_offset) - 1] != len(self.discr.flux_stencil):
+                raise ValueError('inconsistent array sizes')
+        except Exception as e:  # truncated, corrupt or foreign file
+            print('[WARN] discretization cache %s is unusable (%s), discretizing' % (cache_file, e))
+            for name in names:  # the discretizer appends to some of these arrays
+                setattr(self.discr, name, disc_index_vector() if name in int_names else disc_value_vector())
+            return False
+        try:
+            os.utime(cache_file)  # mark as recently used, see save_discretization
+        except OSError:
+            pass
+        print('Discretization loaded from cache %s (%.1f s)' % (cache_file, time.time() - t0))
+        return True
+
+    def save_discretization(self, cache_file):
+        t0 = time.time()
+        folder = os.path.dirname(cache_file)
+        tmp_file = '%s.tmp%d' % (cache_file, os.getpid())
+        try:
+            os.makedirs(folder, exist_ok=True)
+            # zero-copy views of the C++ arrays
+            arrays = {name: np.asarray(getattr(self.discr, name)) for name in self.discretization_cache_arrays()}
+            meta = json.dumps({'key': self.discr_cache_key, 'n_conns': len(self.adj_matrix),
+                               'mesh_file': self.mesh_filename})
+            with open(tmp_file, 'wb') as f:
+                np.savez(f, meta=np.array(meta), **arrays)
+            os.replace(tmp_file, cache_file)  # a reader never sees a partial file
+        except Exception as e:  # read-only folder, full disk, ...
+            print('[WARN] discretization cache is not saved (%s)' % e)
+            if os.path.exists(tmp_file):
+                os.remove(tmp_file)
+            return
+        print('Discretization cached in %s (%.1f s, %.0f MB)'
+              % (cache_file, time.time() - t0, os.path.getsize(cache_file) / 1e6))
+
+        # keep the most recently used caches only, and drop leftovers of killed runs
+        def mtime(fn):
+            try:
+                return os.path.getmtime(fn)
+            except OSError:
+                return 0.0
+        caches = sorted(glob.glob(os.path.join(folder, 'discretization_*.npz')), key=mtime, reverse=True)
+        leftovers = [fn for fn in glob.glob(os.path.join(folder, 'discretization_*.npz.tmp*'))
+                     if time.time() - mtime(fn) > 3600]
+        for fn in caches[DISCR_CACHE_KEEP:] + leftovers:
+            if fn != cache_file:
+                try:
+                    os.remove(fn)
+                    print('Removed old discretization cache', fn)
+                except OSError:
+                    pass
 
     def set_boundary_conditions(self, idata: InputData):
         self.boundary_conditions = {}
@@ -196,13 +436,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 self.discr.heat_conductions.append(disc_matrix33(idata.rock.thermal_conductivity))
                 self.discr.thermal_expansions.append(disc_matrix33(idata.rock.th_expn))#[cell_id]))
 
-    def write_to_vtk(self, output_directory, ith_step, engine):
+    def write_to_vtk(self, output_directory, ith_step, engine, viscosity=None):
         """
         Class method which writes output of unstructured grid to VTK format
         :param output_directory: directory of output files
         :param property_array: np.array containing all cell properties (N_cells x N_prop)
         :param cell_property: list with property names (visible in ParaView (format strings)
         :param ith_step: integer containing the output step
+        :param viscosity: optional per-(reservoir-block) viscosity array [cP] computed from the
+                          current state via darts output property interpolator. If None, the
+                          constant idata.fluid.viscosity is written instead.
         :return:
         """
         # First check if output directory already exists:
@@ -260,10 +503,18 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 for j in range(6):
                     cell_data['tot_stress'][-1][:, j] = total_stresses[j::6]
 
+                # Terzaghi/Biot: sigma'_ij = sigma_ij - biot * p * delta_ij, so the pore
+                # pressure comes off the NORMAL components only - shear stress is
+                # unaffected by pore pressure. Components are ordered
+                # xx, yy, zz, xy, xz, yz, so the first three are the normal ones.
+                # This used to subtract biot * p from all six and wrap every component
+                # in np.fabs(), which discarded the sign of the whole tensor and left
+                # the shear slots holding -biot * p instead of a shear stress.
                 if 'eff_stress' not in cell_data: cell_data['eff_stress'] = []
-                cell_data['eff_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
-                for j in range(6):
-                    cell_data['eff_stress'][-1][:, j] = np.fabs(cell_data['tot_stress'][-1][:, j]) - self.idata.rock.biot * pressure
+                cell_data['eff_stress'].append(cell_data['tot_stress'][-1].copy())
+                biot_pressure = self.biot_cell * pressure
+                for j in range(3):
+                    cell_data['eff_stress'][-1][:, j] -= biot_pressure
 
                 if 'delta_tot_stress' not in cell_data: cell_data['delta_tot_stress'] = []
                 cell_data['delta_tot_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
@@ -275,10 +526,12 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 cell_data['delta_pressure'].append(np.zeros(self.n_matrix, dtype=np.float64))
                 cell_data['delta_pressure'][-1][:] = delta_pressure
 
+                # same rule as eff_stress above: the normal components only
                 if 'delta_eff_stress' not in cell_data: cell_data['delta_eff_stress'] = []
-                cell_data['delta_eff_stress'].append(np.zeros((self.n_matrix, 6), dtype=np.float64))
-                for j in range(6):
-                    cell_data['delta_eff_stress'][-1][:, j] = cell_data['delta_tot_stress'][-1][:, j] - self.idata.rock.biot * delta_pressure
+                cell_data['delta_eff_stress'].append(cell_data['delta_tot_stress'][-1].copy())
+                biot_delta_pressure = self.biot_cell * delta_pressure
+                for j in range(3):
+                    cell_data['delta_eff_stress'][-1][:, j] -= biot_delta_pressure
 
                 if hasattr(self, 'temperature_initial'): # if thermal simulation
                     if 'delta_temperature' not in cell_data: cell_data['delta_temperature'] = []
@@ -294,6 +547,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                     cell_data['E'].append(np.zeros(len(cell_ids), dtype=np.float64))
                     cell_data['poisson'].append(np.zeros(len(cell_ids), dtype=np.float64))
                     cell_data['poro'].append(np.array(self.mesh.poro, copy=False)[:self.n_matrix])
+                    if 'viscosity' not in cell_data: cell_data['viscosity'] = []
+                    if viscosity is not None:
+                        # state-dependent viscosity computed via darts output property interpolator;
+                        # 'viscosity' is per reservoir block, so index it by cell_ids to align with
+                        # this geometry group's cells (same indexing as pressure/temperature above).
+                        cell_data['viscosity'].append(np.asarray(viscosity)[cell_ids])
+                    else:
+                        # fallback for the initial frame (written by THMCModel.reinit before the
+                        # output property interpolator exists): constant fluid viscosity.
+                        cell_data['viscosity'].append(np.full(len(cell_ids), self.idata.fluid.viscosity))
                     for i, cell_id in enumerate(cell_ids):
                         cell_data['perm'][-1][i] = np.array(self.discr.perms[cell_id].values)
                         stf = np.array(self.discr.stfs[cell_id].values)
@@ -327,76 +590,189 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         time = engine.t if ith_step > 0 else 0.0
         self.write_pvd_file(ith_step, time, output_directory)
 
+        # fault surface with tractions for the FSP post-processing (see fault.py)
+        self.save_fault_traction(output_directory, ith_step, engine, time)
+
         return 0
 
-    def set_heterogeneous_props_by_interpolation(self, idata):
+    # ------------------------------------------------------------------
+    # Fault surface with tractions for the FSP post-processing (fault.py)
+    # ------------------------------------------------------------------
+    def _setup_fault_mapping(self, fault_mesh_filename):
+        """
+        One-time setup: read the fault surface from the *_fault.msh companion mesh
+        (same geometry as mesh.msh plus the FAULT physical group) and map every
+        fault face to the engine connection lying on it. Fault faces must be faces
+        of the simulation mesh; they are matched to the discretizer connections by
+        their centroids.
+        """
+        self._fault_ok = False
+        if not os.path.exists(fault_mesh_filename):
+            print('[INFO] no fault mesh %s: fault tractions are not saved' % fault_mesh_filename)
+            return
+
+        from scipy.spatial import cKDTree
+        from fault import read_fault_mesh
+
+        fault = read_fault_mesh(fault_mesh_filename)
+
+        # matrix-matrix interfaces of the discretizer mesh
+        conns = [c for c in self.discr_mesh.conns if c.elem_id1 < self.n_matrix and c.elem_id2 < self.n_matrix]
+        dist, k = cKDTree(np.array([c.c.values for c in conns])).query(fault['centers'])
+        conns = [conns[i] for i in k]
+        conn_n = np.array([c.n.values for c in conns])
+        matched = (dist < 0.1 * np.sqrt(fault['areas'])) & (np.abs(np.einsum('ij,ij->i', conn_n, fault['normals'])) > 0.99)
+        if not matched.all():
+            print('[WARN] %d of %d fault faces are not faces of the simulation mesh: fault tractions are not saved'
+                  % ((~matched).sum(), matched.size))
+            return
+
+        cells = np.array([[c.elem_id1, c.elem_id2] for c in conns], dtype=np.int64)
+
+        # engine connection directed elem_id1 -> elem_id2 (forces are stored per directed connection)
+        block_m = np.array(self.mesh.block_m, dtype=np.int64)
+        block_p = np.array(self.mesh.block_p, dtype=np.int64)
+        n_ids = max(block_m.max(), block_p.max()) + 1
+        keys = block_m * n_ids + block_p
+        order = np.argsort(keys)
+        face_keys = cells[:, 0] * n_ids + cells[:, 1]
+        pos = np.minimum(np.searchsorted(keys[order], face_keys), len(keys) - 1)
+        assert np.all(keys[order[pos]] == face_keys), 'fault faces are not found among the engine connections'
+
+        # The engine force of connection (i, j) is -(sigma . n_out) * area, n_out being the
+        # outward normal of cell i. Orient it along the fault-face normal and make it
+        # compression positive: traction = sign(n_out . normal) * force / area.
+        c1 = np.array([self.discr_mesh.centroids[i].values for i in cells[:, 0]])
+        n_out = conn_n * np.sign(np.einsum('ij,ij->i', np.array([c.c.values for c in conns]) - c1, conn_n))[:, None]
+        sign = np.sign(np.einsum('ij,ij->i', n_out, fault['normals']))
+
+        self._fault = fault
+        self._fault_conn = order[pos]
+        self._fault_cells = cells
+        self._fault_scale = (sign / np.array([c.area for c in conns]))[:, None]
+        self._fault_pvd = {}
+        self._fault_ok = True
+        print('[INFO] fault tractions are saved for %d fault faces' % matched.size)
+
+    def save_fault_traction(self, output_directory, ith_step, engine, time):
+        """
+        Write <output_directory>/fault<ith_step>.vtu: the fault surface with cell data
+          traction (3) total-stress traction [bar], compression positive
+          normal   (3) unit fault normal
+          pressure     pore pressure, mean of both sides of the fault [bar]
+          temperature  temperature, mean of both sides of the fault [K] (thermal runs only)
+        and update <output_directory>/fault.pvd.
+        """
+        if not hasattr(self, '_fault_ok'):
+            base, ext = os.path.splitext(self.mesh_filename)
+            self._setup_fault_mapping(base + '_fault' + ext)
+        if not self._fault_ok:
+            return
+
+        force = np.zeros((self._fault_conn.size, 3))
+        for name in ['hooke_forces', 'biot_forces', 'thermal_forces']:
+            f = np.array(getattr(engine, name), copy=False)
+            if f.size:  # thermal_forces is empty for isothermal engines
+                force += f.reshape(-1, 3)[self._fault_conn]
+        traction = self._fault_scale * force
+
+        X = np.array(engine.X, copy=False)
+        p_id = self.cell_property.index('pressure')
+        pressure = X[self.n_vars * self._fault_cells + p_id].mean(axis=1)
+
+        from fault import split_by_blocks
+        cells = self._fault['cells']
+        cell_data = {'traction': split_by_blocks(traction, cells),
+                     'normal': split_by_blocks(self._fault['normals'], cells),
+                     'pressure': split_by_blocks(pressure, cells)}
+        if 'temperature' in self.cell_property:
+            t_id = self.cell_property.index('temperature')
+            cell_data['temperature'] = split_by_blocks(X[self.n_vars * self._fault_cells + t_id].mean(axis=1), cells)
+        meshio.write(os.path.join(output_directory, 'fault%d.vtu' % ith_step),
+                     meshio.Mesh(self._fault['points'], cells, cell_data=cell_data))
+
+        self._fault_pvd[ith_step] = time
+        with open(os.path.join(output_directory, 'fault.pvd'), 'w') as f:
+            f.write('<?xml version="1.0"?>\n<VTKFile type="Collection" version="0.1">\n  <Collection>\n')
+            for step, t in sorted(self._fault_pvd.items()):
+                f.write('    <DataSet timestep="%s" file="fault%d.vtu"/>\n' % (t, step))
+            f.write('  </Collection>\n</VTKFile>\n')
+
+    def set_heterogeneous_props_by_interpolation(self, idata, generate_mesh):
         # set different values in the reservoir and lateral surrounding+over/under-burden
         # first, create a struct grid to easily set heterogeneous rock properties
         # second, interpolate them to unstructured mesh used for computation
-        self.nx, self.ny, self.nz  = idata.other.nx, idata.other.ny, idata.other.nz
+        if generate_mesh:
+            self.nx, self.ny, self.nz  = idata.other.nx, idata.other.ny, idata.other.nz
 
-        # fill the whole array with non-rsv values, the rsv part will be replaced later on
-        porosity_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.poro_non_rsv
-        permeability_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.perm_non_rsv # mD
-        E_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.E_non_rsv # [bars]
+            # fill the whole array with non-rsv values, the rsv part will be replaced later on
+            porosity_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.poro_non_rsv
+            permeability_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.perm_non_rsv # mD
+            E_struct = np.zeros(self.nz * self.ny * self.nx) + idata.rock.E_non_rsv # [bars]
 
-        centers = np.array([np.array(c.values) for c in self.centroids[:self.n_matrix]])
-        x = centers[:, 0]
-        y = centers[:, 1]
-        z = centers[:, 2]
+            centers = np.array([np.array(c.values) for c in self.centroids[:self.n_matrix]])
+            x = centers[:, 0]
+            y = centers[:, 1]
+            z = centers[:, 2]
 
-        # rsv cell centers
-        xs = (self.Xc[1:] + self.Xc[:-1]) * 0.5
-        ys = (self.Yc[1:] + self.Yc[:-1]) * 0.5
-        zs = (self.Zc[1:] + self.Zc[:-1]) * 0.5
+            # rsv cell centers
+            xs = (self.Xc[1:] + self.Xc[:-1]) * 0.5
+            ys = (self.Yc[1:] + self.Yc[:-1]) * 0.5
+            zs = (self.Zc[1:] + self.Zc[:-1]) * 0.5
 
-        centers_struct_x, centers_struct_y, centers_struct_z = np.meshgrid(xs, ys, zs)
-        centers_struct_x, centers_struct_y, centers_struct_z = centers_struct_x.flatten(), centers_struct_y.flatten(), centers_struct_z.flatten()
+            centers_struct_x, centers_struct_y, centers_struct_z = np.meshgrid(xs, ys, zs)
+            centers_struct_x, centers_struct_y, centers_struct_z = centers_struct_x.flatten(), centers_struct_y.flatten(), centers_struct_z.flatten()
 
-        rsv = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
-                                      self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
-                                      self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
+            rsv = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
+                                        self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
+                                        self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
 
-        # set juxtaposed rsv
-        if False:
-            rsv_thickness = np.fabs(self.rsv_bottom - self.rsv_top)
-            self.rsv_z_middle_1 = self.rsv_top + rsv_thickness * 0.25
-            self.rsv_z_middle_2 = self.rsv_top + rsv_thickness * 0.75
-            self.rsv_x_middle = (self.rsv_x1 + self.rsv_x2) * 0.5
-            rsv_left = reduce(np.logical_and, [self.rsv_z_middle_1 <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
-                                          self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
-                                          self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x_middle])
-            rsv_right = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_z_middle_2,
-                                          self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
-                                          self.rsv_x_middle <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
-            rsv = reduce(np.logical_or, [rsv_left, rsv_right])
+            # set juxtaposed rsv
+            if False:
+                rsv_thickness = np.fabs(self.rsv_bottom - self.rsv_top)
+                self.rsv_z_middle_1 = self.rsv_top + rsv_thickness * 0.25
+                self.rsv_z_middle_2 = self.rsv_top + rsv_thickness * 0.75
+                self.rsv_x_middle = (self.rsv_x1 + self.rsv_x2) * 0.5
+                rsv_left = reduce(np.logical_and, [self.rsv_z_middle_1 <= centers_struct_z, centers_struct_z <= self.rsv_bottom,
+                                            self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
+                                            self.rsv_x1 <= centers_struct_x,  centers_struct_x <= self.rsv_x_middle])
+                rsv_right = reduce(np.logical_and, [self.rsv_top <= centers_struct_z, centers_struct_z <= self.rsv_z_middle_2,
+                                            self.rsv_y1 <= centers_struct_y,  centers_struct_y <= self.rsv_y2,
+                                            self.rsv_x_middle <= centers_struct_x,  centers_struct_x <= self.rsv_x2])
+                rsv = reduce(np.logical_or, [rsv_left, rsv_right])
 
-        porosity_struct[rsv] = idata.rock.porosity
-        permeability_struct[rsv] = idata.rock.permx # [mD]
-        E_struct[rsv] = idata.rock.E #[bars]
+            porosity_struct[rsv] = idata.rock.porosity
+            permeability_struct[rsv] = idata.rock.permx # [mD]
+            E_struct[rsv] = idata.rock.E #[bars]
 
-        porosity = np.zeros(self.nz * self.ny * self.nx)
-        permeability = np.zeros(self.nz * self.ny * self.nx)
-        E = np.zeros(self.nz * self.ny * self.nx)
+            porosity = np.zeros(self.nz * self.ny * self.nx)
+            permeability = np.zeros(self.nz * self.ny * self.nx)
+            E = np.zeros(self.nz * self.ny * self.nx)
 
-        arrays = [porosity, permeability, E]
-        arrays_struct = [porosity_struct, permeability_struct, E_struct]
+            arrays = [porosity, permeability, E]
+            arrays_struct = [porosity_struct, permeability_struct, E_struct]
 
-        for arr, arr_struct in zip(arrays, arrays_struct):
-            arr[:] = gd((centers_struct_x, centers_struct_y, centers_struct_z), arr_struct, (x, y, z), method='nearest')
+            for arr, arr_struct in zip(arrays, arrays_struct):
+                arr[:] = gd((centers_struct_x, centers_struct_y, centers_struct_z), arr_struct, (x, y, z), method='nearest')
 
-        # porosity = np.flip(np.swapaxes(porosity.reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
-        # permeability = np.flip(np.swapaxes(permeability.reshape((self.nz, self.ny, self.nx, 3)), 0, 2), axis=2).flatten()
-        # E = np.flip(np.swapaxes(E.reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
-        #p_init = np.flip(np.swapaxes(p_init.reshape(self.nz, self.ny, self.nx), 0, 2), axis=2).flatten()
+
+        else:
+            centers = np.array([np.array(c.values) for c in self.centroids[:self.n_matrix]])
+            z1, z2 = min(self.rsv_top, self.rsv_bottom), max(self.rsv_top, self.rsv_bottom)
+            rsv = reduce(np.logical_and, [z1 <= centers[:, 2], centers[:, 2] <= z2,
+                                        self.rsv_y1 <= centers[:, 1], centers[:, 1] <= self.rsv_y2,
+                                        self.rsv_x1 <= centers[:, 0], centers[:, 0] <= self.rsv_x2])
+
+            porosity = np.full(self.n_matrix, idata.rock.poro_non_rsv)
+            permeability = np.full(self.n_matrix, idata.rock.perm_non_rsv) # mD
+            E = np.full(self.n_matrix, idata.rock.E_non_rsv) # [bars]
+
+            porosity[rsv] = idata.rock.porosity
+            permeability[rsv] = idata.rock.permx # [mD]
+            E[rsv] = idata.rock.E #[bars]
 
         idata.rock.porosity = porosity
-
         idata.rock.permx = idata.rock.permy = idata.rock.permz = permeability
-        #permeability_xyz = np.zeros((self.nz * self.ny * self.nx, 3))
-        #permeability_xyz[:, 0] = permeability_xyz[:, 1] =  permeability_xyz[:, 2] = permeability
-        #idata.rock.permx = idata.rock.permy = idata.rock.permz = permeability_xyz
-
         idata.rock.E = E  # bars
 
     def decouple_geomech(self):
@@ -416,7 +792,16 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         :return:
         '''
 
-        import vtk
+        try:
+            import vtk
+        except ModuleNotFoundError:
+            import subprocess
+            import sys
+
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "vtk"]
+            )
+            import vtk
         well_vtk_filename = os.path.join(output_directory, 'wells.vtk')
         # Append multiple cylinders into one polydata
         appendFilter = vtk.vtkAppendPolyData()

@@ -77,6 +77,48 @@ class Poroelasticity(PhysicsBase):
             self.n_ops = 2 * self.n_vars
             assert not self.thermal
 
+    def get_engine_interpolator_state(self, n_blocks: int = None) -> np.ndarray:
+        """
+        Return the OBL interpolator state for the mechanics engine.
+
+        Unlike the flow engines, the poroelastic ``engine.X`` stores ``n_dim`` displacement
+        degrees of freedom per cell in addition to the flow unknowns, so the per-cell stride is
+        returned by ``engine.get_n_vars()`` (not the physics' flow ``n_vars`` that the base
+        implementation assumes -- that would mix displacements into the state and fail to
+        reshape). Rather than hard-code the field order per discretizer, we read the layout
+        straight from the engine: the flow unknowns form a contiguous block of ``n_vars``
+        columns starting at ``engine.P_VAR``
+        (``mech_discretizer``: ``P_VAR == 0`` -> flow first; ``pm_discretizer``:
+        ``P_VAR == n_dim`` -> flow last, matching ``UnstructReservoirMech.cell_property``).
+
+        We reshape to ``(-1, engine.get_n_vars())``, slice the
+        ``[P_VAR : P_VAR + n_vars)`` flow columns, and append any history fields before
+        flattening (so the layout matches the reservoir/well interpolators that consume
+        ``[X | Xhistory]``).
+
+        :param n_blocks: Number of reservoir blocks. When ``None``, inferred from
+                         ``engine.X.size // engine.get_n_vars()``
+        :type n_blocks: int, optional
+        :returns: One-dimensional array of length ``n_blocks * n_state`` with primary flow vars
+                  and history values interleaved per cell (displacements stripped)
+        :rtype: numpy.ndarray
+        """
+        # Per-cell width in engine.X = flow unknowns + displacement degrees of freedom.
+        stride = self.engine.get_n_vars()
+        if n_blocks is None:
+            n_blocks = self.engine.X.size // stride
+        # flow unknowns are a contiguous block of n_vars columns starting at P_VAR
+        flow_cols = slice(self.engine.P_VAR, self.engine.P_VAR + self.n_vars)
+        X = np.asarray(self.engine.X, copy=False).reshape(-1, stride)[
+            :n_blocks, flow_cols
+        ]
+        if not self.history_fields:
+            return X.flatten()
+        Xhistory = np.asarray(self.engine.Xhistory, copy=False).reshape(
+            -1, self.n_history
+        )[:n_blocks]
+        return np.concatenate([X, Xhistory], axis=1).flatten()
+
     def set_engine(self, discretizer: str = 'mech_discretizer', platform: str = 'cpu'):
         """
         Function to set :class:`engine_super` object.
@@ -172,7 +214,7 @@ class Poroelasticity(PhysicsBase):
         for w in wells:
             assert isinstance(w, ms_well)
             w.init_mech_physics(
-                self.engine.N_VARS,
+                self.engine.get_n_vars(),
                 self.engine.P_VAR,
                 self.n_vars,
                 self.n_ops,

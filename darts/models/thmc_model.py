@@ -7,6 +7,7 @@ from darts.engines import (
     linear_solver_params,
     mech_operators,
     sim_params,
+    timer_node,
 )
 from darts.models.darts_model import DartsModel
 from darts.physics.base.property_container import PropertyContainer
@@ -40,7 +41,11 @@ class THMCModel(DartsModel):
         self.timer.node["initialization"].start()
         self.set_input_data()
         self.set_physics()
+
+        self.timer.node["initialization"].node["set_reservoir"] = timer_node()
+        self.timer.node["initialization"].node["set_reservoir"].start()
         self.set_reservoir()
+        self.timer.node["initialization"].node["set_reservoir"].stop()
         self.reservoir.P_VAR = self.physics.engine.P_VAR
         self.reservoir.U_VAR = self.physics.engine.U_VAR
         if hasattr(self, 'idata'):
@@ -235,6 +240,7 @@ class THMCModel(DartsModel):
         return
 
     def init(self):
+        engine_n_vars = self.physics.engine.get_n_vars()
         if self.discretizer_name == 'pm_discretizer':
             self.reservoir.mech_operators = mech_operators()
             self.reservoir.mech_operators.init(
@@ -243,7 +249,7 @@ class THMCModel(DartsModel):
                 self.physics.engine.P_VAR,
                 self.physics.engine.Z_VAR,
                 self.physics.engine.U_VAR,
-                self.physics.engine.N_VARS,
+                engine_n_vars,
                 self.physics.engine.N_OPS,
                 self.physics.engine.NC,
                 self.physics.engine.ACC_OP,
@@ -279,10 +285,10 @@ class THMCModel(DartsModel):
             self.reservoir, 'contacts'
         ):
             for contact in self.reservoir.contacts:
-                contact.N_VARS = self.physics.engine.N_VARS
+                contact.N_VARS = engine_n_vars
                 contact.U_VAR = self.physics.engine.U_VAR
                 contact.P_VAR = self.physics.engine.P_VAR
-                contact.NT = self.physics.engine.N_VARS
+                contact.NT = engine_n_vars
                 contact.U_VAR_T = self.physics.engine.U_VAR
                 contact.P_VAR_T = self.physics.engine.P_VAR
                 contact.init_friction(self.reservoir.pm, self.reservoir.mesh)

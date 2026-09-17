@@ -1,12 +1,14 @@
 #include "mech/pm_discretizer.hpp"
 #include "matrix.h"
 #include <iostream>
+#include <chrono>
 #include <unordered_set>
 #include <assert.h>
 #include "contact.h"
 
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <cmath>
 
 using namespace pm;
 //using namespace linalg;
@@ -3283,6 +3285,70 @@ void pm_discretizer::calc_all_fluxes_once(value_t dt)
 	}
 
 	printf("Calculation of fluxes was done!\n");
+	check_displacement_diagonal();
+}
+index_t pm_discretizer::check_displacement_diagonal(bool verbose)
+{
+	// The U-U diagonal block of matrix cell i in the engine_pm_cpu Jacobian is the sum of the tran and tran_biot blocks of
+	// the displacement of i over the fluxes of i (Jac += tran + tran_biot). AMG-based preconditioners such as FS-CPR
+	// can diverge where it is not positive definite, so flag such cells. Fracture cells (gap unknowns) are skipped.
+	u_diag_nonpositive_cells.clear();
+	u_diag_indefinite_cells.clear();
+	// nothing to check without matrix cells and a consistent displacement discretization (e.g. before init() and
+	// calc_all_fluxes_once()); tran_biot is summed whenever it is present, so it must then match tran
+	const bool with_biot = !tran_biot.empty();
+	if (n_matrix <= 0 || cell_m.empty() || offset.size() != cell_m.size() + 1 || tran.size() != BLOCK_SIZE * BLOCK_SIZE * stencil.size() ||
+		(with_biot && tran_biot.size() != tran.size()))
+	{
+		if (verbose) cout << "Displacement diagonal check skipped: no consistent displacement discretization available" << endl;
+		return -1;
+	}
+
+	const auto t1 = std::chrono::steady_clock::now();
+	const size_t block_sq = BLOCK_SIZE * BLOCK_SIZE; // row-major block per stencil entry: ux, uy, uz, p
+	vector<value_t> diag(ND * ND * n_matrix, 0.0);
+	for (size_t f = 0; f < cell_m.size(); f++)
+	{
+		const index_t i = cell_m[f];
+		if (i >= n_matrix) continue;
+		// merged stencils are not sorted; an all-zero block of the own cell is not stored
+		const auto first = stencil.begin() + offset[f], last = stencil.begin() + offset[f + 1];
+		const auto it = std::find(first, last, i);
+		if (it == last) continue;
+		const size_t k = block_sq * (it - stencil.begin());
+		for (uint8_t r = 0; r < ND; r++)
+			for (uint8_t c = 0; c < ND; c++)
+				diag[ND * ND * i + ND * r + c] += tran[k + BLOCK_SIZE * r + c] + (with_biot ? tran_biot[k + BLOCK_SIZE * r + c] : 0.0);
+	}
+
+	for (index_t i = 0; i < n_matrix; i++)
+	{
+		// symmetric part S = (D + D^T) / 2 is positive definite iff its leading principal minors are positive (Sylvester);
+		// a block with a non-finite entry is flagged in both lists (the negated comparisons alone would pass +Inf)
+		const value_t* d = &diag[ND * ND * i];
+		const bool finite = std::all_of(d, d + ND * ND, [](const value_t v) { return std::isfinite(v); });
+		const value_t s00 = d[0], s11 = d[4], s22 = d[8];
+		const value_t s01 = 0.5 * (d[1] + d[3]), s02 = 0.5 * (d[2] + d[6]), s12 = 0.5 * (d[5] + d[7]);
+		const value_t m2 = s00 * s11 - s01 * s01;
+		const value_t m3 = s00 * (s11 * s22 - s12 * s12) - s01 * (s01 * s22 - s12 * s02) + s02 * (s01 * s12 - s11 * s02);
+		if (!(finite && s00 > 0.0 && s11 > 0.0 && s22 > 0.0)) u_diag_nonpositive_cells.push_back(i);
+		if (!(finite && s00 > 0.0 && m2 > 0.0 && m3 > 0.0)) u_diag_indefinite_cells.push_back(i);
+	}
+
+	const auto t2 = std::chrono::steady_clock::now();
+	if (verbose)
+	{
+		cout << "Displacement diagonal check: " << u_diag_nonpositive_cells.size() << " of " << n_matrix << " cells with a non-positive diagonal, "
+			<< u_diag_indefinite_cells.size() << " with an indefinite 3x3 block:\t" << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
+		const auto& bad = u_diag_indefinite_cells.empty() ? u_diag_nonpositive_cells : u_diag_indefinite_cells;
+		if (!bad.empty())
+		{
+			cout << "WARNING: the displacement block is not positive definite in cells";
+			for (size_t k = 0; k < std::min(bad.size(), size_t(10)); k++) cout << " " << bad[k];
+			cout << (bad.size() > 10 ? " ..." : "") << "; AMG-based preconditioners such as FS-CPR can diverge on it" << endl;
+		}
+	}
+	return static_cast<index_t>(u_diag_indefinite_cells.size());
 }
 void pm_discretizer::contact_mixing(value_t dt, index_t cell_id, index_t fault_id, const Face& face)
 {

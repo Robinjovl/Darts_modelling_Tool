@@ -545,7 +545,7 @@ conn_mesh::add_conn(index_t block_m, index_t block_p, value_t trans, value_t tra
 }
 
 int
-conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value_t transD, const uint8_t P_VAR)
+conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value_t transD, const uint8_t P_VAR, value_t grav_rhs)
 {
   // for pm_discretizer output
   vector<value_t> tblock_pos(n_vars * n_vars, 0.0), tblock_neg(n_vars * n_vars, 0.0),
@@ -595,10 +595,10 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
   }
   if (one_way_darcy.size())
   {
-	// darcy
+	// darcy — m->p direction; reverse direction gets negated gravity RHS
 	one_way_darcy.push_back(-trans);
 	one_way_darcy.push_back(trans);
-	one_way_darcy_rhs.push_back(0.0);
+	one_way_darcy_rhs.push_back(grav_rhs);
 	// hooke
 	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
 	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
@@ -663,10 +663,10 @@ conn_mesh::add_conn_block(index_t block_m, index_t block_p, value_t trans, value
   }
   if (one_way_darcy.size())
   {
-	// darcy
+	// darcy — p->m direction; negate the m->p gravity RHS
 	one_way_darcy.push_back(-trans);
 	one_way_darcy.push_back(trans);
-	one_way_darcy_rhs.push_back(0.0);
+	one_way_darcy_rhs.push_back(-grav_rhs);
 	// hooke
 	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
 	one_way_hooke.insert(one_way_hooke.end(), hooke_zeros.begin(), hooke_zeros.end());
@@ -2111,13 +2111,13 @@ int conn_mesh::connect_segments(ms_well* well1, ms_well* well2, int iseg1, int i
 	return 0;
 }
 
-int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR)
+int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR, value_t g_constant)
 {
 	index_t well_head_idx = n_res_blocks;
 	n_perfs = 0;
 
-	// calculate number of additional unknowns will be added
-	index_t dofs_num = 0, n_segments, i_w, i_r;
+	index_t dofs_num = 0;  // number of degrees of freedom
+	index_t n_segments, i_w, i_r;
 	value_t wi, wid;
 	for (index_t iw = 0; iw < wells.size(); iw++)
 	{
@@ -2162,29 +2162,49 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 		wells[iw]->well_body_idx = well_head_idx + 1; // well body
 
 		n_segments = 0;
+		for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
+		{
+			std::tie(i_w, i_r, wi, wid) = wells[iw]->perforations[p];
+			n_segments = max(n_segments, i_w + 1);
+		}
+		wells[iw]->n_segments = n_segments;
+		wells[iw]->well_bottom_idx = wells[iw]->well_head_idx + wells[iw]->n_segments;
+
+		// Set depths of well nodes BEFORE creating chain connections so that
+		// the hydrostatic gravity correction can be computed from depth differences.
+		depth[well_head_idx] = wells[iw]->well_head_depth;
+		for (index_t p = 0; p < n_segments; p++)
+		{
+			// Align depth of each body segment with its perforated reservoir block
+			int r_i = std::get<1>(wells[iw]->perforations[p]);
+			depth[well_head_idx + p + 1] = depth[r_i];
+		}
+
 		// connections between well segments and reservoir
 		for (index_t p = 0; p < wells[iw]->perforations.size(); p++)
 		{
 			std::tie(i_w, i_r, wi, wid) = wells[iw]->perforations[p];
 			add_conn_block(i_w + well_head_idx + 1, i_r, wi, wid, P_VAR);
 			n_perfs++;
-			n_segments = max(n_segments, i_w + 1);
 		}
-		// connections between segments
+		// connections between segments — include hydrostatic gravity correction so that
+		// the equilibrium pressure gradient along the chain matches the reservoir.
 		for (index_t p = 0; p < n_segments; p++)
 		{
-			add_conn_block(well_head_idx + p, well_head_idx + p + 1, wells[iw]->well_transmissibility, 0, P_VAR);
+			// The Darcy stencil is T * (p_parent - p_child), so hydrostatic balance
+			// requires the opposing child-to-parent coordinate difference here.
+			value_t dz = depth[well_head_idx + p + 1] - depth[well_head_idx + p];
+			value_t grav_rhs = wells[iw]->well_transmissibility * g_constant * dz;
+			add_conn_block(well_head_idx + p, well_head_idx + p + 1,
+			               wells[iw]->well_transmissibility, 0, P_VAR, grav_rhs);
 		}
 		well_head_idx += n_segments + 1;
-		wells[iw]->n_segments = n_segments;
 	}
 
 	for (index_t iw = 0; iw < wells.size(); iw++)
 	{
 		const index_t well_head_idx = wells[iw]->well_head_idx;
 
-		// depth of the well head block - well controls work at this depth
-		depth[well_head_idx] = wells[iw]->well_head_depth;
 		for (index_t p = 0; p < wells[iw]->n_segments + 1; p++)
 		{
 			volume[well_head_idx + p] = wells[iw]->segment_volume;
@@ -2194,13 +2214,6 @@ int conn_mesh::add_wells_mpfa(std::vector<ms_well *> &wells, const uint8_t P_VAR
 			op_num[well_head_idx + p] = 0;
 			heat_capacity[well_head_idx + p] = 0;
 			rock_cond[well_head_idx + p] = 0;
-			if (p > 0)
-			{
-				int r_i = std::get<1>(wells[iw]->perforations[p - 1]);
-				int w_i = well_head_idx + p;
-				// Align depth of perforated well segment with reservoir block
-				depth[w_i] = depth[r_i];
-			}
 		}
 	}
 

@@ -9,3 +9,7 @@ darts
 .idea
 
 _logs/*.log
+
+# vtk reference solutions of the test suite (*.vtu is ignored repo-wide)
+!**/ref/*.vtu
+!**/ref/**/*.vtu

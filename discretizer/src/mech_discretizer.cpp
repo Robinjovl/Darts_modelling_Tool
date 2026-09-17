@@ -1,6 +1,9 @@
+#include <algorithm>
 #include "mech_discretizer.h"
 #include "utils.h"
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 
 using namespace dis;
 using std::vector;
@@ -13,6 +16,25 @@ using std::chrono::duration_cast;
 using std::fill_n;
 using std::copy_n;
 using utils::get_valarray_from_array;
+
+namespace
+{
+  // Frobenius norm of 'n_rows' consecutive rows of a (row-major) matrix, starting from row 'row'
+  value_t rows_norm(const Matrix& m, const index_t row, const index_t n_rows)
+  {
+	value_t sum = 0.0;
+	for (index_t k = row * m.N; k < (row + n_rows) * m.N; k++)
+	  sum += m.values[k] * m.values[k];
+	return std::sqrt(sum);
+  }
+
+  // Multiplies 'n_rows' consecutive rows of a (row-major) matrix, starting from row 'row', by 'factor'
+  void scale_rows(Matrix& m, const index_t row, const index_t n_rows, const value_t factor)
+  {
+	for (index_t k = row * m.N; k < (row + n_rows) * m.N; k++)
+	  m.values[k] *= factor;
+  }
+}
 
 template <MechDiscretizerMode MODE>
 const uint8_t MechDiscretizer<MODE>::n_unknowns = N_UNKNOWNS.at(MODE);
@@ -67,7 +89,7 @@ void MechDiscretizer<MODE>::init()
 	}
   }
 
-  for (index_t i = mesh::MIN_CONNS_PER_ELEM; i <= mesh::MAX_CONNS_PER_ELEM; i++) 
+  for (index_t i = mesh::MIN_CONNS_PER_ELEM; i <= mesh::MAX_CONNS_PER_ELEM; i++)
   {
 	pre_grad_A_u[i] = Matrix(ND * i, ND * ND);
 	pre_grad_R_u[i] = Matrix(ND * i, n_unknowns * MAX_STENCIL);
@@ -118,6 +140,9 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
   LinearApproximation<Tvar>* g1_thermal;
   value_t a_thermal, b_thermal;
   bool res;
+  value_t inner_norm, bound_norm;
+  index_t n_inner_faces;
+  std::vector<bool> is_bound_face;	is_bound_face.reserve(mesh::MAX_CONNS_PER_ELEM);
 
   // allocate memory for arrays
   u_grads.resize(mesh->n_cells, ApproximationType<MODE>(ND * ND, MAX_STENCIL));
@@ -142,7 +167,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		// Coefficients that define boundary condition
 		const auto& an = bc_thm.mech_normal.a[conn.elem_id2 - mesh->n_cells];
 		const auto& bn = bc_thm.mech_normal.b[conn.elem_id2 - mesh->n_cells];
-		const auto& at = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
+		const auto& at = bc_thm.mech_tangen.a[conn.elem_id2 - mesh->n_cells];
 		const auto& bt = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
 
 		if (NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION || an != 0.0 || at != 0.0)	n_cur_faces++;
@@ -156,6 +181,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 	A.values = 0.;
 	rest.values = 0.;
 	rhs_mult.values = 0.;
+	is_bound_face.assign(n_cur_faces, false);
 
 	face_id = conn_id = 0;
 	for (loop_face_id = mesh->adj_matrix_offset[i]; loop_face_id < mesh->adj_matrix_offset[i + 1]; loop_face_id++, conn_id++)
@@ -204,20 +230,20 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		r1 = dot(n_vec, conn.c - c1);
 		r2 = dot(n_vec, c2 - conn.c);
 		assert(r1 > 0.0);		assert(r2 > 0.0);
-		y1.values = std::valarray<value_t>((c1 + r1 * n_vec).values.data(), ND);	 
+		y1.values = std::valarray<value_t>((c1 + r1 * n_vec).values.data(), ND);
 		y2.values = std::valarray<value_t>((c2 - r2 * n_vec).values.data(), ND);
-		
+
 		// projection to normal
 		B1n = biots[cell_id1] * n;				B2n = biots[cell_id2] * n;
 		if constexpr  (MODE == THERMOPOROELASTIC)
 		{
 		  A1n = th_exps[cell_id1] * n;			A2n = th_exps[cell_id2] * n;
 		}
-		
+
 		// main matrix
 		A(ND * face_id * A.N, { ND, (uint8_t)A.N }, { (uint8_t)A.N, 1 }) = (T2 * make_block_diagonal((y2 - y1).transpose(), ND) + r2 * (G1 - G2) +
 					(r2 * T1 + r1 * T2) * make_block_diagonal(n.transpose(), ND)).values;
-		
+
 		// RHS
 		res1 = findInVector(st, cell_id1);
 		if (res1.first) { id1 = res1.second; }
@@ -228,7 +254,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		if (res2.first) { id2 = res2.second; }
 		else { id2 = st.size(); st.push_back(cell_id2); }
 		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += T2.values;
-		
+
 		if (GRADIENTS_EXTENDED_STENCIL) // use of \nabla p_2
 		{
 		  // left Biot term: B_1 * n * (p_1 + (x_c - x_1)^T * \nabla p_1)
@@ -279,8 +305,8 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		{
 			// r_2 * (p_{\beta1} * B_1 * n - p_{\beta2} * B_2 * n )
 			// p_{\beta1} remains the same, p_{\beta2} uses the following approximation
-			// p_{\beta 2} = p_2 + (x_\beta - y_2 - r_2 / \lambda_2 * (K_1 * n - \gamma_2) )^T * \nabla p_1 + 
-			// + r_2 / \lambda_2 * \rho * g * \nabla z * (K_1 - K_2) * n  
+			// p_{\beta 2} = p_2 + (x_\beta - y_2 - r_2 / \lambda_2 * (K_1 * n - \gamma_2) )^T * \nabla p_1 +
+			// + r_2 / \lambda_2 * \rho * g * \nabla z * (K_1 - K_2) * n
 			rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * B1n.values;
 			if constexpr (MODE == THERMOPOROELASTIC)
 			{
@@ -320,7 +346,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 			for (index_t k = 0; k < g1.stencil.size(); k++) // grad(p) = sum_i(a_i * p_i) + b
 			{
 				// add grad_term matrix to rhs_mult matrix. These matrices have different stencils.
-				// Find a column index in rhs_mult where to add. If there is no such index, add 
+				// Find a column index in rhs_mult where to add. If there is no such index, add
 				cur_cell_id = g1.stencil[k];
 				res1 = findInVector(st, cur_cell_id);
 				if (res1.first) { id1 = res1.second; }
@@ -367,6 +393,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 
 		// Skip if pure neumann
 		if (!NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION && an == 0.0 && at == 0.0)	continue;
+		is_bound_face[face_id] = true;
 
 		const index_t& cell_id1 = conn.elem_id1;
 		const index_t& cell_id2 = conn.elem_id2;
@@ -489,7 +516,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 			rest(ND * face_id, { ND }, { 1 }) += (buf2 * mult_thermal).values;
 		}
 
-		rest(ND * face_id, { ND }, { 1 }) = (mult_p * Ap * bp * (grav_vec * K1n).values[0]).values;
+		rest(ND * face_id, { ND }, { 1 }) += (mult_p * Ap * bp * (grav_vec * K1n).values[0]).values;
 
 		face_id++;
 	  }
@@ -497,6 +524,36 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 
 	auto& cur_rhs = pre_cur_rhs[n_cur_faces][st.size()]; // take a slice from the pre-allocated matrix with actual size we have
 	cur_rhs.values = rhs_mult(0, { (size_t)cur_rhs.M, (size_t)cur_rhs.N }, { (size_t)rhs_mult.N, 1 });
+
+	// Equilibrate the rows of boundary faces. Rows of interior faces (continuity of displacements and
+	// tractions) scale as stiffness x length, rows of boundary faces as stiffness (traction conditions)
+	// or as length (displacement conditions). Unweighted, the boundary conditions hardly constrain the
+	// gradients of boundary cells, which then become non-physical next to stiffness contrasts and turn
+	// the diagonal U-U blocks indefinite. Each boundary block (its rows of A, cur_rhs and rest) is
+	// scaled to the mean Frobenius norm of the interior blocks of the cell, or to unit norm if the cell
+	// has no interior faces. Scaling rows keeps the system consistent, so linear fields stay exact.
+	inner_norm = 0.0;
+	n_inner_faces = 0;
+	for (index_t f = 0; f < face_id; f++)
+	{
+	  if (!is_bound_face[f])
+	  {
+		inner_norm += rows_norm(A, ND * f, ND);
+		n_inner_faces++;
+	  }
+	}
+	inner_norm = n_inner_faces > 0 ? inner_norm / n_inner_faces : 1.0;
+	for (index_t f = 0; f < face_id; f++)
+	{
+	  if (!is_bound_face[f]) continue;
+	  bound_norm = rows_norm(A, ND * f, ND);
+	  if (bound_norm > 0.0)
+	  {
+		scale_rows(A, ND * f, ND, inner_norm / bound_norm);
+		scale_rows(cur_rhs, ND * f, ND, inner_norm / bound_norm);
+		scale_rows(rest, ND * f, ND, inner_norm / bound_norm);
+	  }
+	}
 
 	to_invert = A.transpose() * A;
 	try
@@ -534,7 +591,7 @@ void MechDiscretizer<MODE>::keep_same_stencil_gradients()
   index_t i, j;
   std::vector<index_t> new_stencil;
   new_stencil.reserve(MAX_STENCIL);
-  
+
   for (index_t cell_id = 0; cell_id < mesh->region_ranges.at(mesh::FRACTURE).second; cell_id++)
   {
 	auto& p_grad = p_grads[cell_id];
@@ -580,30 +637,41 @@ void MechDiscretizer<MODE>::calc_interface_approximations()
   fourier.clear();
   thermal_traction.clear();
 
+  // compute maximal stencil from the mesh for memory allocation below
+  index_t max_grad_stencil = 0;
+  for (index_t i = 0; i < static_cast<index_t>(u_grads.size()); i++)
+	max_grad_stencil = std::max<index_t>(max_grad_stencil, static_cast<index_t>(u_grads[i].stencil.size()));
+  const index_t est_stencil = std::min<index_t>(std::max<index_t>(2 * max_grad_stencil, 1), MAX_STENCIL);
+  cout << "Stencil reserve: cells " << u_grads.size()
+	   << " (matrix " << mesh->region_ranges.at(mesh::MATRIX).second << ")"
+	   << ", max gradient stencil " << static_cast<int>(max_grad_stencil)
+	   << ", reserving for " << static_cast<int>(est_stencil)
+	   << " of MAX_STENCIL " << static_cast<int>(MAX_STENCIL) << endl;
+
   // reserve memory
   cell_m.reserve(mesh->adj_matrix.size());
   cell_p.reserve(mesh->adj_matrix.size());
-  flux_stencil.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
+  flux_stencil.reserve(mesh->adj_matrix.size() * est_stencil);
   flux_offset.reserve(mesh->adj_matrix.size() + 1);
 
-  hooke.reserve(mesh->adj_matrix.size() * ND * n_unknowns * MAX_STENCIL);
+  hooke.reserve(mesh->adj_matrix.size() * ND * n_unknowns * est_stencil);
   hooke_rhs.reserve(mesh->adj_matrix.size() * ND);
 
-  biot_traction.reserve(mesh->adj_matrix.size() * ND * MAX_STENCIL);
+  biot_traction.reserve(mesh->adj_matrix.size() * ND * est_stencil);
   biot_traction_rhs.reserve(mesh->adj_matrix.size() * ND);
 
-  biot_vol_strain.reserve(mesh->adj_matrix.size() * n_unknowns * MAX_STENCIL);
+  biot_vol_strain.reserve(mesh->adj_matrix.size() * n_unknowns * est_stencil);
   biot_vol_strain.reserve(mesh->adj_matrix.size());
 
-  darcy.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
+  darcy.reserve(mesh->adj_matrix.size() * est_stencil);
   darcy_rhs.reserve(mesh->adj_matrix.size());
 
-  fick.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
+  fick.reserve(mesh->adj_matrix.size() * est_stencil);
   fick_rhs.reserve(mesh->adj_matrix.size());
 
-  fourier.reserve(mesh->adj_matrix.size() * MAX_STENCIL);
+  fourier.reserve(mesh->adj_matrix.size() * est_stencil);
 
-  thermal_traction.reserve(mesh->adj_matrix.size() * ND * MAX_STENCIL);
+  thermal_traction.reserve(mesh->adj_matrix.size() * ND * est_stencil);
 
   value_t sign;
   index_t cell_id1, cell_id2;
@@ -632,7 +700,7 @@ void MechDiscretizer<MODE>::calc_interface_approximations()
 		calc_matrix_matrix(conn, flux.flow, with_thermal);
 
 		// multiply matrix by area
-		flux.hooke.a.values *= conn.area;		  
+		flux.hooke.a.values *= conn.area;
 		flux.biot_traction.a.values *= conn.area;
 		flux.vol_strain.a.values *= conn.area;
 		flux.flow.darcy.a.values *= sign * conn.area;
@@ -691,6 +759,73 @@ void MechDiscretizer<MODE>::calc_interface_approximations()
 
   t2 = steady_clock::now();
   cout << "Find MPFA-MPSA trans: \t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
+
+  check_displacement_diagonal();
+}
+
+template <MechDiscretizerMode MODE>
+index_t MechDiscretizer<MODE>::check_displacement_diagonal(bool verbose)
+{
+  // The U-U diagonal block of matrix cell i in the engine Jacobian is the sum of the hooke blocks of the displacement
+  // of i over the fluxes of i (engine_super_elastic_cpu: Jac += hooke). AMG-based preconditioners such as FS-CPR
+  // can diverge where it is not positive definite, so flag such cells.
+  u_diag_nonpositive_cells.clear();
+  u_diag_indefinite_cells.clear();
+  // nothing to check without a mesh and a consistent displacement discretization (e.g. before calc_interface_approximations())
+  if (!mesh || cell_m.empty() || flux_offset.size() != cell_m.size() + 1 || hooke.size() != (size_t)ND * n_unknowns * flux_stencil.size())
+  {
+	if (verbose) cout << "Displacement diagonal check skipped: no consistent displacement discretization available" << endl;
+	return -1;
+  }
+
+  steady_clock::time_point t1, t2;
+  t1 = steady_clock::now();
+
+  const index_t n_matrix = mesh->region_ranges.at(mesh::MATRIX).second;
+  const size_t block_size = ND * n_unknowns; // row-major ND x n_unknowns hooke block per stencil entry, displacements first
+  vector<value_t> diag(ND * ND * n_matrix, 0.0);
+  for (size_t f = 0; f < cell_m.size(); f++)
+  {
+	const index_t i = cell_m[f];
+	if (i >= n_matrix) continue;
+	// stencils are sorted (merged sorted gradient stencils); an all-zero block of the own cell is not stored
+	const auto first = flux_stencil.begin() + flux_offset[f], last = flux_stencil.begin() + flux_offset[f + 1];
+	const auto it = std::lower_bound(first, last, i);
+	if (it == last || *it != i) continue;
+	const value_t* h = &hooke[block_size * (it - flux_stencil.begin())];
+	for (uint8_t r = 0; r < ND; r++)
+	  for (uint8_t c = 0; c < ND; c++)
+		diag[ND * ND * i + ND * r + c] += h[n_unknowns * r + c];
+  }
+
+  for (index_t i = 0; i < n_matrix; i++)
+  {
+	// symmetric part S = (D + D^T) / 2 is positive definite iff its leading principal minors are positive (Sylvester);
+	// a block with a non-finite entry is flagged in both lists (the negated comparisons alone would pass +Inf)
+	const value_t* d = &diag[ND * ND * i];
+	const bool finite = std::all_of(d, d + ND * ND, [](const value_t v) { return std::isfinite(v); });
+	const value_t s00 = d[0], s11 = d[4], s22 = d[8];
+	const value_t s01 = 0.5 * (d[1] + d[3]), s02 = 0.5 * (d[2] + d[6]), s12 = 0.5 * (d[5] + d[7]);
+	const value_t m2 = s00 * s11 - s01 * s01;
+	const value_t m3 = s00 * (s11 * s22 - s12 * s12) - s01 * (s01 * s22 - s12 * s02) + s02 * (s01 * s12 - s11 * s02);
+	if (!(finite && s00 > 0.0 && s11 > 0.0 && s22 > 0.0)) u_diag_nonpositive_cells.push_back(i);
+	if (!(finite && s00 > 0.0 && m2 > 0.0 && m3 > 0.0)) u_diag_indefinite_cells.push_back(i);
+  }
+
+  t2 = steady_clock::now();
+  if (verbose)
+  {
+	cout << "Displacement diagonal check: " << u_diag_nonpositive_cells.size() << " of " << n_matrix << " cells with a non-positive diagonal, "
+	  << u_diag_indefinite_cells.size() << " with an indefinite 3x3 block:\t" << duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "\t[ms]" << endl;
+	const auto& bad = u_diag_indefinite_cells.empty() ? u_diag_nonpositive_cells : u_diag_indefinite_cells;
+	if (!bad.empty())
+	{
+	  cout << "WARNING: the displacement block is not positive definite in cells";
+	  for (size_t k = 0; k < std::min(bad.size(), size_t(10)); k++) cout << " " << bad[k];
+	  cout << (bad.size() > 10 ? " ..." : "") << "; AMG-based preconditioners such as FS-CPR can diverge on it" << endl;
+	}
+  }
+  return static_cast<index_t>(u_diag_indefinite_cells.size());
 }
 
 template <MechDiscretizerMode MODE>
@@ -816,8 +951,8 @@ void MechDiscretizer<MODE>::calc_matrix_matrix_mech(const mesh::Connection& conn
 }
 
 template <MechDiscretizerMode MODE>
-void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& conn, 
-													  MechApproximation<MODE>& flux, 
+void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& conn,
+													  MechApproximation<MODE>& flux,
 													  index_t conn_id)
 {
   Matrix c1_mat(ND, 1), conn_mat(ND, 1), n(ND, 1), P(ND, ND), y1(ND, 1);
@@ -991,7 +1126,7 @@ void MechDiscretizer<MODE>::calc_cell_centered_stress_velocity_approximations()
 	auto& R = pre_R[n_faces];
 	auto& st_approx = pre_stress_approx[n_faces];
 	auto& vel_approx = pre_vel_approx[n_faces];
-	
+
 	// assemble matrices for approximation
 	for (loop_face_id = mesh->adj_matrix_offset[i], face_id = 0; loop_face_id < mesh->adj_matrix_offset[i + 1]; loop_face_id++)
 	{

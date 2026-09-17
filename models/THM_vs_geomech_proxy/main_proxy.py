@@ -19,6 +19,10 @@ def fmt(x):
 
 def read_vtk_darts_solution(folder, timestep : int):
     filename = os.path.join(folder, 'solution'+str(timestep)+'.vtu')
+    if not os.path.isfile(filename):
+        print('THM vtk file not found:', filename)
+        print('Run THM first to generate vtk files with p,T changes (by setting run_thm = True)')
+        raise FileNotFoundError(filename)
     msh = meshio.read(filename)
     print('Reading', filename)
     #print("\tCells:", msh.cells_dict.keys())
@@ -26,80 +30,147 @@ def read_vtk_darts_solution(folder, timestep : int):
     return msh
 
 def geomech_init_geometry(mesh_data):
-    #if hasattr(self, 'prisms'):  # do only once
-    #    return
+    """
+    Convert the volume cells to the rectangular prisms used by the proxy.
 
-    # coordinates 3 lines, Nnodes columns
-    points = mesh_data.points.T
+    Non-hexahedral cells are represented by a prism centred at the cell's
+    vertex centroid. Its aspect ratio follows the cell bounding box and its
+    volume matches the original cell volume.
+    """
+    volume_cell_types = {'hexahedron', 'wedge', 'tetra', 'pyramid'}
+    prism_blocks = []
+    centroid_blocks = []
+    quadrature_blocks = []
+    cell_size_blocks = []
+    all_tetrahedra = True
 
-    nodes = np.zeros((3, len(points[0][:])))
-    for k in range(len(points[0][:])):
-        nodes[0][k] = points[1][k]
-        nodes[1][k] = points[0][k]
-        nodes[2][k] = points[2][k]
+    def make_prisms(centres, extents):
+        lower = centres - 0.5 * extents
+        upper = centres + 0.5 * extents
+        return np.column_stack([
+            lower[:, 1], upper[:, 1],
+            lower[:, 0], upper[:, 0],
+            upper[:, 2], lower[:, 2],
+        ])
 
-    connectivity = mesh_data.cells_dict['hexahedron']
+    for cell_block in mesh_data.cells:
+        if cell_block.type not in volume_cell_types:
+            continue
 
-    prisms = np.zeros((len(connectivity), 6))
-    for k in range(len(connectivity)):
-        prism = connectivity[k]
-        xloc, yloc, zloc = [], [], []
-        for i in prism:
-            yloc.append(nodes[1][i])
-            xloc.append(nodes[0][i])
-            zloc.append(nodes[2][i])
-        prisms[k][0] = np.amin(yloc)
-        prisms[k][1] = np.amax(yloc)
+        vertices = mesh_data.points[cell_block.data]
+        centroids = vertices.mean(axis=1)
+        extents = vertices.max(axis=1) - vertices.min(axis=1)
+        bounding_volume = np.prod(extents, axis=1)
+        if cell_block.type == 'tetra':
+            cell_volume = np.abs(np.linalg.det(vertices[:, 1:] - vertices[:, :1])) / 6.0
+        else:
+            all_tetrahedra = False
+            # The structured-like cell types used here are represented by
+            # their axis-aligned bounds, as required by the analytical proxy.
+            cell_volume = bounding_volume
 
-        prisms[k][2] = np.amin(xloc)
-        prisms[k][3] = np.amax(xloc)
+        if np.any(bounding_volume <= 0.0) or np.any(cell_volume <= 0.0):
+            raise ValueError(
+                f'Degenerate {cell_block.type} cell encountered while '
+                'initializing geomechanics proxy geometry'
+            )
 
-        prisms[k][4] = np.amax(zloc)
-        prisms[k][5] = np.amin(zloc)
+        proxy_scale = (cell_volume / bounding_volume) ** (1.0 / 3.0)
+        prism_blocks.append(make_prisms(centroids, extents * proxy_scale[:, None]))
+        centroid_blocks.append(centroids[:, [1, 0, 2]])
+        cell_size_blocks.append(extents.max(axis=1))
 
-    return prisms
+        if cell_block.type == 'tetra':
+            # Symmetric four-point tetrahedron rule, exact through degree two.
+            a = 0.5854101966249685
+            b = 0.1381966011250105
+            barycentric = np.array([
+                [a, b, b, b], [b, a, b, b],
+                [b, b, a, b], [b, b, b, a],
+            ])
+            quadrature_centres = np.einsum(
+                'qv,nvd->nqd', barycentric, vertices
+            ).reshape(-1, 3)
+            quadrature_scale = np.repeat(
+                (cell_volume / (4.0 * bounding_volume)) ** (1.0 / 3.0), 4
+            )
+            quadrature_extents = np.repeat(extents, 4, axis=0)
+            quadrature_extents *= quadrature_scale[:, None]
+            quadrature_blocks.append(
+                make_prisms(quadrature_centres, quadrature_extents)
+            )
+
+    if not prism_blocks:
+        raise ValueError('No supported 3-D cells found in the VTK mesh')
+
+    prisms = np.concatenate(prism_blocks)
+    centroids = np.concatenate(centroid_blocks)
+    cell_sizes = np.concatenate(cell_size_blocks)
+    quadrature_prisms = np.concatenate(quadrature_blocks) if all_tetrahedra else None
+    return prisms, centroids, quadrature_prisms, cell_sizes
 
 class thm_solution:
     pass
+
+
+def get_volume_cell_data(mesh_data, name):
+    """
+    Return cell data concatenated in proxy-volume-cell order.
+    """
+    volume_cell_types = {'hexahedron', 'wedge', 'tetra', 'pyramid'}
+    arrays = [
+        np.asarray(values)
+        for cell_block, values in zip(
+            mesh_data.cells, mesh_data.cell_data[name], strict=True
+        )
+        if cell_block.type in volume_cell_types
+    ]
+    if not arrays:
+        raise ValueError(f'No volume-cell data found for {name!r}')
+    return np.concatenate(arrays, axis=0)
+
 
 def read_thm_solution_from_vtk(m, folder : str, timestep: int):
     thm_sol = thm_solution()
 
     msh_initial = read_vtk_darts_solution(folder=folder, timestep=0)
-    poro = np.array(msh_initial.cell_data['poro']).flatten()
-    thm_sol.p_init = np.array(msh_initial.cell_data['pressure']).flatten()
-    thm_sol.Szz_init = np.array(msh_initial.cell_data['tot_stress'])[0, :, 2] * bars2mpa # ZZ
+    poro = get_volume_cell_data(msh_initial, 'poro').flatten()
+    thm_sol.p_init = get_volume_cell_data(msh_initial, 'pressure').flatten()
+    thm_sol.Szz_init = get_volume_cell_data(msh_initial, 'tot_stress')[:, 2] * bars2mpa # ZZ
 
     msh_last = read_vtk_darts_solution(folder=folder, timestep=timestep)
-    p_last = np.array(msh_last.cell_data['pressure']).flatten()
-    thm_sol.ux_last = np.array(msh_last.cell_data['ux']).flatten()
-    thm_sol.uy_last = np.array(msh_last.cell_data['uy']).flatten()
-    thm_sol.uz_last = np.array(msh_last.cell_data['uz']).flatten()
-    thm_sol.delta_Sxx_last = np.array(msh_last.cell_data['delta_eff_stress'])[0, :, 0] * bars2mpa #  XX
-    thm_sol.delta_Syy_last = np.array(msh_last.cell_data['delta_eff_stress'])[0, :, 1] * bars2mpa #  YY
-    thm_sol.delta_Szz_last = np.array(msh_last.cell_data['delta_eff_stress'])[0, :, 2] * bars2mpa # ZZ
-    thm_sol.delta_total_Sxx_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 0] * bars2mpa #  XX
-    thm_sol.delta_total_Syy_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 1] * bars2mpa #  YY
-    thm_sol.delta_total_Szz_last = np.array(msh_last.cell_data['delta_tot_stress'])[0, :, 2] * bars2mpa # ZZ
-    thm_sol.qx_last = np.array(msh_last.cell_data['strain'])[0, :, 0]  #  XX
-    thm_sol.qy_last = np.array(msh_last.cell_data['strain'])[0, :, 1]  #  YY
-    thm_sol.qz_last = np.array(msh_last.cell_data['strain'])[0, :, 2]  # ZZ
+    p_last = get_volume_cell_data(msh_last, 'pressure').flatten()
+    thm_sol.ux_last = get_volume_cell_data(msh_last, 'ux').flatten()
+    thm_sol.uy_last = get_volume_cell_data(msh_last, 'uy').flatten()
+    thm_sol.uz_last = get_volume_cell_data(msh_last, 'uz').flatten()
+    delta_eff_stress = get_volume_cell_data(msh_last, 'delta_eff_stress')
+    delta_tot_stress = get_volume_cell_data(msh_last, 'delta_tot_stress')
+    strain = get_volume_cell_data(msh_last, 'strain')
+    thm_sol.delta_Sxx_last = delta_eff_stress[:, 0] * bars2mpa #  XX
+    thm_sol.delta_Syy_last = delta_eff_stress[:, 1] * bars2mpa #  YY
+    thm_sol.delta_Szz_last = delta_eff_stress[:, 2] * bars2mpa # ZZ
+    thm_sol.delta_total_Sxx_last = delta_tot_stress[:, 0] * bars2mpa #  XX
+    thm_sol.delta_total_Syy_last = delta_tot_stress[:, 1] * bars2mpa #  YY
+    thm_sol.delta_total_Szz_last = delta_tot_stress[:, 2] * bars2mpa # ZZ
+    thm_sol.qx_last = strain[:, 0]  #  XX
+    thm_sol.qy_last = strain[:, 1]  #  YY
+    thm_sol.qz_last = strain[:, 2]  # ZZ
 
     thm_sol.folder = folder
 
     if 'delta_pressure' in msh_last.cell_data.keys():
-        thm_sol.delta_pressure = np.array(msh_last.cell_data['delta_pressure']).flatten()
+        thm_sol.delta_pressure = get_volume_cell_data(msh_last, 'delta_pressure').flatten()
     else:
-        p_initial = np.array(msh_initial.cell_data['pressure']).flatten()
+        p_initial = get_volume_cell_data(msh_initial, 'pressure').flatten()
         thm_sol.delta_pressure = p_last - p_initial
     thm_sol.delta_pressure *= 0.1 # bars to MPa
 
     # delta_temperature is zero in isothermal case
     thm_sol.delta_temperature = np.zeros_like(thm_sol.delta_pressure)
     if 'delta_temperature' in msh_last.cell_data.keys():
-        thm_sol.delta_temperature = np.array(msh_last.cell_data['delta_temperature']).flatten()
+        thm_sol.delta_temperature = get_volume_cell_data(msh_last, 'delta_temperature').flatten()
 
-    prisms = geomech_init_geometry(msh_initial)
+    prisms, centroids, quadrature_prisms, cell_sizes = geomech_init_geometry(msh_initial)
     print('\tprisms all', prisms.shape[0])
 
     #perm_threshold_for_prisms = 1e-6
@@ -113,16 +184,26 @@ def read_thm_solution_from_vtk(m, folder : str, timestep: int):
     thm_sol.delta_pressure_rsv = thm_sol.delta_pressure[rsv]
     thm_sol.delta_temperature_rsv = thm_sol.delta_temperature[rsv]
     thm_sol.prisms_rsv = prisms[rsv, :]
+    if quadrature_prisms is not None:
+        thm_sol.quadrature_prisms_rsv = quadrature_prisms.reshape(-1, 4, 6)[rsv].reshape(-1, 6)
+        thm_sol.cell_sizes_rsv = cell_sizes[rsv]
+    else:
+        thm_sol.quadrature_prisms_rsv = None
+        thm_sol.cell_sizes_rsv = None
     print('\tprisms rsv', thm_sol.prisms_rsv.shape[0])
 
     # centroids are only used for THM data plotting, they are not used in proxy
-    centroids = np.zeros((prisms.shape[0], 3))
-    centroids[:, 0] = (prisms[:, 0] +  prisms[:, 1]) * 0.5 # Y
-    centroids[:, 1] = (prisms[:, 2] +  prisms[:, 3]) * 0.5 # X
-    centroids[:, 2] = (prisms[:, 4] +  prisms[:, 5]) * 0.5 # z
     thm_sol.centroids = centroids
+    # Keep the physical mesh bounds as Y, X, Z, matching the proxy coordinate
+    # convention.  Cell-centre bounds omit half a boundary cell and should not
+    # be used as the plotting domain for meshes such as case_5 that start at 0.
+    thm_sol.mesh_bounds = [
+        (msh_initial.points[:, axis].min(), msh_initial.points[:, axis].max())
+        for axis in (1, 0, 2)
+    ]
 
     n_dim = 3  # X,Y,Z
+    thm_sol.n_dim = n_dim
     thm_sol.bounds = [0]*n_dim
     for k in range(n_dim):
         thm_sol.bounds[k] = centroids[:, k].min(), centroids[:, k].max()
@@ -130,9 +211,72 @@ def read_thm_solution_from_vtk(m, folder : str, timestep: int):
     thm_sol.rsv_centroids = centroids[rsv, :]
     return thm_sol
 
+def plot_delta_pressure_along_x(case, physics_type, wells_type, timesteps,
+                                y=0.0, z=2200.0, x_range=None, n_points=200,
+                                report_step=None, output_folder=None, generate_mesh=False):
+    """Plot THM delta_pressure [MPa] along the X axis at fixed Y, Z, overlaying several timesteps.
+
+    Reads the THM solution vtk for each timestep, interpolates delta_pressure from the cell
+    centers onto a line of points running along X (at the given Y and Z), and draws all
+    timesteps on a single combined figure.
+
+    :param case: mesh case name, e.g. '41_41_66'
+    :param physics_type: 'single_phase' or 'single_phase_thermal'
+    :param wells_type: 'inj', 'prod', 'doublet', ...
+    :param timesteps: list of vtk timestep indices to overlay
+    :param y, z: fixed coordinates [m] of the line; it runs along X (defaults Y=0, Z=2200)
+    :param x_range: optional (x_min, x_max) [m]; defaults to the THM centroid X-extent
+    :param n_points: number of sample points along X
+    :param report_step: optional [days] per vtk step; if given, legend labels show time in years
+    :param output_folder: where to save the png; defaults to <results folder>/plots_delta_pressure_x
+    :param generate_mesh: passed to Model (kept False to reuse an existing mesh)
+    """
+    folder = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + case)
+
+    # lightweight model just to provide idata (rsv filtering etc.) to the vtk reader
+    from model import Model
+    m = Model(model_folder=case, physics_type=physics_type, uniform_props=False,
+              wells_type=wells_type, decouple_geomech=True, generate_mesh=generate_mesh,
+              dummy='yes')
+    m.set_input_data()
+
+    if output_folder is None:
+        output_folder = os.path.join(folder, 'plots_delta_pressure_x')
+    os.makedirs(output_folder, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for ts in timesteps:
+        thm_sol = read_thm_solution_from_vtk(m, folder=folder, timestep=ts)
+        # sample points along X at fixed Y, Z
+        if x_range is None:
+            x_min, x_max = thm_sol.centroids[:, 1].min(), thm_sol.centroids[:, 1].max()
+        else:
+            x_min, x_max = x_range
+        points_x = np.linspace(x_min, x_max, n_points)
+        points_y = np.full_like(points_x, y)
+        points_z = np.full_like(points_x, z)
+        # interpolate delta_pressure [MPa] from cell centers (X,Y,Z) onto the line points
+        dp_line = gd((thm_sol.centroids[:, 1], thm_sol.centroids[:, 0], thm_sol.centroids[:, 2]),
+                     thm_sol.delta_pressure, (points_x, points_y, points_z), method='linear')
+        label = f't = {ts * report_step / 365.25:.3g} years' if report_step is not None else f'timestep {ts}'
+        ax.plot(points_x, dp_line, label=label)
+
+    ax.set_xlabel('X, m.')
+    ax.set_ylabel('Pressure change, MPa.')
+    ax.set_title(f'Pressure change along X (Y={y:g}, Z={z:g})')
+    ax.legend(fontsize=8)
+    ax.minorticks_on()
+    ax.grid(which='major', linestyle='-', linewidth=0.8)
+    ax.grid(which='minor', linestyle=':', linewidth=0.5)
+    fig.tight_layout()
+    out = os.path.join(output_folder, 'delta_pressure_along_x.png')
+    fig.savefig(out)
+    plt.close(fig)
+    print('Saved', out)
+
 def run_geomech_proxy(case, physics_type='single_phase',
                       wells_type=None, timestep=1, modes=[],
-                      generate_mesh=True, n_threads=1, use_gpu=False):
+                      generate_mesh=True, n_threads=1, use_gpu=False, read_from_cache=False):
     folder = os.path.join('results', 'sol_cpp_' + physics_type + '_'  + wells_type + '_' + case)  # where vtk files are located
 
     # init geomech proxy
@@ -144,12 +288,27 @@ def run_geomech_proxy(case, physics_type='single_phase',
               wells_type=wells_type, decouple_geomech=True, generate_mesh=generate_mesh,
               dummy='yes')
     m.set_input_data()
+
+    def scalar_or_mean(val):
+        # the analytic proxy assumes a homogeneous elastic medium; if idata carries
+        # per-tag heterogeneous geomech properties (e.g. case_4), fall back to their mean
+        if np.isscalar(val):
+            return val
+        print(f'warning: proxy assumes homogeneous properties, using mean of {val} = {val.mean()}')
+        return val.mean()
+
     # elastic constants
-    g.poisson = m.idata.rock.nu
-    g.young = m.idata.rock.E if np.isscalar(m.idata.rock.E) else m.idata.rock.E.mean()
+    g.poisson = scalar_or_mean(m.idata.rock.nu)
+    g.young = scalar_or_mean(m.idata.rock.E)
     g.young *= bars2mpa
-    g.thermal_expansion = m.idata.rock.th_expn_orig
-    g.biot = m.idata.rock.biot
+    g.thermal_expansion = scalar_or_mean(m.idata.rock.th_expn_orig)
+    g.biot = scalar_or_mean(m.idata.rock.biot)
+
+    # Mohr-Coulomb parameters from idata, so the proxy uses the same fault strength
+    # as the THM post-processing instead of the class defaults.
+    g.friction = scalar_or_mean(m.idata.rock.friction)
+    g.cohesion = scalar_or_mean(m.idata.rock.cohesion)
+    print(f'Mohr-Coulomb from idata: friction={g.friction:g}, cohesion={g.cohesion:g}')
 
     g.set_num_threads(n_threads)
     print('N_THREADS =', n_threads)
@@ -164,17 +323,25 @@ def run_geomech_proxy(case, physics_type='single_phase',
 
     thm_sol = read_thm_solution_from_vtk(m, folder=folder, timestep=timestep)
     g.centroids = thm_sol.rsv_centroids
+    use_adaptive_proxy = thm_sol.quadrature_prisms_rsv is not None
+    if use_adaptive_proxy:
+        g.set_adaptive_sources(
+            thm_sol.prisms_rsv, thm_sol.quadrature_prisms_rsv,
+            thm_sol.cell_sizes_rsv, thm_sol.delta_pressure_rsv,
+            thm_sol.delta_temperature_rsv, near_factor=2.5,
+        )
+        print('UNSTRUCTURED PROXY = adaptive four-point tetrahedron, near factor 2.5')
 
     output_folder = os.path.join(thm_sol.folder, 'plots_timestep_' + str(timestep))
     os.makedirs(output_folder, exist_ok=True)
 
     # plot THM solution
     if False:
-        from plot_vtk_pyvista import plot_vtk_pyvista
+        from plot_vtk import plot_vtk_pyvista
         model_folder=case
         m.output_directory = os.path.join('results', 'sol_cpp_' + physics_type + '_' + wells_type + '_' + model_folder)
-        plot_vtk_pyvista(m.output_directory, tstep_to_plot=0)  # initial
-        plot_vtk_pyvista(m.output_directory, tstep_to_plot=-1) # last
+        plot_vtk_pyvista(m.output_directory, tstep_to_plot=0, idata=m.idata)  # initial
+        plot_vtk_pyvista(m.output_directory, tstep_to_plot=-1, idata=m.idata) # last
 
 
     def find_cell_by_point(point):
@@ -318,7 +485,15 @@ def run_geomech_proxy(case, physics_type='single_phase',
         eps = 0  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points_eps = eval_points + eps
         #eval_points_eps = eval_points_eps.transpose()
-        upx1, upy1, upz1, utx1, uty1, utz1 = g.calc_displacements_cpp(eval_points_eps, thm_sol.prisms_rsv, thm_sol.delta_pressure_rsv, thm_sol.delta_temperature_rsv)
+        if use_adaptive_proxy:
+            upx1, upy1, upz1, utx1, uty1, utz1 = \
+                g.calc_displacements_adaptive_cpp(eval_points_eps)
+        else:
+            upx1, upy1, upz1, utx1, uty1, utz1 = \
+                g.calc_displacements_cpp(
+                    eval_points_eps, thm_sol.prisms_rsv,
+                    thm_sol.delta_pressure_rsv, thm_sol.delta_temperature_rsv
+                )
         ux = upx1 + utx1
         uy = upy1 + uty1
         uz = upz1 + utz1
@@ -351,7 +526,16 @@ def run_geomech_proxy(case, physics_type='single_phase',
         # returns thermoporoelastic strain and  stress in MPa, (6, n_points), 6 - Voight notation
         eps = 0  # [m], to avoid r=0 for the integral in the geomech proxy 1/r
         eval_points_eps = eval_points + eps
-        res = g.calc_strain_stress_cpp(eval_points_eps, thm_sol.prisms_rsv, thm_sol.delta_pressure_rsv, thm_sol.delta_temperature_rsv)
+        if use_adaptive_proxy:
+            res = g.calc_strain_stress_adaptive_cpp(
+                eval_points_eps, thm_sol.delta_pressure_rsv,
+                thm_sol.delta_temperature_rsv,
+            )
+        else:
+            res = g.calc_strain_stress_cpp(
+                eval_points_eps, thm_sol.prisms_rsv,
+                thm_sol.delta_pressure_rsv, thm_sol.delta_temperature_rsv
+            )
         stress_p, strain_p, stress_total_p, stress_t, strain_t, stress_total_t, stress, strain, stress_total = res
         #[Sp_xx, Sp_yy, Sp_zz, Sp_yz, Sp_xz, Sp_xy] = stress_p
         #[St_xx, St_yy, St_zz, St_yz, St_xz, St_xy] = stress_t
@@ -375,9 +559,9 @@ def run_geomech_proxy(case, physics_type='single_phase',
             dp_z = np.zeros_like(z_range)
             z_range_rsv = reduce(np.logical_and, [z_range > 2100, z_range < 2200])
             dp_z[z_range_rsv] = dp.max() #m.idata.other.delta_p #MPa
-        sx_total_prx = sx_prx + m.idata.rock.biot * dp
-        sy_total_prx = sy_prx + m.idata.rock.biot * dp
-        sz_total_prx = sz_prx + m.idata.rock.biot * dp
+        sx_total_prx = sx_prx + g.biot * dp
+        sy_total_prx = sy_prx + g.biot * dp
+        sz_total_prx = sz_prx + g.biot * dp
 
         plot_thm2 = False
 
@@ -487,10 +671,13 @@ def run_geomech_proxy(case, physics_type='single_phase',
                 plt.close(fig)
 
 
-    def plot_contour(array_dict, points_x, points_y, output_folder, layer=0, slice='XY', vlims=None, n_levels=12):
+    def plot_contour(array_dict, points_x, points_y, output_folder, layer=0, slice='XY', vlims=None, n_levels=12, idata=None):
         # plot contours XY plane, 1 layer by z
         # vlims: optional dict {arr_name: (vmin, vmax)} to fix colorbar range
+        _default_w, _default_h = plt.rcParams['figure.figsize']
         for arr_name, arr in array_dict.items():
+            if slice == 'XZ':
+                plt.figure(figsize=(_default_w, _default_h * 2))
             if len(arr.shape) == 3:
                 arr_layer = arr[:, :, layer]
             else:
@@ -505,9 +692,10 @@ def run_geomech_proxy(case, physics_type='single_phase',
             if vmin < 0 < vmax:
                 levels = np.sort(np.unique(np.append(levels, 0.)))
             cs = plt.contourf(points_x, points_y, np.ma.masked_invalid(arr_layer), levels=levels, vmin=vmin, vmax=vmax)
-            plt.colorbar(cs)
+            plt.colorbar(cs, orientation='horizontal', pad=0.12)
             #plt.colorbar(cs, extend='neither').set_ticks([vmin, vmax])
-            plt.gca().set_aspect('equal')
+            plt.gca().set_aspect(2) # 2X vertical scale
+            #plt.gca().set_aspect('equal')
             plt.minorticks_on()
             plt.xlabel('X, m.')
             if slice == 'XY':
@@ -515,13 +703,35 @@ def run_geomech_proxy(case, physics_type='single_phase',
             elif slice == 'XZ':
                 plt.ylabel('Depth, m.')
                 plt.gca().invert_yaxis()
+                if idata is not None:
+                    plt.axhline(y=idata.other.rsv_top,    color='black', linewidth=0.8, linestyle='--')
+                    plt.axhline(y=idata.other.rsv_bottom, color='black', linewidth=0.8, linestyle='--', label='reservoir top/bottom')
+                    reservoir_sides = [
+                        x for x in (idata.other.rsv_x1, idata.other.rsv_x2)
+                        if points_x.min() <= x <= points_x.max()
+                    ]
+                    for side_index, x in enumerate(reservoir_sides):
+                        label = 'reservoir sides' if side_index == 0 else None
+                        plt.axvline(x=x, color='black', linewidth=0.5,
+                                    linestyle=':', label=label)
+                    z_well_top = points_y.min()
+                    z_well_bot = idata.other.rsv_bottom
+                    if wells_type in ('prod', 'doublet'):
+                        plt.plot([idata.other.prod_well_coords[0]] * 2, [z_well_top, z_well_bot],
+                                 color='red',  linewidth=1.5, label='production well')
+                    if wells_type in ('inj', 'doublet'):
+                        plt.plot([idata.other.inj_well_coords[0]] * 2,  [z_well_top, z_well_bot],
+                                 color='cyan', linewidth=1.5, label='injection well')
+                    plt.legend(fontsize=7, loc='upper center', bbox_to_anchor=(0.5, 0.15), bbox_transform=plt.gcf().transFigure, ncol=2)
+            # Annotation artists must not expand the physical slice domain.
+            plt.xlim(points_x.min(), points_x.max())
             parts = arr_name.split(' - ', 1)
             plt.title('\n'.join(parts) if len(parts) > 1 else arr_name)
             fig_fname = arr_name + '_contour.png'
             fig_fname = fig_fname.replace(' ', '_')
             fig_path = os.path.join(output_folder, fig_fname)
             print(f'Saving {fig_fname}, min={arr_layer.min():.4g}, max={arr_layer.max():.4g}')
-            plt.savefig(fig_path)
+            plt.savefig(fig_path, bbox_inches='tight')
             plt.close()
 
 
@@ -546,26 +756,54 @@ def run_geomech_proxy(case, physics_type='single_phase',
             plt.close()
 
     def plot_mesh_skeleton(output_folder):
-        Xc = m.idata.other.Xc
-        Zc = m.idata.other.Zc
         rsv_top = m.idata.other.rsv_top
         rsv_bottom = m.idata.other.rsv_bottom
-
-        Xc_plot = Xc[(Xc >= -1700) & (Xc <= 1700)]
-        Zc_plot = Zc[(Zc >= rsv_top - 500) & (Zc <= rsv_bottom + 500)]
-
         rsv_xy = m.idata.other.rsv_xy
 
         fig, ax = plt.subplots(figsize=(8, 6))
-        for xi in Xc_plot:
-            ax.axvline(x=xi, color='steelblue', linewidth=0.7, zorder=1)
-        for zi in Zc_plot:
-            ax.axhline(y=zi, color='coral', linewidth=0.7, zorder=1)
+        if hasattr(m.idata.other, 'Xc') and hasattr(m.idata.other, 'Zc'):
+            Xc = m.idata.other.Xc
+            Zc = m.idata.other.Zc
+            Xc_plot = Xc[(Xc >= -2100) & (Xc <= 2100)]
+            Zc_plot = Zc[(Zc >= rsv_top - 500) & (Zc <= rsv_bottom + 500)]
+            for xi in Xc_plot:
+                ax.axvline(x=xi, color='steelblue', linewidth=0.7, zorder=1)
+            for zi in Zc_plot:
+                ax.axhline(y=zi, color='coral', linewidth=0.7, zorder=1)
+        else:
+            # An arbitrary unstructured mesh has no global grid lines. Plot a
+            # bounded projection of its cell centres instead.
+            cells_x = thm_sol.centroids[:, 1]
+            cells_z = thm_sol.centroids[:, 2]
+            plot_mask = (cells_z >= rsv_top - 500) & (cells_z <= rsv_bottom + 500)
+            if not np.any(plot_mask):
+                plot_mask = np.ones(cells_z.shape, dtype=bool)
+            cells_x = cells_x[plot_mask]
+            cells_z = cells_z[plot_mask]
+            max_plot_points = 50000
+            stride = max(1, int(np.ceil(cells_x.size / max_plot_points)))
+            ax.scatter(cells_x[::stride], cells_z[::stride], s=0.2,
+                       color='steelblue', alpha=0.35, rasterized=True, zorder=1,
+                       label='unstructured cell centres')
+            Xc_plot = np.array([cells_x.min(), cells_x.max()])
+            Zc_plot = np.array([cells_z.min(), cells_z.max()])
         # reservoir boundary rectangle (dashed red, lines clipped to their crossing points)
         from matplotlib.patches import Rectangle
         rect = Rectangle((-rsv_xy, rsv_top), 2 * rsv_xy, rsv_bottom - rsv_top,
-                         linewidth=2., edgecolor='red', linestyle='--', facecolor='none', zorder=3)
+                         linewidth=2., edgecolor='red', linestyle='--', facecolor='none', zorder=3,
+                         label='reservoir boundary')
         ax.add_patch(rect)
+        # wells (vertical lines), same as in plot_contour XZ slice
+        z_well_top = Zc_plot.min()
+        z_well_bot = rsv_bottom
+        if wells_type in ('prod', 'doublet'):
+            ax.plot([m.idata.other.prod_well_coords[0]] * 2, [z_well_top, z_well_bot],
+                    color='red', linewidth=1.5, label='production well', zorder=4)
+        if wells_type in ('inj', 'doublet'):
+            ax.plot([m.idata.other.inj_well_coords[0]] * 2, [z_well_top, z_well_bot],
+                    color='darkblue', linewidth=1.5, label='injection well', zorder=4)
+        # legend (reservoir boundary is always drawn; wells added when present)
+        ax.legend(fontsize=8, loc='upper right')
         ax.set_xlim(Xc_plot.min(), Xc_plot.max())
         ax.set_ylim(Zc_plot.min(), Zc_plot.max())
         ax.invert_yaxis()
@@ -647,7 +885,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
         print(f'Saved HTML report: {html_path}')
 
     def save_pdf_report(base_names, output_folder, filename='proxy_vs_thm_report.pdf',
-                        locs=None, array_names=None, suffix_1d='all'):
+                        locs=None, array_names=None, suffix_1d='all', read_from_cache=False):
         from matplotlib.backends.backend_pdf import PdfPages
         import matplotlib.image as mpimg
 
@@ -702,17 +940,18 @@ def run_geomech_proxy(case, physics_type='single_phase',
         print(f'Saved PDF report: {pdf_path}')
 
 
+    # mesh skeleton with wells (independent of modes / proxy computation)
+    plot_mesh_skeleton(output_folder)
+
+    # reference points for the 1D vertical profiles; taken from idata.other.points_xy
+    # (set in cases/base.py) as a list of [x, y, label]
     points_xy = dict()
-    #points_xy['center'] = centroids[:, 0].mean(), centroids[:, 1].mean()]  # middle point of the mesh
-    #points_xy['(50,50)'] = [50., 50.]  # middle point of the mesh but shift a bit to make it at the cell centers by XY
-    #points_xy['(450,0)'] = [0., 450.]  # the order is actually Y,X
-    #points_xy['(450,450)'] = [450., 450.]  # the order is actually Y,X
-    points_xy['(250,250)'] = [250., 250.]  # the order is actually Y,X
-    #points_xy['(6000,6000)'] = [6000., 6000.]  # the order is actually Y,X
+    for x_pt, y_pt, label in m.idata.other.points_xy:  # the order is actually Y,X
+        points_xy[label] = [y_pt, x_pt]
 
     if True: # evaluate along the wells
         if wells_type in ['prod', 'doublet']:
-            points_xy['prod_well'] = m.idata.other.prod_well_coords[:2]  # -2 to skip z coord
+            points_xy['prod_well'] = m.idata.other.prod_well_coords[:2]  # skip z coord
         if wells_type in ['inj', 'doublet']:
             points_xy['inj_well'] = m.idata.other.inj_well_coords[:2]
 
@@ -720,9 +959,41 @@ def run_geomech_proxy(case, physics_type='single_phase',
 
     # compute with proxy for 2D slice
     if 'plot_2d_slices' in modes:
-        points_x = np.unique(g.centroids[:, 0])
-        points_y = np.array([0.])
-        points_z = np.unique(g.centroids[:, 2])
+        if use_adaptive_proxy:
+            plot_nx = getattr(m.idata.other, 'proxy_plot_nx', 41)
+            plot_nz = getattr(m.idata.other, 'proxy_plot_nz', 31)
+            use_mesh_plot_bounds = getattr(
+                m.idata.other, 'proxy_plot_use_mesh_bounds', False
+            )
+            if use_mesh_plot_bounds:
+                x_min, x_max = thm_sol.mesh_bounds[1]
+                y_min, y_max = thm_sol.mesh_bounds[0]
+                z_min, z_max = thm_sol.mesh_bounds[2]
+            else:
+                # Historical plotting domain for existing proxy cases.
+                x_min, x_max = (
+                    thm_sol.centroids[:, 1].min(),
+                    thm_sol.centroids[:, 1].max(),
+                )
+                y_min, y_max = (
+                    thm_sol.centroids[:, 0].min(),
+                    thm_sol.centroids[:, 0].max(),
+                )
+                z_min = max(
+                    thm_sol.centroids[:, 2].min(),
+                    m.idata.other.rsv_top - 500.,
+                )
+                z_max = min(
+                    thm_sol.centroids[:, 2].max(),
+                    m.idata.other.rsv_bottom + 500.,
+                )
+            points_x = np.linspace(x_min, x_max, plot_nx)
+            points_y = np.array([0.5 * (y_min + y_max)])
+            points_z = np.linspace(z_min, z_max, plot_nz)
+        else:
+            points_x = np.unique(g.centroids[:, 1])
+            points_y = np.array([0.])
+            points_z = np.unique(g.centroids[:, 2])
 
         if '2d_slices_41_71' in modes: # while reading a coarser grid as sources, evaluate at finer grid centers
             # replace points_x by ones from the finer grid
@@ -734,16 +1005,26 @@ def run_geomech_proxy(case, physics_type='single_phase',
             Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
             points_x = (Xc[1:] + Xc[:-1]) * 0.5 # centers
 
-        # cut points far from the reservoir for better zoom in plots
-        points_x = points_x[reduce(np.logical_and, [points_x > -5000., points_x < 5000.])]
-        points_z = points_z[reduce(np.logical_and, [points_z > 1400., points_z < 3400.])]
+        if not use_adaptive_proxy:
+            # cut points far from the reservoir for better zoom in plots
+            points_x = points_x[
+                reduce(np.logical_and, [points_x > -5000., points_x < 5000.])
+            ]
+            points_z = points_z[
+                reduce(np.logical_and, [points_z > 1400., points_z < 3400.])
+            ]
 
-        points_x_3d, points_y_3d, points_z_3d = np.meshgrid(points_x, points_y, points_z)
+        points_x_3d, points_y_3d, points_z_3d = np.meshgrid(
+            points_x, points_y, points_z, indexing='ij'
+        )
 
         print('plotting 2D slices, n_eval_points =', points_x.size * points_y.size * points_z.size, 'n_src_points = ', g.centroids[:, 0].size)
         p_nx, p_ny, p_nz = points_x.size, points_y.size, points_z.size
         points = np.zeros((3, points_x_3d.size))
-        points[0, :], points[1, :], points[2, :] = points_x_3d.flatten(), points_y_3d.flatten(), points_z_3d.flatten()
+        # Proxy coordinates use Y, X, Z ordering.
+        points[0, :] = points_y_3d.flatten()
+        points[1, :] = points_x_3d.flatten()
+        points[2, :] = points_z_3d.flatten()
 
         dp = gd((g.centroids[:, 1], g.centroids[:, 0], g.centroids[:, 2]), \
             thm_sol.delta_pressure, (points[1, :], points[0, :], points[2, :]), method='nearest', fill_value=0.).reshape((p_nx, p_ny, p_nz))
@@ -752,10 +1033,34 @@ def run_geomech_proxy(case, physics_type='single_phase',
             dt = gd((g.centroids[:, 1], g.centroids[:, 0], g.centroids[:, 2]), \
                 thm_sol.delta_temperature, (points[1, :], points[0, :], points[2, :]), method='nearest', fill_value=0.).reshape((p_nx, p_ny, p_nz))
             array_dict.update({'Temperature change, K':dt[:,0,:].transpose()})
-        plot_contour(array_dict, points_x, points_z, output_folder=output_folder, slice = 'XZ')
+        plot_contour(array_dict, points_x, points_z, output_folder=output_folder, slice='XZ', idata=m.idata)
         #plot_imshow(array_dict, points_x, points_z, output_folder=output_folder, slice = 'XZ')
 
-        if True: # run proxy and save PKLs
+        # if caching is requested but the pkl is missing, fall back to recomputing the proxy
+        pkl_path = os.path.join(output_folder, "displs_stresses_prx.pkl")
+        cached_data = None
+        if read_from_cache and not os.path.exists(pkl_path):
+            print(f'read_from_cache=True but "{pkl_path}" not found; '
+                  f'forcing read_from_cache=False (recomputing proxy)')
+            read_from_cache = False
+        elif read_from_cache:
+            import pickle
+            with open(pkl_path, "rb") as f:
+                cached_data = pickle.load(f)
+            expected_method = (
+                'adaptive_tetra_v3_mesh_bounds'
+                if use_adaptive_proxy and use_mesh_plot_bounds
+                else 'adaptive_tetra_v1'
+                if use_adaptive_proxy
+                else 'legacy_prism'
+            )
+            expected_shape = (p_nx, p_ny, p_nz)
+            if (cached_data.get('proxy_method') != expected_method
+                    or cached_data.get('grid_shape') != expected_shape):
+                print('Cached proxy method/grid does not match; recomputing proxy')
+                read_from_cache = False
+
+        if not read_from_cache: # run proxy and save PKLs
             print('computing proxy...')
             ux_prx, uy_prx, uz_prx = get_proxy_displs(points)
             ux_prx = ux_prx.reshape((p_nx, p_ny, p_nz))
@@ -774,13 +1079,21 @@ def run_geomech_proxy(case, physics_type='single_phase',
             import pickle
             data = {'ux_prx': ux_prx, 'uy_prx': uy_prx, 'uz_prx': uz_prx,
                     'sxx_prx': sxx_prx, 'syy_prx': syy_prx, 'szz_prx': szz_prx,
-                    'sxx_total_prx': sxx_total_prx, 'syy_total_prx': syy_total_prx, 'szz_total_prx': szz_total_prx}
-            with open(os.path.join(output_folder, "displs_stresses_prx.pkl"), "wb") as f:
+                    'sxx_total_prx': sxx_total_prx,
+                    'syy_total_prx': syy_total_prx,
+                    'szz_total_prx': szz_total_prx,
+                    'proxy_method': (
+                        'adaptive_tetra_v3_mesh_bounds'
+                        if use_adaptive_proxy and use_mesh_plot_bounds
+                        else 'adaptive_tetra_v1'
+                        if use_adaptive_proxy
+                        else 'legacy_prism'
+                    ),
+                    'grid_shape': (p_nx, p_ny, p_nz)}
+            with open(pkl_path, "wb") as f:
                 pickle.dump(data, f)
         else: # do not rerun proxy, read from PKl files (if only plotting is changed)
-            import pickle
-            with open(os.path.join(output_folder, "displs_stresses_prx.pkl"), "rb") as f:
-                data = pickle.load(f)
+            data = cached_data
             ux_prx = data['ux_prx']
             uy_prx = data['uy_prx']
             uz_prx = data['uz_prx']
@@ -832,10 +1145,10 @@ def run_geomech_proxy(case, physics_type='single_phase',
         else:
             vlims_prx = vlims_thm = None
 
-        plot_contour(array_dict, points_x, points_z, output_folder=output_folder, slice='XZ', vlims=vlims_prx)
+        plot_contour(array_dict, points_x, points_z, output_folder=output_folder, slice='XZ', vlims=vlims_prx, idata=m.idata)
         #plot_imshow(array_dict, points_x, points_z, output_folder=output_folder, slice = 'XZ')
 
-        plot_contour(array_dict_thm, points_x, points_z, output_folder=output_folder, slice='XZ', vlims=vlims_thm)
+        plot_contour(array_dict_thm, points_x, points_z, output_folder=output_folder, slice='XZ', vlims=vlims_thm, idata=m.idata)
 
         print('Array ranges:')
         for b in base_names:
@@ -854,9 +1167,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
             #rd = np.where(np.abs(array_dict_thm[f'{b}_thm']) > 0, (d / np.abs(array_dict_thm[f'{b}_thm'])) * 100., 0.)
             array_dict_diff[f'{b} - Difference'] = d
             #array_dict_diff[f'{b} - Relative Difference'] = rd
-        plot_contour(array_dict_diff, points_x, points_z, output_folder=output_folder, slice='XZ')
-
-        plot_mesh_skeleton(output_folder)
+        plot_contour(array_dict_diff, points_x, points_z, output_folder=output_folder, slice='XZ', idata=m.idata)
 
         if False:
             print('Relative difference THM vs Proxy (% of |THM|):')
@@ -912,11 +1223,11 @@ def run_geomech_proxy(case, physics_type='single_phase',
         vlims_cmp = {'delta_pressure, MPa - THM 41': (vmin, vmax),
                      'delta_pressure, MPa - THM 71': (vmin, vmax)}
         plot_contour({'delta_pressure, MPa - THM 41': dp_41[:, 0, :].transpose()},
-                     pts_x, pts_z, output_folder=output_folder, slice='XZ', vlims=vlims_cmp)
+                     pts_x, pts_z, output_folder=output_folder, slice='XZ', vlims=vlims_cmp, idata=m.idata)
         plot_contour({'delta_pressure, MPa - THM 71': dp_71[:, 0, :].transpose()},
-                     pts_x, pts_z, output_folder=output_folder, slice='XZ', vlims=vlims_cmp)
+                     pts_x, pts_z, output_folder=output_folder, slice='XZ', vlims=vlims_cmp, idata=m.idata)
         plot_contour({'delta_pressure, MPa - Difference (71-41)': (dp_71 - dp_41)[:, 0, :].transpose()},
-                     pts_x, pts_z, output_folder=output_folder, slice='XZ')
+                     pts_x, pts_z, output_folder=output_folder, slice='XZ', idata=m.idata)
 
     array_names = []
     if 'plot_vertic_line' in modes: # 1D plots (along vertical lines at points_xy)
@@ -934,7 +1245,11 @@ def run_geomech_proxy(case, physics_type='single_phase',
             #z_max = thm_sol.centroids[:, 2].max() #+ 1000.
             z_step = 5.  # m.
             #z_range_all = np.arange(z_min, z_max+1., z_step)# more points
-            z_range_all = m.idata.other.Zc
+            if hasattr(m.idata.other, 'Zc'):
+                z_range_all = m.idata.other.Zc
+            else:
+                z_min, z_max = thm_sol.bounds[2]
+                z_range_all = np.arange(z_min, z_max + 0.5 * z_step, z_step)
 
             z_interp_eps = 5. # m # remove points close to rsv boundary, as they create descrepancies even with 'nearest' interpolation
             z_range_all_filter = reduce(np.logical_and, [np.fabs(z_range_all - m.idata.other.rsv_top) > z_interp_eps, np.fabs(z_range_all - m.idata.other.rsv_bottom) > z_interp_eps])
@@ -962,7 +1277,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
     save_html_prx_vs_thm(base_names, output_folder=output_folder,
                          locs=list(points_xy.keys()), array_names=array_names, suffix_1d='all')
     save_pdf_report(base_names, output_folder=output_folder,
-                    locs=list(points_xy.keys()), array_names=array_names, suffix_1d='all')
+                    locs=list(points_xy.keys()), array_names=array_names, suffix_1d='all', read_from_cache=read_from_cache)
 
     # print vert displs and stresses change at a point
     if 'print_at_point' in modes:
@@ -979,7 +1294,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
         dsxx_total_thm = get_thm_total_stress(point)[0]
         #dsxx_thm2 = get_thm_stress_by_deriv(point) * bars2mpa
         dsxx_total_prx = get_proxy_strain_stress(point)[3][0]  # need to X<->Y if non-symmetric
-        dsxx_total_prx += m.idata.rock.biot * dp # get total from effective stress
+        dsxx_total_prx += g.biot * dp # get total from effective stress
 
         print('Compare at the point=', point)
         print('\tTHM   ', 'delta_P=', fmt(dp), 'MPa')
@@ -993,7 +1308,7 @@ def run_geomech_proxy(case, physics_type='single_phase',
         print('THM delta_pressure_max=', np.fabs(thm_sol.delta_pressure).max())
         print('THM delta_total_Sxx_thm_max / delta_pressure_max=', fmt(np.fabs(thm_sol.delta_total_Sxx_last).max() / np.fabs(thm_sol.delta_pressure).max()))  # MAX
         print('THM delta_total_Sxx_thm_point / delta_pressure_point =', fmt(dsxx_total_thm / dp)) # at point
-        print('Analytical delta_total_Sxx/dp =', m.idata.rock.biot * (1 - 2 * m.idata.rock.nu)/(1 - m.idata.rock.nu))
+        print('Analytical delta_total_Sxx/dp =', g.biot * (1 - 2 * g.poisson)/(1 - g.poisson))
 
     if 'check_initial' in modes: # check initial pressure and stress for THM
         max_depth = thm_sol.bounds[2][1]  # max z m
@@ -1019,19 +1334,20 @@ if __name__ == '__main__':
     #cases += ['7_7_5']  # for debugging
     #cases += ['17_17_15'] # for testing
 
-    #cases += ['41_41_66'] # without refinement
+    # cases += ['41_41_66'] # without refinement
     #cases += ['71_71_66'] #refined middle and tips
-    #cases += ['71_71_90']  # z 0 - 5 km more refined around rsv
-    cases += ['83_83_90']
+    #cases += ['71_71_90']  #
+    #cases += ['83_83_90'] # mesh is horizontally refined at inj well location
+    #cases += ['97_97_90']   # mesh is horizontally refined at doublet locations
+    cases += ['case_5']
 
     #uniform_props = True
     uniform_props = False  # reservoir and non-reservoir in surrounding
 
+    #thermal = False
+    thermal = True
+
     physics_types_list = []
-
-    thermal = False
-    #thermal = True
-
     if not thermal:
         physics_types_list += ['single_phase']
     else:
@@ -1053,23 +1369,34 @@ if __name__ == '__main__':
     sim_time = 365.25 * n_years
     report_step = 365.25 / 4
 
+    def get_timestep_index(t_years):
+        return int((t_years * 365.25) / report_step)
+
     # which timestep to read from vtk (delta p,T for proxy and u,stress for comparison)
-    timestep = int((n_years * 365.25) / report_step)  # last or pre-last timestep
+    timestep_list = [get_timestep_index(n_years)]  # last or pre-last timestep
+
+    # process a few timesteps: 1 year, 10 years, 20 years, +last from above
+    if thermal:
+        for y in [1, 10]:
+            timestep_list += [get_timestep_index(y)]
 
     # short run (should be then also enabled in main.py for proper comparison)
     #sim_time = 30 # days
     #report_step = sim_time  # days
-    #timestep = 1
+    #timestep_list = [1]
 
-    #run_thm = True
-    run_thm = False
+    print('timestep_list for proxy :', timestep_list)
 
-    #generate_mesh=False # this is not working now.. as self.Xc is not initializing
-    generate_mesh=True
+    #run_thm = True  # runs THM first, then Proxy
+    run_thm = False # don't recompute THM (use vtk files from its previous run)
+
+    generate_mesh=False # skips mesh generation (uses a mesh from previous run), use if nothing mesh related was changed
+    #generate_mesh=True
 
     modes = []
     #modes += ['check_initial'] # check initial pressure and stress for THM
     #modes += ['print_at_point'] # compare both THM and proxy versus analytical solution
+    modes += ['plot_horiz_line']
     modes += ['plot_vertic_line']
     modes += ['plot_2d_slices']
     #modes += ['2d_slices_41_71'] # coarse mesh THM (nx=41) => finer eval points in proxy (nx=71) and compare it against finer THM (nx=71); only if case ='41_41_66'
@@ -1078,32 +1405,41 @@ if __name__ == '__main__':
     # for proxy:
     n_threads = 24  # CPU cores
     use_gpu = False  # CUDA
+    read_from_cache = True # read stresses computed from the previous proxy run from .pkl file (useful when only ploting was changed)
+    #read_from_cache = False
 
     for case in cases:
-        for physics_type in physics_types_list:
-            for wells_type in wells_types_list:
-                print('\n\n' + '='*30)
-                print(physics_type, wells_type)
+        for physics_type, wells_type in zip(physics_types_list, wells_types_list):
+            print('\n\n' + '='*30)
+            print(physics_type, wells_type)
 
-                # run THM with no mechanics->flow impact
-                t1 = datetime.now()
-                if run_thm:
-                    run(model_folder=case, physics_type=physics_type,
-                        uniform_props=uniform_props, wells_type=wells_type,
-                        decouple_geomech=True, generate_mesh=generate_mesh,
-                        report_step=report_step, sim_time=sim_time)
-                t2 = datetime.now()
-                thm_time = t2 - t1
+            # run THM with no mechanics->flow impact
+            t1 = datetime.now()
+            if run_thm:
+                run(model_folder=case, physics_type=physics_type,
+                    uniform_props=uniform_props, wells_type=wells_type,
+                    decouple_geomech=True, generate_mesh=generate_mesh,
+                    report_step=report_step, sim_time=sim_time,
+                    plot_vtk_timesteps=[0, -1]) # plot initial and last timesteps
+            t2 = datetime.now()
+            thm_time = t2 - t1
 
-                # run geomech proxy
+            # run geomech proxy
+            if 'plot_horiz_line' in modes:
+                # combined delta_pressure along X (Y=0, Z=2200) over all timesteps
+                plot_delta_pressure_along_x(case=case, physics_type=physics_type,
+                                            wells_type=wells_type, timesteps=[1,2,3,4],
+                                            y=0.0, z=2200.0, report_step=report_step)
+            for timestep in timestep_list:
                 print('The timestep for plots and proxy-apply:', timestep)
                 t1 = datetime.now()
                 run_geomech_proxy(case=case, physics_type=physics_type,
                                   wells_type=wells_type, modes=modes,
-                                  timestep=timestep, n_threads=n_threads, use_gpu=use_gpu)
+                                  timestep=timestep, n_threads=n_threads, use_gpu=use_gpu,
+                                  read_from_cache=read_from_cache)
                 t2 = datetime.now()
                 proxy_time = t2 - t1
 
-                print('case', case, physics_type, wells_type, 'done')
-                print('THM   time', thm_time)
-                print('proxy time', proxy_time)
+            print('case', case, physics_type, wells_type, 'done')
+            print('THM   time', thm_time)
+            print('proxy time', proxy_time) # counts only the last timestep

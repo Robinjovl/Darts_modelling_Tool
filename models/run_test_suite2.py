@@ -116,6 +116,7 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
     test_dirs_mech += ['1ph_1comp_poroelastic_convergence']  # NE = 2
     test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
+    
     if platform == 'cpu':
         test_dirs_mech += ['SPE10_mech']
         physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
@@ -125,6 +126,12 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
             for mesh in meshes_list:
                 test_args_mech_spe10.append([mesh, physics])
         test_args_mech += [test_args_mech_spe10]
+        test_dirs_mech += ['THM_vs_geomech_proxy']
+        test_args_mech += [[
+                    ['case_1',   'single_phase_thermal'], # case_1 is checked whether it runs only: its reference is too large (see CASES_WITHOUT_REF there)
+                    ['17_17_15', 'single_phase'],
+                    ['17_17_15', 'single_phase_thermal'],
+                ]]
 
     if heavy_models:
         test_dirs_mech += ['displaced_fault_reactivation']

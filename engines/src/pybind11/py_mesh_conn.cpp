@@ -55,7 +55,9 @@ void pybind_mesh_conn(py::module &m)
 	  .def("reverse_and_sort_pm_mech_discretizer", &conn_mesh::reverse_and_sort_pm_mech_discretizer)
 	  .def("reverse_and_sort_pme_mech_discretizer", &conn_mesh::reverse_and_sort_pme_mech_discretizer)
 	  .def("add_wells", &conn_mesh::add_wells)
-	  .def("add_wells_mpfa", &conn_mesh::add_wells_mpfa)
+	  .def("add_wells_mpfa", &conn_mesh::add_wells_mpfa,
+	       "Add multi-segment well connections with optional gravity correction",
+	       "wells"_a, "P_VAR"_a, "g_constant"_a = 9.80665e-5)
 	  .def("init_grav_coef", &conn_mesh::init_grav_coef, "Initialize gravity coefficients for every connection", "grav_const"_a = 9.80665e-5)
 	  .def("init_spe", &conn_mesh::init_spe, "Initialize specific potential energy for every cell", "grav_acceleration_for_spe"_a = 0.)
 	  .def("get_res_tran", &conn_mesh::get_res_tran, "Get reservoir transmissibilities", "tran"_a, "tranD"_a)

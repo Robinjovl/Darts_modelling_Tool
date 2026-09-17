@@ -738,7 +738,10 @@ int engine_pm_cpu::assemble_jacobian_array_time_dependent_discr(value_t _dt, std
 		for (uint8_t d = 0; d < ND_; d++)
 		{
 			Jac[N_VARS_SQ * diag_ind[w->well_head_idx] + (U_VAR + d) * N_VARS + U_VAR + d] = 1.0;
-			Jac[N_VARS_SQ * diag_ind[w->well_body_idx] + (U_VAR + d) * N_VARS + U_VAR + d] = 1.0;
+			for (index_t p = 0; p < w->n_segments; p++)
+			{
+				Jac[N_VARS_SQ * diag_ind[w->well_body_idx + p] + (U_VAR + d) * N_VARS + U_VAR + d] = 1.0;
+			}
 		}
 	}
 	return 0;
@@ -1069,7 +1072,12 @@ int engine_pm_cpu::assemble_jacobian_array(value_t _dt, std::vector<value_t> &X,
 		for (uint8_t d = 0; d < ND_; d++)
 		{
 			Jac[N_VARS_SQ * diag_ind[w->well_head_idx] + (U_VAR + d) * N_VARS + U_VAR + d] = 1.0;
-			Jac[N_VARS_SQ * diag_ind[w->well_body_idx] + (U_VAR + d) * N_VARS + U_VAR + d] = 1.0;
+			RHS[N_VARS * w->well_head_idx + U_VAR + d] = X[N_VARS * w->well_head_idx + U_VAR + d];
+			for (index_t p = 0; p < w->n_segments; p++)
+			{
+				Jac[N_VARS_SQ * diag_ind[w->well_body_idx + p] + (U_VAR + d) * N_VARS + U_VAR + d] = 1.0;
+				RHS[N_VARS * (w->well_body_idx + p) + U_VAR + d] = X[N_VARS * (w->well_body_idx + p) + U_VAR + d];
+			}
 		}
 	}
 	return 0;

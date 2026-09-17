@@ -120,6 +120,9 @@ class UnstructReservoir(UnstructReservoirMech):
 
                 self.pm.init(self.unstr_discr.mat_cells_tot, self.unstr_discr.frac_cells_tot,
                              index_vector(self.ref_contact_cells))
+                if hasattr(self.pm, 'check_displacement_diagonal'):  # older darts builds lack it
+                    # calc_all_fluxes_once runs this check; a cache hit skips it
+                    self.pm.check_displacement_diagonal()
         else:
             # initialize and run discretizer
             dt = 0

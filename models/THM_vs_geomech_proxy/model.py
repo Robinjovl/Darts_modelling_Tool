@@ -1,24 +1,51 @@
 from scipy.interpolate import interp1d
 import numpy as np
-import os
-
 from darts.physics.base.property_container import PropertyContainer
-from darts.physics.dead_oil import DeadOilProperties
-from darts.physics.properties.flash import SinglePhase
-from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
-from darts.physics.properties.enthalpy import EnthalpyBasic
-from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
-from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus
-from darts.input.input_data import InputData
 from darts.engines import well_control_iface
 from darts.models.thmc_model import THMCModel
-from darts.physics.mech.poroelasticity import Poroelasticity
-from darts.engines import value_vector, sim_params
-from darts.tools.keyword_file_tools import load_single_keyword
+from darts.engines import sim_params
 from darts.physics.base.initialize import Initialize
+from darts.physics.properties.viscosity import MaoDuan2009
 
 from reservoir import UnstructReservoirCustom
+
+class MaoDuan2009Shifted(MaoDuan2009):
+    """MaoDuan2009 viscosity driven by the model's relative temperature scale.
+
+    MaoDuan2009 requires ABSOLUTE temperature in Kelvin, but this model runs on a
+    relative temperature scale with baseline 0 (OBL range -50..50). This wrapper maps
+    the model baseline T=0 to t_abs0 (default 373.15 K), so MaoDuan2009 always sees a
+    physical absolute temperature (~323..423 K over the OBL range) and returns a
+    positive viscosity instead of the negative values that previously stalled the well
+    residual. See set_input_data() t_ref note.
+    """
+    def __init__(self, components, t_abs0=373.15, ions=None, combined_ions=None):
+        super().__init__(components, ions, combined_ions)
+        self.t_abs0 = t_abs0
+
+    def evaluate(self, pressure, temperature, x, rho):
+        return super().evaluate(pressure, temperature + self.t_abs0, x, rho)
+
+
+class DensityBasicTdep(DensityBasic):
+    """DensityBasic + linear thermal expansion.
+    rho(p,T) = dens0 * (1 + compr*(p - p0) - thermal_expn*(T - t0))
+    Unlike MaoDuan2009/Spivey2004, it does NOT need absolute Kelvin: t0 is the
+    model's baseline temperature (this model uses a relative scale with baseline 0),
+    so it stays well-behaved over the operating range and converges.
+    """
+    def __init__(self, dens0, compr=0.0, p0=1.0, thermal_expn=0.0, t0=0.0):
+        super().__init__(dens0, compr, p0)
+        self.thermal_expn = thermal_expn
+        self.t0 = t0
+
+    def evaluate(self, pressure, temperature: float = None, x: list = None):
+        rho = super().evaluate(pressure, temperature, x)
+        if temperature is not None and self.thermal_expn != 0.0:
+            rho *= (1.0 - self.thermal_expn * (temperature - self.t0))
+        return rho
+
 
 def fmt_e(x : float):
     return "{:.3e}".format(x) if np.isscalar(x) else str(x)
@@ -27,21 +54,22 @@ def fmt(x : float):
     return "{:.3}".format(x) if np.isscalar(x) else str(x)
 
 class Model(THMCModel):
-    def __init__(self, model_folder, physics_type='dead_oil',
+    def __init__(self, model_folder, physics_type='single_phase',
                  uniform_props=False, wells_type=None,
-                 decouple_geomech=False, generate_mesh=False, dummy='no'):
-        self.model_folder = os.path.join('meshes', model_folder)
+                 decouple_geomech=False, generate_mesh=False, dummy='no',
+                 solver_type='by_env_var', cache_discretization=None):
+        self.model_folder = model_folder
+        # reuse the discretization of an earlier run with the same input, see
+        # UnstructReservoirCustom.discretization_cache_key; None: on unless DARTS_DISCR_CACHE=0
+        self.cache_discretization = cache_discretization
         self.uniform_props = uniform_props
         self.physics_type = physics_type
         self.discretizer_name = 'mech_discretizer'
-        if self.physics_type == 'single_phase_thermal' or \
-            self.physics_type == 'dead_oil_thermal':
-            self.thermal = True
-        else:
-            self.thermal = False
+        self.thermal = self.physics_type == 'single_phase_thermal'
         self.decouple_geomech = decouple_geomech
         self.generate_mesh = generate_mesh
         self.wells_type = wells_type
+        self.solver_type = solver_type  # 'superlu', 'fs_cpr', 'by_env_var'
 
         if dummy == 'yes':  # save time for proxy run
             return
@@ -76,330 +104,50 @@ class Model(THMCModel):
         self.linear_solver.spec = GMRESSolverSpec(prec=fs_cpr, tolerance=1e-8, max_iterations=5000, restart=50,
                                   proprietary_linear_type=sim_params.cpu_gmres_fs_cpr)
         super().set_solver()
-        self.ts_control.dt_first = 0.0001
-        self.ts_control.dt_mult = 2
+        self.ts_control.dt_first = 0.01
+        self.ts_control.dt_mult = 8
         self.ts_control.dt_max = 5
         self.nonlinear_solver.spec.tolerance = 1e-6
-        self.params.tolerance_linear = 1e-8
+        self.params.tolerance_linear = self.linear_solver.spec.tolerance
+        self.params.max_i_linear = self.linear_solver.spec.max_iterations
         self.nonlinear_solver.spec.max_iterations = 20
 
     def set_reservoir(self):
+        mesh_folder = self.idata.other.mesh_dir if self.idata.other.mesh_dir is not None else self.model_folder
         self.reservoir = UnstructReservoirCustom(timer=self.timer, fluid_vars=self.physics.vars,
-                                                 idata=self.idata, model_folder=self.model_folder,
-                                                 uniform_props=self.uniform_props, generate_mesh=self.generate_mesh)
+                                                 idata=self.idata, model_folder=mesh_folder,
+                                                 uniform_props=self.uniform_props, generate_mesh=self.generate_mesh,
+                                                 cache_discretization=self.cache_discretization)
 
     def set_input_data(self):
-        # figure out nx, ny, nz
-        dims=os.path.basename(self.model_folder).split('_')
-        nx, ny, nz = int(dims[-3]), int(dims[-2]), int(dims[-1])
+        from set_case import set_input_data
 
-        # set properties
-        porosity =  0.1
-        #permeability = 1000 # [mD] # this matched thm and analytical solution
-        permeability = 10 # [mD] # this matches proxy and thm
-
-        E = 12 # Young modulus [GPa]
-        #E = 22  # GPa, Dinantian carbonate
-        #E = 12  # GPa, Indiana Limestone
-
-        p_init = 300 * np.ones(nx * ny * nz)  # [bar]
-
-        if 'thermal' in self.physics_type:
-            self.idata = InputData(type_hydr='thermal', type_mech='thermoporoelasticity', init_type = 'gradient')
-        else:
-            self.idata = InputData(type_hydr='isothermal', type_mech='poroelasticity', init_type = 'gradient')
-
-        self.idata.other.nx, self.idata.other.ny, self.idata.other.nz = nx, ny, nz
-
-        self.idata.other.perm_frac = False
-        if self.idata.other.perm_frac:
-            # conductive fracture
-            porosity = 1.0
-            permeability = 1e6 # [mD]
-
-        self.idata.rock.density = 2650. # kg/m63
-        self.idata.rock.porosity = porosity
-        self.idata.rock.permx = self.idata.rock.permy = self.idata.rock.permz = permeability
-        #self.idata.rock.biot = 1  # rock compressibility will be 0
-        self.idata.rock.biot = 0.7  # 0.8 to match dp with geos
-        self.idata.rock.E = 1.e+4 * E  # convert units to bars
-        self.idata.rock.nu = 0.25  # poisson ratio
-
-        # define permeable reservoir geometric boundaries
-        self.idata.other.rsv_top = 2000  # [m]
-        self.idata.other.rsv_bottom = 2400# [m]
-
-        # lateral reservoir boundaries
-        self.idata.other.rsv_xy = 1000.   # m, laterally limited (rsv width will be self.rsv_xy*2)
-        #self.idata.other.rsv_xy = 1e5  # m, "infinite" laterally
-
-        self.idata.other.rsv_x1 = -self.idata.other.rsv_xy
-        self.idata.other.rsv_x2 = self.idata.other.rsv_xy
-        self.idata.other.rsv_y1 = -self.idata.other.rsv_xy
-        self.idata.other.rsv_y2 = self.idata.other.rsv_xy
-        if self.idata.other.perm_frac:
-            self.idata.other.frac_width = 10. # [m]
-            self.idata.other.rsv_y1 = -self.idata.other.frac_width/2.
-            self.idata.other.rsv_y2 = self.idata.other.frac_width/2.
-
-        # rock properties for outside reservoir boundaries part of the mesh
-        self.idata.rock.poro_non_rsv = 0.001
-        #self.idata.rock.perm_non_rsv = 1e-9 # this matched thm and analytical solution
-        self.idata.rock.perm_non_rsv = 0.01   # this matches proxy and thm
-        self.idata.rock.E_non_rsv = self.idata.rock.E  # homogeneous geomech prop
-
-        if self.idata.other.perm_frac:
-            self.idata.rock.poro_non_rsv = 0.1
-            self.idata.rock.perm_non_rsv = 1. # mD
-
-        self.idata.rock.compressibility = get_rock_compressibility(
-            kd=get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu),
-            biot=self.idata.rock.biot, poro0=self.idata.rock.porosity)
-        print('bulk modulus = ', get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu))
-        print('rock compressibility = ', self.idata.rock.compressibility)
-        self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)
-
-        self.idata.rock.th_expn = 1e-5  # [1/K]
-        self.idata.rock.th_expn_orig = self.idata.rock.th_expn  # save this for proxy
-        self.idata.rock.th_expn *= get_bulk_modulus(E=self.idata.rock.E, nu=self.idata.rock.nu)  # Couchy book formula 4.19a, 4.21a
-        self.idata.rock.th_expn *= 3. # Couchy book formula 4.22; from linear to volumetric
-
-        self.idata.rock.thermal_conductivity = 260  # [kJ/m/day/K]
-        self.idata.rock.heat_capacity = 2300  # [kJ/m3/K]
-
-        self.idata.rock.th_expn_poro = 0.0  # mechanical term in porosity update
-
-        # Only for a single-phase physics
-        self.idata.fluid.Mw = 18.015 # water molar weight, [g/mol]
-        self.idata.fluid.compressibility = 4.4e-5  # [1/bar]
-        self.idata.fluid.viscosity = 1.0  # [cP]
-        self.idata.fluid.density = 1000. # [kg/m^3]
-
-        # branch ilshat/fluid_heat_cond
-        self.idata.fluid.thermal_conductivity = 0. # It is not used in the engine # [kJ/m/day/K]
-        #self.idata.fluid.heat_capacity = 2200. #[kJ/m3/K] - different unit than used for rock
-        #self.idata.fluid.heat_capacity *= self.idata.fluid.Mw / self.idata.fluid.density  # convert from [kJ/m3/K] to [kJ/kmol/K]
-        # water: 4170 [kJ/m3/K] or 75.37 [kJ/kmol/K]
-        self.idata.fluid.heat_capacity = 75. #[kJ/kmol/K]
-
-        # initial conditions (p, T gradients)
-
-        # non-zero initial temperature doesn't work properly (doesn't converge, check t_ref implementation)
-        self.idata.initial.reference_depth_for_temperature = 0.  # [m]
-        self.idata.initial.temperature_gradient = 0.#0.03  # [K/m]
-        self.idata.initial.temperature_at_ref_depth = 0.#273.15 + 10  # [K]
-
-        # next 2 params don't affect the initial pressure since will be computed by equilibrium using fluid density
-        # need to set well pressure controls as it is defined before the equilibrium state is evaluated
-        self.idata.initial.pressure_gradient = 0.1  # [bar/m] # this is used only in reservoir.get_reservoir_initial_pressure() => reservoir.p_init
-        #self.idata.initial.reference_depth_for_pressure = 0.  # [m]
-        self.idata.initial.pressure_at_ref_depth = 1.  # [bars]
-
-        if self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
-            self.idata.initial.initial_composition = [0.67]
-
-        # vertical well locations
-        shift = 0. # if a single well - place to the center
-        if self.wells_type == 'doublet':
-            shift = 500. # half well ditance [m]
-        eps_perf = 1 # [m]
-        perf_depth_start = self.idata.other.rsv_top + eps_perf
-        perf_depth_end =  self.idata.other.rsv_bottom - eps_perf
-
-        # as the perf is single, put it to the middle depth of the rsv
-        perf_depth_start = (self.idata.other.rsv_top + self.idata.other.rsv_bottom)*0.5
-
-        #cell_shift = 50.        # 50 - to put into the cell center as (0,0) is a boundary between two cells
-        cell_shift = 0. # if the mesh is centered at (0,0)
-        self.idata.other.prod_well_coords = [cell_shift - shift, cell_shift, perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
-        self.idata.other.inj_well_coords = [cell_shift + shift, cell_shift, perf_depth_start, perf_depth_end] # X, Y, Z1, Z2
-        self.well_init_depth = perf_depth_start
-
-        # well controls
-        self.idata.other.delta_temp_inj = 40 # [K] - delta for temperature control
-        if not self.thermal: # BHP control
-            self.idata.other.delta_p = 10 # bars
-            self.idata.other.wctrl_type = well_control_iface.BHP
-            self.idata.other.well_rate = None
-        else: # RATE control
-            self.idata.other.delta_p = None
-            self.idata.other.wctrl_type = well_control_iface.MASS_RATE # mass or molar rate can be choosen here
-            self.idata.other.well_rate = 2000. # [m^3/day]
-            self.idata.other.well_rate *= self.idata.fluid.density # [kg/day] unit depends on the type at the previous line
-
-        self.idata.mesh.bnd_tags = {}
-        tags = self.idata.mesh.bnd_tags  # short name
-        tags['BND_X-'] = 991
-        tags['BND_X+'] = 992
-        tags['BND_Y-'] = 993
-        tags['BND_Y+'] = 994
-        tags['BND_Z-'] = 995
-        tags['BND_Z+'] = 996
-        mat_tag = 99991
-        self.idata.mesh.matrix_tags = [mat_tag]
-        # merge dicts (for mesh generation)
-        self.idata.mesh.tags = self.idata.mesh.bnd_tags.copy()
-        self.idata.mesh.tags['MATRIX_1'] = mat_tag
-
-        def Xc_from_nx(nx):
-            if nx == 1: # 1 layer
-                Xc_left = np.array([-100])
-            elif nx == 7: # for debugging, -4..4 km XY
-                Xc_left = np.array([-4000, -2000, -1000, -100])
-            elif nx == 17: # -4..4 km XY, dx = 100 m in the reservoir, outside 500-2000 m
-                Xc_left = np.array([-4000, -2000, -1000, -500, -400, -300, -200, -100, -50])
-            elif nx == 83: # rsv corners and near-well (middle) are refined
-                Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1500,-1450,-1400,-1350,-1300,-1250,-1200,-1150] +
-                              [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
-                              np.arange(-800, -100, 100).tolist() +
-                              np.arange(-100, 0, 10).tolist())
-            elif nx == 71: # rsv corners and near-well (middle) are refined
-                Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] +
-                              [-1100, -1050, -1030, -1010, -1000,  -990,  -980, -950, -900] +
-                              np.arange(-800, -100, 100).tolist() +
-                              np.arange(-100, 0, 10).tolist())
-            elif nx == 41: # rsv corners and near-well (middle) are NOT refined
-                Xc_left = np.array([-8000,-6000,-5000,-4000,-3000,-2500,-2000,-1600,-1400,-1200] +
-                              [-1100, -1000, -900] +
-                              np.arange(-800, -100, 100).tolist() + [-50])
-            else:
-                print('not found an option to mesh with nx = ', nx)
-                exit(1)
-
-            Xc = np.hstack([Xc_left, -Xc_left[::-1]]) # add the right part symmetrically
-            return Xc
-
-        Xc = Xc_from_nx(nx)
-        Yc = Xc_from_nx(ny)
-
-        if self.idata.other.perm_frac: # insert to the middle (y=0) a thin layer representing a fracture
-            Yc = np.hstack([Yc[Yc<0], np.array([-self.idata.other.frac_width/2., self.idata.other.frac_width/2.]), Yc[Yc>0]])
-
-        rsv_top = self.idata.other.rsv_top
-        rsv_bottom = self.idata.other.rsv_bottom
-        if nz == 5: # for debugging
-            Zc = np.array([0, 1000, 2000, 2100, 2200, 3000])
-        elif nz == 15:  # dz = 100-1000 m for over and underburden and 20m for the reservoir
-            Zc = np.array([0, 1000, 1500, 2000, 2100, 2120, 2140, 2160, 2180, 2200, 2300, 2500, 3000, 4000, 5000, 6000])
-        elif nz == 29:  # dz = 200 m for over and underburden and 20m for the reservoir
-            Zc = np.hstack([np.arange(0, rsv_top, 200), np.arange(rsv_top, rsv_bottom, 20), np.arange(rsv_bottom, 5000, 200)])
-        elif nz == 37:  # dz = 200 m for over and underburden and 20m for the reservoir
-            Zc = np.hstack([np.arange(0, rsv_top, 150), np.arange(rsv_top, rsv_bottom, 20), np.arange(rsv_bottom, 5000, 150)])
-        elif nz == 53:  # dz = 100 m for over and underburden and 20m for the reservoir
-            Zc = np.hstack([np.arange(0, rsv_top, 100), np.arange(rsv_top, rsv_bottom, 20), np.arange(rsv_bottom, 5000, 100)])
-        elif nz == 57:  # refine a bit upper and lower (50m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
-            Zc = np.hstack([np.arange(0, rsv_top - 100 + 1, 100),
-                                 np.arange(rsv_top - 50, rsv_bottom + 50 + 1, 25),
-                                 rsv_bottom + 100,
-                                 np.arange(rsv_bottom + 200, 5000 + 1, 100)])
-        elif nz == 66:  # refine a bit upper and lower (100m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
-            Zc = np.hstack([np.arange(0, rsv_top - 100 + 1, 100),
-                                 np.arange(rsv_top - 50, rsv_bottom + 50 + 1, 25),
-                                 rsv_bottom + 100,
-                                 np.arange(rsv_bottom + 200, 5000 + 1, 100)])
-        elif nz == 90:  # refine a bit upper and lower (500m) reservoir as well, dz = 100 m for over and underburden and 25m for the reservoir
-            Zc = np.hstack([np.arange(0, rsv_top - 500 + 1, 100),
-                                 np.arange(rsv_top - 450, rsv_bottom + 450 + 1, 25),
-                                 rsv_bottom + 500,
-                                 np.arange(rsv_bottom + 600, 5000 + 1, 100)])
-        else:
-            print('not found an option to mesh with nz = ', nz)
-            exit(1)
-
-        self.idata.other.Xc = Xc
-        self.idata.other.Yc = Yc
-        self.idata.other.Zc = Zc
-
-        self.idata.obl.n_points = 400
-        self.idata.obl.zero = 1e-9
-        self.idata.obl.min_p = 0.0
-        self.idata.obl.max_p = 1000.
-        self.idata.obl.min_t = -50.#273.15
-        self.idata.obl.max_t = 50.#273.15 + 300
-        self.idata.obl.min_z = self.idata.obl.zero
-        self.idata.obl.max_z = 1 - self.idata.obl.zero
-        self.idata.obl.epsilon_z = 1e-10
+        self.idata = set_input_data(
+            case=self.model_folder,
+            model_folder=self.model_folder,
+            physics_type=self.physics_type,
+            wells_type=self.wells_type,
+        )
 
         super().set_input_data()
+        return
+
 
     def set_physics(self):
-        p_ref = 350.0
-        t_ref = 300.0
-
+        super().set_physics()
         if self.physics_type == 'single_phase':
-            Mw = [self.idata.fluid.Mw]
-            components = ['H2O']
-            phases = ['wat']
-            property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                                   Mw=Mw, eps_z=self.idata.obl.epsilon_z, temperature=t_ref)
-
-            """ properties correlations """
-            property_container.flash_ev = SinglePhase(nc=1)
-            property_container.density_ev = dict([('wat', DensityBasic(compr=self.idata.fluid.compressibility,
-                                                                       dens0=self.idata.fluid.density,
-                                                                       p0=p_ref))])
-            property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
-
-            property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
-            # rock compressibility is treated inside engine
-            property_container.rock_compr_ev = ConstFunc(1.0)
+            pass
         elif self.physics_type == 'single_phase_thermal':
-            components = ['H2O']
-            phases = ['wat']
-            Mw = [self.idata.fluid.Mw]
-
-            property_container = PropertyContainer(phases_name=phases, components_name=components,
-                                                   Mw=Mw, eps_z=self.idata.obl.epsilon_z)
-
-            """ properties correlations """
-            property_container.flash_ev = SinglePhase(nc=1)
-            property_container.density_ev = dict([('wat', DensityBasic(compr=self.idata.fluid.compressibility,
-                                                                       dens0=self.idata.fluid.density,
-                                                                       p0=p_ref))])
-            property_container.viscosity_ev = dict([('wat', ConstFunc(self.idata.fluid.viscosity))])
-
-            property_container.rel_perm_ev = dict([('wat', ConstFunc(1.0))])
-            # rock compressibility is treated inside engine
-            property_container.rock_compr_ev = ConstFunc(1.0)
-
-            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=self.idata.rock.heat_capacity, tref=t_ref))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0, tref=t_ref)  #TODO use hcap from idata? see https://gitlab.com/open-darts/open-darts/-/issues/19
-            property_container.conductivity_ev = dict([('wat', ConstFunc(1.0))])
-        elif self.physics_type == 'dead_oil' or self.physics_type == 'dead_oil_thermal':
-            components = ['w', 'o']
-            phases = ['wat', 'oil']
-            self.cell_property = ['pressure'] + ['water']
-
-            property_container = ModelProperties(phases_name=phases, components_name=components,
-                                                 Mw=np.ones(len(phases)), eps_z=self.idata.obl.epsilon_z,
-                                                 temperature=None)
-
-            # Define property evaluators based on custom properties
-            property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
-                                                  ('oil', DensityBasic(compr=5e-3, dens0=50))])
-            property_container.viscosity_ev = dict([('wat', ConstFunc(0.3)),
-                                                    ('oil', ConstFunc(0.03))])
-            property_container.rel_perm_ev = dict([('wat', PhaseRelPerm("gas", 0.1, 0.1)),
-                                                   ('oil', PhaseRelPerm("oil", 0.1, 0.1))])
-            property_container.enthalpy_ev = dict([('wat', EnthalpyBasic(hcap=4.18)),
-                                                   ('oil', EnthalpyBasic(hcap=0.035))])
-            property_container.conductivity_ev = dict([('wat', ConstFunc(1.)),
-                                                       ('oil', ConstFunc(1.))])
-            property_container.rock_energy_ev = EnthalpyBasic(hcap=1.0)
-
-        property_container.rock_density_ev = ConstFunc(self.idata.rock.density)
-        # create physics
-        state_spec = Poroelasticity.StateSpecification.PT if self.thermal else Poroelasticity.StateSpecification.P
-        self.physics = Poroelasticity(components, phases, self.timer, state_spec=state_spec, n_points=self.idata.obl.n_points,
-                                      min_p=self.idata.obl.min_p, max_p=self.idata.obl.max_p,
-                                      min_z=self.idata.obl.min_z, max_z=self.idata.obl.max_z,
-                                      epsilon_z=self.idata.obl.epsilon_z,
-                                      min_t=self.idata.obl.min_t, max_t=self.idata.obl.max_t,
-                                      discretizer=self.discretizer_name)
-        self.physics.add_property_region(property_container)
-
-        self.physics.init_physics(discr_type=self.discretizer_name, platform='cpu')
-
+            # pass
+            # MaoDuan2009 requires ABSOLUTE temperature in Kelvin; this model runs on a relative
+            # temperature scale with baseline 0 (OBL range -50..50). MaoDuan2009Shifted maps the
+            # model baseline T=0 to 373.15 K (assume 100 degrees C in the reservoir)
+            # so the correlation always sees a physical absolute temperature
+            # and returns a positive viscosity. See set_input_data() t_ref note.
+            components = self.physics.components
+            property_container = self.physics.property_containers[0]
+            property_container.viscosity_ev = dict([('wat', MaoDuan2009Shifted(components, t_abs0=373.15))])
+            property_container.density_ev = dict([('wat', DensityBasicTdep(dens0=1000))])
         return
 
     def set_wells(self):
@@ -420,7 +168,7 @@ class Model(THMCModel):
             well_names = ['PRD1', 'INJ1']
             well_coords = np.array([self.idata.other.prod_well_coords, self.idata.other.inj_well_coords])
 
-        print('well_coords:', well_coords, 'well depth=', self.well_init_depth)
+        print('well_coords:', well_coords)
         print('centroids_mean depth:', centroids_3d[:, 2].mean())
 
         self.well_cell_ids = []
@@ -430,13 +178,32 @@ class Model(THMCModel):
 
         step_z_perf = 1 # [m] should be smaller that cell dz
 
+        # Restrict nearest-cell matching to explicitly allowed
+        # physical tags so a tiny centroid-distance difference cannot put a
+        # perforation into overburden or underburden.
+        perforation_tags = getattr(self.idata.other, 'well_perforation_tags', None)
+        if perforation_tags is None:
+            candidate_ids = np.arange(self.reservoir.n_matrix, dtype=int)
+        else:
+            matrix_tags = np.asarray(self.reservoir.tags[:self.reservoir.n_matrix])
+            candidate_ids = np.flatnonzero(np.isin(matrix_tags, perforation_tags))
+            if candidate_ids.size == 0:
+                raise ValueError(
+                    f'No matrix cells found with well perforation tags {perforation_tags}'
+                )
+
         for i, coord in enumerate(well_coords): # process each well
             # find mesh cells which
             z1, z2 = coord[2], coord[3]
             z_points = np.arange(z1, z2, step_z_perf)
             ids = set()
             for z in z_points: # find a cell with the closest center
-                cell = ((centroids_3d[:, 0] - coord[0]) ** 2 + (centroids_3d[:, 1] - coord[1]) ** 2 + (centroids_3d[:, 2] - z) ** 2).argmin()
+                distances_sq = (
+                    (centroids_3d[candidate_ids, 0] - coord[0]) ** 2
+                    + (centroids_3d[candidate_ids, 1] - coord[1]) ** 2
+                    + (centroids_3d[candidate_ids, 2] - z) ** 2
+                )
+                cell = candidate_ids[distances_sq.argmin()]
                 ids.add(int(cell))
             ids_1 = list(ids)
 
@@ -447,8 +214,7 @@ class Model(THMCModel):
 
             self.well_cell_ids.append(ids_1)
             # adding a well
-            #self.reservoir.add_well(well_names[i])
-            self.reservoir.add_well(well_names[i], depth=self.well_init_depth)
+            self.reservoir.add_well(well_names[i])
             # adding perforations
             for cell_id in ids_1:
                 cell = elems[cell_id]
@@ -472,11 +238,9 @@ class Model(THMCModel):
                 wi_z = 2 * np.pi * np.sqrt(mean_perm_xx * mean_perm_yy) * dz / np.log(rp_z / rw)
                 well_index = np.sqrt(wi_x ** 2 + wi_y ** 2 + wi_z ** 2)
                 # add perforation
-                self.reservoir.add_perforation(self.reservoir.wells[-1], cell_id, well_index=well_index)
-                #self.reservoir.add_perforation(self.reservoir.wells[-1].name, res_cell_idx=cell_id, well_index=well_index, well_indexD=0., ms_epm=True, verbose=True)
-                print('well perf added to the cell', cell_id, 'with a center=', centroids_3d[cell_id], 'for the requested point=', centroids_3d[cell_id,:], 'well_index=', well_index)
-                break  #TODO add only one perforation for now, need to fix the issue with the crossflow
-
+                self.reservoir.add_perforation(self.reservoir.wells[-1].name, res_cell_idx=cell_id,
+                                               well_index=well_index, well_indexD=0., ms_epm=True, verbose=True)
+                print('well perf added to the cell', cell_id, 'with a center=', centroids_3d[cell_id], 'for the requested point=', centroids_3d[cell_id,:])
 
     def set_boundary_conditions(self): # for initial mechanical equilibrium initialization, wells are switched off
         for i, w in enumerate(self.reservoir.wells):
@@ -514,11 +278,6 @@ class Model(THMCModel):
                 inj = []
                 inj_temp = None
                 if self.physics_type == 'single_phase_thermal':
-                    inj_temp = t_cell - delta_temp_inj
-                elif self.physics_type == 'dead_oil':
-                    inj = [1.0 - self.idata.obl.zero]
-                elif self.physics_type == 'dead_oil_thermal':
-                    inj = [1.0 - self.idata.obl.zero]
                     inj_temp = t_cell - delta_temp_inj
                 target = p_cell + delta_p if wctrl_type == well_control_iface.BHP else well_rate
                 print('inj well', w.name, 'control', wctrl_type, 'target ' + fmt(target), 'inj_temp = ' + fmt(inj_temp))
@@ -644,7 +403,17 @@ def set_initial_conditions_from_depth_table(self, mesh, input_distribution: dict
         np.asarray(mesh.displacement)[i::self.n_dim] = input_displacement[i]
 
 
-class ModelProperties(DeadOilProperties):
+class ModelProperties(PropertyContainer):
+    def __init__(self, phases_name, components_name, eps_z=1e-11):
+        # Call base class constructor
+        self.nph = len(phases_name)
+        Mw = np.ones(self.nph)
+        from tools import darts_version_ge
+        kwargs = dict(phases_name=phases_name, components_name=components_name, Mw=Mw, temperature=None)
+        # PropertyContainer renamed the small-composition floor min_z -> eps_z after 1.5.0
+        kwargs['eps_z' if darts_version_ge((1, 5, 1)) else 'min_z'] = eps_z
+        super().__init__(**kwargs)
+
     def evaluate(self, state):
         super().evaluate(state)
         return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, self.mass_source

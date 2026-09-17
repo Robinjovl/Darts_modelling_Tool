@@ -155,7 +155,7 @@ namespace dis
 	  Matrix y1, y2;  ///< 3x1 vectors, tangential components of vectors between cell and interface centers.
 	  value_t r1, r2; ///< Distances from cell centers to the interface.
 	  };
-	  
+
 	std::vector<std::map<index_t, InnerMatrices>> inner; ///< Cached matrices for matrix-matrix connections.
 
 	std::unordered_map<index_t, Matrix> pre_grad_A_u; ///< Pre-allocated matrices for gradient reconstruction.
@@ -179,7 +179,7 @@ namespace dis
 	  * @return std::pair<bool, size_t> A pair where the first element is true if found,
 	  *         false otherwise, and the second element is the position in the vector.
 	  */
-	  inline std::pair<bool, size_t> findInVector(const std::vector<index_t>& vec, 
+	  inline std::pair<bool, size_t> findInVector(const std::vector<index_t>& vec,
 												  const index_t& element)
 	  {
 	  for (size_t i = 0; i < vec.size(); ++i)
@@ -200,9 +200,9 @@ namespace dis
 	  * @param cell_id The ID of the cell.
 	  * @param conn_id The ID of the connection.
 	  */
-	  void calc_matrix_matrix_mech(const mesh::Connection& conn, 
-									MechApproximation<MODE>& flux, 
-									index_t cell_id, 
+	  void calc_matrix_matrix_mech(const mesh::Connection& conn,
+									MechApproximation<MODE>& flux,
+									index_t cell_id,
 									index_t conn_id);
 
 	/**
@@ -212,8 +212,8 @@ namespace dis
 	  * @param flux The flux to store approximation.
 	  * @param conn_id The ID of the connection.
 	  */
-	  void calc_matrix_boundary_mech(const mesh::Connection& conn, 
-									  MechApproximation<MODE>& flux, 
+	  void calc_matrix_boundary_mech(const mesh::Connection& conn,
+									  MechApproximation<MODE>& flux,
 									  index_t conn_id);
 
 	/**
@@ -245,7 +245,7 @@ namespace dis
 		  // block_biot[abs(block_biot) < EQUALITY_TOLERANCE] = 0.0;
 		  // block_vol_strain[abs(block_vol_strain) < EQUALITY_TOLERANCE] = 0.0;
 		  // add transmissibilities
-		  if (abs(block_hooke).max() > EQUALITY_TOLERANCE || 
+		  if (abs(block_hooke).max() > EQUALITY_TOLERANCE ||
 			  abs(block_biot).max() > EQUALITY_TOLERANCE ||
 			  abs(block_vol_strain).max() > EQUALITY_TOLERANCE ||
 			  abs(coef_darcy) > EQUALITY_TOLERANCE)
@@ -337,6 +337,24 @@ namespace dis
 	  * @brief Calculates the approximations of stress tensor and Darcy velocities at cells' centers
 	*/
 	void calc_cell_centered_stress_velocity_approximations();
+
+	/**
+	  * @brief Checks the displacement-displacement (U-U) diagonal blocks of the momentum balance, i.e. per matrix cell
+	  * the sum of the ND x ND hooke blocks of its own displacement over its fluxes, as they enter the engine Jacobian.
+	  * AMG-based preconditioners (e.g. FS-CPR) can diverge where such a block is not positive definite. A block with a
+	  * non-finite entry is flagged in both lists. Called at the end of calc_interface_approximations().
+	  *
+	  * @param verbose Print a summary line and a warning if any cell is flagged.
+	  * @return The number of cells with an indefinite block (stored in u_diag_indefinite_cells), or -1 if there is no
+	  * consistent discretization to check (e.g. before calc_interface_approximations()); both lists are then empty.
+	  */
+	index_t check_displacement_diagonal(bool verbose = true);
+
+	// Results of check_displacement_diagonal(). They are empty until the check has run (a fresh object, or a discretization
+	// restored from a cache that skips calc_interface_approximations()), and every call refills them. From numpy, copy them
+	// (np.array(...)) rather than keeping a view (np.asarray(...)): a later call can reallocate the storage under the view.
+	std::vector<index_t> u_diag_nonpositive_cells; ///< Matrix cells with a non-positive diagonal entry of the U-U block
+	std::vector<index_t> u_diag_indefinite_cells; ///< Matrix cells whose U-U block has a symmetric part that is not positive definite
 	};
 }
 

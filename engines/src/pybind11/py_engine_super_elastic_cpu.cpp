@@ -76,7 +76,6 @@ struct engine_super_elastic_exposer
 			.def_property_readonly_static("U_VAR_T", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::U_VAR_T; }) \
 			.def_property_readonly_static("U_VAR", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::U_VAR; }) \
 			.def_property_readonly_static("T_VAR", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::T_VAR; }) \
-			.def_property_readonly_static("N_VARS", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::N_VARS; }) \
 			.def_property_readonly_static("NT", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::NT; }) \
 			.def_property_readonly_static("N_OPS", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::N_OPS; }) \
 			.def_property_readonly_static("NC", [](py::object) {return engine_super_elastic_cpu<NC, NP, THERMAL>::NC_; }) \

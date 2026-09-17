@@ -2,6 +2,22 @@ import numpy as np
 import sys
 import os
 
+def darts_version_ge(target=(1, 5, 1)):
+    '''
+    Return True if the installed open-darts version is >= target (tuple of ints).
+    Used to switch between API variants (e.g. the OBL grid setup and the
+    PropertyContainer keyword changed after 1.5.0). Falls back to False (older
+    API) if the version cannot be determined.
+    '''
+    try:
+        from importlib.metadata import version
+        parts = version('open-darts').split('.')
+        v = tuple(int(''.join(c for c in p if c.isdigit()) or 0) for p in parts[:3])
+        v = v + (0,) * (3 - len(v))
+        return v >= tuple(target)
+    except Exception:
+        return False
+
 def fmt(x):
     return '{:.3}'.format(x)
 
