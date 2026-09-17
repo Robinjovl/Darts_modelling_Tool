@@ -1,4 +1,5 @@
 import numpy as np
+from gen_fault_msh_no_damage_zone import DOMAIN_W, DOMAIN_H, LAYER_DY
 from cases.base import (
     input_data_base,
     _set_reservoir_bounds,
@@ -20,6 +21,9 @@ def input_data_no_damage_zone(physics_type='single_phase_thermal'):
 
     # well placement (overrides defaults: doublet_shift=500, cell_shift=0)
     idata.other.doublet_shift = 500.0  # [m]
+
+    # doublet rate (default 2000 m3/day); the injector and the producer share it (balanced doublet)
+    idata.other.well_rate_m3_day = 8000.0  # [m3/day]
     #idata.other.cell_shift = 500.0     # [m]
 
     # mesh: Gmsh physical tags: rsv, overburden, underburden
@@ -35,14 +39,22 @@ def input_data_no_damage_zone(physics_type='single_phase_thermal'):
     _set_wells(idata)
     _set_mesh_tags(idata)
     
-    idata.other.prod_well_coords = [idata.other.rsv_xy/2. - 1000., idata.other.rsv_xy/2. + idata.other.doublet_shift,
-            idata.other.rsv_top, idata.other.rsv_bottom]  # [X, Y, Z1, Z2]
-
-    idata.other.inj_well_coords = [idata.other.rsv_xy/2. - 1000., idata.other.rsv_xy/2. - idata.other.doublet_shift,
-            idata.other.rsv_top, idata.other.rsv_bottom]  # [X, Y, Z1, Z2]
+    # wells on different sides of the fault (the fault crosses z = 2500 m at x = DOMAIN_W / 2, dipping 60 deg):
+    # injector well_offset west and producer well_offset east of it, both at the middle of the domain in y.
+    # The fault offsets the reservoir layer (tag 99991): it spans z ~ 2450..2750 m west of the fault and
+    # z ~ 2250..2550 m east of it. Both wells request the depth range 2000..3000 m; since perforations are
+    # restricted to the reservoir tag, each well is perforated over the whole local reservoir layer.
+    x_fault, y_mid = DOMAIN_W / 2., DOMAIN_H / 2.
+    well_offset = 500.  # [m] horizontal distance of each well from the fault at mid-depth (wells 1 km apart)
+    idata.other.inj_well_coords = [x_fault - well_offset, y_mid, 2000., 3000.]  # [X, Y, Z1, Z2]
+    idata.other.prod_well_coords = [x_fault + well_offset, y_mid, 2000., 3000.]  # [X, Y, Z1, Z2]
+    idata.other.well_perforation_tags = (99991,)
 
     idata.other.points_xy = []  # no black reference line for case_1
     idata.other.use_mesh_bounds_in_plot = True
+    # 2D slices through the well row at the injector depth: the XZ slice shows both wells and the fault.
+    # y_mid lies on a boundary of the LAYER_DY-long mesh layers; the perforations take the layer below it.
+    idata.other.plot_slice_origin = [x_fault - well_offset, y_mid - LAYER_DY / 2., 2575.]
 
     idata.other.set_props_by_tags = True
 

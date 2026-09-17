@@ -270,11 +270,16 @@ def plot_slice_matplotlib(slice_plane, arr_name, tensor, component_index, scale,
 
 
 def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mesh_bounds=False,
-                     plot_contours=False, use_mtri=False, figure_dpi=500):
+                     plot_contours=False, use_mtri=False, figure_dpi=500, slice_origin=None):
     '''
     Plot VTK results using PyVista.
     Saves 2D XZ, YZ, and XY slices of specified arrays from the selected timestep.
-    The YZ slice is taken at mid-X and the XY slice at the middle domain depth.
+    By default the slices pass through the mesh center: the XZ slice at mid-Y, the YZ
+    slice at mid-X and the XY slice at the middle domain depth.
+
+    slice_origin : [x, y, z] or None
+        point the three slices pass through (XZ at y, YZ at x, XY at z), e.g. a well
+        at the reservoir depth; None: the mesh center.
 
     idata : InputData
         reservoir/well geometry (top/bottom depths, well X positions, plot window,
@@ -417,6 +422,8 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
     print('mesh bounds:', [round(b, 1) for b in block.bounds])  # [xmin,xmax,ymin,ymax,zmin,zmax]
     print('plot bounds: X', round(x_plot_min, 1), round(x_plot_max, 1),
           'Z', round(block.bounds[4], 1), round(block.bounds[5], 1))
+    origin = list(block.center) if slice_origin is None else [float(v) for v in slice_origin]
+    print('slice origin:', [round(v, 1) for v in origin])
 
     for plot_config in plot_config_list:
         arr_name, tensor, arr_name_plot, contour, component_index, scale = plot_config
@@ -433,7 +440,7 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
             block.set_active_tensors(arr_name, preference='point')
 
         # Create a slice
-        slice_plane = block.slice(normal='y')
+        slice_plane = block.slice(normal='y', origin=origin)
         #slice_plane = block  # no slice (plot in 3D)
         y_bnd = max(abs(block.bounds[2]), abs(block.bounds[3]))
         slice_plane = slice_plane.clip_box(
@@ -444,7 +451,7 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
         xmax_blk = x_plot_max
         zmin_blk = block.bounds[4]
         zmax_blk = block.bounds[5]
-        y_slice = block.center[1]
+        y_slice = origin[1]
         out_png = os.path.join(output_dir_plots, arr_name_plot + "_slice_xz.png")
 
         if use_mtri:  # optional matplotlib backend (centered axes + titles; see its drawbacks)
@@ -580,7 +587,6 @@ def plot_vtk_pyvista(output_dir, idata, contour=False, tstep_to_plot=-1, use_mes
         for plane_name, normal, h_axis, v_axis, h_label, v_label, depth_axis in [
                 ('yz', 'x', 1, 2, 'Y, m.', 'Z, m.', True),
                 ('xy', 'z', 0, 1, 'X, m.', 'Y, m.', False)]:
-            origin = block.center
             other_slice = block.slice(normal=normal, origin=origin)
             if tensor:
                 other_slice[arr_name_plot] = other_slice[arr_name][:, component_index] * scale

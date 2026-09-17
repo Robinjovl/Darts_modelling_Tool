@@ -574,13 +574,13 @@ def get_solution_slice(m, discr_name, mesh, sol_data):
 
 if __name__ == '__main__':
     # Rectangular grid, comparison to analytics
-    #run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
+    run_and_plot(case='terzaghi', discretizer='mech_discretizer', mesh='rect')
     #run_and_plot(case='terzaghi', discretizer='pm_discretizer', mesh='rect')
-    #run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect')
+    run_and_plot(case='mandel', discretizer='mech_discretizer', mesh='rect')
     #run_and_plot(case='mandel', discretizer='pm_discretizer', mesh='rect')
     #run_and_plot(case='terzaghi_two_layers', discretizer='pm_discretizer', mesh='rect')
-    #run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer', mesh='rect')
-    #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
+    run_and_plot(case='terzaghi_two_layers', discretizer='mech_discretizer', mesh='rect')
+    run_and_plot(case='bai', discretizer='mech_discretizer', mesh='rect')
 
     # Wedge (triangular) grid
     #run(case='terzaghi', discretizer='mech_discretizer', mesh='wedge')
@@ -597,7 +597,7 @@ if __name__ == '__main__':
     #run_and_plot(case='bai', discretizer='mech_discretizer', mesh='hex')
 
     test_all = False
-    test_all = True
+    #test_all = True
     cases_list = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']
     if test_all:
         for case in cases_list:

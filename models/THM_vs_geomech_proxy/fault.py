@@ -1,508 +1,590 @@
 """
-Fault post-processing utilities for the THM-vs-geomech-proxy model.
+Fault stability post-processing for the THM-vs-geomech-proxy model.
 
-Reads the `*_fault.msh` companion mesh produced by
-`gen_fault_msh_no_damage_zone.py` (the fault surfaces there carry the physical
-tag FAULT = 9991), extracts the fault-face centers and the fault normal, then
-evaluates the Mohr-Coulomb slip criterion and the Fault Slip Potential (FSP)
-for a given stress / pore-pressure state.
+Workflow
+--------
+1. During the run, `reservoir.save_fault_traction` (called from write_to_vtk)
+   writes for every report step `results/<case>/fault<step>.vtu`: the 2D fault
+   surface taken from the `*_fault.msh` companion mesh (faces tagged
+   FAULT = 9991, see gen_fault_msh_no_damage_zone.py) with the cell data
+     traction  (3)  total-stress traction on the fault [bar], compression positive
+     normal    (3)  unit fault normal the traction refers to
+     pressure       pore pressure at the fault, mean of both sides [bar]
+     temperature    temperature at the fault, mean of both sides [K] (thermal runs only)
+   and the time series `results/<case>/fault.pvd`.
 
-The stress/pore-pressure helpers mirror the reference implementation in
-`models-for-induced-seismicity/lab_scale/lab_experiment_models/fault.py`.
+2. This script reads those files, evaluates the Mohr-Coulomb criterion and the
+   fault stability potential and appends them to the same fault<step>.vtu:
+     sigma_n        normal stress, compression positive [bar]
+     sigma_n_eff    effective normal stress sigma_n - p [bar]
+     tau            shear stress magnitude [bar]
+     mcc            tau - (cohesion + friction * sigma_n_eff) [bar], > 0 means slip
+     FSP            tau / sigma_n_eff (NaN where sigma_n_eff <= 0, i.e. opened fault)
+     slip           1 where mcc > 0, else 0
+   It also writes fault_slip.csv and fault_slip_vs_time.png into the case folder.
 
-Run standalone to evaluate an analytic in-situ (gravity) stress state on the
-generated fault:
+Usage (from the model folder):
 
-    python fault.py
+    python fault.py [case_dir] [--friction 0.6] [--cohesion 0.0]
 """
 
+import argparse
+import glob
 import os
-import numpy as np
+import re
+
 import meshio
+import numpy as np
 
 FRAC_TAG = 9991  # physical tag assigned to the fault surfaces in *_fault.msh
+FAULT_CELL_TYPES = ('triangle', 'quad')
 
 
 # ---------------------------------------------------------------------------
-# Tensor / traction helpers (Voigt notation: xx, yy, zz, yz, xz, xy)
+# Fault geometry from the *_fault.msh companion mesh
 # ---------------------------------------------------------------------------
-def get_tensor_from_voight(t):
-    """Return the 3x3 symmetric stress tensor from a 6x1 Voigt array."""
-    res = np.zeros((3, 3))
-    res[0, 0] = t[0]
-    res[1, 1] = t[1]
-    res[2, 2] = t[2]
-    res[1, 2] = res[2, 1] = t[3]  # yz
-    res[0, 2] = res[2, 0] = t[4]  # xz
-    res[0, 1] = res[1, 0] = t[5]  # xy
-    return res
+def polygon_areas_normals(faces_xyz):
+    """Areas and unit normals of planar polygons (n, k, 3) via fan triangulation."""
+    fan = faces_xyz - faces_xyz[:, 0:1, :]
+    cross = np.cross(fan[:, 1:-1, :], fan[:, 2:, :]).sum(axis=1)
+    norm = np.linalg.norm(cross, axis=1)
+    return 0.5 * norm, cross / norm[:, None]
 
 
-def get_stress_on_fault(stress_tensor, fault_normal):
-    """Normal and shear stress magnitude on a plane with the given normal."""
-    fault_normal_T = np.transpose(fault_normal)
-    stress_n = stress_tensor @ fault_normal @ fault_normal
-    stress_t = np.linalg.norm(
-        (np.eye(3, 3) - np.tensordot(fault_normal, fault_normal_T, axes=0))
-        @ stress_tensor @ fault_normal)
-    return [stress_n, stress_t]
-
-
-def get_stress_on_fault_from_traction(fault_traction, fault_normal):
-    """Normal and shear stress magnitude from a traction vector on the fault."""
-    fault_normal_T = np.transpose(fault_normal)
-    stress_n = fault_traction @ fault_normal
-    stress_t = np.linalg.norm(
-        fault_traction @ (np.eye(3, 3) - np.tensordot(fault_normal, fault_normal_T, axes=0)))
-    return [stress_n, stress_t]
-
-
-def compute_normal(point_1, point_2, point_3):
-    """Unit normal of the plane through three points (cross product)."""
-    x0, y0, z0 = point_1
-    x1, y1, z1 = point_2
-    x2, y2, z2 = point_3
-    ux, uy, uz = [x1 - x0, y1 - y0, z1 - z0]
-    vx, vy, vz = [x2 - x0, y2 - y0, z2 - z0]
-    cross = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx]
-    normal = np.array(cross, dtype=float)
-    normal /= np.linalg.norm(normal)
-    return normal
-
-
-# ---------------------------------------------------------------------------
-# Mohr-Coulomb slip criterion and FSP (Fault Slip Potential)
-# ---------------------------------------------------------------------------
-def mohr_coulomb(fault_normal, stress_total_fault, pore_pressure_fault, friction, cohesion=0.):
+def read_fault_mesh(mesh_filename, frac_tag=FRAC_TAG):
     """
-    Evaluate the Mohr-Coulomb slip criterion per fault face.
+    Read the fault surface from a `*_fault.msh` mesh (`mesh.msh` is accepted,
+    the `_fault` suffix is added if missing).
 
-    Parameters
-    ----------
-    fault_normal : (3,) unit normal of the fault plane.
-    stress_total_fault : (n, 6) total stress per fault face, Voigt notation.
-    pore_pressure_fault : (n,) pore pressure per fault face (same units as stress).
-    friction : friction coefficient (mu).
-    cohesion : cohesion (same units as stress).
-
-    Returns
-    -------
-    mcc : (n,) slip criterion = |tau| - (cohesion + mu * sigma_n_eff).
-          mcc > 0  => the face is past the failure line (slips).
-    st  : (n,) FSP / stress ratio = |tau| / sigma_n_eff (shear capacity use).
-    stress_n, stress_t : (n,) normal and shear stress magnitudes.
-    """
-    n_fault_points = stress_total_fault.shape[0]
-    mcc = np.zeros(n_fault_points)
-    st = np.zeros(n_fault_points)
-    stress_n = np.zeros(n_fault_points)
-    stress_t = np.zeros(n_fault_points)
-
-    for i in range(n_fault_points):
-        stress_total_fault_tensor = get_tensor_from_voight(stress_total_fault[i])
-        stress_n[i], stress_t[i] = get_stress_on_fault(stress_total_fault_tensor, fault_normal)
-
-        # stress_n taken positive (compression)
-        total_eff_stress = np.abs(stress_n[i]) - pore_pressure_fault[i]
-        mcc_n_part = cohesion + friction * total_eff_stress
-        mcc[i] = np.abs(stress_t[i]) - mcc_n_part
-        st[i] = 0. if total_eff_stress == 0 else np.abs(stress_t[i]) / total_eff_stress
-
-    return mcc, st, stress_n, stress_t
-
-
-def mohr_coulomb_from_traction(fault_normal, fault_traction, pore_pressure_fault, friction, cohesion=0.):
-    """Same as `mohr_coulomb` but from a per-face traction vector (n, 3)."""
-    n_fault_points = fault_traction.shape[0]
-    mcc = np.zeros(n_fault_points)
-    st = np.zeros(n_fault_points)
-    stress_n = np.zeros(n_fault_points)
-    stress_t = np.zeros(n_fault_points)
-
-    for i in range(n_fault_points):
-        stress_n[i], stress_t[i] = get_stress_on_fault_from_traction(fault_traction[i], fault_normal)
-
-        total_eff_stress = np.abs(stress_n[i]) - pore_pressure_fault[i]
-        mcc_n_part = cohesion + friction * total_eff_stress
-        mcc[i] = np.abs(stress_t[i]) - mcc_n_part
-        st[i] = 0. if total_eff_stress == 0 else np.abs(stress_t[i]) / total_eff_stress
-
-    return mcc, st, stress_n, stress_t
-
-
-# ---------------------------------------------------------------------------
-# Fault geometry extraction from the *_fault.msh companion mesh
-# ---------------------------------------------------------------------------
-def read_fault_faces(mesh_filename, frac_tag=FRAC_TAG):
-    """
-    Read fault-face centers and the fault normal from a `*_fault.msh` mesh.
-
-    `mesh_filename` may be the base mesh (`mesh.msh`) or the fault mesh
-    (`mesh_fault.msh`); the `_fault` suffix is added if missing.
-
-    Returns
-    -------
-    centers : (n, 3) fault-face centroids.
-    fault_normal : (3,) unit fault normal.
-    areas : (n,) fault-face areas [m^2].
+    Returns a dict with
+      points  (m, 3)  nodes used by the fault faces
+      cells   list of (cell type, connectivity) blocks with the fault faces only
+      centers (n, 3), areas (n,), normals (n, 3)  per face, in block order.
+    Face normals are oriented to one side of the fault: along the normal of the
+    best-fit plane through the face centers, taken with a non-negative z (depth)
+    component.
     """
     base, ext = os.path.splitext(mesh_filename)
     if not base.endswith('_fault'):
         mesh_filename = base + '_fault' + ext
-
     msh = meshio.read(mesh_filename)
-    p = msh.points
 
-    cx, cy, cz, v0, ar = [], [], [], [], []
-    # mixed meshes may carry both triangle and quad surface blocks
-    for block, block_tags in zip(msh.cells, msh.cell_data['gmsh:physical']):
-        if block.type not in ('triangle', 'quad'):
-            continue
-        faces = block.data[np.asarray(block_tags) == frac_tag]
-        if len(faces):
-            cx.append(p[faces, 0].mean(axis=1))
-            cy.append(p[faces, 1].mean(axis=1))
-            cz.append(p[faces, 2].mean(axis=1))
-            v0.append(faces[:, 0])
-            ar.append(_polygon_areas(p[faces]))
+    blocks = []
+    for block, tags in zip(msh.cells, msh.cell_data['gmsh:physical']):
+        if block.type in FAULT_CELL_TYPES:
+            faces = block.data[np.asarray(tags) == frac_tag]
+            if len(faces):
+                blocks.append((block.type, faces))
+    assert blocks, 'no fault faces with tag %d found in %s' % (frac_tag, mesh_filename)
 
-    assert cx, 'no fault faces with tag %d found in %s' % (frac_tag, mesh_filename)
-    centers = np.column_stack([np.concatenate(cx), np.concatenate(cy), np.concatenate(cz)])
-    areas = np.concatenate(ar)
+    # keep only the nodes of the fault faces
+    used = np.unique(np.concatenate([faces.ravel() for _, faces in blocks]))
+    new_id = np.full(len(msh.points), -1, dtype=np.int64)
+    new_id[used] = np.arange(len(used))
+    points = msh.points[used]
+    cells = [(cell_type, new_id[faces]) for cell_type, faces in blocks]
 
-    # fault normal from three well-separated face vertices
-    frac_face_v0 = np.concatenate(v0)
-    pts = p[frac_face_v0]
-    fault_normal = compute_normal(pts[0], pts[pts.shape[0] // 3], pts[-1])
-    return centers, fault_normal, areas
+    centers = np.concatenate([points[faces].mean(axis=1) for _, faces in cells])
+    areas, normals = map(np.concatenate, zip(*[polygon_areas_normals(points[faces]) for _, faces in cells]))
+
+    ref = np.linalg.svd(centers - centers.mean(axis=0), full_matrices=False)[2][-1]
+    if ref[2] < 0:
+        ref = -ref
+    normals *= np.where(normals @ ref < 0, -1.0, 1.0)[:, None]
+    return {'points': points, 'cells': cells, 'centers': centers, 'areas': areas, 'normals': normals}
 
 
-def _polygon_areas(faces_xyz):
-    """Areas of planar polygons (n, k, 3) via the fan/cross-product formula."""
-    v0 = faces_xyz[:, 0:1, :]
-    fan = faces_xyz - v0                       # (n, k, 3)
-    cross = np.cross(fan[:, 1:-1, :], fan[:, 2:, :])  # triangles (v0,vi,vi+1)
-    return 0.5 * np.linalg.norm(cross.sum(axis=1), axis=1)
+def split_by_blocks(values, cells):
+    """Split a per-face array into the per-block list expected by meshio cell_data."""
+    return np.split(values, np.cumsum([len(faces) for _, faces in cells])[:-1])
 
 
 # ---------------------------------------------------------------------------
-# Analytic in-situ (gravity) stress state — for standalone evaluation
+# Mohr-Coulomb criterion and FSP
 # ---------------------------------------------------------------------------
-def insitu_stress_and_pressure(centers, rho_rock=2500.0, rho_water=1000.0, g=9.81,
-                               k_h=0.7, k_H=0.9, dp=0.0):
+def fault_stability(traction, normal, pressure, friction=0.6, cohesion=0.):
     """
-    Simple depth-dependent in-situ stress and pore pressure at fault faces.
+    Mohr-Coulomb slip criterion and fault stability potential per fault face:
 
-    z is depth (m, positive downward as in the generated mesh, top z=0).
-    Vertical stress  Sv = rho_rock * g * z          (lithostatic)
-    Horizontal       Sxx = k_H * Sv,  Syy = k_h * Sv (no shear terms)
-    Pore pressure    Pp = rho_water * g * z + dp     (hydrostatic + perturbation)
+        sigma_n     = t . n                       normal stress (compression positive)
+        tau         = |t - sigma_n n|             shear stress magnitude
+        sigma_n_eff = sigma_n - p                 effective normal stress
+        mcc         = tau - (cohesion + friction * sigma_n_eff)     > 0: slip
+        FSP         = tau / sigma_n_eff           NaN where sigma_n_eff <= 0 (opened fault)
 
-    Units: stress/pressure returned in MPa. `dp` (reservoir pressure change,
-    MPa) lets you probe the FSP sensitivity to injection/depletion.
+    t is the total-stress traction on the fault, n the unit fault normal, p the pore
+    pressure. The effective normal stress uses the full pore pressure (Terzaghi): the
+    fault has its own constitutive behavior, so the Biot coefficient of the matrix does
+    not apply.
 
-    Returns
-    -------
-    stress : (n, 6) total stress, Voigt notation, MPa.
-    pore_pressure : (n,) MPa.
+    :param traction: (n, 3) total-stress traction on the fault, compression positive
+    :param normal: (n, 3) unit fault normals
+    :param pressure: (n,) pore pressure, same units as traction
+    :param friction: friction coefficient
+    :param cohesion: cohesion, same units as traction
+    :return: dict of (n,) arrays sigma_n, sigma_n_eff, tau, mcc, FSP, slip
     """
-    z = centers[:, 2]
-    Sv = rho_rock * g * z * 1e-6          # Pa -> MPa
-    stress = np.zeros((centers.shape[0], 6))
-    stress[:, 0] = k_H * Sv               # xx
-    stress[:, 1] = k_h * Sv               # yy
-    stress[:, 2] = Sv                     # zz
-    # shear terms (yz, xz, xy) left at zero
-    pore_pressure = rho_water * g * z * 1e-6 + dp
-    return stress, pore_pressure
-
-
-def summarize(mcc, st, s_n, s_t, label=''):
-    """Print a compact summary of the Mohr-Coulomb / FSP result."""
-    fmt = lambda v: '%9.3f' % v
-    slip_frac = (mcc > 0).sum() / mcc.size
-    print('--- fault slip summary %s---' % (('(' + label + ') ') if label else ''))
-    print('  n fault faces     :', mcc.size)
-    print('  MCC  [MPa] min/mean/max:', fmt(mcc.min()), fmt(mcc.mean()), fmt(mcc.max()))
-    print('  FSP (|t|/sn_eff)  min/mean/max:', fmt(st.min()), fmt(st.mean()), fmt(st.max()))
-    print('  sigma_n [MPa] mean:', fmt(s_n.mean()))
-    print('  sigma_t [MPa] mean:', fmt(s_t.mean()))
-    print('  slip area fraction:', '%.4f' % slip_frac)
-
-
-def evaluate_fault(mesh_filename, friction=0.6, cohesion=0.0, dp=0.0,
-                   frac_tag=FRAC_TAG, write_vtk=True, verbose=True):
-    """
-    End-to-end: read the fault mesh, build an analytic in-situ stress state,
-    and evaluate the Mohr-Coulomb slip criterion + FSP on every fault face.
-
-    Returns a dict with centers, fault_normal, mcc, st (FSP), stress_n, stress_t.
-    """
-    centers, fault_normal, _ = read_fault_faces(mesh_filename, frac_tag=frac_tag)
-    stress, pore_pressure = insitu_stress_and_pressure(centers, dp=dp)
-    mcc, st, s_n, s_t = mohr_coulomb(fault_normal, stress, pore_pressure,
-                                     friction=friction, cohesion=cohesion)
-    if verbose:
-        print('fault normal      :', np.round(fault_normal, 4))
-        summarize(mcc, st, s_n, s_t, label='dp=%.1f MPa' % dp)
-
-    if write_vtk:
-        try:
-            from pyevtk.hl import pointsToVTK
-            base = os.path.splitext(mesh_filename)[0]
-            if base.endswith('_fault'):
-                base = base[:-len('_fault')]
-            out = base + '_fault_fsp'
-            pointsToVTK(out,
-                        np.ascontiguousarray(centers[:, 0]),
-                        np.ascontiguousarray(centers[:, 1]),
-                        np.ascontiguousarray(centers[:, 2]),
-                        data={'mcc': mcc, 'FSP': st, 'stress_n': s_n, 'stress_t': s_t})
-            if verbose:
-                print('wrote', out + '.vtu')
-        except Exception as e:
-            print('[WARN] VTK output skipped:', e)
-
-    return {'centers': centers, 'fault_normal': fault_normal,
-            'mcc': mcc, 'st': st, 'stress_n': s_n, 'stress_t': s_t}
+    sigma_n = np.einsum('ij,ij->i', traction, normal)
+    tau = np.linalg.norm(traction - sigma_n[:, None] * normal, axis=1)
+    sigma_n_eff = sigma_n - pressure
+    mcc = tau - (cohesion + friction * sigma_n_eff)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        fsp = np.where(sigma_n_eff > 0, tau / sigma_n_eff, np.nan)
+    return {'sigma_n': sigma_n, 'sigma_n_eff': sigma_n_eff, 'tau': tau,
+            'mcc': mcc, 'FSP': fsp, 'slip': (mcc > 0).astype(np.int32)}
 
 
 # ---------------------------------------------------------------------------
-# Post-processing of a finished THM run: fault slip maps per timestep
-#
-# The THM engine writes results/<case>/solution<step>.vtu with cell-centered
-# total stress (`tot_stress`, Voigt, bars) and `pressure` (bars). We map each
-# fault face (from mesh_fault.msh) to its nearest matrix cell, build the fault
-# TRACTION t = sigma . n from that cell's total stress, and evaluate the
-# Mohr-Coulomb slip criterion and FSP with the traction-based routine.
-#
-# No change to reservoir.py is required: `tot_stress` is already saved to the
-# VTU, which is all the traction-based approach needs.
+# Post-processing of a finished run
 # ---------------------------------------------------------------------------
-BARS_TO_MPA = 0.1
-
-# darts Voigt ordering of tot_stress columns: xx, yy, zz, yz, xz, xy
-# -> matches get_tensor_from_voight above.
-
-
-def _cell_centroids(mesh):
-    """Centroids of every volume cell in a meshio mesh (mean of its nodes).
-
-    Concatenated in block order, matching the cell_data array layout.
-    """
-    return np.concatenate([mesh.points[block.data].mean(axis=1) for block in mesh.cells])
+def _step_of(path):
+    match = re.search(r'fault(\d+)\.vtu$', os.path.basename(path))
+    return int(match.group(1)) if match else -1
 
 
-def _timestep_of(path):
-    base = os.path.splitext(os.path.basename(path))[0]  # 'solution123'
-    digits = ''.join(ch for ch in base if ch.isdigit())
-    return int(digits) if digits else -1
+def _fault_files(case_dir):
+    """fault<step>.vtu files of a run, sorted by step."""
+    return sorted((f for f in glob.glob(os.path.join(case_dir, 'fault*.vtu')) if _step_of(f) >= 0), key=_step_of)
 
 
-def _read_pvd_times(case_dir):
-    """Map step index -> simulation time [days] from solution.pvd (empty if absent)."""
-    import re
-    pvd = os.path.join(case_dir, 'solution.pvd')
+def _read_pvd_times(pvd_filename):
+    """Map step -> simulation time [days] from a .pvd file (empty if absent)."""
     times = {}
-    if not os.path.exists(pvd):
-        return times
-    with open(pvd) as fh:
-        for line in fh:
-            m = re.search(r'timestep="([^"]+)"\s+file="[^"]*?(\d+)\.vtu"', line)
-            if m:
-                times[int(m.group(2))] = float(m.group(1))
+    if os.path.exists(pvd_filename):
+        with open(pvd_filename) as f:
+            for match in re.finditer(r'timestep="([^"]+)"\s+file="[^"]*?(\d+)\.vtu"', f.read()):
+                times[int(match.group(2))] = float(match.group(1))
     return times
 
 
-def _project_to_2d(pts):
-    """PCA-project 3D fault points to the two in-plane axes (u=strike, v=dip)."""
-    p = pts - pts.mean(axis=0)
-    _, _, Vt = np.linalg.svd(p, full_matrices=False)
-    return p @ Vt[0], p @ Vt[1]
+SERIES_COLUMNS = ['step', 'time_days', 'slip_area_m2', 'slip_area_fraction',
+                  'fsp_mean', 'fsp_max', 'delta_fsp_max', 'mcc_max_bar']
 
 
-def _plot_fault_scalar(u, v, values, name, tstep, out_dir, unit=''):
-    """Contourf map of a per-face scalar on the (PCA-projected) fault plane."""
+def print_face_computation(traction, normal, pressure, friction=0.6, cohesion=0., label=''):
+    """Print the FSP computation for one fault face step by step (units: bar)."""
+    t, n, p = np.asarray(traction, dtype=float), np.asarray(normal, dtype=float), float(pressure)
+    sigma_n = t @ n
+    tau_vec = t - sigma_n * n
+    tau = np.linalg.norm(tau_vec)
+    sigma_n_eff = sigma_n - p
+    fsp =tau / sigma_n_eff if sigma_n_eff > 0 else np.nan
+    mcc = tau - (cohesion + friction * sigma_n_eff)
+    print('FSP computation %s' % label)
+    print('  traction t (compression +)   = [%.3f, %.3f, %.3f] bar' % tuple(t))
+    print('  normal n                     = [%.4f, %.4f, %.4f]' % tuple(n))
+    print('  sigma_n = t . n              = %.3f bar' % sigma_n)
+    print('  tau_vec = t - sigma_n n      = [%.3f, %.3f, %.3f] bar' % tuple(tau_vec))
+    print('  tau = |tau_vec|              = %.3f bar' % tau)
+    print('  p                            = %.3f bar' % p)
+    print('  sigma_n_eff = sigma_n - p    = %.3f - %.3f = %.3f bar' % (sigma_n, p, sigma_n_eff))
+    print('  FSP = tau / sigma_n_eff      = %.3f / %.3f = %.4f' % (tau, sigma_n_eff, fsp))
+    print('  mcc = tau - (c + mu sigma_n_eff) = %.3f - (%g + %g * %.3f) = %.3f bar (%s)'
+          % (tau, cohesion, friction, sigma_n_eff, mcc, 'slip' if mcc > 0 else 'stable'))
+
+
+def fault_series(case_dir, friction=0.6, cohesion=0., append=True):
+    """
+    Evaluate `fault_stability` for every fault<step>.vtu of a run.
+
+    :param append: write the results and delta_FSP = FSP - FSP(first step) into the files
+                   as cell data (arrays of the same name are overwritten); with False the
+                   files are only read, e.g. to compare several friction values
+    :return: dict of per-step arrays named as in SERIES_COLUMNS (fsp_mean is
+             area weighted) plus 'fault_area_m2'
+    """
+    files = _fault_files(case_dir)
+    if not files:
+        raise FileNotFoundError('no fault<step>.vtu found in %s' % case_dir)
+    times = _read_pvd_times(os.path.join(case_dir, 'fault.pvd'))
+
+    rows, fsp0 = [], None
+    for f in files:
+        m = meshio.read(f)
+        data = {name: np.concatenate(arrays) for name, arrays in m.cell_data.items()}
+        res = fault_stability(data['traction'], data['normal'], data['pressure'],
+                              friction=friction, cohesion=cohesion)
+        fsp0 = res['FSP'] if fsp0 is None else fsp0
+        res['delta_FSP'] = res['FSP'] - fsp0
+        cells = [(block.type, block.data) for block in m.cells]
+        if append:
+            for name, values in res.items():
+                m.cell_data[name] = split_by_blocks(values, cells)
+            meshio.write(f, m)
+
+        areas = np.concatenate([polygon_areas_normals(m.points[faces])[0] for _, faces in cells])
+        slip_area = areas[res['slip'] > 0].sum()
+        ok = np.isfinite(res['FSP'])
+        step = _step_of(f)
+        rows.append([step, times.get(step, np.nan), slip_area, slip_area / areas.sum(),
+                     (res['FSP'][ok] * areas[ok]).sum() / areas[ok].sum() if ok.any() else np.nan,
+                     res['FSP'][ok].max() if ok.any() else np.nan,
+                     np.nanmax(res['delta_FSP']) if np.isfinite(res['delta_FSP']).any() else np.nan,
+                     res['mcc'].max()])
+
+    rows = np.array(rows, dtype=float)
+    series = {name: rows[:, i] for i, name in enumerate(SERIES_COLUMNS)}
+    series['fault_area_m2'] = areas.sum()
+    return series
+
+
+def _time_axis(series):
+    if np.isfinite(series['time_days']).all():
+        return series['time_days'] / 365.25, 'time [years]'
+    return series['step'], 'report step'
+
+
+def postprocess_case(case_dir, friction=0.6, cohesion=0., verbose=True):
+    """
+    Append FSP, delta_FSP and the Mohr-Coulomb criterion to every fault<step>.vtu
+    in `case_dir` and write the slip time series: fault_slip.csv and
+    fault_slip_vs_time.png (FSP and slipping area vs time). With verbose=True the
+    computation is also printed step by step for the face with the largest FSP of
+    the last step.
+    """
+    series = fault_series(case_dir, friction=friction, cohesion=cohesion, append=True)
+    if verbose:
+        m = meshio.read(_fault_files(case_dir)[-1])
+        data = {name: np.concatenate(arrays) for name, arrays in m.cell_data.items()}
+        i = np.nanargmax(data['FSP']) if np.isfinite(data['FSP']).any() else 0
+        print_face_computation(data['traction'][i], data['normal'][i], data['pressure'][i], friction=friction,
+                               cohesion=cohesion, label='(face %d of step %d)'
+                               % (i, int(series['step'][-1])))
+        print('%s: friction=%g, cohesion=%g bar, fault area %.3e m2'
+              % (case_dir, friction, cohesion, series['fault_area_m2']))
+        for i in range(series['step'].size):
+            print('  step %4d: FSP mean/max %.4f/%.4f  dFSP max %.4f  mcc max %9.3f bar  slip area %.3e m2 (%.1f%%)'
+                  % tuple([series[c][i] for c in ['step', 'fsp_mean', 'fsp_max', 'delta_fsp_max', 'mcc_max_bar',
+                                                   'slip_area_m2']] + [100 * series['slip_area_fraction'][i]]))
+
+    csv_filename = os.path.join(case_dir, 'fault_slip.csv')
+    np.savetxt(csv_filename, np.column_stack([series[c] for c in SERIES_COLUMNS]), delimiter=',',
+               header=','.join(SERIES_COLUMNS), comments='',
+               fmt=['%d', '%.6f', '%.6e', '%.6f', '%.6f', '%.6f', '%.6f', '%.6e'])
+
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    from scipy.interpolate import griddata
-
-    nu = nv = 200
-    ug, vg = np.meshgrid(np.linspace(u.min(), u.max(), nu),
-                         np.linspace(v.min(), v.max(), nv))
-    zg = griddata((u, v), values, (ug, vg), method='linear')
-
-    vmin = np.nanpercentile(values, 2)
-    vmax = np.nanpercentile(values, 98)
-    if not np.isfinite(vmin) or not np.isfinite(vmax) or np.isclose(vmin, vmax):
-        vmin, vmax = np.nanmin(values), np.nanmax(values)
-    if np.isclose(vmin, vmax):
-        c = float(np.nanmean(values)); vmin, vmax = c - 1e-6, c + 1e-6
-    levels = np.linspace(vmin, vmax, 21)
-
-    fig, ax = plt.subplots(figsize=(6, 5))
-    cf = ax.contourf(ug, vg, zg, levels=levels, cmap='viridis', extend='both')
-    plt.colorbar(cf, ax=ax, label=name + (f' [{unit}]' if unit else ''))
-    ax.set_xlabel('strike u (m)')
-    ax.set_ylabel('dip v (m)')
-    ax.set_title(f'{name}  timestep={tstep}')
-    ax.set_aspect('equal')
+    x, xlabel = _time_axis(series)
+    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(7, 6))
+    ax1.plot(x, series['fsp_mean'], '-o', label='area-weighted mean')
+    ax1.plot(x, series['fsp_max'], '-s', label='max')
+    ax1.axhline(friction, color='k', ls='--', lw=1, label='friction')
+    ax1.set_ylabel('FSP [-]')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    ax2.plot(x, series['slip_area_m2'] * 1e-6, '-o', color='C3')
+    ax2.set_ylabel('slipping area [km$^2$]')
+    ax2.set_xlabel(xlabel)
+    ax2.set_ylim(bottom=0)
+    ax2.grid(True, alpha=0.3)
+    percent = ax2.secondary_yaxis('right', functions=(lambda a: 1e8 * a / series['fault_area_m2'],
+                                                      lambda q: 1e-8 * q * series['fault_area_m2']))
+    percent.set_ylabel('[% of fault area]')
+    ax1.set_title('friction %g, cohesion %g bar' % (friction, cohesion))
     fig.tight_layout()
-    out_path = os.path.join(out_dir, f'fault_{name}_tstep{tstep:04d}.png')
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(os.path.join(case_dir, 'fault_slip_vs_time.png'), dpi=150)
     plt.close(fig)
-    return out_path
+    if verbose:
+        print('slip time series ->', csv_filename, 'and fault_slip_vs_time.png')
+    return series
 
 
-def _traction_from_fault_vtu(m):
-    """Read (traction (n,3), pore (n,), points (n,3)) from a saved fault*.vtu."""
-    data = m.point_data if m.point_data else {k: v[0] for k, v in m.cell_data.items()}
-    tr = np.column_stack([np.asarray(data['fault_traction_x']).ravel(),
-                          np.asarray(data['fault_traction_y']).ravel(),
-                          np.asarray(data['fault_traction_z']).ravel()])
-    pore = np.asarray(data['p']).ravel()
-    return tr, pore, m.points
-
-
-def _traction_from_solution_vtu(m, face_cell, fault_normal):
-    """Fallback: reconstruct traction t = sigma . n from cell tot_stress."""
-    tot_stress = np.concatenate([np.asarray(a) for a in m.cell_data['tot_stress']]) * BARS_TO_MPA
-    pressure = np.concatenate([np.asarray(a) for a in m.cell_data['pressure']]) * BARS_TO_MPA
-    stress_faces = tot_stress[face_cell]
-    traction = np.array([get_tensor_from_voight(s) @ fault_normal for s in stress_faces])
-    return traction, pressure[face_cell]
-
-
-def postprocess_case(case_name, results_root='results',
-                     mesh_filename=os.path.join('meshes', 'no_damage_zone', 'mesh_fault.msh'),
-                     friction=0.6, cohesion=0.0, frac_tag=FRAC_TAG,
-                     step_stride=1, verbose=True):
+def compare_cases(case_dirs, labels=None, frictions=(0.6,), cohesion=0.,
+                  png_filename='fault_slip_comparison.png', verbose=True):
     """
-    Generate per-timestep fault slip maps (FSP and Mohr-Coulomb) for a finished
-    THM run in `results/<case_name>/`, using the traction-based criterion.
-
-    Preferred source: the `fault<step>.vtu` files written during the run by
-    `reservoir.save_fault_traction` (Hooke-forces traction, as in the lab
-    models). If none are present, it falls back to reconstructing the traction
-    as sigma.n from the cell `tot_stress` in `solution<step>.vtu`.
-
-    For every timestep it writes two PNGs into `results/<case_name>/fault_plots/`:
-      - fault_FSP_tstepNNNN.png  (|t| / sigma_n_eff)
-      - fault_mcc_tstepNNNN.png  (slip criterion |t| - mu*sigma_n_eff, MPa)
+    Compare the slipping area and FSP (max, area-weighted mean) vs time of several
+    runs, for one or more friction values (the fault files are only read).
+    Saves png_filename and a csv with the same basename.
+    :return: {(label, friction): series}
     """
-    from scipy.spatial import cKDTree
-    import glob
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
 
-    case_dir = os.path.join(results_root, case_name)
-    out_dir = os.path.join(case_dir, 'fault_plots')
+    labels = labels or [os.path.basename(os.path.normpath(d)) for d in case_dirs]
+    results = {}
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(8, 9))
+    for i, (case_dir, label) in enumerate(zip(case_dirs, labels)):
+        for j, friction in enumerate(frictions):
+            series = fault_series(case_dir, friction=friction, cohesion=cohesion, append=False)
+            results[(label, friction)] = series
+            x, xlabel = _time_axis(series)
+            style = dict(color='C%d' % i, ls=['-', '--', ':', '-.'][j % 4])
+            axes[0].plot(x, series['slip_area_m2'] * 1e-6, label='%s, friction %g' % (label, friction), **style)
+        axes[1].plot(x, series['fsp_max'], color='C%d' % i, label=label)
+        axes[2].plot(x, series['fsp_mean'], color='C%d' % i, label=label)
+    fig.suptitle('cohesion %g bar' % cohesion)
+    axes[0].set_ylabel('slipping area [km$^2$]')
+    axes[1].set_ylabel('FSP max [-]')
+    axes[2].set_ylabel('FSP area-weighted mean [-]')
+    axes[2].set_xlabel(xlabel)
+    for ax in axes:
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(png_filename, dpi=150)
+    plt.close(fig)
+
+    header = 'case,friction,' + ','.join(SERIES_COLUMNS)
+    with open(os.path.splitext(png_filename)[0] + '.csv', 'w') as f:
+        f.write(header + '\n')
+        for (label, friction), series in results.items():
+            for k in range(series['step'].size):
+                f.write('%s,%g,' % (label, friction) + ','.join('%.8g' % series[c][k] for c in SERIES_COLUMNS) + '\n')
+    if verbose:
+        print('%-40s %8s %14s %14s %10s %10s' % ('case', 'friction', 'slip area0 km2', 'slip areaN km2',
+                                                 'FSP max0', 'FSP maxN'))
+        for (label, friction), s in results.items():
+            print('%-40s %8g %14.4f %14.4f %10.4f %10.4f' % (label, friction, s['slip_area_m2'][0] * 1e-6,
+                                                             s['slip_area_m2'][-1] * 1e-6, s['fsp_max'][0],
+                                                             s['fsp_max'][-1]))
+        print('comparison ->', png_filename)
+    return results
+
+
+# ---------------------------------------------------------------------------
+# 2D maps of fault fields
+# ---------------------------------------------------------------------------
+FIELD_UNITS = {'FSP': '-', 'delta_FSP': '-', 'slip': '-', 'mcc': 'bar', 'sigma_n': 'bar', 'sigma_n_eff': 'bar',
+               'tau': 'bar', 'pressure': 'bar'}
+SIGNED_FIELDS = ['delta_FSP']  # drawn with a diverging colormap symmetric around 0
+
+
+def fault_plane_axes(normal):
+    """Unit along-strike and down-dip vectors of a plane with the given normal (z is depth)."""
+    n = normal / np.linalg.norm(normal)
+    strike = np.cross([0., 0., 1.], n)
+    if np.linalg.norm(strike) < 1e-8:  # horizontal plane
+        strike = np.array([1., 0., 0.])
+    strike /= np.linalg.norm(strike)
+    dip = np.cross(n, strike)
+    return strike, (dip if dip[2] >= 0 else -dip)
+
+
+def plot_fault_field(vtu_filename, field='FSP', png_filename=None, vmin=None, vmax=None,
+                     cmap='viridis', title=None):
+    """
+    Save a 2D map of a per-face field of fault<step>.vtu, drawn on the fault faces
+    unfolded onto the fault plane (along strike vs down dip). Faces with NaN
+    (e.g. FSP of opened faces) are grey.
+
+    :param png_filename: output file, default <vtu without extension>_<field>.png
+    :return: png_filename
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import PolyCollection
+
+    m = meshio.read(vtu_filename)
+    if field not in m.cell_data:
+        raise KeyError('%s is not in %s (run postprocess_case first?)' % (field, vtu_filename))
+    values = np.concatenate(m.cell_data[field]).astype(float)
+    strike, dip = fault_plane_axes(np.concatenate(m.cell_data['normal']).mean(axis=0))
+    uv = np.column_stack([m.points @ strike, m.points @ dip])
+    uv -= uv.min(axis=0)
+    polygons = [uv[face] for block in m.cells for face in block.data]
+
+    finite = values[np.isfinite(values)]
+    vmin = (finite.min() if finite.size else 0.) if vmin is None else vmin
+    vmax = (finite.max() if finite.size else 1.) if vmax is None else vmax
+    color_map = matplotlib.colormaps[cmap].copy()
+    color_map.set_bad('lightgrey')
+
+    width, height = uv.max(axis=0)
+    fig, ax = plt.subplots(figsize=(10, min(8., max(3., 10 * height / width + 1.5))))
+    faces = PolyCollection(polygons, array=np.ma.masked_invalid(values), cmap=color_map, edgecolors='face')
+    faces.set_clim(vmin, vmax)
+    ax.add_collection(faces)
+    ax.set_xlim(0, width)
+    ax.set_ylim(height, 0)  # deeper part of the fault at the bottom
+    ax.set_aspect('equal')
+    ax.set_xlabel('along strike [m]')
+    ax.set_ylabel('down dip [m]')
+    ax.set_title(title if title is not None else '%s  %s' % (field, os.path.basename(vtu_filename)))
+    fig.colorbar(faces, ax=ax, label='%s [%s]' % (field, FIELD_UNITS.get(field, '-')), shrink=0.9)
+    fig.tight_layout()
+
+    png_filename = png_filename or os.path.splitext(vtu_filename)[0] + '_%s.png' % field
+    fig.savefig(png_filename, dpi=150)
+    plt.close(fig)
+    return png_filename
+
+
+def plot_fault_case(case_dir, fields=('FSP',), same_scale=True, out_dir=None, verbose=True):
+    """
+    Save 2D maps of `fields` for every fault<step>.vtu of a run into
+    <case_dir>/fault_plots/<field>_step<NNNN>.png. With same_scale=True all steps
+    of a field share one color range, so the maps are comparable in time.
+    """
+    files = _fault_files(case_dir)
+    if not files:
+        print('[WARN] no fault<step>.vtu found in', case_dir)
+        return []
+    times = _read_pvd_times(os.path.join(case_dir, 'fault.pvd'))
+    out_dir = out_dir or os.path.join(case_dir, 'fault_plots')
     os.makedirs(out_dir, exist_ok=True)
 
-    centers, fault_normal, areas = read_fault_faces(mesh_filename, frac_tag=frac_tag)
-    total_area = areas.sum()
+    saved = []
+    for field in fields:
+        vmin = vmax = None
+        if same_scale:
+            values = np.concatenate([np.concatenate(meshio.read(f).cell_data[field]) for f in files]).astype(float)
+            values = values[np.isfinite(values)]
+            if values.size:
+                vmin, vmax = values.min(), values.max()
+                if field in SIGNED_FIELDS:
+                    vmax = max(abs(vmin), abs(vmax), 1e-12)
+                    vmin = -vmax
+        cmap = 'coolwarm' if field in SIGNED_FIELDS else 'viridis'
+        for f in files:
+            step = _step_of(f)
+            title = '%s, step %d' % (field, step) + (', t = %g days' % times[step] if step in times else '')
+            saved.append(plot_fault_field(f, field, os.path.join(out_dir, '%s_step%04d.png' % (field, step)),
+                                          vmin=vmin, vmax=vmax, cmap=cmap, title=title))
     if verbose:
-        print(f'case: {case_name}')
-        print(f'fault: {centers.shape[0]} faces, normal {np.round(fault_normal, 4)}, '
-              f'total area {total_area:.3e} m2')
-
-    fault_files = sorted(glob.glob(os.path.join(case_dir, 'fault*.vtu')), key=_timestep_of)
-    fault_files = [f for f in fault_files if _timestep_of(f) >= 0]
-    use_hooke = len(fault_files) > 0
-
-    if use_hooke:
-        files = fault_files[::step_stride]
-        # fault*.vtu carries its own points (fault-face centers) -> project those
-        u, v = _project_to_2d(_traction_from_fault_vtu(meshio.read(files[0]))[2])
-        if verbose:
-            print(f'source: Hooke-forces fault*.vtu ({len(fault_files)} steps)')
-    else:
-        files = sorted(glob.glob(os.path.join(case_dir, 'solution*.vtu')), key=_timestep_of)
-        files = [f for f in files if _timestep_of(f) >= 0][::step_stride]
-        if not files:
-            print(f'[WARN] no fault*.vtu or solution*.vtu found in {case_dir}')
-            return
-        print('[INFO] no fault*.vtu found - falling back to sigma.n from tot_stress. '
-              'Re-run the model to save Hooke-forces tractions.')
-        u, v = _project_to_2d(centers)
-        # map each fault face to nearest matrix cell once (geometry fixed)
-        face_cell = cKDTree(_cell_centroids(meshio.read(files[0]))).query(centers)[1]
-
-    slip_series = []  # (tstep, slip_area, slip_area_frac, slip_count_frac, fsp_mean)
-    for f in files:
-        tstep = _timestep_of(f)
-        m = meshio.read(f)
-        if use_hooke:
-            traction, pore, _ = _traction_from_fault_vtu(m)
-        else:
-            traction, pore = _traction_from_solution_vtu(m, face_cell, fault_normal)
-
-        mcc, st, s_n, s_t = mohr_coulomb_from_traction(fault_normal, traction, pore,
-                                                       friction=friction, cohesion=cohesion)
-        _plot_fault_scalar(u, v, st, 'FSP', tstep, out_dir)
-        _plot_fault_scalar(u, v, mcc, 'mcc', tstep, out_dir, unit='MPa')
-
-        # slip area: sum of face areas where the Mohr-Coulomb criterion is met
-        slipping = mcc > 0
-        slip_area = areas[slipping].sum()
-        slip_series.append((tstep, slip_area, slip_area / total_area,
-                            slipping.mean(), st.mean()))
-        if verbose:
-            print(f'  tstep {tstep:4d}: FSP mean {st.mean():6.3f}  '
-                  f'mcc max {mcc.max():8.3f} MPa  slip area {slip_area:.3e} m2 '
-                  f'({100 * slip_area / total_area:5.1f}%)')
-
-    times_days = _read_pvd_times(case_dir)
-    _write_slip_series(slip_series, total_area, out_dir, times_days, verbose)
-    if verbose:
-        print(f'PNGs written to {out_dir}')
+        print('%d fault maps -> %s' % (len(saved), out_dir))
+    return saved
 
 
-def _write_slip_series(slip_series, total_area, out_dir, times_days=None, verbose=True):
-    """Write slip-area time series to CSV and a slip-area-vs-time plot
-    (absolute [m^2] and normalized [fraction of total fault area])."""
+# ---------------------------------------------------------------------------
+# 1D profiles along the fault dip
+# ---------------------------------------------------------------------------
+DIP_PROFILE_FIELDS = ['pressure', 'temperature', 'sigma_n', 'sigma_n_eff', 'tau', 'mcc', 'FSP']
+
+
+def plot_fault_dip_profiles(case_dir, strike=None, steps=None, friction=0.6, cohesion=0.,
+                            png_filename=None, verbose=True, point=None):
+    """
+    Plot pore pressure, temperature (if saved, i.e. thermal runs), normal stress (total
+    and effective), shear stress, Coulomb stress mcc = tau - (cohesion + friction *
+    sigma_n_eff) and FSP vs depth along the fault dip, for the column of fault faces at
+    one along-strike position.
+    The quantities are recomputed from traction/normal/pressure with the given
+    friction and cohesion. A csv with the same basename holds the profiles.
+
+    :param strike: along-strike position [m], same coordinate as the 2D maps (0 at the
+                   fault edge); default: position of the face with the largest FSP at
+                   the last step
+    :param point: [x, y, z] (e.g. a well perforation) whose along-strike position is
+                  used instead of `strike`
+    :param steps: report steps to draw; default: first, middle and last
+    :param png_filename: default <case_dir>/fault_plots/dip_profile_strike<strike>m.png
+    :return: png_filename
+    """
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
 
-    arr = np.array(slip_series, dtype=float)  # (n, 5): tstep, area, area_frac, count_frac, fsp
-    tsteps = arr[:, 0].astype(int)
+    files = {_step_of(f): f for f in _fault_files(case_dir)}
+    if not files:
+        raise FileNotFoundError('no fault<step>.vtu found in %s' % case_dir)
+    all_steps = sorted(files)
+    steps = sorted(set(steps)) if steps else sorted({all_steps[0], all_steps[len(all_steps) // 2], all_steps[-1]})
+    unknown = set(steps) - set(files)
+    if unknown:
+        raise ValueError('steps %s are not in %s' % (sorted(unknown), case_dir))
+    times = _read_pvd_times(os.path.join(case_dir, 'fault.pvd'))
 
-    # x-axis: physical time in years if available, else timestep index
-    times_days = times_days or {}
-    if all(t in times_days for t in tsteps):
-        x = np.array([times_days[t] for t in tsteps]) / 365.25
-        xlabel = 'time [years]'
-    else:
-        x = arr[:, 0]
-        xlabel = 'timestep'
+    def evaluate(step):
+        m = meshio.read(files[step])
+        data = {name: np.concatenate(arrays) for name, arrays in m.cell_data.items()}
+        res = fault_stability(data['traction'], data['normal'], data['pressure'],
+                              friction=friction, cohesion=cohesion)
+        res['pressure'] = data['pressure']
+        if 'temperature' in data:
+            res['temperature'] = data['temperature']
+        return m, data, res
 
-    csv_path = os.path.join(out_dir, 'slip_area.csv')
-    out = np.column_stack([arr[:, 0], x, arr[:, 1], arr[:, 2], arr[:, 3], arr[:, 4]])
-    header = 'timestep,time_years,slip_area_m2,slip_area_fraction,slip_count_fraction,fsp_mean'
-    np.savetxt(csv_path, out, delimiter=',', header=header, comments='',
-               fmt=['%d', '%.6f', '%.6e', '%.6f', '%.6f', '%.6f'])
+    # geometry (fixed in time): along-strike extent and center of every face
+    m, data, res_last = evaluate(all_steps[-1])
+    strike_dir, _ = fault_plane_axes(data['normal'].mean(axis=0))
+    u_nodes = m.points @ strike_dir
+    u_origin = u_nodes.min()
+    u_nodes -= u_origin
+    faces = [face for block in m.cells for face in block.data]
+    u_min = np.array([u_nodes[face].min() for face in faces])
+    u_max = np.array([u_nodes[face].max() for face in faces])
+    depth = np.array([m.points[face, 2].mean() for face in faces])
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(7, 6))
-    ax1.plot(x, arr[:, 1], '-o', color='C3')
-    ax1.set_ylabel('slip area [m$^2$]')
-    ax1.set_title(f'Fault slip area vs time  (total fault area {total_area:.3e} m$^2$)')
-    ax1.grid(True, alpha=0.3)
+    if point is not None:
+        strike = float(np.asarray(point, dtype=float) @ strike_dir - u_origin)
+    if strike is None:
+        ok = np.flatnonzero(np.isfinite(res_last['FSP']))
+        i = ok[np.argmax(res_last['FSP'][ok])] if ok.size else 0
+        strike = 0.5 * (u_min[i] + u_max[i])
+    column = np.flatnonzero((u_min <= strike) & (strike < u_max))
+    if column.size == 0:  # at the far edge of the fault
+        column = np.flatnonzero(np.isclose(u_max, u_max.max()) if strike >= u_max.max() else
+                                np.isclose(u_min, u_min.min()))
+    column = column[np.argsort(depth[column])]
+    z = depth[column]
 
-    ax2.plot(x, 100 * arr[:, 2], '-s', color='C0')
-    ax2.set_ylabel('slip area fraction [%]')
-    ax2.set_xlabel(xlabel)
-    ax2.set_ylim(-2, 102)
-    ax2.grid(True, alpha=0.3)
+    panels = [(['pressure'], 'pore pressure [bar]'),
+              (['temperature'], 'temperature [K]'),
+              (['sigma_n', 'sigma_n_eff'],
+               "normal stress [bar]\nsolid: $\\sigma_n$, dashed: $\\sigma'_n$"),
+              (['tau'], 'shear stress $\\tau$ [bar]'),
+              (['mcc'], 'Coulomb stress [bar]'),
+              (['FSP'], 'FSP [-]')]
+    panels = [panel for panel in panels if panel[0][0] in res_last]  # no temperature in isothermal runs
+    fields = [name for name in DIP_PROFILE_FIELDS if name in res_last]
+    panel_of = {names[0]: k for k, (names, _) in enumerate(panels)}
+    fig, axes = plt.subplots(1, len(panels), sharey=True, figsize=(3.4 * len(panels), 6.5))
+    colors = matplotlib.colormaps['viridis'](np.linspace(0., 0.9, len(steps)))
+    table = []
+    for step, color in zip(steps, colors):
+        res = res_last if step == all_steps[-1] else evaluate(step)[2]
+        label = 'step %d' % step + (', t = %.2f y' % (times[step] / 365.25) if step in times else '')
+        for ax, (names, _) in zip(axes, panels):
+            for name, ls in zip(names, ['-', '--']):
+                ax.plot(res[name][column], z, ls, marker='o' if ls == '-' else None, ms=3, color=color,
+                        label=label if ls == '-' else None)
+        table.append(np.column_stack([np.full(z.size, step), z] + [res[name][column] for name in fields]))
 
+    axes[panel_of['mcc']].axvline(0., color='k', lw=1, ls=':')
+    axes[panel_of['FSP']].axvline(friction, color='k', lw=1, ls='--', label='friction %g' % friction)
+    axes[0].invert_yaxis()
+    axes[0].set_ylabel('depth [m]')
+    for ax, (_, xlabel) in zip(axes, panels):
+        ax.set_xlabel(xlabel)
+        ax.grid(True, alpha=0.3)
+    axes[-1].legend(fontsize=8, loc='best')
+    fig.suptitle('%s: fault dip profile at along strike %.0f m (friction %g, cohesion %g bar)'
+                 % (os.path.basename(os.path.normpath(case_dir)), strike, friction, cohesion))
     fig.tight_layout()
-    fig.savefig(os.path.join(out_dir, 'slip_area_vs_time.png'), dpi=150)
+
+    if png_filename is None:
+        os.makedirs(os.path.join(case_dir, 'fault_plots'), exist_ok=True)
+        png_filename = os.path.join(case_dir, 'fault_plots', 'dip_profile_strike%.0fm.png' % strike)
+    fig.savefig(png_filename, dpi=150)
     plt.close(fig)
+    np.savetxt(os.path.splitext(png_filename)[0] + '.csv', np.vstack(table), delimiter=',', comments='',
+               header='step,depth_m,' + ','.join(fields), fmt=['%d'] + ['%.6g'] * (len(fields) + 1))
     if verbose:
-        print(f'slip-area series -> {csv_path} and slip_area_vs_time.png')
+        print('dip profile at along strike %.0f m (%d faces, steps %s) -> %s' % (strike, column.size, steps, png_filename))
+    return png_filename
 
 
 if __name__ == '__main__':
-    # Post-processing tool: run AFTER the THM model has written its VTUs into
-    # results/<case_name>/. Set the case name here.
-    case_name = 'sol_cpp_single_phase_thermal_doublet_no_damage_zone'
-    postprocess_case(case_name, friction=0.6, cohesion=0.0, step_stride=1)
+    parser = argparse.ArgumentParser(description='Append FSP and the Mohr-Coulomb criterion to fault<step>.vtu files.')
+    parser.add_argument('case_dir', nargs='?', default=os.path.join('results', 'sol_cpp_single_phase_inj_no_damage_zone'),
+                        help='results folder of a finished run')
+    parser.add_argument('--friction', type=float, default=0.6, help='friction coefficient')
+    parser.add_argument('--cohesion', type=float, default=0.0, help='cohesion [bar]')
+    parser.add_argument('--plot', nargs='*', default=['FSP'], metavar='FIELD',
+                        help='fields to save as 2D maps per step (default: FSP; no value: no maps)')
+    parser.add_argument('--profile', nargs='*', type=float, default=None, metavar='STRIKE',
+                        help='save 1D profiles vs depth along the fault dip at the along-strike positions STRIKE [m] '
+                             '(no value: at the face with the largest FSP)')
+    parser.add_argument('--profile-steps', nargs='+', type=int, default=None, metavar='STEP',
+                        help='report steps drawn in the dip profiles (default: first, middle, last)')
+    args = parser.parse_args()
+    postprocess_case(args.case_dir, friction=args.friction, cohesion=args.cohesion)
+    if args.plot:
+        plot_fault_case(args.case_dir, fields=args.plot)
+    if args.profile is not None:
+        for strike in args.profile or [None]:
+            plot_fault_dip_profiles(args.case_dir, strike=strike, steps=args.profile_steps, friction=args.friction,
+                                    cohesion=args.cohesion)

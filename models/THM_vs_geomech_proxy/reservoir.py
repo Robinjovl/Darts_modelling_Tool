@@ -8,8 +8,7 @@ import meshio
 from darts.discretizer import elem_type, elem_loc
 from darts.discretizer import matrix33 as disc_matrix33
 from darts.discretizer import Stiffness as disc_stiffness
-from darts.discretizer import vector_matrix33, stf_vector
-from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_biot_modulus, get_rock_compressibility
+from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_biot_modulus
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 from darts.input.input_data import InputData
 from darts.engines import timer_node, ms_well, ms_well_vector
@@ -184,13 +183,11 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         if uniform_props:
             self.init_uniform_properties(idata=idata)
         elif idata.other.set_props_by_tags:
-            # per-tag rock properties: the parent's set_props_tags builds self.props from
-            # idata.rock arrays (one value per matrix tag), and init_heterogeneous_properties_by_tags
-            # applies them per cell using self.tags (the parent's init_heterogeneous_properties
-            # without its Python loop over cells). This model specifies permeability as per-tag
-            # permx/permy/permz (leaving the 'perm' tensor unset), which the base handles.
+            # per-tag rock properties: the parent's set_props_tags builds self.props
+            # from idata.rock arrays (one value per matrix tag), and its
+            # init_heterogeneous_properties applies them per cell using self.tags.
             super().set_props_tags(idata=idata, matrix_tags=idata.mesh.matrix_tags)
-            self.init_heterogeneous_properties_by_tags()
+            super().init_heterogeneous_properties()
         else:  # don't use mesh tags, set by interpolation
             self.set_heterogeneous_props_by_interpolation(
                 idata=idata, generate_mesh=generate_structured_mesh
@@ -272,7 +269,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         hash_update(h_rock, list(idata.mesh.matrix_tags))  # per-tag rock arrays follow this order
         hash_update(h_rock, [bool(uniform_props), bool(getattr(idata.other, 'set_props_by_tags', False))])
         hash_update(h_rock, self.tags)
-        # the per-cell discretizer inputs themselves: Python code (init_heterogeneous_properties_by_tags,
+        # the per-cell discretizer inputs themselves: Python code (init_heterogeneous_properties,
         # get_lambda_mu, set_props_tags, ...) derives them from idata.rock, and the rest of the key does not cover it
         for name in ['perms', 'biots', 'stfs'] + (['heat_conductions', 'thermal_expansions']
                                                   if self.thermoporoelasticity else []):
@@ -413,42 +410,6 @@ class UnstructReservoirCustom(UnstructReservoirMech):
                 if n.dot(conn_c - c1) < 0: n *= -1.0
                 self.bc_rhs[self.n_bc_vars * id + self.u_bc_var:self.n_bc_vars * id + self.u_bc_var + self.n_dim] = \
                     bc['mech']['rn'] * n + bc['mech']['rt']
-
-    def init_heterogeneous_properties_by_tags(self):
-        """
-        UnstructReservoirMech.init_heterogeneous_properties (mech discretizer) with the
-        same result, but the properties are evaluated once per tag and the per-cell
-        discretizer arrays are filled from those, instead of a Python loop over cells.
-        """
-        m0, m1 = self.discr_mesh.region_ranges[elem_loc.MATRIX]
-        tags, tag_ids = np.unique(self.tags[m0:m1], return_inverse=True)
-        perms, biots, stfs, rconds, th_expns = [], [], [], [], []
-        poro, cs, hcap = np.zeros(len(tags)), np.zeros(len(tags)), np.zeros(len(tags))
-        for i, tag in enumerate(tags):
-            p = self.props[tag]
-            kx, ky, kz = (p['perm'],) * 3 if 'perm' in p else (p['permx'], p['permy'], p['permz'])
-            lam, mu = get_lambda_mu(p['E'], p['nu'])
-            perms.append(disc_matrix33(kx, ky, kz))
-            biots.append(disc_matrix33(p['biot']))
-            stfs.append(disc_stiffness(lam, mu))
-            if self.thermoporoelasticity:
-                rconds.append(disc_matrix33(p['thermal_conductivity']))
-                th_expns.append(disc_matrix33(p['th_expn']))
-                hcap[i] = p['heat_capacity']
-            poro[i] = p['porosity']
-            cs[i] = get_rock_compressibility(kd=p['kd'], biot=p['biot'], poro0=p['porosity'])
-        self.discr.perms = vector_matrix33([perms[i] for i in tag_ids])
-        self.discr.biots = vector_matrix33([biots[i] for i in tag_ids])
-        self.discr.stfs = stf_vector([stfs[i] for i in tag_ids])
-        if self.thermoporoelasticity:
-            self.discr.heat_conductions = vector_matrix33([rconds[i] for i in tag_ids])
-            self.discr.thermal_expansions = vector_matrix33([th_expns[i] for i in tag_ids])
-        self.porosity = np.zeros(self.n_matrix + self.n_fracs)
-        self.cs = np.zeros(self.n_matrix + self.n_fracs)
-        self.hcap = np.zeros(self.n_matrix + self.n_fracs)
-        self.porosity[m0:m1] = poro[tag_ids]
-        self.cs[m0:m1] = cs[tag_ids]
-        self.hcap[m0:m1] = hcap[tag_ids]
 
     def init_heterogeneous_properties(self, idata: InputData):
         '''

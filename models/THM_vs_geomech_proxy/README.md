@@ -136,6 +136,31 @@ Key parameters at the top of that block:
 
 Output is written to `results/sol_cpp_<physics_type>_<wells_type>_<case>/`.
 
+### Fault stability (FSP) post-processing
+
+`run()` in `main.py` does this automatically at the end (`plot_fault=True`, function `postprocess_fault`): FSP appended to the fault files, slip time series, 2D `FSP`/`delta_FSP` maps per report step and dip profiles through every well. Cases without a fault mesh skip it. The 2D slices of `plot_vtk_timesteps` pass through `idata.other.plot_slice_origin` (`None`: mesh center). In `no_damage_zone*` the domain is `DOMAIN_W` × `DOMAIN_H` = 20 × 20 km (depth 5 km, 500 m extrusion layers along Y, set in `gen_fault_msh_no_damage_zone.py`) with the fault crossing mid-depth at X = `DOMAIN_W`/2. The doublet straddles the fault: injector 500 m west of it, producer 500 m east (1 km apart; `well_offset` in `cases/no_damage_zone.py`), both at Y = `DOMAIN_H`/2. Both request the depth range 2000–3000 m, and perforations are restricted to the reservoir tag. Each well is therefore perforated over the whole local reservoir layer, which the fault offsets: ~2450–2750 m at the injector, ~2250–2550 m at the producer; slices go through the injector row at 2575 m depth. Both wells are on mass-rate control at 8000 m³/day (`idata.other.well_rate_m3_day`, balanced doublet, no BHP limits), and the injected water is 40 K colder than the reservoir.
+
+For cases with a fault (`no_damage_zone*`), `gen_fault_msh_no_damage_zone.py` writes `mesh.msh` (simulation) and `mesh_fault.msh` (same geometry with the fault surfaces tagged `FAULT = 9991`). During the run, `reservoir.save_fault_traction` writes the fault surface with the total-stress traction for every report step (`fault<N>.vtu`, `fault.pvd`). The traction is taken from the engine connection forces (Hooke + Biot + thermal) on the mesh faces lying on the fault. Then run:
+
+```bash
+python fault.py results/sol_cpp_single_phase_inj_no_damage_zone --friction 0.6 --cohesion 0
+```
+
+Per fault face, with `t` the traction, `n` the unit normal and `p` the pore pressure (`fault.fault_stability`):
+
+```
+sigma_n     = t . n                                  (compression positive)
+tau         = |t - sigma_n n|
+sigma_n_eff = sigma_n - p                            (full pore pressure; the fault has its own constitutive
+                                                      behavior, so the matrix Biot coefficient is not used)
+mcc         = tau - (cohesion + friction * sigma_n_eff)
+FSP         = tau / sigma_n_eff                      (NaN where sigma_n_eff <= 0)
+```
+
+The run prints this computation step by step for the face with the largest FSP (`print_face_computation`).
+
+This appends to every `fault<N>.vtu`: `sigma_n` (compression positive), `sigma_n_eff = sigma_n - p`, `tau`, `mcc = tau - (cohesion + friction * sigma_n_eff)` (> 0 means slip), `FSP = tau / sigma_n_eff` (NaN where `sigma_n_eff <= 0`), `delta_FSP` (change since the first step) and `slip`. It also writes `fault_slip.csv` and `fault_slip_vs_time.png` (FSP mean/max and slipping area [km², %] vs time), and 2D maps per report step `fault_plots/<field>_step<NNNN>.png` (fault faces unfolded onto the fault plane, along strike vs down dip, one color range per field over all steps). `--plot FSP mcc tau` selects the mapped fields (default `FSP`); `--plot` with no fields skips the maps. From Python: `plot_fault_case(case_dir, fields=('FSP', 'delta_FSP'))` or `plot_fault_field(vtu_filename, 'FSP')`. 1D profiles vs depth along the fault dip (pore pressure, temperature for thermal runs, normal stress total/effective, shear stress, Coulomb stress `tau - (c + mu sigma_n_eff)`, FSP) at one along-strike position, for several report steps: `--profile 4250 5750` (no value: at the face with the largest FSP), `--profile-steps 0 30`; from Python `plot_fault_dip_profiles(case_dir, strike=4250., steps=[0, 30])` or `point=[x, y, z]` (e.g. a well) instead of `strike`. Saves `fault_plots/dip_profile_strike<S>m.png` and `.csv`. To compare runs (files are only read): `compare_cases([dir1, dir2], labels=['homogeneous', 'heterogeneous'], frictions=(0.6, 1.2), png_filename='fault_slip_comparison.png')` plots slipping area and FSP max/mean vs time per case and friction.
+
 ### 2. THM + proxy comparison
 
 Edit the `if __name__ == '__main__':` block in `main_proxy.py`, then:
@@ -215,8 +240,10 @@ All output is written under `results/sol_cpp_<physics_type>_<wells_type>_<case>/
 |------|-------------|
 | `solution<N>.vtu` | Per-timestep VTK unstructured grid (written by `reservoir.py`). Cell fields: `pressure` [bar], `temperature` [K], `ux`/`uy`/`uz` (displacements relative to the geomechanical equilibrium state) [m], `tot_stress` (total stress, 6-component Voigt) [bar], `eff_stress`, `delta_tot_stress`, `delta_eff_stress`, `delta_pressure`, `delta_temperature`, `strain`, `perm` (full 3×3 permeability tensor) [mD], `E` [bar], `poisson`, `poro`, `viscosity` [cP]. |
 | `solution.pvd` | ParaView collection file referencing all `.vtu` timesteps. |
+| `fault<N>.vtu`, `fault.pvd` | Fault surface (cases with `mesh_fault.msh` only). Cell fields: `traction` (total stress, compression positive) [bar], `normal`, `pressure` [bar], `temperature` [K] (thermal runs); after `fault.py` also `sigma_n`, `sigma_n_eff`, `tau`, `mcc` [bar], `FSP`, `slip`. |
+| `fault_slip.csv`, `fault_slip_vs_time.png` | FSP (mean/max) and slipping fault area per report step, written by `fault.py`. |
 | `wells.vtk` | Well tube geometry (one cylinder per perforation) for overlay in ParaView. |
-| `plots_timestep_<N>/<arr>_slice.png` | XZ slice plots produced by `plot_vtk.py` for each timestep index in `plot_vtk_timesteps`. One PNG per array: `u_x,m`, `u_y,m`, `u_z,m`, `temperature,K`, `pressure,MPa`, `delta_temperature,K`, `delta_pressure,MPa`, `viscosity,cP`, `perm_XX,mD`, `perm_ZZ,mD`, `delta_eff_stress_XX/YY/ZZ,MPa`, `delta_tot_stress_XX/YY/ZZ,MPa`. Arrays absent from the VTK file (e.g. `temperature` for isothermal runs) are skipped. |
+| `plots_timestep_<N>/<arr>_slice_<xz,yz,xy>.png` (slices through the mesh center, or through `slice_origin=[x, y, z]` passed to `plot_vtk_pyvista`, e.g. a well at reservoir depth) | XZ slice plots produced by `plot_vtk.py` for each timestep index in `plot_vtk_timesteps`. One PNG per array: `u_x,m`, `u_y,m`, `u_z,m`, `temperature,K`, `pressure,MPa`, `delta_temperature,K`, `delta_pressure,MPa`, `viscosity,cP`, `perm_XX,mD`, `perm_ZZ,mD`, `delta_eff_stress_XX/YY/ZZ,MPa`, `delta_tot_stress_XX/YY/ZZ,MPa`. Arrays absent from the VTK file (e.g. `temperature` for isothermal runs) are skipped. |
 
 ### Proxy comparison (`main_proxy.py`)
 

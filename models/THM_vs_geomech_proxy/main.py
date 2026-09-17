@@ -353,9 +353,36 @@ def run_python(m, days=0, restart_dt=0, init_step = False,
     print("TS = %d(%d), NI = %d(%d), LI = %d(%d)" % (stats.n_timesteps_total, stats.n_timesteps_wasted,
                                                      stats.n_newton_total, stats.n_newton_wasted,
                                                      stats.n_linear_total, stats.n_linear_wasted))
+def postprocess_fault(m, friction=None, cohesion=None):
+    """
+    Fault stability post-processing at the end of a run (see fault.py): FSP and the
+    Mohr-Coulomb criterion appended to fault<N>.vtu, slip time series, 2D FSP and
+    delta_FSP maps per report step and 1D dip profiles through every well.
+    Skipped for cases without a fault mesh (no fault<N>.vtu written).
+    """
+    import fault
+    if not fault._fault_files(m.output_directory):
+        return
+    # same source as the proxy (main_proxy.run_geomech_proxy), so THM and proxy
+    # evaluate the slip criterion with identical fault strength
+    if friction is None:
+        friction = getattr(m.idata.rock, 'friction', 0.6)
+    if cohesion is None:
+        cohesion = getattr(m.idata.rock, 'cohesion', 0.0)
+    print(f'fault post-processing: friction={friction:g}, cohesion={cohesion:g}')
+    fault.postprocess_case(m.output_directory, friction=friction, cohesion=cohesion)
+    fault.plot_fault_case(m.output_directory, fields=('FSP', 'delta_FSP'))
+    centroids = m.reservoir.discr_mesh.centroids
+    for well, cell_ids in zip(m.reservoir.wells, m.well_cell_ids):
+        point = np.mean([centroids[int(i)].values for i in cell_ids], axis=0)
+        print('fault dip profile through well', well.name, 'at', point.round(0))
+        fault.plot_fault_dip_profiles(m.output_directory, point=point, friction=friction, cohesion=cohesion)
+
+
 def run(model_folder, physics_type, uniform_props=False, wells_type=None,
         decouple_geomech=False, generate_mesh=False, report_step = 90., sim_time = 90., plot_vtk_timesteps=[],
-        clear_output_dir=False, solver_type='fs_cpr', save_well_time_data=True, cache_discretization=None):
+        clear_output_dir=False, solver_type='fs_cpr', save_well_time_data=True,
+        cache_discretization=None, plot_fault=True):
     '''
     :param model_folder: output folder for mesh, vtk results and figures
     :param physics_type: 'single_phase', 'single_phase_thermal'
@@ -367,6 +394,7 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
     :param save_well_time_data: if True, write the well time-series files (pkl/xlsx).
     :param cache_discretization: reuse the discretization of an earlier run with the same input;
         None: on unless the environment variable DARTS_DISCR_CACHE=0
+    :param plot_fault: if True, run the fault FSP post-processing and plots at the end (postprocess_fault)
     :return:
     '''
 
@@ -510,7 +538,11 @@ def run(model_folder, physics_type, uniform_props=False, wells_type=None,
 
     for tstep_to_plot in plot_vtk_timesteps:
         plot_vtk_pyvista(m.output_directory, tstep_to_plot=tstep_to_plot, idata=m.idata,
-                         use_mesh_bounds=m.idata.other.use_mesh_bounds_in_plot)
+                         use_mesh_bounds=m.idata.other.use_mesh_bounds_in_plot,
+                         slice_origin=getattr(m.idata.other, 'plot_slice_origin', None))
+
+    if plot_fault:
+        postprocess_fault(m)
 
     return m, data
 

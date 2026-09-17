@@ -5,14 +5,19 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+DOMAIN_W = 20000.0  # x extent [m]; the fault crosses mid-depth at x = DOMAIN_W / 2
+DOMAIN_H = 20000.0  # y extent [m] (extrusion length)
+LAYER_DY = 500.0    # extrusion layer length along y [m]
+
+
 def gen_fault_msh_no_damage_zone(fault=False):
     gmsh.initialize()
     gmsh.model.add("test_3D_fault")
     geo = gmsh.model.geo
 
     # ---- Parameters ----
-    W = 10000.0          # x extent
-    H = 10000.0          # y extent (extrusion length)
+    W = DOMAIN_W         # x extent
+    H = DOMAIN_H         # y extent (extrusion length)
     T = 5000.0           # total thickness (Z2 - Z1)
     D = 2500.0           # mid-depth
     Z1 = D - T / 2.0     # top    = 0    (shallowest z)
@@ -27,7 +32,7 @@ def gen_fault_msh_no_damage_zone(fault=False):
     mult = 0.5
     mult1 = 0.1
     tol = 1e-6
-    n_extrude = 20       # layers along y
+    n_extrude = int(round(H / LAYER_DY))  # layers along y
 
     # --------- 2D section in the y = 0 plane (x-z), extruded in y ----------
     # Outer box points (x from 0 to W, z from Z1=top to Z2=bottom)
