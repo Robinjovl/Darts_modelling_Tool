@@ -483,8 +483,9 @@ assemble_jacobian_array_kernel(const unsigned int n_blocks, const unsigned int n
 
       // Take average interface porosity:
       trans_mult = 2 * mult_i * mult_j / (mult_i + mult_j);
-      trans_mult_der_i = mult_j * trans_mult / (mult_i + mult_j) * op_ders_arr[(i * N_OPS + MULT_OP) * N_VARS + v];
-      trans_mult_der_j = mult_i * trans_mult / (mult_i + mult_j) * op_ders_arr[(j * N_OPS + MULT_OP) * N_VARS + v];
+      value_t mult_sum_sq = (mult_i + mult_j) * (mult_i + mult_j);
+      trans_mult_der_i = 2 * mult_j * mult_j / mult_sum_sq * op_ders_arr[(i * N_OPS + MULT_OP) * N_VARS + v];
+      trans_mult_der_j = 2 * mult_i * mult_i / mult_sum_sq * op_ders_arr[(j * N_OPS + MULT_OP) * N_VARS + v];
     }
 
     p_diff = X[j * N_VARS + P_VAR] - X[i * N_VARS + P_VAR];

@@ -11,9 +11,10 @@ variables:
   # Proprietary BOS-solvers CI twins: build-linux-BOS / test-linux-BOS and
   # build-windows-BOS / test-windows-BOS (ENABLE_BOS_SOLVERS=ON, `-a` build flag).
   #
-  #   "1" (default) -> the BOS twins run exactly as before
-  #   anything else -> all four BOS twins are skipped pipeline-wide
-  RUN_BOS_JOBS: "1"
+  #   "0" (default) -> all four BOS twins are skipped pipeline-wide
+  #   "1" -> enable all four BOS twins for an explicitly opted-in pipeline
+  # Set RUN_BOS_JOBS=1 in a manual or scheduled pipeline to run them.
+  RUN_BOS_JOBS: "0"
 
 stages:
     - pre_commit
