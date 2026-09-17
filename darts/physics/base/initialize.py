@@ -32,7 +32,7 @@ class Initialize:
         # Index of pressure, temperature and components
         self.vars = (
             ['pressure']
-            + self.physics.components[:-1]
+            + self.physics.explicit_components()
             + (['temperature'] if self.thermal else [])
         )
         self.var_idxs = {var: i for i, var in enumerate(self.vars)}
@@ -456,7 +456,7 @@ class Initialize:
         dTdh: float = 0.03,
     ):
         Xi = [boundary_state['pressure']]
-        for c in self.physics.components[:-1]:
+        for c in self.physics.explicit_components():
             Xi += [boundary_state[c]]
         if 'temperature' in boundary_state.keys():
             Xi += [boundary_state['temperature']]

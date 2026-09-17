@@ -22,6 +22,7 @@ class PropertyContainer(BasePropertyContainer):
         eps_z=1e-11,
         temperature=None,
         fc_mask=None,
+        dependent_comp_idx: int = None,
     ):
         """
         Constructor for PropertyContainer class.
@@ -43,6 +44,11 @@ class PropertyContainer(BasePropertyContainer):
         :type temperature: float | None
         :param fc_mask: Fluid component mask
         :type fc_mask: List[bool]
+        :param dependent_comp_idx: Index into ``components_name`` of the implicit
+                      (closure) component. Default ``None`` (``nc - 1``). See
+                      ``PropertyContainer.__init__`` (base class) for details --
+                      must agree with the value :class:`PhysicsBase` resolves.
+        :type dependent_comp_idx: int, optional
         """
 
         # find key by value for disctionary
@@ -58,6 +64,7 @@ class PropertyContainer(BasePropertyContainer):
             np_kin=np_kin,
             eps_z=eps_z,
             temperature=temperature,
+            dependent_comp_idx=dependent_comp_idx,
         )
         self.components_name = np.array(self.components_name)
         self.stoich_matrix = stoich_matrix
@@ -79,10 +86,12 @@ class PropertyContainer(BasePropertyContainer):
             [self.phase_idx['gas'], self.phase_idx['aq']], dtype=np.intp
         )
 
-        # to retrieve fluid component fractions from state
-        self.f_mask_state = np.concatenate([[False], self.fc_mask[:-1]])
+        # to retrieve fluid component fractions from state (fc_mask with the
+        # implicit/dependent component's entry removed -- it has no state slot)
+        explicit_fc_mask = np.delete(self.fc_mask, self.dependent_comp_idx)
+        self.f_mask_state = np.concatenate([[False], explicit_fc_mask])
         # to retrieve solid component fractions from state
-        self.s_mask_state = np.concatenate([[False], ~self.fc_mask[:-1]])
+        self.s_mask_state = np.concatenate([[False], ~explicit_fc_mask])
 
         # figure out spec
         self.minerals = self.components_name[~self.fc_mask]

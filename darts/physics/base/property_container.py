@@ -39,6 +39,7 @@ class PropertyContainer:
         np_kin: int = 0,
         solid_phase_idxs: list = None,
         solid_comp_idxs: list = None,
+        dependent_comp_idx: int = None,
         kin_formulation: list = None,
         nc_kin_per_phase: list = None,
         eps_z: float = 1e-11,
@@ -70,6 +71,15 @@ class PropertyContainer:
                       ``None`` (the kinetic components); independent of ``nc_kin`` and
                       overridable.
         :type solid_comp_idxs: list[int], optional
+        :param dependent_comp_idx: Index into ``components_name`` of the implicit
+                      (closure) component -- the one whose mole fraction is never an
+                      explicit Newton unknown, recovered as ``1 - sum(others)``.
+                      Default ``None`` (``nc - 1``, the last component -- matches
+                      legacy behaviour). Must agree with the value :class:`PhysicsBase`
+                      resolves at construction (see ``PhysicsBase.__init__``'s own
+                      ``dependent_comp_idx``); :meth:`PhysicsBase.init_physics` asserts
+                      this.
+        :type dependent_comp_idx: int, optional
         :param kin_formulation: One :class:`KineticFormulation` per kinetic phase
                       (``np_kin`` entries, Flash.set_kinetic_phase() order), or a
                       single :class:`KineticFormulation` broadcast to every kinetic
@@ -100,6 +110,12 @@ class PropertyContainer:
         self.np_kin = np_kin
         self.nc_eq = self.nc - nc_kin
         self.np_eq = self.nph - np_kin
+        self.dependent_comp_idx = (
+            self.nc - 1 if dependent_comp_idx is None else int(dependent_comp_idx)
+        )
+        assert 0 <= self.dependent_comp_idx < self.nc, (
+            f"dependent_comp_idx={self.dependent_comp_idx} out of range [0, {self.nc})"
+        )
 
         self._setup_kinetic_and_phase_idxs(
             nc_kin,
@@ -314,7 +330,7 @@ class PropertyContainer:
         (see darts.linear_solvers.specs.SchurEliminationSpec): all
         bulk_kin_comp_idxs (structurally local -- FLUX_OP/GRAD_OP never write
         kinetic-component columns), plus mole_kin_comp_idxs whose phase's
-        diffusion_ev evaluates to zero. Excludes component nc-1 (no unknown
+        diffusion_ev evaluates to zero. Excludes dependent_comp_idx (no unknown
         column -- get_state()'s implicit closure)."""
 
         def is_zero_evaluator(ev) -> bool:
@@ -333,7 +349,7 @@ class PropertyContainer:
             if ev is not None and is_zero_evaluator(ev):
                 start = self.nc_eq + self.kin_comp_offsets[j]
                 idxs.update(range(start, start + self.nc_kin_per_phase[j]))
-        idxs.discard(self.nc - 1)
+        idxs.discard(self.dependent_comp_idx)
         return np.array(sorted(idxs), dtype=int)
 
     def check_properties(self):
@@ -447,10 +463,12 @@ class PropertyContainer:
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
 
-        zc = np.append(
-            vec_state_as_np[1 : self.nc], 1 - np.sum(vec_state_as_np[1 : self.nc])
+        zc = np.insert(
+            vec_state_as_np[1 : self.nc],
+            self.dependent_comp_idx,
+            1 - np.sum(vec_state_as_np[1 : self.nc]),
         )
-        if zc[-1] < 0.99 * self.eps_z:
+        if zc[self.dependent_comp_idx] < 0.99 * self.eps_z:
             zc = self.comp_out_of_bounds(zc)
 
         if self.thermal:

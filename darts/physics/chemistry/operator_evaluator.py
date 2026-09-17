@@ -57,11 +57,15 @@ class ReservoirOperators(OperatorsSuper):
             z = state[1:-1]
         else:
             z = state[1:]
-        z_last = min(
-            max(1 - np.sum(z[self.property.fc_mask[:-1]]), self.property.eps_z),
+        dependent_comp_idx = self.property.dependent_comp_idx
+        # fc_mask over the explicit (non-dependent) components, matching z's order --
+        # the dependent component's own entry has no explicit slot to select.
+        explicit_fc_mask = np.delete(self.property.fc_mask, dependent_comp_idx)
+        z_dependent = min(
+            max(1 - np.sum(z[explicit_fc_mask]), self.property.eps_z),
             1.0 - len(z) * self.property.eps_z,
         )
-        z = np.concatenate([z, [z_last]])
+        z = np.insert(z, dependent_comp_idx, z_dependent)
         return z
 
     def evaluate(self, state, values):

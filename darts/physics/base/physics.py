@@ -99,6 +99,7 @@ class PhysicsBase:
         state_spec: 'PhysicsBase.StateSpecification' = None,
         cache: bool = False,
         history_fields: Iterable[HistoryField] | None = None,
+        dependent_comp_idx: int = None,
     ) -> None:
         """
         Configure the OBL grid and physics state for a compositional simulation.
@@ -134,6 +135,16 @@ class PhysicsBase:
             OBL axes (e.g. ``sg_max`` for Killough hysteresis) that are fed into operator
             interpolation but are NOT Newton unknowns. Pass ``None`` or an empty list for
             standard OBL behaviour.
+        :param dependent_comp_idx: Index into ``components`` of the implicit (closure)
+            component -- the one whose mole fraction is never an explicit Newton
+            unknown, recovered as ``1 - sum(others)``. Default ``None`` (``nc - 1``,
+            the last component -- matches legacy behaviour). Determines ``self.vars``
+            here (which ``components`` entry is NOT an OBL axis), so ``axes_step`` /
+            ``axes_origin``'s composition entries must be ordered to match the
+            resulting explicit-component order. Any :class:`PropertyContainer`
+            attached later must declare the same value (checked in
+            :meth:`init_physics`).
+        :type dependent_comp_idx: int, optional
         """
         # Default state_spec must be supplied here (rather than in the signature) because the
         # class reference PhysicsBase is not yet resolvable at default-evaluation time.
@@ -145,8 +156,23 @@ class PhysicsBase:
         nph = len(phases)
         self.thermal = state_spec > PhysicsBase.StateSpecification.P
 
-        # Build the variable list: pressure, nc-1 components, optional temperature/enthalpy
-        variables = ["pressure"] + components[:-1]
+        # The implicit (closure) component -- excluded from the explicit OBL axes /
+        # Newton unknowns below. Fixed here since self.vars must exist before any
+        # PropertyContainer is attached (add_property_region() runs later); a
+        # PropertyContainer's own dependent_comp_idx is checked against this in
+        # init_physics().
+        self.dependent_comp_idx = (
+            nc - 1 if dependent_comp_idx is None else int(dependent_comp_idx)
+        )
+        assert 0 <= self.dependent_comp_idx < nc, (
+            f"dependent_comp_idx={self.dependent_comp_idx} out of range [0, {nc})"
+        )
+
+        # Build the variable list: pressure, nc-1 components (dependent_comp_idx
+        # excluded), optional temperature/enthalpy
+        variables = ["pressure"] + [
+            c for i, c in enumerate(components) if i != self.dependent_comp_idx
+        ]
         if self.thermal:
             variables += (
                 ["temperature"]
@@ -329,6 +355,18 @@ class PhysicsBase:
         """
         return self.n_vars + self.history.n_fields
 
+    def explicit_components(self) -> list:
+        """``self.components`` with ``dependent_comp_idx`` removed, in the same
+        order as the explicit (non-dependent) entries of :attr:`vars` -- the
+        component names actually carried as OBL axes / Newton unknowns.
+
+        :returns: ``nc - 1`` component names
+        :rtype: list[str]
+        """
+        return [
+            c for i, c in enumerate(self.components) if i != self.dependent_comp_idx
+        ]
+
     def get_interpolator_state_labels(self) -> list:
         """
         Return axis labels used by the OBL interpolators, in storage order.
@@ -410,6 +448,21 @@ class PhysicsBase:
         for region in self.regions:
             self.property_containers[region].check_properties()
 
+        # dependent_comp_idx (the implicit/closure component -- see __init__) is
+        # fixed by self.vars at construction time, before any PropertyContainer is
+        # attached (add_property_region() runs after __init__). A container may
+        # still declare its own dependent_comp_idx (default None -> nc-1); if it
+        # does, it must agree with what __init__ already committed to, since
+        # self.vars / the OBL axes cannot be changed here.
+        for pc in self.property_containers.values():
+            assert pc.dependent_comp_idx == self.dependent_comp_idx, (
+                f"PropertyContainer.dependent_comp_idx={pc.dependent_comp_idx} "
+                f"disagrees with Physics.dependent_comp_idx={self.dependent_comp_idx} "
+                "(set via the Physics constructor, which fixes self.vars before any "
+                "PropertyContainer is attached)."
+            )
+        self.engine.dependent_comp_idx = self.dependent_comp_idx
+
         # Kinetic component equations with no flux/diffusion term (see
         # PropertyContainer.schur_eliminable_comp_idxs()) can be Schur-eliminated
         # by the linear solver; intersect across regions since the eliminated
@@ -426,7 +479,15 @@ class PhysicsBase:
         else:
             eligible = set()
         self.schur_elim_rows = sorted(eligible)
-        self.schur_elim_cols = [i + 1 for i in self.schur_elim_rows]
+        # Column space is [0=pressure] + one column per explicit (non-dependent)
+        # component, in components_name order. A component after the dependent
+        # slot shifts down by one column (the dependent component's column is
+        # simply absent, not trailing) -- row space (component-equation index) is
+        # unshifted since every component, dependent included, has its own
+        # residual row (see PropertyContainer.get_state()).
+        self.schur_elim_cols = [
+            (i + 1) if i < self.dependent_comp_idx else i for i in self.schur_elim_rows
+        ]
         self.schur_elim_count = len(self.schur_elim_rows)
 
         # Set operators and interpolators
@@ -966,7 +1027,7 @@ class PhysicsBase:
                         linear_interp_extrapolate(
                             depths, input_depth, input_distribution[comp]
                         )
-                        for comp in self.components[:-1]
+                        for comp in self.explicit_components()
                     ]
                 )
 
@@ -1040,9 +1101,7 @@ class PhysicsBase:
                                     if not np.isscalar(input_distribution[component])
                                     else input_distribution[component]
                                 )
-                                for component in self.property_containers[
-                                    0
-                                ].components_name[:-1]
+                                for component in self.explicit_components()
                             ]
                             temp = (
                                 input_distribution['temperature'][j]
@@ -1061,9 +1120,7 @@ class PhysicsBase:
                     else:
                         composition = [
                             input_distribution[component]
-                            for component in self.property_containers[
-                                0
-                            ].components_name[:-1]
+                            for component in self.explicit_components()
                         ]
                         state = value_vector(
                             [input_distribution['pressure']]

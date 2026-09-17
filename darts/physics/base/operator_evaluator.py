@@ -22,7 +22,7 @@ class OperatorsBase(operator_set_evaluator_iface):
 
         :param property_container: Property container of type PropertyContainer
         :param thermal: Switch to indicate if energy conservation equation is there
-        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[dependent_comp_idx] < 0 in case nc >= 3)
         :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
                     during boundary extrapolation. Scalar (uniform spacing) or a per-axis
                     vector of length nc-1 (non-uniform cell size across composition axes).
@@ -34,6 +34,7 @@ class OperatorsBase(operator_set_evaluator_iface):
         self.thermal = thermal
 
         self.nc = property_container.nc
+        self.dependent_comp_idx = property_container.dependent_comp_idx
         self.ne = self.nc + self.thermal
         self.nph = property_container.nph
         self.eps_z = (
@@ -87,17 +88,26 @@ class OperatorsBase(operator_set_evaluator_iface):
 
     def apply_extrapolation(self, state, values):
         """
-        Method that determines whether or not extrapolation should be applied to current state (z[-1] < 0).
-        If so, it will call extrapolate() and return True, such that evaluate() skips further evaluation of operators
+        Method that determines whether or not extrapolation should be applied to current state
+        (z[dependent_comp_idx] < 0). If so, it will call extrapolate() and return True, such that
+        evaluate() skips further evaluation of operators
 
         :param state: Vector with state [P, z, (T/H)]
         :param values: Vector with operator values
         :return: Whether or not extrapolation has been applied to this state
         """
-        # Find composition, if last composition is negative, apply extrapolation
-        zc = np.append(state[1 : self.nc], 1 - np.sum(state[1 : self.nc]))
+        # Find composition, if the implicit (closure) composition is negative, apply extrapolation
+        zc = np.insert(
+            state[1 : self.nc],
+            self.dependent_comp_idx,
+            1 - np.sum(state[1 : self.nc]),
+        )
 
-        if len(zc) > 2 and zc[-1] < 0.99 * self.eps_z and self.extrapolation_flag:
+        if (
+            len(zc) > 2
+            and zc[self.dependent_comp_idx] < 0.99 * self.eps_z
+            and self.extrapolation_flag
+        ):
             # TODO: Fix second condition, this is problematic for small eps_z values (~1e-14)
             self.extrapolate(state, values)
             return True
@@ -292,7 +302,7 @@ class WellCtrlOperators(OperatorsBase):
 
         :param property_container: Property container of type PropertyContainer
         :param thermal: Switch to indicate if energy conservation equation is there
-        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[dependent_comp_idx] < 0 in case nc >= 3)
         :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
                     during boundary extrapolation. Scalar (uniform spacing) or a per-axis
                     vector of length nc-1 (non-uniform cell size across composition axes).
@@ -398,7 +408,7 @@ class ThermalVarOperator(OperatorsBase):
         :param property_container: Property container of type PropertyContainer
         :param thermal: Switch to indicate if energy conservation equation is there
         :param is_pt: Switch to indicate if state specification is P, PT, or PH
-        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[dependent_comp_idx] < 0 in case nc >= 3)
         :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
                     during boundary extrapolation. Scalar (uniform spacing) or a per-axis
                     vector of length nc-1 (non-uniform cell size across composition axes).
@@ -447,7 +457,7 @@ class PropertyOperators(OperatorsBase):
         :param property_container: PropertyContainer object to evaluate properties at given state
         :param thermal: Bool for thermal
         :param props: Optional dictionary of properties, default is taken from PropertyContainer
-        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[dependent_comp_idx] < 0 in case nc >= 3)
         :param dz: Composition OBL cell size(s) used to step onto neighbouring grid nodes
                     during boundary extrapolation. Scalar (uniform spacing) or a per-axis
                     vector of length nc-1 (non-uniform cell size across composition axes).
@@ -501,7 +511,7 @@ class OperatorsSuper(OperatorsBase):
 
         :param property_container: Property container of type PropertyContainer
         :param thermal: Switch to indicate if energy conservation equation is there
-        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[dependent_comp_idx] < 0 in case nc >= 3)
         :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
                     (must be equal along all composition axes in current setup)
         """
@@ -618,7 +628,11 @@ class ReservoirOperators(OperatorsSuper):
             self.property.sat[mole_basis_phase_idxs]
             * self.property.dens_m[mole_basis_phase_idxs]
         )
-        zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
+        zc = np.insert(
+            state_np[1 : self.nc],
+            self.dependent_comp_idx,
+            1 - np.sum(state_np[1 : self.nc]),
+        )
 
         """ CONSTRUCT OPERATORS HERE """
 
@@ -829,7 +843,11 @@ class WellOperators(OperatorsSuper):
             self.property.sat[mole_basis_phase_idxs]
             * self.property.dens_m[mole_basis_phase_idxs]
         )
-        zc = np.append(state_np[1 : self.nc], 1 - np.sum(state_np[1 : self.nc]))
+        zc = np.insert(
+            state_np[1 : self.nc],
+            self.dependent_comp_idx,
+            1 - np.sum(state_np[1 : self.nc]),
+        )
 
         """ CONSTRUCT OPERATORS HERE """
 
@@ -982,7 +1000,7 @@ class GeomechanicsReservoirOperators(ReservoirOperators):
 
         :param property_container: Property container of type PropertyContainer
         :param thermal: Switch to indicate if energy conservation equation is there
-        :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
+        :param extrapolation_flag: Switch to turn on extrapolation logic (z[dependent_comp_idx] < 0 in case nc >= 3)
         :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
                     (must be equal along all composition axes in current setup)
         """

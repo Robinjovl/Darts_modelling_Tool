@@ -112,6 +112,7 @@ public:
 		is_fickian_energy_transport_on = true;
 		newton_update_coefficient = 1.0;
 		n_solid = 0;
+		dependent_comp_idx = UINT8_MAX;  // sentinel: unset -> resolved to nc-1 in init()
 		linear_solver_owned = true;  // By default, we own the solver
 		newton_chop_mode = sim_params::NEWTON_LOCAL_CHOP;
 		newton_chop_factor = 0.1;
@@ -511,6 +512,10 @@ public:
 	uint8_t z_var_idx;
 	// number of mineral/solid species
 	uint8_t n_solid;
+	// Component index treated as the implicit (closure) unknown -- 1 - sum(others),
+	// never an explicit Newton unknown/column. Set from Python (mirrors n_solid) as
+	// UINT8_MAX ("unset") to resolve to nc-1 in init(), or an explicit index.
+	uint8_t dependent_comp_idx;
 	StateSpecification state_spec;
 	double min_axis_z;  // OBL axis min for composition
 	double max_axis_z;  // OBL axis max for composition
@@ -1101,6 +1106,16 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	n_ops = get_n_ops();
 	nc = get_n_comps();
 	z_var_idx = get_z_var_idx();
+	if (dependent_comp_idx == UINT8_MAX)
+		dependent_comp_idx = nc - 1;
+	if (dependent_comp_idx >= nc)
+		throw std::runtime_error("dependent_comp_idx=" + std::to_string(dependent_comp_idx) +
+		    " out of range [0, " + std::to_string((int)nc) + ")");
+	if (n_solid > 0 && dependent_comp_idx < n_solid)
+		throw std::runtime_error("dependent_comp_idx=" + std::to_string(dependent_comp_idx) +
+		    " falls in the solid block [0, " + std::to_string((int)n_solid) + ") -- "
+		    "apply_local_chop_correction_with_solid() requires the dependent component to "
+		    "be a fluid component (index >= n_solid)");
 
 	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
 	mesh->n_vars = n_vars;

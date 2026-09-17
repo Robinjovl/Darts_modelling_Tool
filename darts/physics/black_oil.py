@@ -83,9 +83,13 @@ class BlackOilProperties(PropertyContainer):
         self.pressure = vec_state_as_np[0]
         self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
-        zc = np.append(vec_state_as_np[1:], 1 - np.sum(vec_state_as_np[1:]))
+        zc = np.insert(
+            vec_state_as_np[1:],
+            self.dependent_comp_idx,
+            1 - np.sum(vec_state_as_np[1:]),
+        )
 
-        if zc[-1] < 0:
+        if zc[self.dependent_comp_idx] < 0:
             # print(zc)
             zc = self.comp_out_of_bounds(zc)
 

@@ -2881,14 +2881,19 @@ void engine_base::apply_local_chop_correction(std::vector<value_t> &X, std::vect
 	for (int i = 0; i < mesh->n_blocks; i++)
 	{
 		ratio = 1.0;
-		old_z[nc - 1] = 1.0;
-		new_z[nc - 1] = 1.0;
+		old_z[dependent_comp_idx] = 1.0;
+		new_z[dependent_comp_idx] = 1.0;
+		// Explicit slot j (contiguous in X, 0..nc-2) maps to physical component p,
+		// skipping dependent_comp_idx (its value is implicit, recovered below).
+		int p = 0;
 		for (int j = 0; j < nc - 1; j++)
 		{
-			old_z[j] = X[i * n_vars + j + z_var_idx];
-			old_z[nc - 1] -= old_z[j];
-			new_z[j] = old_z[j] - dX[i * n_vars + j + z_var_idx];
-			new_z[nc - 1] -= new_z[j];
+			if (p == dependent_comp_idx) p++;
+			old_z[p] = X[i * n_vars + j + z_var_idx];
+			old_z[dependent_comp_idx] -= old_z[p];
+			new_z[p] = old_z[p] - dX[i * n_vars + j + z_var_idx];
+			new_z[dependent_comp_idx] -= new_z[p];
+			p++;
 		}
 
 		for (int j = 0; j < nc; j++)
@@ -2919,18 +2924,27 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 	value_t ratio, dx;
 	index_t n_corrected = 0;
 	uint8_t nc_fl = nc - n_solid;
+	// dependent_comp_idx is expected to fall in the fluid range [n_solid, nc) --
+	// this function's "n_solid physical solids first" chemistry convention has no
+	// explicit slot for a solid-group closure, so a solid cannot be dependent here.
+	uint8_t dep_fl = dependent_comp_idx - n_solid;
 
 	for (int i = 0; i < mesh->n_blocks; i++)
 	{
 		ratio = 1.0;
-		old_z_fl[nc_fl - 1] = 1.0;
-		new_z_fl[nc_fl - 1] = 1.0;
+		old_z_fl[dep_fl] = 1.0;
+		new_z_fl[dep_fl] = 1.0;
+		// Explicit fluid slot j maps to physical (fluid-local) index p, skipping
+		// dep_fl (dependent_comp_idx's position within the fluid sub-array).
+		int p = 0;
 		for (int j = 0; j < nc_fl - 1; j++)
 		{
-			old_z_fl[j] = X[i * n_vars + j + z_var_idx + n_solid];
-			old_z_fl[nc_fl - 1] -= old_z_fl[j];
-			new_z_fl[j] = old_z_fl[j] - dX[i * n_vars + j + z_var_idx + n_solid];
-			new_z_fl[nc_fl - 1] -= new_z_fl[j];
+			if (p == dep_fl) p++;
+			old_z_fl[p] = X[i * n_vars + j + z_var_idx + n_solid];
+			old_z_fl[dep_fl] -= old_z_fl[p];
+			new_z_fl[p] = old_z_fl[p] - dX[i * n_vars + j + z_var_idx + n_solid];
+			new_z_fl[dep_fl] -= new_z_fl[p];
+			p++;
 		}
 
 		for (int j = 0; j < nc_fl; j++)
@@ -2966,15 +2980,18 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 		for (int i = 0; i < mesh->n_blocks; i++)
 		{
 			ratio = 1.0;
-			old_z[nc - 1] = 1.0;
-			new_z[nc - 1] = 1.0;
+			old_z[dependent_comp_idx] = 1.0;
+			new_z[dependent_comp_idx] = 1.0;
+			int p = 0;
 			for (int j = 0; j < nc - 1; j++)
 			{
-				old_z[j] = X[i * n_vars + j + z_var_idx];
-				old_z[nc - 1] -= old_z[j];
+				if (p == dependent_comp_idx) p++;
+				old_z[p] = X[i * n_vars + j + z_var_idx];
+				old_z[dependent_comp_idx] -= old_z[p];
 
-				new_z[j] = old_z[j] - dX[i * n_vars + j + z_var_idx];
-				new_z[nc - 1] -= new_z[j];
+				new_z[p] = old_z[p] - dX[i * n_vars + j + z_var_idx];
+				new_z[dependent_comp_idx] -= new_z[p];
+				p++;
 			}
 
 			for (int j = 0; j < nc; j++)
@@ -3002,15 +3019,18 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 		for (int i = 0; i < mesh->n_blocks; i++)
 		{
 			ratio = 1.0;
-			old_z[nc - 1] = 1.0;
-			new_z[nc - 1] = 1.0;
+			old_z[dependent_comp_idx] = 1.0;
+			new_z[dependent_comp_idx] = 1.0;
+			int p = 0;
 			for (int j = 0; j < nc - 1; j++)
 			{
-				old_z[j] = exp(X[i * n_vars + j + z_var_idx]); //log based composition
-				old_z[nc - 1] -= old_z[j];
+				if (p == dependent_comp_idx) p++;
+				old_z[p] = exp(X[i * n_vars + j + z_var_idx]); //log based composition
+				old_z[dependent_comp_idx] -= old_z[p];
 
-				new_z[j] = exp(log(old_z[j]) - dX[i * n_vars + j + z_var_idx]); //log based composition
-				new_z[nc - 1] -= new_z[j];
+				new_z[p] = exp(log(old_z[p]) - dX[i * n_vars + j + z_var_idx]); //log based composition
+				new_z[dependent_comp_idx] -= new_z[p];
+				p++;
 			}
 
 			for (int j = 0; j < nc; j++)
