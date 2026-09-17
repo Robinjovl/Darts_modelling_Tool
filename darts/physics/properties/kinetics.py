@@ -49,14 +49,14 @@ class LawOfMassAction(Kinetics):
     def __init__(
         self,
         stoich: list,
-        nc_fl: int,
+        nc_eq: int,
         fl_idx: int,
         equi_prod: float,
         kin_rate_cte: float,
     ):
         super().__init__(stoich)
 
-        self.nc_fl = nc_fl
+        self.nc_eq = nc_eq
         self.fl_idx = fl_idx
         self.equi_prod = equi_prod
         self.kin_rate_cte = kin_rate_cte
@@ -65,7 +65,7 @@ class LawOfMassAction(Kinetics):
         # For reaction aA + bB <-> cC
         # Calculate activity product Q = [C]^c / [A]^a [B]^b
         prod = 1.0
-        for i in range(self.nc_fl):
+        for i in range(self.nc_eq):
             prod = (
                 prod * x[self.fl_idx, i] ** self.stoich[i]
                 if self.stoich[i] != 0

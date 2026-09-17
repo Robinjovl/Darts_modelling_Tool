@@ -124,7 +124,7 @@ class ModelProperties(PropertyContainer):
         # two-phase flash - assume water phase is always present and water component last
         self.x[j, :] = zc
 
-        self.ph = np.array([j], dtype=np.intp)
+        self.eq_phase_idxs = np.array([j], dtype=np.intp)
 
         # molar weight of mixture
         M = np.sum(self.x[j, :] * self.Mw)

@@ -428,14 +428,23 @@ class LinearSolver:
         # selected chain in linsolv_schur_elim<N,K> when this counter is set. The
         # explicit eliminated (row, column) pairs are passed through params.
         schur_elim = int(getattr(spec, "schur_elim_count", 0) or 0)
+        rows = getattr(spec, "schur_elim_rows", None)
+        cols = getattr(spec, "schur_elim_cols", None)
+        if not schur_elim and getattr(spec, "schur_elim_kinetic", False):
+            # No explicit (row, column) pairs on the spec -- fall back to the
+            # physics' auto-detected kinetic component equations with no
+            # flux/diffusion term (PhysicsBase.init_physics()).
+            auto_count = int(getattr(model.physics, "schur_elim_count", 0) or 0)
+            if auto_count:
+                schur_elim = auto_count
+                rows = getattr(model.physics, "schur_elim_rows", None)
+                cols = getattr(model.physics, "schur_elim_cols", None)
         if hasattr(model.params, "schur_elim_count"):
             # sim_params vector<int> members are opaque-bound (index_vector),
             # so wrap the Python lists rather than assigning them directly.
             from darts.engines import index_vector
 
             if schur_elim:
-                rows = getattr(spec, "schur_elim_rows", None)
-                cols = getattr(spec, "schur_elim_cols", None)
                 if (
                     not rows
                     or not cols

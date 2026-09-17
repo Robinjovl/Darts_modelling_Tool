@@ -105,6 +105,42 @@ class LinearSolverSpec:
             self.registry_name, self._make_config(), block_size
         )
 
+    def with_schur_elimination(
+        self, elim_rows: list[int], elim_cols: list[int], pivot_eps: float = 0.0
+    ) -> LinearSolverSpec:
+        """Wrap this spec in exact local (block-Schur) elimination of the given
+        K cell-local (diagonal-block-only) equation/unknown pairs -- see
+        :class:`SchurEliminationSpec`, which implements this for every CPU
+        registry solver. The returned wrapper is the new top-level spec::
+
+            self.linear_solver.spec = GMRESSolverSpec(
+                prec=CPRSolverSpec()
+            ).with_schur_elimination(elim_rows=physics.schur_elim_rows,
+                                      elim_cols=physics.schur_elim_cols)
+
+        :class:`GPUSolverSpec` overrides this: GPU solvers are selected via
+        ``params.linear_type``, not built through the registry, so there is no
+        separate C++ object to wrap -- it sets ``schur_elim_count``/``_rows``/
+        ``_cols`` directly on itself and returns ``self`` instead.
+
+        :param elim_rows: preferred eliminated equation rows (length K).
+        :param elim_cols: eliminated unknown columns (length K).
+        :param pivot_eps: pivots at or below this magnitude disqualify a
+            candidate row during detection.
+        """
+        wrap = SchurEliminationSpec(
+            inner=self,
+            elim_rows=list(elim_rows),
+            elim_cols=list(elim_cols),
+            pivot_eps=pivot_eps,
+        )
+        # The wrapper is the single tolerance/max_iterations owner (see
+        # SchurEliminationSpec's docstring) -- propagate this (inner) spec's
+        # already-configured values so callers don't have to set them twice.
+        wrap.tolerance = self.tolerance
+        wrap.max_iterations = self.max_iterations
+        return wrap
+
 
 @dataclass
 class MGRLevelSpec:
@@ -862,10 +898,18 @@ class GPUSolverSpec(LinearSolverSpec):
     #: size N-K. Honoured by the AMGX-CPR family of GPU solvers; mirrors
     #: ``SchurEliminationSpec`` on the CPU side. When > 0, :attr:`schur_elim_rows`
     #: / :attr:`schur_elim_cols` (each of length K) give the explicit eliminated
-    #: (row, column) pairs.
+    #: (row, column) pairs. Leave at 0 to let :attr:`schur_elim_kinetic` decide
+    #: instead of naming the pairs explicitly.
     schur_elim_count: int = 0
     schur_elim_rows: list[int] | None = None
     schur_elim_cols: list[int] | None = None
+    #: When :attr:`schur_elim_count` is 0 (not explicitly set), auto-populate
+    #: :attr:`schur_elim_count` / :attr:`schur_elim_rows` / :attr:`schur_elim_cols`
+    #: at solver-apply time from the physics' auto-detected kinetic component
+    #: equations with no flux/diffusion term (``PhysicsBase.schur_elim_rows`` /
+    #: ``schur_elim_cols``, see ``PropertyContainer.schur_eliminable_comp_idxs()``).
+    #: Set ``False`` to disable auto Schur-elimination of kinetic components.
+    schur_elim_kinetic: bool = True
 
     def build(self, block_size: int):
         raise NotImplementedError(
@@ -873,6 +917,23 @@ class GPUSolverSpec(LinearSolverSpec):
             f"params.linear_type ({self.linear_type_name or '<unset>'}) by the GPU "
             f"engine factory, not built through the open-source registry."
         )
+
+    def with_schur_elimination(
+        self, elim_rows: list[int], elim_cols: list[int], pivot_eps: float = 0.0
+    ) -> GPUSolverSpec:
+        """GPU override: there is no separate C++ object to wrap (GPU solvers
+        are selected via ``params.linear_type``), so this sets
+        :attr:`schur_elim_count` / :attr:`schur_elim_rows` / :attr:`schur_elim_cols`
+        directly on ``self`` and returns ``self``, instead of the base class's
+        wrap-in-``SchurEliminationSpec`` behaviour.
+
+        :param pivot_eps: accepted for API symmetry with the CPU override;
+            unused -- the GPU chain has no fallback-pivot search yet.
+        """
+        self.schur_elim_count = len(elim_rows)
+        self.schur_elim_rows = list(elim_rows)
+        self.schur_elim_cols = list(elim_cols)
+        return self
 
 
 @dataclass

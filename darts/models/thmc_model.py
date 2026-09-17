@@ -324,7 +324,7 @@ class THMCModel(DartsModel):
         input_distribution.update(
             {
                 comp: self.reservoir.z_init[i]
-                for i, comp in enumerate(self.physics.components[:-1])
+                for i, comp in enumerate(self.physics.explicit_components())
             }
         )
         if self.reservoir.thermoporoelasticity:

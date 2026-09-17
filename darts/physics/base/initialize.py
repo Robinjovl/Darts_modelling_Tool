@@ -32,7 +32,7 @@ class Initialize:
         # Index of pressure, temperature and components
         self.vars = (
             ['pressure']
-            + self.physics.components[:-1]
+            + self.physics.explicit_components()
             + (['temperature'] if self.thermal else [])
         )
         self.var_idxs = {var: i for i, var in enumerate(self.vars)}
@@ -40,20 +40,22 @@ class Initialize:
         # Add evaluators of phase saturations, rhoT and dX (if kinetic reactions are defined)
         pc = physics.property_containers[0]
         continuous_sat = lambda: np.sum(
-            [pc.sat[j] for j in range(pc.np_fl) if pc.kr[j] > 1e-8]
+            [pc.sat[j] for j in range(pc.np_eq) if pc.kr[j] > 1e-8]
         )
         self.props = {
             'rhoT': lambda: np.sum(
-                [pc.sat[j] * pc.dens[j] for j in range(pc.np_fl) if pc.kr[j] > 1e-8]
+                [pc.sat[j] * pc.dens[j] for j in range(pc.np_eq) if pc.kr[j] > 1e-8]
             )
             / continuous_sat(),
             'pressure': lambda: pc.pressure,
             'temperature': lambda: pc.temperature,
         }
+        # pc.x/pc.Mw only cover the equilibrium components (nc_eq); kinetic
+        # components have no x column (their composition isn't split across phases).
         self.props.update(
             {
                 comp: lambda i=i: np.nansum(pc.nu * pc.x[:, i])
-                for i, comp in enumerate(self.physics.components)
+                for i, comp in enumerate(self.physics.components[: pc.nc_eq])
             }
         )
         self.props.update(
@@ -61,19 +63,27 @@ class Initialize:
                 'm_' + comp: lambda i=i: np.nansum(
                     pc.dens_m * pc.sat * pc.x[:, i] * pc.Mw[i]
                 )
-                for i, comp in enumerate(self.physics.components)
+                for i, comp in enumerate(self.physics.components[: pc.nc_eq])
             }
         )  # kg/m3 of component i
-        self.props.update(
-            {
-                'pot' + ph: lambda j=j: pc.pressure - pc.pc[j]
-                for j, ph in enumerate(self.physics.phases)
-            }
+
+        # Potential and mobility: mobile phases only
+        mobile_eq_phase_idxs = np.intersect1d(
+            np.arange(pc.np_eq), pc.fluid_phase_idxs, assume_unique=True
         )
         self.props.update(
             {
-                'mob' + ph: lambda j=j: pc.kr[j] / pc.mu[j] if pc.mu[j] else 0.0
-                for j, ph in enumerate(physics.phases)
+                'pot' + self.physics.phases[j]: lambda j=j: pc.pressure - pc.pc[j]
+                for j in mobile_eq_phase_idxs
+            }
+        )
+        # pc.kr/pc.mu are likewise only populated for eq_phase_idxs_mobile().
+        self.props.update(
+            {
+                'mob' + physics.phases[j]: lambda j=j: pc.kr[j] / pc.mu[j]
+                if pc.mu[j]
+                else 0.0
+                for j in mobile_eq_phase_idxs
             }
         )
         self.props.update(
@@ -82,8 +92,8 @@ class Initialize:
         self.props.update(
             {
                 'x' + str(i) + ph: lambda i=i, j=j: pc.x[j, i]
-                for i in range(pc.nc_fl)
-                for j, ph in enumerate(physics.phases[: pc.np_fl])
+                for i in range(pc.nc_eq)
+                for j, ph in enumerate(physics.phases[: pc.np_eq])
             }
         )
         if aq_idx is not None:
@@ -92,7 +102,7 @@ class Initialize:
                     'm' + str(i): lambda i=i: 55.509
                     * pc.x[aq_idx, i]
                     / pc.x[aq_idx, h2o_idx]
-                    for i in range(pc.nc_fl)
+                    for i in range(pc.nc_eq)
                 }
             )
         self.props.update(
@@ -446,7 +456,7 @@ class Initialize:
         dTdh: float = 0.03,
     ):
         Xi = [boundary_state['pressure']]
-        for c in self.physics.components[:-1]:
+        for c in self.physics.explicit_components():
             Xi += [boundary_state[c]]
         if 'temperature' in boundary_state.keys():
             Xi += [boundary_state['temperature']]

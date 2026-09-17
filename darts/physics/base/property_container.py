@@ -1,3 +1,5 @@
+import warnings
+from enum import Enum
 from typing import Any
 
 import numpy as np
@@ -17,13 +19,36 @@ class PropertyContainer:
     nph: int
     output_props = {}
 
+    class KineticFormulation(Enum):
+        """What a kinetic (non-equilibrium) phase's raw zc entry/entries represent."""
+
+        BULK_VOLUME_FRACTION = 0
+        """The raw zc entry already is the phase's pore-volume fraction
+        (contributes to phi_s); restricted to exactly one component per phase
+        (model N minerals as N such phases, not one phase with N components;
+         phi_s already sums over however many there are).
+
+        Physically meaningful only under a poro=1 reservoir/mesh with the
+        entire rock matrix tracked as BULK_VOLUME_FRACTION kinetic
+        component(s), rather than as a separate, untracked inert matrix
+        """
+
+        MOLE_FRACTION = 1
+        """The raw zc entry is a mole fraction of the combined (fluid + kinetic) total;
+        isn't necessarily restricted to one component per phase."""
+
     def __init__(
         self,
         phases_name: list,
         components_name: list,
         Mw: list,
-        nc_sol: int = 0,
-        np_sol: int = 0,
+        nc_kin: int = 0,
+        np_kin: int = 0,
+        solid_phase_idxs: list = None,
+        solid_comp_idxs: list = None,
+        dependent_comp_idx: int = None,
+        kin_formulation: list = None,
+        nc_kin_per_phase: list = None,
         eps_z: float = 1e-11,
         rock_comp: float = 1e-6,
         temperature: float = None,
@@ -36,12 +61,41 @@ class PropertyContainer:
         :type phases_name: list[str]
         :param components_name: List of components
         :type components_name: list[str]
-        :param Mw: List of molecular weights [g/mol]
+        :param Mw: List of molecular weights [g/mol] for the nc_eq equilibrium
+                   components (matching x's columns), ordered like components_name.
+                   Kinetic phases' own molar mass is derived from it (see evaluate()).
         :type Mw: list[float]
-        :param nc_sol: Number of solid components, default is 0
-        :type nc_sol: int
-        :param np_sol: Number of solid phases, default is 0
-        :type np_sol: int
+        :param nc_kin: Number of kinetic (non-equilibrium) components, default is 0
+        :type nc_kin: int
+        :param np_kin: Number of kinetic (non-equilibrium) phases, default is 0
+        :type np_kin: int
+        :param solid_phase_idxs: Indices into ``phases_name`` of non-flowing phases (no
+                      kr/mu/pc/diffusion). Default ``None`` (the kinetic phases);
+                      independent of ``np_kin`` and overridable.
+        :type solid_phase_idxs: list[int], optional
+        :param solid_comp_idxs: Indices into ``components_name`` of components with no
+                      flux/diffusion term (block-diagonal, Schur-eliminable). Default
+                      ``None`` (the kinetic components); independent of ``nc_kin`` and
+                      overridable.
+        :type solid_comp_idxs: list[int], optional
+        :param dependent_comp_idx: Index into ``components_name`` of the implicit
+                      (closure) component -- the one whose mole fraction is never an
+                      explicit Newton unknown, recovered as ``1 - sum(others)``.
+                      Default ``None`` (``nc - 1``, the last component -- matches
+                      legacy behaviour). Must agree with the value :class:`PhysicsBase`
+                      resolves at construction (see ``PhysicsBase.__init__``'s own
+                      ``dependent_comp_idx``); :meth:`PhysicsBase.init_physics` asserts
+                      this.
+        :type dependent_comp_idx: int, optional
+        :param kin_formulation: One :class:`KineticFormulation` per kinetic phase
+                      (``np_kin`` entries, Flash.set_kinetic_phase() order), or a
+                      single :class:`KineticFormulation` broadcast to every kinetic
+                      phase. Default ``None`` (``BULK_VOLUME_FRACTION`` for all).
+        :type kin_formulation: list[KineticFormulation] | KineticFormulation, optional
+        :param nc_kin_per_phase: Number of kinetic components each kinetic phase maps to
+                      (``np_kin`` entries), or a single ``int`` broadcast to every
+                      kinetic phase. Default ``None`` (``1`` per phase).
+        :type nc_kin_per_phase: list[int] | int, optional
         :param eps_z: Minimum bound of component mole fractions in OBL grid, default is 1e-11
         :type eps_z: float
         :param rock_comp: Rock compressibility, default is 1e-6
@@ -59,21 +113,41 @@ class PropertyContainer:
         self.phases_name = phases_name
         self.nc = len(components_name)
         self.nph = len(phases_name)
-        self.ns = nc_sol
-        self.nc_fl = self.nc - nc_sol
-        self.np_fl = self.nph - np_sol
+        self.nc_kin = nc_kin
+        self.np_kin = np_kin
+        self.nc_eq = self.nc - nc_kin
+        self.np_eq = self.nph - np_kin
+        self.dependent_comp_idx = (
+            self.nc - 1 if dependent_comp_idx is None else int(dependent_comp_idx)
+        )
+        assert 0 <= self.dependent_comp_idx < self.nc, (
+            f"dependent_comp_idx={self.dependent_comp_idx} out of range [0, {self.nc})"
+        )
 
-        self.Mw = Mw
+        self._setup_kinetic_and_phase_idxs(
+            nc_kin,
+            np_kin,
+            kin_formulation,
+            nc_kin_per_phase,
+            solid_phase_idxs,
+            solid_comp_idxs,
+        )
+
+        # Mw covers only nc_eq (matches x's columns); dict-keyed Mw (chemistry subclass) passed through as-is.
+        # May carry nc entries instead, the trailing nc_kin being the kinetic components'
+        # molar masses -- needed when a kinetic phase is not a 1:1 compound, since the
+        # derivation below assumes one of each mapped component.
+        self.Mw_kin = None
+        if not isinstance(Mw, dict) and nc_kin and len(Mw) == self.nc:
+            self.Mw_kin = np.asarray(Mw)[self.nc_eq :]
+            Mw = np.asarray(Mw)[: self.nc_eq]
+        self.Mw = Mw if isinstance(Mw, dict) else np.asarray(Mw)
         self.eps_z = eps_z
         # Number of OBL history variables (e.g. sg_max) appended to the state vector after
         # the primary Newton unknowns. 0 disables history-aware dispatch entirely.
         self.n_history = int(n_history)
-        # Ordered labels for the appended history variables (populated by PhysicsBase.add_property_region).
-        # When present and non-empty, evaluate() extracts one trailing scalar per label and passes
-        # them as kwargs to HistoryAware* evaluators.
+        # Set by PhysicsBase.add_property_region(); evaluate() extracts one trailing scalar per label.
         self.history_labels: list[str] = []
-        # Last extracted {label: value} map; refreshed on every evaluate() call. Evaluators that
-        # consume more than one history variable can read this directly.
         self.history_values: dict[str, float] = {}
 
         if temperature:  # constant T specified
@@ -82,6 +156,9 @@ class PropertyContainer:
         else:
             self.thermal = True
             self.temperature = None
+
+        # Flash evaluator: support native darts.phyiscs.properties.Flash or darts-flash object
+        self.flash_ev: Flash = 0
 
         # In case of PH-formulation, PT flashes are required for calculating initial distribution (Initialize class)
         self.evaluate_PT_bool = False  # set to True when PH-formulation but PT-flash needs to be calculated (Initialize)
@@ -97,30 +174,40 @@ class PropertyContainer:
         self.rel_well_perm_ev = []
         self.rock_compr_ev = RockCompactionEvaluator(compres=rock_comp)
         self.rock_density_ev = ConstFunc(2650.0)
-        self.capillary_pressure_ev = ConstFunc(np.zeros(self.np_fl))
+        self.capillary_pressure_ev = ConstFunc(np.zeros(self.np_eq))
         self.diffusion_ev = {
-            ph: ConstFunc(np.zeros(self.nc_fl)) for ph in phases_name[: self.np_fl]
+            phases_name[j]: ConstFunc(np.zeros(self.nc_eq))
+            for j in self.mole_frac_phase_idxs
         }
         self.kinetic_rate_ev = {}
         self.energy_source_ev = {}
-        self.flash_ev: Flash = 0
         self.permporo_mult_ev = ConstFunc(1.0)
 
         # passing arguments
-        self.x = np.zeros((self.np_fl, self.nc_fl))
-        self.x_mass = np.zeros((self.np_fl, self.nc_fl))
+        # x/x_mass cover all phases (equilibrium + kinetic): phase compositions are
+        # (np_eq + np_kin) x nc_eq, since kinetic-phase composition is expressed over
+        # the regular (equilibrium) component columns (see Flash.set_kinetic_phase).
+        self.x = np.zeros((self.nph, self.nc_eq))
+        self.x_mass = np.zeros((self.nph, self.nc_eq))
         self.dens = np.zeros(self.nph)
         self.dens_m = np.zeros(self.nph)
         self.sat = np.zeros(self.nph)
-        self.nu = np.zeros(self.np_fl)
-        self.mu = np.zeros(self.np_fl)
-        self.kr = np.zeros(self.np_fl)
-        self.pc = np.zeros(self.np_fl)
+        self.nu = np.zeros(self.nph)
+        self.mu = np.zeros(self.np_eq)
+        self.kr = np.zeros(self.np_eq)
+        self.pc = np.zeros(self.np_eq)
         self.enthalpy = np.zeros(self.nph)
         self.cond = np.zeros(self.nph)
         self.dX = []
         self.mass_source = np.zeros(self.nc)
         self.energy_source = 0.0
+
+        # phi_s/phi_f: pore-volume fraction not/available to the pooled eq_phase_idxs +
+        # MoleFractionKinetic (self.mole_basis_phase_idxs()) basis;
+        # see KineticFormulation.BULK_VOLUME_FRACTION's docstring for the poro=1 precondition.
+        self.phi_s = 0.0
+        self.phi_f = 1.0
+        self.permporo_mult = 1.0
 
         self.phase_props = [
             self.dens,
@@ -136,32 +223,185 @@ class PropertyContainer:
 
         self.output_props = {"sat0": lambda: self.sat[0]}
 
+    def _setup_kinetic_and_phase_idxs(
+        self,
+        nc_kin: int,
+        np_kin: int,
+        kin_formulation: list,
+        nc_kin_per_phase: list,
+        solid_phase_idxs: list,
+        solid_comp_idxs: list,
+    ):
+        """kin_formulation/nc_kin_per_phase (one entry per kinetic phase), the derived
+        kin_phase_idxs/bulk_kin_phase_idxs/bulk_kin_comp_idxs/mole_kin_phase_idxs/
+        mole_kin_comp_idxs, and the independent solid/fluid phase and component idx sets.
+
+        kin_phase_idxs/kin_comp_idxs are hardcoded trailing (see kin_phase_idxs)
+        A model with kinetic phases/components anywhere else in phases_name/components_name
+        can't be expressed here today; generalizing to explicit, non-trailing index arrays
+        is the prerequisite for ever migrating that class onto this one."""
+        # A single (non-list) value is shorthand for "every kinetic phase";
+        # the length/sum asserts below will still catch a genuine mismatch.
+        if isinstance(kin_formulation, PropertyContainer.KineticFormulation):
+            kin_formulation = [kin_formulation] * np_kin
+        if isinstance(nc_kin_per_phase, int):
+            nc_kin_per_phase = [nc_kin_per_phase] * np_kin
+
+        # One formulation per kinetic phase; default: bulk volume fraction (legacy).
+        if kin_formulation is None and np_kin:
+            warnings.warn(
+                f"kin_formulation not specified for {np_kin} kinetic phase(s); "
+                "defaulting to BULK_VOLUME_FRACTION for all of them.",
+                stacklevel=2,
+            )
+        self.kin_formulation: list[PropertyContainer.KineticFormulation] = (
+            list(kin_formulation)
+            if kin_formulation is not None
+            else [self.KineticFormulation.BULK_VOLUME_FRACTION] * np_kin
+        )
+        assert len(self.kin_formulation) == np_kin, (
+            f"kin_formulation has {len(self.kin_formulation)} entries, expected np_kin={np_kin}"
+        )
+
+        # Kinetic components per phase; default: 1 each (fixed composition).
+        self.nc_kin_per_phase = (
+            list(nc_kin_per_phase) if nc_kin_per_phase is not None else [1] * np_kin
+        )
+        assert len(self.nc_kin_per_phase) == np_kin, (
+            f"nc_kin_per_phase has {len(self.nc_kin_per_phase)} entries, expected np_kin={np_kin}"
+        )
+        assert sum(self.nc_kin_per_phase) == nc_kin, (
+            f"nc_kin_per_phase sums to {sum(self.nc_kin_per_phase)}, expected nc_kin={nc_kin}"
+        )
+        # Starting offset of each phase's own kinetic component(s) in the nc_kin block.
+        self.kin_comp_offsets = np.concatenate(
+            ([0], np.cumsum(self.nc_kin_per_phase)[:-1])
+        )
+
+        # Kinetic phases are always the last np_kin phases (Flash.set_kinetic_phase()
+        # order): hardcoded trailing, not a configurable index array; see docstring above.
+        self.kin_phase_idxs = np.arange(self.np_eq, self.nph)
+
+        # BULK_VOLUME_FRACTION phases/components: dens_m*sat can't be split across
+        # multiple components (no per-component fraction data), so exactly 1
+        # component per such phase. Used for phi_s, the thermal solid-enthalpy term,
+        # and the "bulk" ACC_OP term (operator_evaluator.py) -- a MOLE_FRACTION
+        # phase's sat is normalized on a different (combined-total) basis not meant
+        # to be summed directly alongside these.
+        self.bulk_kin_phase_idxs = []
+        self.bulk_kin_comp_idxs = []
+        for j, idx in enumerate(self.kin_phase_idxs):
+            if self.kin_formulation[j] == self.KineticFormulation.BULK_VOLUME_FRACTION:
+                assert self.nc_kin_per_phase[j] == 1, (
+                    f"kinetic phase {j} uses BULK_VOLUME_FRACTION but maps "
+                    f"{self.nc_kin_per_phase[j]} kinetic components; only "
+                    "MOLE_FRACTION supports more than 1"
+                )
+                self.bulk_kin_phase_idxs.append(idx)
+                self.bulk_kin_comp_idxs.append(self.nc_eq + self.kin_comp_offsets[j])
+        self.bulk_kin_phase_idxs = np.array(self.bulk_kin_phase_idxs, dtype=int)
+        self.bulk_kin_comp_idxs = np.array(self.bulk_kin_comp_idxs, dtype=int)
+
+        # MOLE_FRACTION phases/components: their raw zc is on the same combined-total
+        # basis as the equilibrium components, so they're folded into the same
+        # ACC_OP term as those (scaled by density_tot), not the bulk one.
+        self.mole_kin_phase_idxs = np.setdiff1d(
+            self.kin_phase_idxs, self.bulk_kin_phase_idxs, assume_unique=True
+        )
+        self.mole_kin_comp_idxs = np.setdiff1d(
+            np.arange(self.nc_eq, self.nc), self.bulk_kin_comp_idxs, assume_unique=True
+        )
+
+        # All mole-fraction-based phases: equilibrium phases + MoleFractionKinetic
+        # ones. Diffusion is defined on this set regardless of mobility (unlike
+        # kr/mu/pc, which are mobility-gated -- see fluid_phase_idxs below).
+        self.mole_frac_phase_idxs = np.concatenate(
+            [np.arange(self.np_eq), self.mole_kin_phase_idxs]
+        )
+
+        # Non-flowing phases (no kr/mu/pc)
+        self.solid_phase_idxs = (
+            np.asarray(solid_phase_idxs, dtype=int)
+            if solid_phase_idxs is not None
+            else self.kin_phase_idxs
+        )
+        self.fluid_phase_idxs = np.setdiff1d(
+            np.arange(self.nph), self.solid_phase_idxs, assume_unique=True
+        )
+
+        # Components with no flux/diffusion term (Schur-eliminable); independent of
+        # solid_phase_idxs (phase/mobility concept vs. component/equation concept).
+        self.solid_comp_idxs = (
+            np.asarray(solid_comp_idxs, dtype=int)
+            if solid_comp_idxs is not None
+            else np.arange(self.nc_eq, self.nc)
+        )
+        self.fluid_comp_idxs = np.setdiff1d(
+            np.arange(self.nc), self.solid_comp_idxs, assume_unique=True
+        )
+
+    def schur_eliminable_comp_idxs(self) -> np.ndarray:
+        """Component indices with no flux/diffusion term, safe to Schur-eliminate
+        (see darts.linear_solvers.specs.SchurEliminationSpec): all
+        bulk_kin_comp_idxs (structurally local -- FLUX_OP/GRAD_OP never write
+        kinetic-component columns), plus mole_kin_comp_idxs whose phase's
+        diffusion_ev evaluates to zero. Excludes dependent_comp_idx (no unknown
+        column -- get_state()'s implicit closure)."""
+
+        def is_zero_evaluator(ev) -> bool:
+            # Best-effort: False (not proven zero) on any exception --
+            # conservative, so custom evaluators default to "not eliminable".
+            try:
+                return bool(np.allclose(np.asarray(ev.evaluate(), dtype=float), 0.0))
+            except Exception:
+                return False
+
+        idxs = set(self.bulk_kin_comp_idxs.tolist())
+        for j, phase_idx in enumerate(self.kin_phase_idxs):
+            if self.kin_formulation[j] != self.KineticFormulation.MOLE_FRACTION:
+                continue
+            ev = self.diffusion_ev.get(self.phases_name[phase_idx])
+            if ev is not None and is_zero_evaluator(ev):
+                start = self.nc_eq + self.kin_comp_offsets[j]
+                idxs.update(range(start, start + self.nc_kin_per_phase[j]))
+        idxs.discard(self.dependent_comp_idx)
+        return np.array(sorted(idxs), dtype=int)
+
     def check_properties(self):
         """
         Check consistency of input properties
         """
-        # Check that all phases have a density and enthalpy/conductivity evaluator in case of thermal
-        # and all mobile phases have a viscosity/diffusion/relperm evaluator
-        acc_evs = {"density": self.density_ev} | (
+        # Needed for every phase, mobile or not.
+        all_phase_evs = {"density": self.density_ev} | (
             {"enthalpy": self.enthalpy_ev, "conductivity": self.conductivity_ev}
             if self.thermal
             else {}
         )
-        flux_evs = {
+        # Needed only for mobile (flowing) phases.
+        mobile_phase_evs = {
             "viscosity": self.viscosity_ev,
-            "diffusion": self.diffusion_ev,
             "rel_perm": self.rel_perm_ev,
         }
+        # Needed for mole-fraction-based phases (equilibrium + MoleFractionKinetic),
+        # regardless of mobility -- diffusion isn't mobility-gated.
+        mole_frac_phase_evs = {"diffusion": self.diffusion_ev}
 
-        for name, ev in acc_evs.items():
+        for name, ev in all_phase_evs.items():
             for phase in self.phases_name:
                 assert phase in ev.keys() and ev[phase] is not None, (
-                    f"Acc evaluator '{name}' missing for phase '{phase}'"
+                    f"Evaluator '{name}' missing for phase '{phase}'"
                 )
-        for name, ev in flux_evs.items():
-            for phase in self.phases_name[: self.np_fl]:
+        for name, ev in mobile_phase_evs.items():
+            for j in self.fluid_phase_idxs:
+                phase = self.phases_name[j]
                 assert phase in ev.keys() and ev[phase] is not None, (
-                    f"Flux evaluator '{name}' missing for phase '{phase}'"
+                    f"Evaluator '{name}' missing for mobile phase '{phase}'"
+                )
+        for name, ev in mole_frac_phase_evs.items():
+            for j in self.mole_frac_phase_idxs:
+                phase = self.phases_name[j]
+                assert phase in ev.keys() and ev[phase] is not None, (
+                    f"Evaluator '{name}' missing for mole-fraction-based phase '{phase}'"
                 )
 
         for name, kinetic_ev in self.kinetic_rate_ev.items():
@@ -171,6 +411,16 @@ class PropertyContainer:
         for name, energy_ev in self.energy_source_ev.items():
             assert energy_ev is not None, (
                 f"Energy source evaluator missing for '{name}'"
+            )
+
+        if self.np_kin:
+            flash_np_kin = getattr(self.flash_ev, "np_kin", 0)
+            assert flash_np_kin == self.np_kin, (
+                f"PropertyContainer declares np_kin={self.np_kin} kinetic phase(s), "
+                f"but flash_ev has {flash_np_kin} registered -- call "
+                "flash_ev.set_kinetic_phase() once per kinetic phase (in "
+                "PropertyContainer.kin_formulation/Flash.set_kinetic_phase() order) "
+                "before check_properties() runs."
             )
 
     def validate_history_consistency(self) -> None:
@@ -220,17 +470,20 @@ class PropertyContainer:
         Get tuple of (pressure, state_spec_2 (temperature/enthalpy/entropy),
                       [z0, ... zn-1]) at current OBL point (state)
         If isothermal, temperature returns initial temperature.
-        If solids are present, the modified variables zc* sum to 1 and correspond to saturation for the solid components.
-        To obtain mole fractions of the fluid components, one needs to normalize zc* for the fluid components.
+        If kinetic components are present, the modified variables zc* sum to 1 and correspond to saturation for the
+        kinetic components. To obtain mole fractions of the equilibrium components, one needs to normalize zc* for
+        the equilibrium components.
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
         pressure = vec_state_as_np[0]
 
-        zc = np.append(
-            vec_state_as_np[1 : self.nc], 1 - np.sum(vec_state_as_np[1 : self.nc])
+        zc = np.insert(
+            vec_state_as_np[1 : self.nc],
+            self.dependent_comp_idx,
+            1 - np.sum(vec_state_as_np[1 : self.nc]),
         )
-        if zc[-1] < 0.99 * self.eps_z:
+        if zc[self.dependent_comp_idx] < 0.99 * self.eps_z:
             zc = self.comp_out_of_bounds(zc)
 
         if self.thermal:
@@ -271,23 +524,41 @@ class PropertyContainer:
     def clean_arrays(self):
         for a in self.phase_props:
             a[:] = 0
-        for j in range(self.np_fl):
+        for j in range(self.nph):
             self.x[j][:] = 0
+
+    def mole_basis_phase_idxs(self) -> np.ndarray:
+        """Present equilibrium phases (self.eq_phase_idxs) + MoleFractionKinetic
+        phases (share saturation/accumulation/diffusion/conduction). Computed fresh
+        from self.eq_phase_idxs on every call -- never cached, so it can't go stale
+        across an evaluate()/compute_saturation() call or a subclass override that
+        forgets to refresh it."""
+        return np.concatenate([self.eq_phase_idxs, self.mole_kin_phase_idxs])
+
+    def eq_phase_idxs_mobile(self) -> np.ndarray:
+        """The flowing (fluid_phase_idxs) subset of mole_basis_phase_idxs(). Computed
+        fresh on every call, same reasoning as mole_basis_phase_idxs()."""
+        return np.intersect1d(
+            self.mole_basis_phase_idxs(), self.fluid_phase_idxs, assume_unique=True
+        )
 
     def compute_saturation(self, state_pt=None, evaluate_PT_from_PHflash: bool = False):
         """
-        Compute phase saturations from molar phase fractions and phase densities.
+        Compute phase saturations -- fluid AND kinetic -- from molar phase fractions
+        and phase densities/molar masses. The only place PropertyContainer converts a
+        kinetic phase's amount (self.nu, from Flash) to a physical volume quantity
+        (via kin_formulation), so no other module (Flash, operator_evaluator) has to.
 
         Two uses:
-        - ``state_pt=None`` (default): used from within :meth:`evaluate`, where flash and
-          phase densities (``self.ph``, ``self.dens_m``) have already been computed for
-          the current state earlier in that call.
+        - ``state_pt=None`` (default): used from within :meth:`evaluate`, where flash,
+          phase densities and equilibrium x/Mw (``self.eq_phase_idxs``, ``self.dens_m``, ``self.nu``)
+          have already been computed for the current state earlier in that call.
         - ``state_pt`` given: used for initial-conditions calculation (previously the
           separate ``compute_saturation_full()`` method). Runs the flash for the given
-          PT-state and computes phase densities before computing saturations.
+          PT-state and computes phase densities.
 
         :param state_pt: State (pressure, [temperature], compositions) to flash; if
-                          ``None``, uses the already-computed ``self.ph``/``self.dens_m``
+                          ``None``, uses the already-computed ``self.eq_phase_idxs``/``self.dens_m``
         :param evaluate_PT_from_PHflash: Passed to :meth:`run_flash` when ``state_pt`` is
                                           given, to evaluate PT-state from a PH-flash object
         :returns: Saturation of the first phase, ``self.sat[0]``
@@ -295,22 +566,52 @@ class PropertyContainer:
         if state_pt is not None:
             pressure, temperature, zc = self.get_state(state_pt)
             self.clean_arrays()
-            self.ph = self.run_flash(
+            self.eq_phase_idxs = self.run_flash(
                 pressure, temperature, zc, evaluate_PT=evaluate_PT_from_PHflash
             )
+            self.pressure = pressure
 
-            for j in self.ph:
-                M = np.sum(self.Mw * self.x[j][:])
+            for j in self.eq_phase_idxs:
+                M = np.sum(self.Mw * self.x[j][: self.nc_eq])
                 self.dens_m[j] = (
                     self.density_ev[self.phases_name[j]].evaluate(
                         pressure, temperature, self.x[j, :]
                     )
                     / M
                 )
+        else:
+            pressure, temperature = self.pressure, self.temperature
 
-        # Get saturations [volume fraction]
-        vol = [self.nu[j] / self.dens_m[j] for j in self.ph]
-        self.sat[self.ph] = vol / np.sum(vol)
+        # Molar mass = unweighted sum of mapped components' Mw (stoichiometric compound, not a blend).
+        for idx in self.kin_phase_idxs:
+            self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
+                pressure, temperature
+            )
+            j = idx - self.np_eq
+            if self.nc_kin_per_phase[j] > 1:
+                # Variable composition (composition=None, >1 mapped component): x
+                # holds true, normalized mole fractions of an actual mixture, so a
+                # weighted average is needed -- an unweighted sum would double-count.
+                M = np.sum(self.x[idx, : self.nc_eq] * self.Mw)
+            elif self.Mw_kin is not None:
+                M = float(self.Mw_kin[self.kin_comp_offsets[j]])
+            else:
+                # Fixed composition (or a single mapped component): composition
+                # values are a stoichiometric split within one compound, not blend
+                # fractions, so sum the mapped components' Mw unweighted.
+                M = np.sum(self.Mw[self.x[idx, : self.nc_eq] > 0])
+            self.dens_m[idx] = self.dens[idx] / M
+
+        # BulkVolumeFractionKinetic: raw nu already is the bulk volume fraction.
+        self.sat[self.bulk_kin_phase_idxs] = self.nu[self.bulk_kin_phase_idxs]
+
+        # Equilibrium phases + MoleFractionKinetic phases, saturation-normalized
+        # together: a MoleFractionKinetic phase's nu is on the same combined-total
+        # basis as the (Flash-rescaled) equilibrium phases' nu (see
+        # Flash.set_kinetic_phase(is_mole_fraction=True)), so they're one pool.
+        mole_basis_phase_idxs = self.mole_basis_phase_idxs()
+        vol = self.nu[mole_basis_phase_idxs] / self.dens_m[mole_basis_phase_idxs]
+        self.sat[mole_basis_phase_idxs] = vol / np.sum(vol)
 
         return self.sat[0]
 
@@ -319,7 +620,7 @@ class PropertyContainer:
         pressure, temperature, zc = self.get_state(state_pt)
         flash_type = getattr(self.flash_ev, "flash_type", 0)
         flash_type_value = getattr(flash_type, "value", flash_type)
-        ph = self.run_flash(
+        eq_phase_idxs = self.run_flash(
             pressure,
             temperature,
             zc,
@@ -328,7 +629,7 @@ class PropertyContainer:
 
         # Compute molar enthalpy of multiphase mixture
         enthalpy = 0.0
-        for j in ph:
+        for j in eq_phase_idxs:
             self.enthalpy_ev[self.phases_name[j]].evaluate_PT_bool = True
             enthalpy += self.nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(
                 pressure, temperature, self.x[j, :]
@@ -338,39 +639,44 @@ class PropertyContainer:
         return enthalpy
 
     def run_flash(self, pressure, state_spec_2, zc, evaluate_PT: bool = False):
-        # Normalize fluid compositions
-        zc_norm = (
-            zc if not self.ns else zc[: self.nc_fl] / (1.0 - np.sum(zc[self.nc_fl :]))
-        )
+        # BULK_VOLUME_FRACTION components aren't mole fractions, so Flash never
+        # normalizes for them (Flash.set_kinetic_phase(is_mole_fraction=False))
+        zc_flash = zc.copy()
+        if self.bulk_kin_comp_idxs.size:
+            zc_bulk_tot = np.sum(zc[self.bulk_kin_comp_idxs])
+            zc_flash[: self.nc_eq] /= 1.0 - zc_bulk_tot
+            zc_flash[self.mole_kin_comp_idxs] /= 1.0 - zc_bulk_tot
+        n_rows = self.np_eq + self.np_kin
 
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
         if evaluate_PT:
             # In case of PH-formulation, PT flashes are required for calculating initial distribution
             error_output = self.flash_ev.evaluate(
-                pressure, state_spec_2, zc_norm, evaluate_PT=True
+                pressure, state_spec_2, zc_flash, evaluate_PT=True
             )
             flash_results = self.flash_ev.get_flash_results(evaluate_PT=True)
             self.temperature = state_spec_2
         else:
-            error_output = self.flash_ev.evaluate(pressure, state_spec_2, zc_norm)
+            error_output = self.flash_ev.evaluate(pressure, state_spec_2, zc_flash)
             flash_results = self.flash_ev.get_flash_results()
             self.temperature = flash_results.temperature
 
-        self.nu = np.array(flash_results.nu)
+        self.nu[:n_rows] = np.array(flash_results.nu)
 
+        # Second line of defense: flash_ev can be an external implementation with no shape guarantee.
         try:
-            self.x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
+            self.x[:n_rows] = np.array(flash_results.X).reshape(n_rows, self.nc_eq)
         except ValueError as e:
             print(e.args[0], pressure, state_spec_2, zc)
             error_output += 1
 
-        # Set present phase idxs
-        ph = np.array([j for j in range(self.np_fl) if self.nu[j] > 0], dtype=int)
+        # Present equilibrium phases; not restricted to fluid_phase_idxs since a
+        # present phase can be non-flowing and still needs its density computed.
+        eq_phase_idxs = np.array(
+            [j for j in range(self.np_eq) if self.nu[j] > 0], dtype=int
+        )
 
-        if ph.size == 1:
-            self.x[ph[0]] = zc_norm
-
-        return ph
+        return eq_phase_idxs
 
     def evaluate_mass_source(self, pressure, temperature, zc):
         self.dX = np.zeros(len(self.kinetic_rate_ev))
@@ -396,7 +702,7 @@ class PropertyContainer:
         self.clean_arrays()
 
         # Run flash
-        self.ph = self.run_flash(
+        self.eq_phase_idxs = self.run_flash(
             pressure, state_spec_2, zc, evaluate_PT=self.evaluate_PT_bool
         )
         self.pressure = pressure
@@ -411,8 +717,8 @@ class PropertyContainer:
             "self.flash.temperature in case of thermal"
         )
 
-        for j in self.ph:
-            M = np.sum(self.Mw[: self.nc_fl] * self.x[j][: self.nc_fl])
+        for j in self.eq_phase_idxs:
+            M = np.sum(self.Mw * self.x[j][: self.nc_eq])
 
             self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(
                 self.pressure, self.temperature, self.x[j, :]
@@ -420,15 +726,25 @@ class PropertyContainer:
             self.dens_m[j] = (
                 self.dens[j] / M
             )  # molar density [kg/m3]/[kg/kmol]=[kmol/m3]
+
+            self.x_mass[j, :] = (self.x[j, : self.nc_eq] * self.Mw) / sum(
+                self.x[j, : self.nc_eq] * self.Mw
+            )
+
+        # Viscosity is a mobility property: only needed for present, flowing phases.
+        eq_phase_idxs_mobile = self.eq_phase_idxs_mobile()
+        for j in eq_phase_idxs_mobile:
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
                 self.pressure, self.temperature, self.x[j, :], self.dens[j]
             )  # output in [cp]
 
-            self.x_mass[j, :] = (self.x[j, : self.nc_fl] * self.Mw[: self.nc_fl]) / sum(
-                self.x[j, : self.nc_fl] * self.Mw[: self.nc_fl]
-            )
-
         self.compute_saturation()
+
+        # phi_s: pore-volume fraction NOT covered by self.mole_basis_phase_idxs() (sums
+        # over however many BULK_VOLUME_FRACTION phases exist -- see its docstring)
+        self.phi_s = np.sum(self.sat[self.bulk_kin_phase_idxs])
+        self.phi_f = 1.0 - self.phi_s
+        self.permporo_mult = self.permporo_mult_ev.evaluate(self.phi_f)
 
         # Extract every appended history variable by label, preserving the physics-declared
         # order. history_labels is populated by PhysicsBase.add_property_region; when it's
@@ -447,11 +763,9 @@ class PropertyContainer:
         else:
             self.history_values = {}
 
-        # Dispatch to history-aware evaluators: unpack {label: value} as kwargs so concrete
-        # evaluators can accept any subset of history variables by name (e.g. sg_max=...).
-        # Plain evaluators without the mixin are called with sat only, unchanged.
         if isinstance(self.capillary_pressure_ev, dict):
-            for j in range(self.np_fl):
+            # Capillary pressure is defined for all fluid phases (absent does not mean pc -> 0)
+            for j in self.fluid_phase_idxs:
                 pc_ev = self.capillary_pressure_ev[self.phases_name[j]]
                 if self.history_values and isinstance(pc_ev, HistoryAwareCapPressure):
                     self.pc[j] = pc_ev.evaluate(self.sat[j], **self.history_values)
@@ -460,20 +774,12 @@ class PropertyContainer:
         else:
             self.pc[:] = self.capillary_pressure_ev.evaluate(self.sat)
 
-        for j in self.ph:
+        for j in eq_phase_idxs_mobile:
             kr_ev = self.rel_perm_ev[self.phases_name[j]]
             if self.history_values and isinstance(kr_ev, HistoryAwareRelPerm):
                 self.kr[j] = kr_ev.evaluate(self.sat[j], **self.history_values)
             else:
                 self.kr[j] = kr_ev.evaluate(self.sat[j])
-
-        for j in range(self.ns):
-            idx = self.np_fl + j
-            self.sat[idx] = zc[self.nc_fl + j]
-            self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
-                self.pressure, self.temperature
-            )
-            self.dens_m[idx] = self.dens[idx] / self.Mw[self.nc_fl + j]
 
         self.mass_source = self.evaluate_mass_source(
             self.pressure, self.temperature, zc
@@ -488,7 +794,7 @@ class PropertyContainer:
         :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
         :type state: value_vector
         """
-        for j in self.ph:
+        for j in self.eq_phase_idxs:
             self.enthalpy[j] = self.enthalpy_ev[self.phases_name[j]].evaluate(
                 self.pressure, self.temperature, self.x[j, :]
             )  # kJ/kmol
@@ -496,8 +802,7 @@ class PropertyContainer:
                 self.pressure, self.temperature, self.x[j, :], self.dens[j]
             )
 
-        for j in range(self.ns):
-            idx = self.np_fl + j
+        for idx in self.kin_phase_idxs:
             self.enthalpy[idx] = self.enthalpy_ev[self.phases_name[idx]].evaluate(
                 self.pressure, self.temperature, self.x[0, :]
             )

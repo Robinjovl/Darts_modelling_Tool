@@ -17,11 +17,12 @@ class PropertyContainer(BasePropertyContainer):
         components_name,
         Mw,
         stoich_matrix,
-        nc_sol=0,
-        np_sol=0,
+        nc_kin=0,
+        np_kin=0,
         eps_z=1e-11,
         temperature=None,
         fc_mask=None,
+        dependent_comp_idx: int = None,
     ):
         """
         Constructor for PropertyContainer class.
@@ -33,16 +34,21 @@ class PropertyContainer(BasePropertyContainer):
         :type Mw: Dict[str, float]
         :param stoich_matrix: Stoichiometric matrix
         :type stoich_matrix: np.ndarray
-        :param nc_sol: Number of components in solid phase
-        :type nc_sol: int
-        :param np_sol: Number of components in pure phase
-        :type np_sol: int
+        :param nc_kin: Number of kinetic (mineral) components
+        :type nc_kin: int
+        :param np_kin: Number of kinetic (mineral) phases
+        :type np_kin: int
         :param eps_z: Minimum composition value
         :type eps_z: float
         :param temperature: Temperature, for isothermal simulation
         :type temperature: float | None
         :param fc_mask: Fluid component mask
         :type fc_mask: List[bool]
+        :param dependent_comp_idx: Index into ``components_name`` of the implicit
+                      (closure) component. Default ``None`` (``nc - 1``). See
+                      ``PropertyContainer.__init__`` (base class) for details --
+                      must agree with the value :class:`PhysicsBase` resolves.
+        :type dependent_comp_idx: int, optional
         """
 
         # find key by value for disctionary
@@ -54,10 +60,11 @@ class PropertyContainer(BasePropertyContainer):
             phases_name=phase_name,
             components_name=components_name,
             Mw=Mw,
-            nc_sol=nc_sol,
-            np_sol=np_sol,
+            nc_kin=nc_kin,
+            np_kin=np_kin,
             eps_z=eps_z,
             temperature=temperature,
+            dependent_comp_idx=dependent_comp_idx,
         )
         self.components_name = np.array(self.components_name)
         self.stoich_matrix = stoich_matrix
@@ -75,12 +82,16 @@ class PropertyContainer(BasePropertyContainer):
 
         # Map user-provided phase names to roles (gas/aqueous) independent of order
         self.phase_idx = self._build_phase_index(phases)
-        self.ph = np.array([self.phase_idx['gas'], self.phase_idx['aq']], dtype=np.intp)
+        self.eq_phase_idxs = np.array(
+            [self.phase_idx['gas'], self.phase_idx['aq']], dtype=np.intp
+        )
 
-        # to retrieve fluid component fractions from state
-        self.f_mask_state = np.concatenate([[False], self.fc_mask[:-1]])
+        # to retrieve fluid component fractions from state (fc_mask with the
+        # implicit/dependent component's entry removed -- it has no state slot)
+        explicit_fc_mask = np.delete(self.fc_mask, self.dependent_comp_idx)
+        self.f_mask_state = np.concatenate([[False], explicit_fc_mask])
         # to retrieve solid component fractions from state
-        self.s_mask_state = np.concatenate([[False], ~self.fc_mask[:-1]])
+        self.s_mask_state = np.concatenate([[False], ~explicit_fc_mask])
 
         # figure out spec
         self.minerals = self.components_name[~self.fc_mask]
@@ -238,10 +249,21 @@ class OutputPropertyContainer:
     - reaction rate of minerals
     """
 
-    def __init__(self, property_container, props_name: list[str] | None = None):
+    def __init__(
+        self,
+        property_container,
+        props_name: list[str] | None = None,
+        dependent_comp_idx: int = None,
+    ):
         self.property = property_container
         self.nc = property_container.nc
         self.nph = property_container.nph
+        self.dependent_comp_idx = (
+            self.nc - 1 if dependent_comp_idx is None else int(dependent_comp_idx)
+        )
+        assert 0 <= self.dependent_comp_idx < self.nc, (
+            f"dependent_comp_idx={self.dependent_comp_idx} out of range [0, {self.nc})"
+        )
 
         self.x = np.zeros(len(self.property.flash_ev.aqueous_species))
         self.y = np.zeros(len(self.property.flash_ev.gas_species))

@@ -57,6 +57,7 @@ class EoSPhysics(PhysicsBase):
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
         history_fields: Iterable[HistoryField] | None = None,
+        dependent_comp_idx: int = None,
     ):
         """
         Constructor initializes PhysicsBase only.
@@ -79,6 +80,7 @@ class EoSPhysics(PhysicsBase):
             state_spec=state_spec,
             cache=cache,
             history_fields=history_fields,
+            dependent_comp_idx=dependent_comp_idx,
         )
 
         self.flash_evs: dict[str | int | None, Mixture] = {}
@@ -260,9 +262,10 @@ class EoSPhysics(PhysicsBase):
                 stacklevel=2,
             )
 
-        # Fill in unspecified compositions from OBL axes; last component is dependent
-        compositions[self.components[-1]] = 1.0
-        for i, comp in enumerate(self.components[:-1]):
+        # Fill in unspecified compositions from OBL axes; dependent_comp_idx's component
+        # is implicit (recovered via flash normalization, not carried as an OBL axis)
+        compositions[self.components[self.dependent_comp_idx]] = 1.0
+        for i, comp in enumerate(self.explicit_components()):
             if compositions.get(comp) is None:
                 compositions[comp] = sweep(i + 1)
 

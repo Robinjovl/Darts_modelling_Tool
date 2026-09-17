@@ -101,7 +101,7 @@ def plot_heat_map_contourf(
     # Get physics info
     pc = coupled_model.physics.property_containers[0]
     components_names = pc.components_name
-    fluid_components_names = pc.components_name[: pc.nc_fl]
+    fluid_components_names = pc.components_name[: pc.nc_eq]
     num_components = len(components_names)
     n_mobile_phases = coupled_model.wells[well_name].n_mobile_phases
 

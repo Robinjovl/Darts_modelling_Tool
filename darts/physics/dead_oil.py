@@ -68,6 +68,7 @@ class DeadOilProperties(PropertyContainer):
         )
 
     def run_flash(self, pressure, temperature, zc, evaluate_PT: bool = True):
+        self.pressure = pressure
         self.temperature = temperature
         ph = np.array([j for j in range(self.nph)])
 

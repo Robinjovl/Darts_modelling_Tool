@@ -2217,9 +2217,9 @@ class Output:
                             f'{tag}_{rate_type.split("_")[1]}_rate_{phase_name}'
                         ] = arr
                 elif rate_type.startswith("component_"):
-                    for c_idx in range(pc.nc_fl):
+                    for c_idx in range(pc.nc_eq):
                         arr = np.sum(
-                            rates_perfs[:, total_perf_idx, c_idx :: pc.nc_fl], axis=1
+                            rates_perfs[:, total_perf_idx, c_idx :: pc.nc_eq], axis=1
                         )
                         time_data_dict[
                             f'{tag}_{rate_type.split("_")[1]}_rate_{pc.components_name[c_idx]}'
@@ -2261,10 +2261,10 @@ class Output:
                     ] = total
                 total_perf_idx += len(well.perforations)
             elif rate_type.startswith("component_"):
-                for c_idx in range(pc.nc_fl):
+                for c_idx in range(pc.nc_eq):
                     total = sum(
                         np.sum(
-                            rates_perfs[:, total_perf_idx + j, c_idx :: pc.nc_fl],
+                            rates_perfs[:, total_perf_idx + j, c_idx :: pc.nc_eq],
                             axis=1,
                         )
                         for j in range(len(well.perforations))
@@ -2310,7 +2310,7 @@ class Output:
                     ] = wh_rates[:, well_idx, phase_idx]
             elif rate_type.startswith("component_"):
                 for c_idx, c_name in enumerate(pc.components_name):
-                    arr = np.sum(wh_rates[:, well_idx, c_idx :: pc.nc_fl], axis=1)
+                    arr = np.sum(wh_rates[:, well_idx, c_idx :: pc.nc_eq], axis=1)
                     time_data_dict[
                         f'{tag}_{rate_type.split("_")[1]}_rate_{c_name}_at_wh'
                     ] = arr
@@ -2569,8 +2569,8 @@ class Output:
             lambda_op = np.where(upwind_m, lambda_op_m, lambda_op_p)
             lambda_op = lambda_op[:, :, np.newaxis]
 
-            molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
-            molar_ops = molar_ops.reshape(batch_size, pc.nph * pc.nc_fl)
+            molar_ops = flux_ops[:, :, : pc.nc_eq] * lambda_op
+            molar_ops = molar_ops.reshape(batch_size, pc.nph * pc.nc_eq)
 
             ops = molar_ops
         elif rate_type == "component_mass_rates":
@@ -2587,10 +2587,10 @@ class Output:
             lambda_op = np.where(upwind_m, lambda_op_m, lambda_op_p)
             lambda_op = lambda_op[:, :, np.newaxis]
 
-            molar_ops = flux_ops[:, :, : pc.nc_fl] * lambda_op
-            molar_ops = molar_ops.reshape(batch_size, pc.nph * pc.nc_fl)
+            molar_ops = flux_ops[:, :, : pc.nc_eq] * lambda_op
+            molar_ops = molar_ops.reshape(batch_size, pc.nph * pc.nc_eq)
 
-            mw = np.array(pc.Mw[: pc.nc_fl])
+            mw = np.array(pc.Mw[: pc.nc_eq])
             mw_tiled = np.tile(mw, pc.nph)
             ops = molar_ops * mw_tiled
         elif rate_type == "advective_heat_rates":
@@ -2691,7 +2691,7 @@ class Output:
 
         tran = trans[None, :, None]
         if rate_type in ["component_molar_rates", "component_mass_rates"]:
-            pressure_term = np.repeat(phase_p_diff, pc.nc_fl, axis=2)
+            pressure_term = np.repeat(phase_p_diff, pc.nc_eq, axis=2)
         else:
             pressure_term = phase_p_diff
         rates = -ops_reshaped * tran * pressure_term

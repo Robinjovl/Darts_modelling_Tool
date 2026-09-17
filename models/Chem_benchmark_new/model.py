@@ -170,12 +170,19 @@ class Model(DartsModel):
         phases = ['gas', 'wat', 'sol']
         if self.combined_ions:
             components = ['CO2', 'Ions', 'H2O', 'CaCO3']
-            Mw = [44.01, (40.078 + 60.008) / 2, 18.015, 100.086]
+            Mw = [44.01, 100.086, 18.015]  # fluid components only (solid composition is mapped to Ions in PropertyContainer)
+            nc = len(components)
+            flash_ev = ConstantK(nc-1, [10, 1e-12, 1e-1], self.zero)
+            # Register the CaCO3 kinetic (non-equilibrium) phase
+            flash_ev.set_kinetic_phase(component_map=[1], composition=[1.0])
         else:
             components = ['CO2', 'Ca', 'CO3', 'H2O', 'CaCO3']
-            Mw = [44.01, 40.078, 60.008, 18.015, 100.086]
-            # Mw = [44.01, (40.078 + 60.008) / 2, (40.078 + 60.008) / 2, 18.015, 100.086]
-        nc = len(components)
+            Mw = [44.01, 40.078, 60.008, 18.015]  # fluid components only (solid composition is mapped to Ions in PropertyContainer)
+            nc = len(components)
+            flash_ev = ConstantK(nc-1, [10, 1e-12, 1e-12, 1e-1], self.zero)
+            # Pure mineral, composition maps onto Ca+CO3 in equal molar shares
+            # Mw derives automatically as Mw[Ca] + Mw[CO3] = 100.086.
+            flash_ev.set_kinetic_phase(component_map=[1, 2], composition=[0.5, 0.5])
 
         if self.combined_ions:
             zc_fl_inj_composition_gas = [1 - 2 * self.zero / (1 - solid_inject), self.zero / (1 - solid_inject)]
@@ -197,11 +204,6 @@ class Model(DartsModel):
         state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
 
         """ properties correlations """
-        if self.combined_ions:
-            flash_ev = ConstantK(nc-1, [10, 1e-12, 1e-1], self.zero)
-        else:
-            flash_ev = ConstantK(nc-1, [10, 1e-12, 1e-12, 1e-1], self.zero)
-
         density_ev = dict([('gas', DensityBasic(compr=1e-4, dens0=100)),
                            ('wat', DensityBasic(compr=1e-6, dens0=1000)),
                            ('sol', ConstFunc(2000.))])
@@ -237,7 +239,9 @@ class Model(DartsModel):
 
         for i in range(3):
             property_container = ModelProperties(phases_name=phases, components_name=components, Mw=Mw,
-                                                 nc_sol=1, np_sol=1, eps_z=epsilon, rock_comp=1e-7)
+                                                 nc_kin=1, np_kin=1,
+                                                 kin_formulation=PropertyContainer.KineticFormulation.BULK_VOLUME_FRACTION,
+                                                 eps_z=epsilon, rock_comp=1e-7)
 
             property_container.flash_ev = flash_ev
             property_container.density_ev = density_ev
@@ -351,8 +355,8 @@ class Model(DartsModel):
             density[ii] = pc.dens
             density_m[ii] = pc.dens_m
 
-            X[ii, :, 0] = pc.x[1, :pc.nc_fl]
-            X[ii, :, 1] = pc.x[0, :pc.nc_fl]
+            X[ii, :, 0] = pc.x[1, :pc.nc_eq]
+            X[ii, :, 1] = pc.x[0, :pc.nc_eq]
             Sg[ii] = pc.sat[0]
             Ss[ii] = z_caco3[ii]
 
@@ -419,8 +423,8 @@ class Model(DartsModel):
 
         pc = self.physics.property_operators[0].property
         for ii in range(nb):
-            X[ii, :, 0] = pc.x[1, :pc.nc_fl]
-            X[ii, :, 1] = pc.x[0, :pc.nc_fl]
+            X[ii, :, 0] = pc.x[1, :pc.nc_eq]
+            X[ii, :, 1] = pc.x[0, :pc.nc_eq]
             Sg[ii] = pc.sat[0]
             Ss[ii] = z_caco3[ii]
 
@@ -455,10 +459,10 @@ class Model(DartsModel):
 
 
 class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, Mw, nc_sol: int = 0, np_sol: int = 0,
+    def __init__(self, phases_name, components_name, Mw, nc_kin: int = 0, np_kin: int = 0, kin_formulation: list = None,
                  eps_z=1e-11, rock_comp=1e-6, temperature=1.):
         # Call base class constructor
-        super().__init__(phases_name, components_name, Mw, nc_sol=nc_sol, np_sol=np_sol,
+        super().__init__(phases_name, components_name, Mw, nc_kin=nc_kin, np_kin=np_kin, kin_formulation=kin_formulation,
                          eps_z=eps_z, rock_comp=rock_comp, temperature=temperature)
 
     def evaluate_mass_source(self, pressure, temperature, zc):

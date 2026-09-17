@@ -197,6 +197,7 @@ class Model(DartsModel):
         # no platform default is ever materialized and discarded.
         if getattr(self, 'platform', 'cpu') == 'gpu':
             from darts.linear_solvers import AMGXCPRSolverSpec
+            spec = AMGXCPRSolverSpec(max_iterations=max_iterations, tolerance=tolerance)
             if elim:
                 # NOTE: local elimination is incompatible with AMGX adaptive
                 # hierarchy reuse (the reduced pressure COEFFICIENTS change every
@@ -208,26 +209,15 @@ class Model(DartsModel):
                 # reuse for the elimination chain's OWN AMGX instances (per-
                 # instance ctor override) -- no process-global environment
                 # mutation, other AMGX instances keep the default adaptive reuse.
-                self.linear_solver.spec = AMGXCPRSolverSpec(
-                    max_iterations=max_iterations, tolerance=tolerance,
-                    schur_elim_count=K, schur_elim_rows=elim_rows,
-                    schur_elim_cols=elim_cols)
-            else:
-                self.linear_solver.spec = AMGXCPRSolverSpec(
-                    max_iterations=max_iterations, tolerance=tolerance)
+                spec = spec.with_schur_elimination(elim_rows, elim_cols)
         else:
             from darts.linear_solvers import CPRSolverSpec, GMRESSolverSpec
             spec = GMRESSolverSpec(restart=50, prec=CPRSolverSpec())
             spec.tolerance = tolerance
             spec.max_iterations = max_iterations
             if elim:
-                from darts.linear_solvers import SchurEliminationSpec
-                wrap = SchurEliminationSpec(inner=spec, elim_rows=elim_rows,
-                                            elim_cols=elim_cols)
-                wrap.tolerance = tolerance
-                wrap.max_iterations = max_iterations
-                spec = wrap
-            self.linear_solver.spec = spec
+                spec = spec.with_schur_elimination(elim_rows, elim_cols)
+        self.linear_solver.spec = spec
 
         super().set_solver()  # platform default nonlinear solver
         self.nonlinear_solver = NewtonSolver(tolerance=1e-4, max_iterations=15,

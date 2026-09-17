@@ -498,9 +498,12 @@ class DartsModel:
                     max_iterations=50,  # max Krylov iterations per solve
                     print_level=0,  # solver verbosity
                     proprietary_linear_type=None,  # enum for non-registry builds
-                    schur_elim_count=0,  # cell-local equations to Schur-eliminate (0 = off)
-                    schur_elim_rows=None,  # eliminated equation rows (len == count)
-                    schur_elim_cols=None,  # eliminated unknown columns (len == count)
+                    # Cell-local (kinetic, no flux/diffusion term) equations are
+                    # auto-detected by init_physics() (see
+                    # PropertyContainer.schur_eliminable_comp_idxs()) and, by this
+                    # default schur_elim_kinetic=True, Schur-eliminated by
+                    # LinearSolver._apply_gpu_solver(). Override with
+                    # self.linear_solver.spec.schur_elim_kinetic = False to disable.
                 )
             else:
                 # CPU default: FGMRES around the two-stage CPR preconditioner

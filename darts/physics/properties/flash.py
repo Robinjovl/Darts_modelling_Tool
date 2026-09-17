@@ -5,21 +5,202 @@ from numba import jit
 
 
 class Flash:
-    def __init__(self, nph, nc, ni=0):
-        self.nph = nph
+    def __init__(self, nph, nc, nsalt=0):
+        self.np_eq = nph
         self.nc = nc
-        self.ni = ni
-        self.ns = nc + ni
+        self.nsalt = nsalt
+        self.nc_eq = nc + nsalt
+
+        # One entry per registered kinetic phase: {'component_map', 'composition', 'nc_kin'}
+        self._kinetic_phases: list[dict] = []
+        self.nc_kin = 0
+        self.np_kin = 0
 
         self.nu = []
         self.X = []
         self.temperature: float = 0.0
 
+    def set_kinetic_phase(
+        self,
+        component_map: list,
+        composition: list = None,
+        is_mole_fraction: bool = False,
+    ):
+        """
+        Register one kinetic (non-equilibrium) phase, appended after
+        the equilibrium phases handled by this flash. Call once per kinetic phase;
+        the kinetic zc entries consumed by each phase are read from ``zc`` in
+        registration order, right after the ``nc_eq`` equilibrium components.
+
+        The phase's composition is a mapping onto this flash's regular
+        (equilibrium) components, given by ``component_map`` (indices into
+        those components). Two ways to specify it:
+
+        - **Fixed composition** (pass ``composition``): a single kinetic zc
+          entry gives the phase's total molar amount; its mole fractions over
+          ``component_map`` are the fixed ``composition`` (must sum to 1) and
+          never change -- e.g. a pure mineral, or one with fixed stoichiometry.
+        - **Variable composition** (leave ``composition`` as ``None``): one
+          kinetic zc entry per entry of ``component_map``, giving the molar
+          amount mapped onto each regular component; the phase's mole
+          fractions are their normalized (renormalized) share, so the
+          composition can vary.
+
+        :param component_map: Indices into this flash's regular (equilibrium)
+                               components that this kinetic phase's composition maps onto.
+        :param composition: Fixed mole fractions over ``component_map`` (must sum to
+                             1, one kinetic zc entry consumed), or ``None`` for a
+                             variable composition (one kinetic zc entry per mapped
+                             component consumed).
+        :param is_mole_fraction: Whether this phase is ``MOLE_FRACTION`` (``True``) or
+                             ``BULK_VOLUME_FRACTION`` (``False``, default) --
+                             see :class:`~darts.physics.base.property_container.PropertyContainer.KineticFormulation`.
+                             ``True``: zc is subtracted from the fluid-feed budget
+                             here before renormalizing it. ``False``: Flash leaves zc
+                             alone; :meth:`~darts.physics.base.property_container.PropertyContainer.run_flash`
+                             strips it from the fluid budget before Flash sees it.
+        :type is_mole_fraction: bool
+        """
+        if composition is not None:
+            assert len(composition) == len(component_map), (
+                "composition must have one entry per mapped component"
+            )
+            nc_kin_phase = 1
+        else:
+            nc_kin_phase = len(component_map)
+
+        self._kinetic_phases.append(
+            {
+                "component_map": list(component_map),
+                "composition": None
+                if composition is None
+                else np.asarray(composition, dtype=float),
+                "nc_kin": nc_kin_phase,
+                "is_mole_fraction": is_mole_fraction,
+            }
+        )
+        self.nc_kin += nc_kin_phase
+        self.np_kin += 1
+
     @abc.abstractmethod
-    def evaluate(self, pressure, temperature, zc):
+    def evaluate_equilibrium(self, pressure, temperature, zc):
         pass
 
+    @staticmethod
+    def _snap_single_phase_composition(nu, x, zc_eq):
+        """If exactly one equilibrium phase is present: pin its composition to ``zc_eq``.
+
+        :param nu: Phase molar fractions (equilibrium phases only), mutated in place.
+        :param x: Phase compositions (equilibrium phases only), mutated in place.
+        :param zc_eq: Normalized equilibrium-component feed composition.
+        """
+        present = [j for j in range(len(nu)) if nu[j] > 0]
+        if len(present) == 1:
+            x[present[0]] = zc_eq
+
+    def evaluate(self, pressure, temperature, zc):
+        """Evaluate flash, normalizing for kinetic components/phases if configured.
+
+        If set_kinetic_phase() has not been called, this is equivalent to
+        evaluate_equilibrium() over the full ``zc``. Otherwise, this normalizes
+        the equilibrium part of ``zc`` (kinetic components removed), evaluates
+        evaluate_equilibrium() on it, then re-appends the kinetic phase
+        fractions to ``nu``/``X``.
+
+        If evaluate_equilibrium() fails and leaves its phase compositions
+        mis-shaped, the equilibrium part of ``X`` is filled with NaN and the
+        error count is incremented instead of raising, so the caller (OBL
+        point generation) can detect the failed supporting point downstream.
+
+        :param pressure: Pressure at the evaluated point.
+        :param temperature: Temperature (may be None for isothermal physics).
+        :param zc: Overall composition, including kinetic components if configured.
+        :return: Number of flash errors encountered (0 on success).
+        """
+        if self.np_kin == 0:
+            error_output = self.evaluate_equilibrium(pressure, temperature, zc)
+            self.nu = np.asarray(self.nu)
+            try:
+                self.X = np.asarray(self.X).reshape(self.np_eq, self.nc_eq)
+            except ValueError as e:
+                print(e.args[0], pressure, temperature, zc)
+                error_output += 1
+                # failed flash left X mis-shaped; keep going with NaN phase
+                # compositions so the error is detectable downstream instead of
+                # crashing on the undefined local
+                self.X = np.full((self.np_eq, self.nc_eq), np.nan)
+            self._snap_single_phase_composition(self.nu, self.X, zc)
+            return error_output
+
+        # Normalize compositions. Only the kinetic phases registered with
+        # is_mole_fraction=True share the fluid components' mole-fraction simplex,
+        # so only their zc entries are subtracted from it here -- a bulk-volume-
+        # fraction phase's raw value can't validly enter this sum (Flash has no
+        # phase-density access to convert it to a mole fraction itself).
+        zc_kin = zc[self.nc_eq :]
+        zc_kin_tot = 0.0
+        offset = 0
+        for kin in self._kinetic_phases:
+            z_j = zc_kin[offset : offset + kin["nc_kin"]]
+            offset += kin["nc_kin"]
+            if kin["is_mole_fraction"]:
+                zc_kin_tot += np.sum(z_j)
+        zc_norm = zc[: self.nc_eq] / (1.0 - zc_kin_tot)
+
+        # Evaluate flash for normalized composition
+        error_output = self.evaluate_equilibrium(pressure, temperature, zc_norm)
+        flash_results = self.get_flash_results()
+        nu = np.array(flash_results.nu)
+        try:
+            x = np.array(flash_results.X).reshape(self.np_eq, self.nc_eq)
+        except ValueError as e:
+            print(e.args[0], pressure, temperature, zc)
+            error_output += 1
+            # failed flash left X mis-shaped; keep going with NaN phase
+            # compositions so the error is detectable downstream instead of
+            # crashing on the undefined local
+            x = np.full((self.np_eq, self.nc_eq), np.nan)
+
+        self._snap_single_phase_composition(nu, x, zc_norm)
+
+        # Re-normalize kinetic phases and append to nu, x -- kinetic phase compositions
+        # are written into the regular (equilibrium) component columns via each phase's
+        # component_map, so X stays nc_eq components wide.
+        NU = np.zeros(self.np_eq + self.np_kin)
+        X = np.zeros((self.np_eq + self.np_kin, self.nc_eq))
+        for j in range(self.np_eq):
+            NU[j] = nu[j] * (1.0 - zc_kin_tot)
+            X[j, :] = x[j, :]
+
+        # NU[row] is set to the raw (registration-order) zc entry either way. It's a
+        # true mole fraction of the combined total only for is_mole_fraction=True
+        # phases (matching KineticFormulation.MOLE_FRACTION); for is_mole_fraction=False phases it
+        # is just a placeholder passthrough -- not meant to be used as a mole
+        # fraction downstream (see KineticFormulation.BULK_VOLUME_FRACTION).
+        offset = 0
+        for j, kin in enumerate(self._kinetic_phases):
+            z_j = zc_kin[offset : offset + kin["nc_kin"]]
+            offset += kin["nc_kin"]
+            row = self.np_eq + j
+            if kin["composition"] is not None:
+                NU[row] = z_j[0]
+                X[row, kin["component_map"]] = kin["composition"]
+            else:
+                total = np.sum(z_j)
+                NU[row] = total
+                X[row, kin["component_map"]] = z_j / total if total > 0 else 0.0
+
+        self.nu = NU
+        self.X = X
+        self.temperature = flash_results.temperature
+
+        return error_output
+
     def get_flash_results(self):
+        """Exists to keep the same call pattern as DARTS-flash, whose flash objects
+        return a separate results object from this getter rather than storing
+        nu/X/temperature on self; here evaluate() already sets them on self, so this
+        just returns self."""
         return self
 
 
@@ -27,7 +208,7 @@ class SinglePhase(Flash):
     def __init__(self, nc):
         super().__init__(nph=1, nc=nc)
 
-    def evaluate(self, pressure, temperature, zc):
+    def evaluate_equilibrium(self, pressure, temperature, zc):
         self.nu, self.X = np.array([1.0]), np.array([zc])
         self.temperature = temperature
         return 0
@@ -57,7 +238,7 @@ class ConstantK(Flash):
 
             self.rr = RR_EqConvex2(nc=nc, min_z=eps, rr_tol=1e-12, max_iter=100)
 
-    def evaluate(self, pressure, temperature, zc):
+    def evaluate_equilibrium(self, pressure, temperature, zc):
         if self.use_dartsflash:
             # darts-flash uses phase 0 as reference phase (Ki = xi1/xi0), so invert
             # the K-values to keep the y-phase as phase 0 in the flash output
@@ -99,133 +280,3 @@ def RR2(k, zc, eps):
     y = k * x
 
     return [V, 1 - V], [y, x]
-
-
-class SolidFlash(Flash):
-    """
-    SolidFlash class is a wrapper around a flash of fluid components/phases and normalized solid that reacts kinetically
-    This is used in a formulation where the solid is a regular component with mole fractions, just does not flow
-    It is a composition of a Flash object.
-    During evaluate(), it normalizes fluid composition, evaluates Flash and renormalizes
-    """
-
-    def __init__(
-        self,
-        flash: Flash,
-        nc_fl: int,
-        np_fl: int,
-        ni: int = 0,
-        nc_sol: int = 0,
-        np_sol: int = 0,
-    ):
-        """
-        Constructor of SolidFlash
-
-        :param flash: Flash object for fluid components/phases
-        :param nc_fl: Number of fluid components
-        :param np_fl: Number of fluid phases
-        :param ni: Number of ions
-        :param nc_sol: Number of solid components
-        :param np_sol: Number of solid phases
-        """
-        super().__init__(np_fl, nc_fl, ni)
-        self.flash = flash
-
-        self.nc_fl = self.ns
-        self.np_fl = self.nph
-        self.nc_sol = nc_sol
-        self.np_sol = np_sol
-
-    def evaluate(self, pressure, temperature, zc):
-        """Evaluate flash normalized for solids.
-
-        Normalizes the fluid part of ``zc`` (solids removed), evaluates the wrapped
-        fluid flash, then re-appends the solid phase fractions to ``nu``/``X``.
-
-        If the wrapped flash fails and leaves its phase compositions mis-shaped,
-        the fluid part of ``X`` is filled with NaN and the error count is
-        incremented instead of raising, so the caller (OBL point generation)
-        can detect the failed supporting point downstream.
-
-        :param pressure: Pressure at the evaluated point.
-        :param temperature: Temperature (may be None for isothermal physics).
-        :param zc: Overall composition including solid components.
-        :return: Number of flash errors encountered (0 on success).
-        """
-        # Normalize compositions
-        zc_sol = zc[self.nc_fl :]
-        zc_sol_tot = np.sum(zc_sol)
-        zc_norm = zc[: self.nc_fl] / (1.0 - zc_sol_tot)
-
-        # Evaluate flash for normalized composition
-        error_output = self.flash.evaluate(pressure, temperature, zc_norm)
-        flash_results = self.flash.get_flash_results()
-        nu = np.array(flash_results.nu)
-        try:
-            x = np.array(flash_results.X).reshape(self.np_fl, self.nc_fl)
-        except ValueError as e:
-            print(e.args[0], pressure, temperature, zc)
-            error_output += 1
-            # failed flash left X mis-shaped; keep going with NaN phase
-            # compositions so the error is detectable downstream instead of
-            # crashing on the undefined local
-            x = np.full((self.np_fl, self.nc_fl), np.nan)
-
-        # Re-normalize solids and append to nu, x
-        NU = np.zeros(self.np_fl + self.np_sol)
-        X = np.zeros((self.np_fl + self.np_sol, self.nc_fl + self.nc_sol))
-        for j in range(self.np_fl):
-            NU[j] = nu[j] * (1.0 - zc_sol_tot)
-            X[j, : self.nc_fl] = x[j, :]
-
-        for j in range(self.np_sol):
-            NU[self.np_fl + j] = zc_sol[j]
-            X[self.np_fl + j, self.nc_fl + j] = 1.0
-
-        self.nu = NU
-        self.X = X
-        self.temperature = flash_results.temperature
-
-        return error_output
-
-
-class IonFlash(Flash):
-    def __init__(
-        self, flash_ev: Flash, nph: int, nc: int, ni: int, combined_ions: list = None
-    ):
-        super().__init__(nph, nc, ni)
-        self.flash_ev = flash_ev
-        self.combined_ions = combined_ions
-
-    def evaluate(self, pressure, temperature, zc):
-        # Uncombine ions into Na+ and Cl- mole fractions
-        if self.combined_ions is not None:
-            ion_weights = self.combined_ions / np.sum(self.combined_ions)
-            zc = np.append(zc[:-1], [ion_weights[0] * zc[-1], ion_weights[1] * zc[-1]])
-        nc_tot = len(zc)
-
-        # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
-        self.flash_ev.evaluate(pressure, temperature, zc)
-        flash_results = self.flash_ev.get_flash_results()
-        self.nu = np.array(flash_results.nu)
-        self.X = np.empty(
-            (
-                self.nph,
-                self.nc + 1 if self.combined_ions is not None else self.nc + self.ni,
-            )
-        )
-        self.temperature = flash_results.temperature
-
-        for j in range(self.nph):
-            Xj = flash_results.X[j * nc_tot : (j + 1) * nc_tot]
-
-            if self.combined_ions is not None:
-                # Normal components +
-                self.X[j, : self.nc] = Xj[: self.nc]
-
-                # Sum ions
-                self.X[j, self.nc] = np.sum(ion_weights * Xj[self.nc :])
-            else:
-                self.X[j, :] = Xj
-
-        return 0
