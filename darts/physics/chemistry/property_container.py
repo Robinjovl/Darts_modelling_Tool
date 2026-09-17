@@ -261,6 +261,9 @@ class OutputPropertyContainer:
         self.dependent_comp_idx = (
             self.nc - 1 if dependent_comp_idx is None else int(dependent_comp_idx)
         )
+        assert 0 <= self.dependent_comp_idx < self.nc, (
+            f"dependent_comp_idx={self.dependent_comp_idx} out of range [0, {self.nc})"
+        )
 
         self.x = np.zeros(len(self.property.flash_ev.aqueous_species))
         self.y = np.zeros(len(self.property.flash_ev.gas_species))
