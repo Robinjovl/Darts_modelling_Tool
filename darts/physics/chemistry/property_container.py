@@ -249,10 +249,18 @@ class OutputPropertyContainer:
     - reaction rate of minerals
     """
 
-    def __init__(self, property_container, props_name: list[str] | None = None):
+    def __init__(
+        self,
+        property_container,
+        props_name: list[str] | None = None,
+        dependent_comp_idx: int = None,
+    ):
         self.property = property_container
         self.nc = property_container.nc
         self.nph = property_container.nph
+        self.dependent_comp_idx = (
+            self.nc - 1 if dependent_comp_idx is None else int(dependent_comp_idx)
+        )
 
         self.x = np.zeros(len(self.property.flash_ev.aqueous_species))
         self.y = np.zeros(len(self.property.flash_ev.gas_species))
