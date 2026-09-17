@@ -7,26 +7,26 @@ from darts.reservoirs.cpg_reservoir import read_int_array, read_float_array
 
 from darts.tools.gen_cpg_grid import gen_cpg_grid
 
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 
 def fmt(x):
     return '{:.3}'.format(x)
 
 #####################################################
 
-class Model_CPG(CICDModel):
+class Model_CPG(DartsModel):
     def __init__(self):
         super().__init__()
 
     def set_solver(self):
-        # Nonlinear solver tuning shared by all CPG cases: apply the Newton
-        # tolerance specified on idata (idata.sim.newton_tolerance) to the
-        # nonlinear-solver spec (the canonical location). None -> keep the
-        # spec default.
-        super().set_solver()
-        idata = getattr(self, 'idata', None)
-        if idata is not None and idata.sim.newton_tolerance is not None:
-            self.nonlinear_solver.spec.tolerance = idata.sim.newton_tolerance
+        # Linear-solver settings live on self.linear_solver (the LinearSolverSpec), not in
+        # ts_control. The case files (case_*.py) may set idata.sim.linear_tol / linear_max_iter.
+        super().set_solver()  # platform default nonlinear + linear solvers
+        sim = self.idata.sim
+        if getattr(sim, 'newton_tolerance', None) is not None:
+            self.nonlinear_solver.spec.tolerance = sim.newton_tolerance
+        self.linear_solver.spec.tolerance = getattr(sim, 'linear_tol', self.linear_solver.spec.tolerance)
+        self.linear_solver.spec.max_iterations = getattr(sim, 'linear_max_iter', self.linear_solver.spec.max_iterations)
 
     def init_input_arrays(self):
         if self.idata.generate_grid:
@@ -101,8 +101,8 @@ class Model_CPG(CICDModel):
         l2g = np.array(self.reservoir.discr_mesh.local_to_global, copy=False)
         g2l = np.array(self.reservoir.discr_mesh.global_to_local, copy=False)
         if 'RCOND' in arrays and 'HCAP' in arrays: # rock thermal properties specified in a file
-            self.reservoir.conduction = arrays['RCOND'][g2l >= 0]
-            self.reservoir.hcap = arrays['HCAP'][g2l >= 0]
+            self.reservoir.conduction[:] = arrays['RCOND'][g2l >= 0]
+            self.reservoir.hcap[:] = arrays['HCAP'][g2l >= 0]
             # add hcap and rcond to be saved into mesh.vtu
             self.reservoir.global_data.update({'heat_capacity': arrays['HCAP'], 'rock_conduction': arrays['RCOND']})
         else:  # specify rock thermal properties based on porosity

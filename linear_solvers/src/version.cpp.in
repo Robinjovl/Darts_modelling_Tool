@@ -1,0 +1,40 @@
+#include <string>
+
+#include "version.hpp"
+
+namespace opendarts
+{
+  namespace config
+  {
+    // Variables for compatibility with older interface
+    const char *LINSOLV_BUILD_DATE {__DATE__ " " __TIME__};  // __DATE__ and __TIME__ are compiler macros
+    const char *LINSOLV_BUILD_MACHINE {"@opendarts_BUILD_USERNAME@""@""@opendarts_BUILD_HOSTNAME@"};
+    const char *LINSOLV_BUILD_GIT_HASH {"@GIT_SHA1@"};
+
+    // New interface with functions
+    // Return the major version of openDARTS
+    std::string get_version_major() { return std::string("@opendarts_VERSION_MAJOR@"); }
+
+    // Return the minor version of openDARTS
+    std::string get_version_minor() { return std::string("@opendarts_VERSION_MINOR@"); }
+
+    // Return the absolute path of the openDARTS source directory
+    std::string get_cmake_openDARTS_source_dir() { return std::string("@opendarts_SOURCE_DIR@"); }
+
+    // The Git ref at compile time
+    std::string get_git_Ref() { return std::string("@GIT_REFSPEC@"); }
+
+    // The raw git hash at compile time
+    std::string get_git_hash() { return std::string("@GIT_SHA1@"); }
+
+    // The build date of this version of the code
+    std::string get_build_date() { return std::string(__DATE__ " " __TIME__); }
+
+    // The name of the machine where the code was built
+    std::string get_build_machine() { return std::string("@opendarts_BUILD_MACHINE@"); }
+
+    // Whether the working directory was clean at compile time
+    bool is_git_clean() { return std::string("@GIT_DIRTY@") == std::string("CLEAN"); }
+
+  } // namespace config
+} // namespace opendarts

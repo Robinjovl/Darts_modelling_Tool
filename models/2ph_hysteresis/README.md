@@ -44,10 +44,11 @@ properties.
 
 ## Turning hysteresis on and off
 
-In this example, hysteresis is controlled by the `hys` / `hysteresis` switch:
+In this example, hysteresis is controlled by the `hysteresis` switch, which
+overrides `DartsModel.hysteresis` (off by default at the framework level):
 
-- `hysteresis=True` (or `Model(hys=True)`) enables the history variable `sg_max`
-- `hysteresis=False` (or `Model(hys=False)`) runs the same case in drainage-only mode
+- `Model(hysteresis=True)` enables the history variable `sg_max`
+- `Model(hysteresis=False)` runs the same case in drainage-only mode
 
 At the framework level, hysteresis is enabled by passing non-empty
 `history_fields=[HistoryField(...)]` into `PhysicsBase(...)`. If no history

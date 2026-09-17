@@ -38,7 +38,7 @@ Start from `git diff --name-only` and map the touched paths to validation:
 |---|---|
 | `docs/` only, without behavior impact | Use `docs-open-darts`; no runtime stack required |
 | Python code under `darts/`, `models/`, `tests/`, `tutorials/` | Lint changed files, then run the nearest affected tests |
-| `engines/`, `discretizer/`, `solvers/`, `thirdparty/`, `CMakeLists.txt` | Build/install validation plus relevant Python-facing tests |
+| `engines/`, `discretizer/`, `linear_solvers/`, `thirdparty/`, `CMakeLists.txt` | Build/install validation plus relevant Python-facing tests |
 | `pyproject.toml`, `setup.py`, install/build helper scripts | Editable install or wheel/build validation, plus at least one runtime smoke test |
 | `.gitlab-ci.yml`, `.cicd/jobs/` | Reproduce the closest local commands and explain CI impact |
 | Mixed Python + C++ or package boundary changes | Run build/install plus the broad regression stack |

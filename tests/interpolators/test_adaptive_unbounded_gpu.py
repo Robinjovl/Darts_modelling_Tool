@@ -27,16 +27,10 @@ N_OPS = 4
 
 
 def _resolve_gpu_cls():
-    """Return the GPU adaptive template, or None on a CPU build. Letterless name first
-    (index-type template parameter dropped), legacy _i_/_l_ names as fallback."""
-    for cls_name in (
-        f"multilinear_adaptive_gpu_interpolator_d_{N_DIMS}_{N_OPS}",
-        f"multilinear_adaptive_gpu_interpolator_i_d_{N_DIMS}_{N_OPS}",
-        f"multilinear_adaptive_gpu_interpolator_l_d_{N_DIMS}_{N_OPS}",
-    ):
-        if hasattr(_itor, cls_name):
-            return getattr(_itor, cls_name)
-    return None
+    """Return the GPU adaptive template, or None on a CPU build. The exposed name carries
+    neither the "adaptive" token nor an index-type letter."""
+    cls_name = f"multilinear_gpu_interpolator_d_{N_DIMS}_{N_OPS}"
+    return getattr(_itor, cls_name, None)
 
 
 class LinearEvaluator(operator_set_evaluator_iface):
@@ -141,7 +135,7 @@ def test_adaptive_unbounded_gpu():
     GpuItor = _resolve_gpu_cls()
     if GpuItor is None:
         pytest.skip(
-            f"no multilinear_adaptive_gpu_interpolator template for "
+            f"no multilinear_gpu_interpolator template for "
             f"(N_DIMS={N_DIMS}, N_OPS={N_OPS}) — not a GPU build"
         )
     run(GpuItor)

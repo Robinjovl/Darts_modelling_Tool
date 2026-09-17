@@ -20,7 +20,6 @@ class PropertyContainer(BasePropertyContainer):
         nc_sol=0,
         np_sol=0,
         eps_z=1e-11,
-        rate_ann_mat=None,
         temperature=None,
         fc_mask=None,
     ):
@@ -40,8 +39,6 @@ class PropertyContainer(BasePropertyContainer):
         :type np_sol: int
         :param eps_z: Minimum composition value
         :type eps_z: float
-        :param rate_ann_mat: Rate annihilation matrix, optional
-        :type rate_ann_mat: np.ndarray
         :param temperature: Temperature, for isothermal simulation
         :type temperature: float | None
         :param fc_mask: Fluid component mask
@@ -60,7 +57,6 @@ class PropertyContainer(BasePropertyContainer):
             nc_sol=nc_sol,
             np_sol=np_sol,
             eps_z=eps_z,
-            rate_ann_mat=rate_ann_mat,
             temperature=temperature,
         )
         self.components_name = np.array(self.components_name)

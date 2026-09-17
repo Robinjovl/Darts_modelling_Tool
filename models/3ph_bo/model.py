@@ -1,15 +1,16 @@
+from darts.input.black_oil import BlackOilFluidProps
 from darts.input.input_data import InputData
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.physics.base.property_container import PropertyContainer
 from darts.engines import ms_well
 from darts.nonlinear_solvers import NewtonSolver
 
 from darts.physics.properties.black_oil import *
-from darts.physics.blackoil import BlackOil, BlackOilFluidProps
+from darts.physics.black_oil import BlackOil
 
 # Model class creation here!
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -21,11 +22,20 @@ class Model(CICDModel):
         idata = self.set_input_data('')
         self.set_physics(idata)
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10)
-        self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=10, runtime=100, tol_linear=1e-7,
-                            it_linear=50)
+        # Solver/time-stepping configuration moved to set_solver() (called from base reset())
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 1e-6
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 10
+        self.ts_control.runtime = 100
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10)
+        self.linear_solver.spec.tolerance = 1e-7
+        self.linear_solver.spec.max_iterations = 50
 
     def set_reservoir(self):
         """Reservoir"""

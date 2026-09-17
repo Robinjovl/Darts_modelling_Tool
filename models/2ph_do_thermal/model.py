@@ -1,18 +1,18 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, ms_well
 from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
 
 from darts.physics.base.physics import PhysicsBase
-from darts.physics.base.property_container import PropertyContainer
+from darts.physics.dead_oil import DeadOilProperties
 
 from darts.physics.properties.basic import ConstFunc, PhaseRelPerm
 from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # call base class constructor
         super().__init__()
@@ -23,10 +23,19 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=2, runtime=1000, tol_linear=1e-6)
+        # solver configuration moved to set_solver() (called from base reset())
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 0.0001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 2
+        self.ts_control.runtime = 1000
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
+        self.linear_solver.spec.tolerance = 1e-6
 
     def set_reservoir(self):
         nx = 1000
@@ -50,7 +59,8 @@ class Model(CICDModel):
         self.inj = value_vector([1 - zero, 300])
         self.ini = value_vector([zero])
 
-        property_container = ModelProperties(phases_name=phases, components_name=components, eps_z=epsilon)
+        property_container = DeadOilProperties(phases_name=phases, components_name=components,
+                                               Mw=np.ones(len(phases)), eps_z=epsilon, temperature=None)
 
         # Define property evaluators based on custom properties
         property_container.density_ev = dict([('wat', DensityBasic(compr=1e-5, dens0=1014)),
@@ -95,67 +105,3 @@ class Model(CICDModel):
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=180.)
-
-
-class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, eps_z=1e-11):
-        # Call base class constructor
-        self.nph = len(phases_name)
-        Mw = np.ones(self.nph)
-        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=None)
-
-    def evaluate_flash(self, state):
-        """
-        Compute the (trivial) two-phase flash: composition/phase split, pressure, temperature.
-
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        """
-        # Composition vector and pressure from state:
-        vec_state_as_np = np.asarray(state)
-        self.pressure = vec_state_as_np[0]
-        self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
-
-        zc = np.append(vec_state_as_np[1:self.nc], 1 - np.sum(vec_state_as_np[1:self.nc]))
-
-        self.clean_arrays()
-        # two-phase flash - assume water phase is always present and water component last
-        self.ph = np.array([0, 1], dtype=np.intp)
-        self.nu = zc
-        for i in range(self.nph):
-            self.x[i, i] = 1
-
-
-    def evaluate_properties(self, state):
-        """
-        Compute derived phase properties (density, viscosity, saturation, relperm)
-        from the flash results currently held by this container.
-
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        """
-        for j in self.ph:
-            # molar weight of mixture
-            M = np.sum(self.x[j, :] * self.Mw)
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure)  # output in [kg/m3]
-            self.dens_m[j] = self.dens[j] / M
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
-
-        self.compute_saturation(self.ph)
-
-        for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
-            self.pc[j] = 0
-
-    def evaluate_at_cond(self, pressure, zc):
-
-        self.sat[:] = 0
-
-        ph = [0, 1]
-        for j in ph:
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
-
-        self.dens_m = [1025, 0.77]  # to match DO based on PVT
-
-        self.nu = zc
-        self.compute_saturation(ph)
-
-        return self.sat, self.dens_m

@@ -20,7 +20,7 @@ copyright = "2022, Denis Voskov"
 author = "Denis Voskov"
 
 # The full version, including alpha/beta/rc tags
-release = "0.1.5"
+release = "2.0.1"
 
 # -- General configuration ---------------------------------------------------
 
