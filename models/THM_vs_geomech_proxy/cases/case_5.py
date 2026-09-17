@@ -26,7 +26,7 @@ def input_data_case_5(physics_type='single_phase_thermal', mesh_dir='case_5'):
     idata.other.doublet_shift = 500.0  # [m]
     #idata.other.cell_shift = 500.0     # [m]
 
-    # mesh: three Gmsh physical tags (1=overburden, 2=reservoir, 3=underburden, 4=damage zone left, 
+    # mesh: three Gmsh physical tags (1=overburden, 2=reservoir, 3=underburden, 4=damage zone left,
     # 5=damage zone right 99991=fault)
     idata.other.matrix_tags = (1, 2, 3, 4, 5, 99991)
     # Wells must connect to reservoir rock only, never to a confining layer
@@ -40,7 +40,7 @@ def input_data_case_5(physics_type='single_phase_thermal', mesh_dir='case_5'):
     _set_reservoir_bounds(idata)
     _set_wells(idata)
     _set_mesh_tags(idata)
-    
+
     # case_5 owns its well locations, derived from the reservoir geometry above.
     # Carried on idata to both the model and the fault-mesh generator. [X, Y, Z1, Z2].
     xc = idata.other.rsv_xy / 2.0
@@ -58,11 +58,11 @@ def input_data_case_5(physics_type='single_phase_thermal', mesh_dir='case_5'):
     idata.other.set_props_by_tags = True
 
     rsv_poro = 0.2
-    rsv_perm = 800.0    # [mD]
-    damage_zone_perm = 400 # [mD]
+    rsv_perm = 500.0    # [mD]
+    damage_zone_perm = 800 # [mD]
     damage_zone_poro = 0.1
-    fault_perm = 1e3 # [mD]
-    fault_poro = 1
+    fault_perm = 1 # [mD]
+    fault_poro = 0.01
     non_rsv_poro = 0.001
     non_rsv_perm = 0.001  # [mD]
 
@@ -78,32 +78,13 @@ def input_data_case_5(physics_type='single_phase_thermal', mesh_dir='case_5'):
     rcond_sand  = 3.0 * 86.4  # [kJ/m/day/K]
     rcond_shale = 2.2 * 86.4  # [kJ/m/day/K]
     idata.rock.thermal_conductivity = np.array([rcond_sand, rcond_shale, rcond_shale, rcond_sand,rcond_sand, rcond_sand])
-    # For each factor: 0.0 = uniform; 1.0 = full sand/shale heterogeneity.
-    E_heterogeneity = 2e-3
-    nu_heterogeneity = 0.0
-    biot_heterogeneity = 0.0
-    th_expn_heterogeneity = 0.0
-    shale_tags = np.array([0.0, 1.0, 1.0, 0.0, 0.0, 0.0])
-
-    E_sand  = 8.0 * 1e4   # [bars]  (1e4: [GPa] -> [bar])
-    E_shale = 20.0 * 1e4  # [bars]
-    idata.rock.E = E_sand + E_heterogeneity * shale_tags * (E_shale - E_sand)
-
-    nu_sand  = 0.20  # Poisson ratio
-    # 0.25 rather than 0.30, matching input_data_case_4: a nu contrast of 0.10
-    # stalls the FS-CPR preconditioner, 0.05 stays solvable. Inert while
-    # nu_heterogeneity is 0.0, but it is this value that applies once the dial
-    # is turned up.
-    nu_shale = 0.25
-    idata.rock.nu = nu_sand + nu_heterogeneity * shale_tags * (nu_shale - nu_sand)
-
-    biot_sand  = 0.8
-    biot_shale = 0.6
-    idata.rock.biot = biot_sand + biot_heterogeneity * shale_tags * (biot_shale - biot_sand)
-
-    th_expn_sand  = 1.2e-5  # [1/K] linear thermal expansion coefficient
-    th_expn_shale = 0.8e-5
-    idata.rock.th_expn_orig = th_expn_sand + th_expn_heterogeneity * shale_tags * (th_expn_shale - th_expn_sand)  # preserve original for proxy
+    # Region order: sandstone, shale, shale, damage zone, damage zone, fault core.
+    # Values are regional midpoints rounded to two decimal places.
+    idata.rock.E = np.array([16.50, 21.00, 21.00, 27.50, 27.50, 5.03]) * 1e4  # [bar] (GPa -> bar)
+    idata.rock.nu = np.array([0.18, 0.28, 0.28, 0.25, 0.25, 0.28])
+    idata.rock.biot = np.array([0.74, 0.73, 0.73, 0.90, 0.90, 0.95])
+    # Preserve original linear thermal expansion coefficients for the proxy [1/K].
+    idata.rock.th_expn_orig = np.array([30.00, 25.00, 25.00, 17.50, 17.50, 15.50]) * 1e-6
 
     # recompute derived geomechanical quantities per tag (mirrors _set_rock_mechanics in base.py)
     bulk_modulus = get_bulk_modulus(E=idata.rock.E, nu=idata.rock.nu)

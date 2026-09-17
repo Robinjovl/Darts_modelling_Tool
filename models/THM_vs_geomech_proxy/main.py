@@ -621,20 +621,20 @@ if __name__ == '__main__':
     #cases += ['case_2']
     #cases += ['case_3']
     #cases += ['case_4']
-    #cases += ['case_5']
+    cases += ['case_5']
     #cases += ['no_damage_zone']
     #cases += ['no_damage_zone_heter_mech_prop']
-    cases += ['zero_rate_17_17_15']
+    # cases += ['zero_rate_17_17_15']
 
     # Run the same coupled thermal-geomechanical case on multiple meshes.
     # well size keeps the same 1:20 ratio used by the 200 m reference mesh.
-    case_5_mesh_study = False
-    case_5_mesh_sizes = [300.0]
+    case_5_mesh_study = True
+    case_5_mesh_sizes = [600.0]
     if case_5_mesh_study:
         cases = [case_5_mesh_name(mesh_size) for mesh_size in case_5_mesh_sizes]
 
-    thermal = False
-    #thermal = True
+    # thermal = False
+    thermal = True
 
     if not thermal:
         physics_type = 'single_phase'
@@ -649,10 +649,10 @@ if __name__ == '__main__':
     if not thermal:
         n_years = 1
     else:
-        n_years = 30
+        n_years = 60
 
     sim_time = 365.25 * n_years
-    report_step = 365.25 / 4
+    report_step = 365.25 / 2
 
     # short run
     #sim_time = 30 # days
@@ -673,7 +673,7 @@ if __name__ == '__main__':
         # struct-like NX_NY_NZ cases are meshed in the reservoir, case_5 and
         # no_damage_zone by their own gmsh script (run() dispatches); case_1..case_4
         # have no generator and keep loading the committed meshes/case_1/mesh.msh.
-        case_generate_mesh = generate_mesh and supports_mesh_generation(case)
+        case_generate_mesh = generate_mesh and supports_mesh_generation(case) and not case_5_mesh_study
 
         run(model_folder=case, physics_type=physics_type, generate_mesh=case_generate_mesh,
             wells_type=wells_type, decouple_geomech=decouple_geomech,
