@@ -2883,17 +2883,15 @@ void engine_base::apply_local_chop_correction(std::vector<value_t> &X, std::vect
 		ratio = 1.0;
 		old_z[dependent_comp_idx] = 1.0;
 		new_z[dependent_comp_idx] = 1.0;
-		// Explicit slot j (contiguous in X, 0..nc-2) maps to physical component p,
-		// skipping dependent_comp_idx (its value is implicit, recovered below).
-		int p = 0;
+		// explicit_comp_idxs[j] maps explicit slot j (contiguous in X, 0..nc-2) to
+		// its physical component (skipping dependent_comp_idx, recovered below).
 		for (int j = 0; j < nc - 1; j++)
 		{
-			if (p == dependent_comp_idx) p++;
+			const uint8_t p = explicit_comp_idxs[j];
 			old_z[p] = X[i * n_vars + j + z_var_idx];
 			old_z[dependent_comp_idx] -= old_z[p];
 			new_z[p] = old_z[p] - dX[i * n_vars + j + z_var_idx];
 			new_z[dependent_comp_idx] -= new_z[p];
-			p++;
 		}
 
 		for (int j = 0; j < nc; j++)
@@ -2934,17 +2932,18 @@ void engine_base::apply_local_chop_correction_with_solid(std::vector<value_t> &X
 		ratio = 1.0;
 		old_z_fl[dep_fl] = 1.0;
 		new_z_fl[dep_fl] = 1.0;
-		// Explicit fluid slot j maps to physical (fluid-local) index p, skipping
-		// dep_fl (dependent_comp_idx's position within the fluid sub-array).
-		int p = 0;
+		// explicit_comp_idxs[n_solid + j] is the global physical index of fluid
+		// explicit slot j; the solid block [0, n_solid) never contains
+		// dependent_comp_idx (enforced in init()), so explicit_comp_idxs[c] == c
+		// there and only the fluid part needs the table -- subtract n_solid to
+		// get the fluid-local index p.
 		for (int j = 0; j < nc_fl - 1; j++)
 		{
-			if (p == dep_fl) p++;
+			const uint8_t p = explicit_comp_idxs[n_solid + j] - n_solid;
 			old_z_fl[p] = X[i * n_vars + j + z_var_idx + n_solid];
 			old_z_fl[dep_fl] -= old_z_fl[p];
 			new_z_fl[p] = old_z_fl[p] - dX[i * n_vars + j + z_var_idx + n_solid];
 			new_z_fl[dep_fl] -= new_z_fl[p];
-			p++;
 		}
 
 		for (int j = 0; j < nc_fl; j++)
@@ -2982,16 +2981,14 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 			ratio = 1.0;
 			old_z[dependent_comp_idx] = 1.0;
 			new_z[dependent_comp_idx] = 1.0;
-			int p = 0;
 			for (int j = 0; j < nc - 1; j++)
 			{
-				if (p == dependent_comp_idx) p++;
+				const uint8_t p = explicit_comp_idxs[j];
 				old_z[p] = X[i * n_vars + j + z_var_idx];
 				old_z[dependent_comp_idx] -= old_z[p];
 
 				new_z[p] = old_z[p] - dX[i * n_vars + j + z_var_idx];
 				new_z[dependent_comp_idx] -= new_z[p];
-				p++;
 			}
 
 			for (int j = 0; j < nc; j++)
@@ -3021,16 +3018,14 @@ void engine_base::apply_local_chop_correction_new(std::vector<value_t> &X, std::
 			ratio = 1.0;
 			old_z[dependent_comp_idx] = 1.0;
 			new_z[dependent_comp_idx] = 1.0;
-			int p = 0;
 			for (int j = 0; j < nc - 1; j++)
 			{
-				if (p == dependent_comp_idx) p++;
+				const uint8_t p = explicit_comp_idxs[j];
 				old_z[p] = exp(X[i * n_vars + j + z_var_idx]); //log based composition
 				old_z[dependent_comp_idx] -= old_z[p];
 
 				new_z[p] = exp(log(old_z[p]) - dX[i * n_vars + j + z_var_idx]); //log based composition
 				new_z[dependent_comp_idx] -= new_z[p];
-				p++;
 			}
 
 			for (int j = 0; j < nc; j++)

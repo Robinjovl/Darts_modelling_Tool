@@ -434,15 +434,13 @@ void engine_base_gpu::apply_local_chop_correction(std::vector<value_t> &X, std::
     ratio = 1.0;
     old_z[dependent_comp_idx] = 1.0;
     new_z[dependent_comp_idx] = 1.0;
-    int p = 0;
     for (int j = 0; j < nc - 1; j++)
     {
-      if (p == dependent_comp_idx) p++;
+      const uint8_t p = explicit_comp_idxs[j];
       old_z[p] = X[i * n_vars + j + z_var_idx];
       old_z[dependent_comp_idx] -= old_z[p];
       new_z[p] = old_z[p] - dX[i * n_vars + j + z_var_idx];
       new_z[dependent_comp_idx] -= new_z[p];
-      p++;
     }
 
     for (int j = 0; j < nc; j++)

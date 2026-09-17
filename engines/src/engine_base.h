@@ -516,6 +516,13 @@ public:
 	// never an explicit Newton unknown/column. Set from Python (mirrors n_solid) as
 	// UINT8_MAX ("unset") to resolve to nc-1 in init(), or an explicit index.
 	uint8_t dependent_comp_idx;
+	// Physical component indices in explicit-unknown-slot order (length nc-1):
+	// [0..nc) with dependent_comp_idx removed. explicit_comp_idxs[j] maps explicit
+	// slot j (contiguous in X) to its physical component index, so composition
+	// loops need not re-derive the skip-over-dependent_comp_idx mapping inline.
+	// Built once in init(), alongside dependent_comp_idx's own resolution.
+	std::vector<uint8_t> explicit_comp_idxs;
+
 	StateSpecification state_spec;
 	double min_axis_z;  // OBL axis min for composition
 	double max_axis_z;  // OBL axis max for composition
@@ -1116,6 +1123,10 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 		    " falls in the solid block [0, " + std::to_string((int)n_solid) + ") -- "
 		    "apply_local_chop_correction_with_solid() requires the dependent component to "
 		    "be a fluid component (index >= n_solid)");
+	explicit_comp_idxs.resize(nc - 1);
+	for (uint8_t c = 0, j = 0; c < nc; c++)
+		if (c != dependent_comp_idx)
+			explicit_comp_idxs[j++] = c;
 
 	// Sync mesh n_vars with engine n_vars (needed for reverse_and_sort_one_way with IS_DERS=true)
 	mesh->n_vars = n_vars;
