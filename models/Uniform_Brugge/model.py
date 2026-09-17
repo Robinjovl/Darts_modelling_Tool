@@ -6,10 +6,10 @@ import numpy as np
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from mesh_creator import mesh_creator
 
-from darts.physics.base.physics import PhysicsBase
-from darts.physics.black_oil import BlackOilProperties
-
 from darts.physics.properties.black_oil import *
+from darts.input.input_data import InputData
+from darts.input.black_oil import BlackOilFluidProps
+from darts.physics.black_oil import BlackOil
 
 
 class Model(DartsModel):
@@ -102,45 +102,25 @@ class Model(DartsModel):
 
     def set_physics(self):
         """Physical properties"""
-        # Create property containers:
-        zero = 1e-12
         epsilon = 1e-13
-        phases = ['gas', 'oil', 'wat']
-        components = ['g', 'o', 'w']
 
         self.inj_composition = [1 - 2e-8, 1e-8]
         # initial composition should be backtracked from saturations
         self.ini_stream = [0.001225901537, 0.7711341309]
 
         pvt = 'Brugge_struct/physics.in'
-        property_container = BlackOilProperties(phases_name=phases, components_name=components,
-                                                 Mw=np.ones(len(components)), eps_z=epsilon, temperature=1.)
 
-        """ properties correlations """
-        property_container.flash_ev = flash_black_oil(pvt)
-        property_container.density_ev = dict([('gas', DensityGas(pvt)),
-                                              ('oil', DensityOil(pvt)),
-                                              ('wat', DensityWat(pvt))])
-        property_container.viscosity_ev = dict([('gas', ViscGas(pvt)),
-                                                ('oil', ViscOil(pvt)),
-                                                ('wat', ViscWat(pvt))])
-        property_container.rel_perm_ev = dict([('gas', GasRelPerm(pvt)),
-                                               ('oil', OilRelPerm(pvt)),
-                                               ('wat', WatRelPerm(pvt))])
-        property_container.capillary_pressure_ev = dict([('pcow', CapillaryPressurePcow(pvt)),
-                                                         ('pcgo', CapillaryPressurePcgo(pvt))])
+        idata = InputData(type_hydr='isothermal', type_mech='none', init_type='uniform')
+        # water_phase_name='wat' matches this model's .pkl phase labels
+        idata.fluid = BlackOilFluidProps(pvt=pvt, water_phase_name='wat')  # phases: gas, oil, wat; components: g, o, w
 
-        property_container.rock_compress_ev = RockCompactionEvaluator(pvt)
+        idata.obl.epsilon_z = epsilon
+        idata.obl.p_step = 0.399  # bar
+        idata.obl.p_origin = 1.0
+        idata.obl.z_step = 2e-3  # 3 components -> 2 z axes, same step on both
+        idata.obl.z_origin = epsilon
 
-        """ Activate physics """
-        thermal = False
-        state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
-        nc = len(components)
-        self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
-                                     axes_step=[0.399] + [2e-3] * (nc - 1),  # p [bar], z (3 components → 2 z axes)
-                                     axes_origin=[1.0] + [epsilon] * (nc - 1),
-                                     epsilon_z=epsilon, extrapolation_flag=True)
-        self.physics.add_property_region(property_container)
+        self.physics = BlackOil(idata, self.timer, thermal=False)
 
         return
 

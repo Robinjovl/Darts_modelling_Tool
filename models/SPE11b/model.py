@@ -418,10 +418,10 @@ class Model(DartsModel):
             diff_g = 2e-8 * 86400
             property_container = PropertyContainer(components_name=self.components, phases_name=phases, Mw=comp_data.Mw,
                                                    eps_z=self.zero / 10, temperature=temperature)
-            self.physics.add_property_region(property_container, i)
-            self.physics.set_mixture(mixture, region=i)
+            self.physics.add_property_region(property_container, region=i, flash_region=0)
+            self.physics.set_mixture(mixture, region=0)
 
-            property_container.flash_ev = self.physics.get_flash_ev(region=i)
+            property_container.flash_ev = self.physics.get_flash_ev(region=0)
             property_container.density_ev = dict([('V', EoSDensity(eos=mixture.eos["VL"])),
                                                   ('Aq', Garcia2001(self.components)), ])
             property_container.viscosity_ev = dict([('V', Fenghour1998()),

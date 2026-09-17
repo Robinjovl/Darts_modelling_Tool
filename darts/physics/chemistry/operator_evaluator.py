@@ -1,35 +1,43 @@
 import numpy as np
 
-from darts.physics.base.operator_evaluator import OperatorsSuper
+from darts.physics.base.operator_evaluator import (
+    ReservoirOperators as BaseReservoirOperators,
+)
+from darts.physics.chemistry.property_container import (
+    PropertyContainer as ChemistryPropertyContainer,
+)
 
 
-class ReservoirOperators(OperatorsSuper):
+class ReservoirOperators(BaseReservoirOperators):
     """
     Reservoir operators working with the following state:
     state:
     p - pressure in [bar]
     z_{1}, ..., z_{n_m} - mineral molar fractions within rock + fluid mixture
     z_{n_m+1}, ..., z_{n_c-1} - fluid molar fractions within only fluid
-    values are the same as in OperatorsSuper
+    values are the same as in ReservoirOperators (base)
     """
 
     def __init__(
         self,
-        property_container,
+        property_container: ChemistryPropertyContainer,
         thermal: bool,
         extrapolation_flag: bool = False,
         dz: float = None,
+        flash_operators=None,
     ):
         """
-        Constructor of ReservoirOperators class
+        Constructor of ReservoirOperators class, inherited from ReservoirOperators of PhysicsBase
 
-        :param property_container: Property container of type PropertyBase
+        :param property_container: Property container of chemistry type implementation
         :param thermal: Switch to indicate if energy conservation equation is there
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
         :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
                     (must be equal along all composition axes in current setup)
+        :param flash_operators: Shared :class:`FlashOperators` of this property region
+        :type flash_operators: FlashOperators, optional
         """
-        # set some properties to -1 to use OperatorsSuper constructor
+        # set some properties to -1 to use the base ReservoirOperators constructor
         # TODO: refactor in future
         property_container.nc_fl = -1
         property_container.np_fl = -1
@@ -39,6 +47,7 @@ class ReservoirOperators(OperatorsSuper):
             thermal=thermal,
             extrapolation_flag=extrapolation_flag,
             dz=dz,
+            flash_operators=flash_operators,
         )
 
         # Store your input parameters in self here, and initialize other parameters here in self
@@ -75,7 +84,7 @@ class ReservoirOperators(OperatorsSuper):
         :rtype: int
         """
         # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
+        if self.apply_extrapolation(state, values):
             return 0
 
         # state and values numpy vectors:
@@ -87,8 +96,8 @@ class ReservoirOperators(OperatorsSuper):
         _p = state_np[0]
         # get overall molar composition
         z = self.get_overall_composition(state_np)
-        # call property:
-        self.property.evaluate(state_np)
+        # call property, reusing tabulated flash results:
+        self.evaluate_property_container(state_np)
 
         # Densities
         rho_t = (
@@ -205,6 +214,7 @@ class ConversionOperators(ReservoirOperators):
         thermal: bool,
         extrapolation_flag: bool = False,
         dz: float = None,
+        flash_operators=None,
     ):
         """
         Constructor of ConversionOperators class
@@ -214,13 +224,25 @@ class ConversionOperators(ReservoirOperators):
         :param extrapolation_flag: Switch to turn on extrapolation logic (z[last component] < 0 in case nc >= 3)
         :param dz: Composition interval along OBL composition axes to obtain consistent points for extrapolation
                     (must be equal along all composition axes in current setup)
+        :param flash_operators: Shared :class:`FlashOperators` of this property region
+        :type flash_operators: FlashOperators, optional
         """
         super().__init__(
-            property_container, thermal, extrapolation_flag, dz
+            property_container,
+            thermal,
+            extrapolation_flag,
+            dz,
+            flash_operators=flash_operators,
         )  # Initialize base-class
         self.fluid_mole = self.property.flash_ev.total_moles / 1000  # mol to kmol
         self.counter = 0
         self.props_name = ['z_' + prop for prop in property_container.minerals]
+
+        # This operator set exposes one mineral molar fraction per mineral -- not
+        # the reservoir operator layout inherited from ReservoirOperators.__init__.
+        # Its interpolator (comp_itor) is sized len(props_name); n_ops must agree
+        # so extrapolation and the supporting-point store use the right row width.
+        self.n_ops = len(self.props_name)
 
     def evaluate(self, state, values):
         """
@@ -234,7 +256,7 @@ class ConversionOperators(ReservoirOperators):
         :rtype: int
         """
         # Check if extrapolation needs to be applied
-        if super().apply_extrapolation(state, values):
+        if self.apply_extrapolation(state, values):
             return 0
 
         state_np = state.to_numpy()
@@ -243,8 +265,13 @@ class ConversionOperators(ReservoirOperators):
         s_minerals = state_np[self.property.s_mask_state]
         ss = s_minerals.sum()  # volume fraction in initialization
 
-        # initial flash, non-standard argument
-        _, _, _, _, _, fluid_volume, _, _ = self.property.flash_ev.evaluate(state_np)
+        # Initial flash on the conversion state (non-standard layout, see class
+        # docstring), through the region's shared FlashOperators so the result is
+        # tabulated/restored like any other flash. flash_ev.evaluate is a pure
+        # function of the numeric state vector, so sharing the store with the
+        # reservoir-state operator sets is consistent.
+        self.ensure_flash_results(state_np)
+        fluid_volume = self.property.flash_fluid_volume
 
         # evaluate molar fraction
         solid_volume = fluid_volume * ss / (1 - ss)  # m3

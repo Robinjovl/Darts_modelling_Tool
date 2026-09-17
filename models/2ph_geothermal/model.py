@@ -111,12 +111,11 @@ class ModelProperties(PropertyContainer):
         super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=None)
         self.x = np.ones((self.nph, self.nc))
 
-    def evaluate(self, state):
+    def evaluate_flash(self, state):
         """
-        Class methods which evaluates the state operators for the element based physics
+        Compute the (trivial, single-phase) flash: pressure, temperature, phase state.
+
         :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
@@ -124,7 +123,16 @@ class ModelProperties(PropertyContainer):
         self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
         self.ph = np.array([0], dtype=np.intp)
+        self.nu[0] = 1
+        self.x[0, 0] = 1.
 
+    def evaluate_properties(self, state):
+        """
+        Compute derived phase properties (density, viscosity, saturation, relperm)
+        from the flash results currently held by this container.
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1]
+        """
         for j in self.ph:
             M = 0
             # molar weight of mixture
@@ -134,7 +142,6 @@ class ModelProperties(PropertyContainer):
             self.dens_m[j] = self.dens[j] / M
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
 
-        self.nu[0] = 1
         self.compute_saturation()
 
         for j in self.ph:

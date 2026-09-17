@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 
 from darts.engines import *
@@ -6,6 +8,8 @@ from darts.physics.base.operator_evaluator import (
     PropertyOperators,
     ThermalVarOperator,
     WellCtrlOperators,
+    assert_flash_snapshot_consistent,
+    supports_flash_reuse,
 )
 from darts.physics.base.physics import PhysicsBase
 
@@ -34,6 +38,7 @@ class Poroelasticity(PhysicsBase):
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
         discretizer: str = 'mech_discretizer',
+        share_flash_operators: bool = True,
     ):
         """
         Constructor of the Poroelasticity Physics class. Defines the OBL grid for P-z
@@ -50,6 +55,10 @@ class Poroelasticity(PhysicsBase):
         :param state_spec: P (default), PT, or PH.
         :param cache: Cache supporting points to disk between runs.
         :param discretizer: 'mech_discretizer' (default) or 'pm_discretizer'.
+        :param share_flash_operators: If True (default), all operator sets of a region
+            share one FlashOperators instance. If False, each builds its own private
+            FlashOperators with no cross-operator-set reuse. See :meth:`set_operators`.
+        :type share_flash_operators: bool
         """
         super().__init__(
             components=components,
@@ -62,6 +71,7 @@ class Poroelasticity(PhysicsBase):
             extrapolation_flag=extrapolation_flag,
             state_spec=state_spec,
             cache=cache,
+            share_flash_operators=share_flash_operators,
         )
 
         self.n_dim = 3
@@ -99,12 +109,74 @@ class Poroelasticity(PhysicsBase):
         else:  # discretizer == 'pm_discretizer':
             return eval(f"engine_pm_{platform}")()
 
-    def set_operators(self):
+    def set_operators(self) -> None:
         """
-        Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
-        and a :class:`PropertyOperator` for the evaluation of properties.
+        Function to set operator objects: :class:`SinglePhaseGeomechanicsOperators` or
+        :class:`GeomechanicsReservoirOperators` (depending on ``discretizer``) for each of
+        the reservoir regions, :class:`WellOperators` for the well segments,
+        :class:`WellCtrlOperators` for well controls, :class:`ThermalVarOperator` for the
+        thermal state variable, and a :class:`PropertyOperator` for the evaluation of properties.
+
+        When ``self.share_flash_operators`` (default, set at :meth:`__init__` time) all
+        operator sets of a region share the region's :class:`FlashOperators` instance, so the
+        flash runs only once per OBL supporting point regardless of which operator set
+        evaluates it first. The well-side operator sets share the first region's instance.
+
+        A region registered with ``flash_region=`` (see
+        :meth:`~darts.physics.base.physics.PhysicsBase.add_property_region`) shares that
+        region's :class:`FlashOperators` instead of building its own. Built in three passes
+        below so sharing regions can be registered before or after the region they target.
         """
+        # Pass 1: build each non-sharing region's own FlashOperators, None when self.share_flash_operators is False
+        for region, prop_container in self.property_containers.items():
+            if self.flash_region[region] != region:
+                continue
+            if not supports_flash_reuse(prop_container):
+                raise ValueError(
+                    f"{type(prop_container).__name__} (region {region}) overrides evaluate() monolithically. "
+                    f"PropertyContainer subclasses must implement evaluate_flash()/evaluate_properties() instead. "
+                    f"Monolithic evaluate() overrides are no longer supported."
+                )
+            assert_flash_snapshot_consistent(prop_container)
+            self.flash_operators[region] = (
+                FlashOperators(
+                    prop_container,
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
+                )
+                if self.share_flash_operators
+                else None
+            )
+
+        # Pass 2: wire sharing regions to their target's FlashOperators.
+        for region in self.regions:
+            target = self.flash_region[region]
+            if target == region:
+                continue
+            if not self.share_flash_operators:
+                warnings.warn(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"is ignored because share_flash_operators=False. "
+                    f"Region {region} will build its own private FlashOperators.",
+                    stacklevel=2,
+                )
+                self.flash_operators[region] = None
+                continue
+            if target not in self.flash_operators:
+                raise ValueError(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"was never registered"
+                )
+            if self.flash_region[target] != target:
+                raise ValueError(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"itself aliases region {self.flash_region[target]}. "
+                    f"Chained flash_region sharing is not supported."
+                )
+            self.flash_operators[region] = self.flash_operators[target]
+
+        # Pass 3: build the remaining per-region and well operator sets
         if self.discretizer_name == "pm_discretizer":
             for region, prop_container in self.property_containers.items():
                 self.reservoir_operators[region] = SinglePhaseGeomechanicsOperators(
@@ -112,18 +184,21 @@ class Poroelasticity(PhysicsBase):
                     self.thermal,
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
+                    flash_operators=self.flash_operators[region],
                 )
                 self.property_operators[region] = PropertyOperators(
                     prop_container,
                     self.thermal,
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
+                    flash_operators=self.flash_operators[region],
                 )
             self.well_operators = SinglePhaseGeomechanicsOperators(
                 self.property_containers[self.regions[0]],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[self.regions[0]],
             )
         else:
             for region, prop_container in self.property_containers.items():
@@ -132,18 +207,21 @@ class Poroelasticity(PhysicsBase):
                     self.thermal,
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
+                    flash_operators=self.flash_operators[region],
                 )
                 self.property_operators[region] = PropertyOperators(
                     prop_container,
                     self.thermal,
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
+                    flash_operators=self.flash_operators[region],
                 )
             self.well_operators = GeomechanicsReservoirOperators(
                 self.property_containers[self.regions[0]],
                 thermal=False,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[self.regions[0]],
             )
 
         self.well_ctrl_operators = WellCtrlOperators(
@@ -151,6 +229,7 @@ class Poroelasticity(PhysicsBase):
             self.thermal,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
         self.thermal_var_operator = ThermalVarOperator(
@@ -159,6 +238,7 @@ class Poroelasticity(PhysicsBase):
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
         return

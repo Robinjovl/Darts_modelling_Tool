@@ -71,16 +71,43 @@ class BlackOilProperties(PropertyContainer):
         # self.surf_wat_dens = self.surf_dens[1]
         # self.surf_gas_dens = self.surf_dens[2]
 
-    def evaluate(self, state):
+    def flash_row_width(self) -> int:
         """
-        Class methods which evaluates the state operators for the element based physics
+        Extends the base (nu, x, temperature, pressure) row with three extra slots for
+        this container's own flash outputs (pbub, xgo, V) that evaluate_properties
+        needs but which aren't part of the base snapshot -- overridden together with
+        get_flash_snapshot/set_flash_results per the mandatory flash-row contract.
+        """
+        return super().flash_row_width() + 3
+
+    def get_flash_snapshot(self, row) -> None:
+        super().get_flash_snapshot(row)
+        base = super().flash_row_width()
+        row[base] = self.pbub
+        row[base + 1] = self.xgo
+        row[base + 2] = self.V
+
+    def set_flash_results(self, row) -> None:
+        super().set_flash_results(row)
+        base = super().flash_row_width()
+        self.pbub = row[base]
+        self.xgo = row[base + 1]
+        self.V = row[base + 2]
+
+        # Base class recomputed self.ph as np.flatnonzero(self.nu > 0);
+        # rederive it instead via V < 0, exactly mirroring evaluate_flash()
+        self.ph = np.array([1, 2]) if self.V < 0 else np.array([0, 1, 2])
+
+    def evaluate_flash(self, state):
+        """
+        Compute the black-oil flash: bubble-point pressure, gas-oil ratio, composition,
+        phase presence, and phase mole fractions.
+
         :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
         """
         # Composition vector and pressure from state:
         vec_state_as_np = np.asarray(state)
-        pressure = vec_state_as_np[0]
+        self.pressure = vec_state_as_np[0]
         self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
 
         zc = np.append(vec_state_as_np[1:], 1 - np.sum(vec_state_as_np[1:]))
@@ -91,38 +118,45 @@ class BlackOilProperties(PropertyContainer):
 
         self.clean_arrays()
         # two-phase flash - assume water phase is always present and water component last
-        xgo, V, pbub = self.flash_ev.evaluate(pressure, zc)
+        self.xgo, self.V, self.pbub = self.flash_ev.evaluate(self.pressure, zc)
         for i in range(self.nph):
             self.x[i, i] = 1
 
-        if V < 0:
+        if self.V < 0:
             self.ph = np.array([1, 2])
         else:  # assume oil and water are always exists
-            self.x[1][0] = xgo
-            self.x[1][1] = 1 - xgo
+            self.x[1][0] = self.xgo
+            self.x[1][1] = 1 - self.xgo
             self.ph = np.array([0, 1, 2])
 
+        self.nu[2] = zc[2]
+        # two phase undersaturated condition
+        if self.pressure > self.pbub:
+            self.nu[0] = 0
+            self.nu[1] = zc[1]
+        else:
+            self.nu[1] = zc[1] / (1 - self.xgo)
+            self.nu[0] = 1 - self.nu[1] - self.nu[2]
+
+    def evaluate_properties(self, state):
+        """
+        Compute derived phase properties (density, viscosity, saturation, relperm,
+        capillary pressure) from the flash results currently held by this container.
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1]
+        """
         for j in self.ph:
             M = 0
             # molar weight of mixture
             for i in range(self.nc):
                 M += self.Mw[i] * self.x[j][i]
             self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(
-                pressure, pbub, xgo
+                self.pressure, self.pbub, self.xgo
             )  # output in [kg/m3]
             self.dens_m[j] = self.dens[j] / M
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(
-                pressure, pbub
+                self.pressure, self.pbub
             )  # output in [cp]
-
-        self.nu[2] = zc[2]
-        # two phase undersaturated condition
-        if pressure > pbub:
-            self.nu[0] = 0
-            self.nu[1] = zc[1]
-        else:
-            self.nu[1] = zc[1] / (1 - xgo)
-            self.nu[0] = 1 - self.nu[1] - self.nu[2]
 
         self.compute_saturation()
 

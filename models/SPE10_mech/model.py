@@ -213,7 +213,7 @@ class Model(THMCModel):
             phases = ['wat', 'oil']
             self.cell_property = ['pressure'] + ['water']
 
-            property_container = ModelProperties(phases_name=phases, components_name=components,
+            property_container = DeadOilProperties(phases_name=phases, components_name=components,
                                                  Mw=np.ones(len(phases)), eps_z=self.idata.obl.epsilon_z,
                                                  temperature=None if self.thermal else t_ref)
 
@@ -349,8 +349,3 @@ class Model(THMCModel):
                                                        input_distribution=input_distribution,
                                                        input_displacement=input_displacement)
         return 0
-
-class ModelProperties(DeadOilProperties):
-    def evaluate(self, state):
-        super().evaluate(state)
-        return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, self.mass_source

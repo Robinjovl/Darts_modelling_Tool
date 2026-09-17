@@ -1,10 +1,15 @@
+import warnings
+
 from darts.engines import timer_node
 from darts.physics.base.operator_evaluator import (
-    PropertyOperators as BasePropertyOperators,
-)
-from darts.physics.base.operator_evaluator import (
+    FlashOperators,
     ThermalVarOperator,
     WellCtrlOperators,
+    assert_flash_snapshot_consistent,
+    supports_flash_reuse,
+)
+from darts.physics.base.operator_evaluator import (
+    PropertyOperators as BasePropertyOperators,
 )
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.chemistry.operator_evaluator import (
@@ -30,6 +35,7 @@ class ElementBasedReactiveFlow(PhysicsBase):
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
         cache: bool = True,
+        share_flash_operators: bool = True,
     ):
         """
         Constructor for ElementBasedReactiveFlow class.
@@ -43,6 +49,10 @@ class ElementBasedReactiveFlow(PhysicsBase):
         :param sim_eps_multiplier: Multiplier on epsilon_z to obtain sim_eps.
         :param extrapolation_flag: Enable extrapolation logic for z[last] < 0 (n_el >= 3).
         :param cache: Cache supporting points to disk between runs.
+        :param share_flash_operators: If True (default), all operator sets of a region
+            share one FlashOperators instance. If False, each builds its own private
+            FlashOperators with no cross-operator-set reuse. See :meth:`set_operators`.
+        :type share_flash_operators: bool
         """
         vars = ["p"] + elements[:-1]
         self.initial_operators = {}
@@ -58,33 +68,116 @@ class ElementBasedReactiveFlow(PhysicsBase):
             extrapolation_flag=extrapolation_flag,
             timer=timer,
             cache=cache,
+            share_flash_operators=share_flash_operators,
         )
         self.vars = vars
 
-    def set_operators(self):
+    def set_operators(self) -> None:
         """
-        Function to set operator objects: :class:`ReservoirOperators` for each of the reservoir regions,
-        :class:`WellOperators` for the well segments, :class:`WellCtrlOperators` for well controls
-        and a :class:`PropertyOperator` for the evaluation of properties.
+        Function to set operator objects:
+        - :class:`ReservoirOperators` for each of the reservoir regions
+        - :class:`ConversionOperators` for initialization
+        - :class:`WellCtrlOperators` for well controls
+        - :class:`ThermalVarOperator` for the thermal state variable
+        - :class:`PropertyOperator` for the evaluation of output properties
+
+        When ``self.share_flash_operators`` (default, set at :meth:`__init__` time),
+        all operator sets of a region -- including the output :class:`PropertyOperators`,
+        built on the separate ``output_property_containers[region]`` object -- share that
+        region's :class:`FlashOperators` instance, so the geochemical equilibrium solve runs
+        only once per OBL supporting point regardless of which operator set evaluates
+        it first. ``OutputPropertyContainer`` implements the same flash-row contract as
+        ``PropertyContainer`` (see :class:`~darts.physics.chemistry.property_container.OutputPropertyContainer`),
+        so ``evaluate_property_container()`` copies the already-tabulated flash result
+        onto it instead of re-solving.
+
+        A region registered with ``flash_region=`` (see :meth:`~add_property_region`)
+        shares that region's :class:`FlashOperators` instead of building its own.
         """
+        # Pass 1: build each non-sharing region's own FlashOperators, None when self.share_flash_operators is False
+        for region in self.regions:
+            if self.flash_region[region] != region:
+                continue
+            container = self.property_containers[region]
+            if not supports_flash_reuse(container):
+                raise ValueError(
+                    f"{type(container).__name__} (region {region}) overrides evaluate() monolithically. "
+                    f"PropertyContainer subclasses must implement evaluate_flash()/evaluate_properties() instead. "
+                    f"Monolithic evaluate() overrides are no longer supported."
+                )
+            assert_flash_snapshot_consistent(container)
+            self.flash_operators[region] = (
+                FlashOperators(
+                    container,
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
+                )
+                if self.share_flash_operators
+                else None
+            )
+
+        # Pass 2: wire sharing regions to their target's FlashOperators.
+        for region in self.regions:
+            target = self.flash_region[region]
+            if target == region:
+                continue
+            if not self.share_flash_operators:
+                warnings.warn(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"is ignored because share_flash_operators=False -- region "
+                    f"{region} will build its own private FlashOperators instead "
+                    f"of sharing.",
+                    stacklevel=2,
+                )
+                self.flash_operators[region] = None
+                continue
+            if target not in self.flash_operators:
+                raise ValueError(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"was never registered"
+                )
+            if self.flash_region[target] != target:
+                raise ValueError(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"itself aliases region {self.flash_region[target]} -- chained "
+                    f"flash_region sharing is not supported, point directly at the "
+                    f"canonical region"
+                )
+            self.flash_operators[region] = self.flash_operators[target]
+
+        # Pass 3: build the remaining per-region operator sets
         for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(
                 self.property_containers[region],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[region],
             )
+            # ConversionOperators evaluates on the volumetric initialization state
+            # [p, phi_minerals, z_fluid] rather than the reservoir state, but
+            # flash_ev.evaluate is a pure function of the numeric state vector
+            # (fluid entries selected by a fixed mask), so its flash results can
+            # share the region's FlashOperators store: coinciding numeric keys
+            # yield identical flash rows for either caller.
             self.initial_operators[region] = ConversionOperators(
                 self.property_containers[region],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[region],
             )
+            # The output property container is a different object than
+            # property_containers[region], but implements the same flash-row contract
+            # (see OutputPropertyContainer), so evaluate_property_container() copies the
+            # region's already-tabulated flash results onto it instead of re-solving.
             self.property_operators[region] = BasePropertyOperators(
                 self.output_property_containers[region],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[region],
             )
 
         self.well_ctrl_operators = WellCtrlOperators(
@@ -92,6 +185,7 @@ class ElementBasedReactiveFlow(PhysicsBase):
             self.thermal,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
         self.thermal_var_operator = ThermalVarOperator(
@@ -100,12 +194,17 @@ class ElementBasedReactiveFlow(PhysicsBase):
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
     def add_property_region(
-        self, property_container, output_property_container, region: int = 0
+        self,
+        property_container,
+        output_property_container,
+        region: int = 0,
+        flash_region: int | None = None,
     ):
-        super().add_property_region(property_container, region)
+        super().add_property_region(property_container, region, flash_region)
         self.output_property_containers[region] = output_property_container
 
     def _parallel_wrap_targets(self):
@@ -155,22 +254,49 @@ class ElementBasedReactiveFlow(PhysicsBase):
         :param evaluator_factory_hook: Callable ``(attribute, region) -> factory`` for parallel evaluation
         :type evaluator_factory_hook: callable
         """
+        # The chemistry interpolators below are created without explicit axes, so
+        # create_interpolator defaults them to the primary axes plus one axis per
+        # history field -- the same axes the point-store attaches must use.
+        operator_axes_origin, operator_axes_step = self.history.extend_axes(
+            self.axes_origin, self.axes_step
+        )
+
         # Optionally wrap every chemistry evaluator with ParallelEvaluator via a
         # single shared pool. Chemistry has no separate well_operators (well uses
         # acc_flux_itor[0]) but does have initial_operators per region.
         if parallel_evaluation:
+            targets = self._parallel_wrap_targets()
+            # Worker-local point-store caches, as in PhysicsBase.set_interpolators.
+            # ConversionOperators (initial_operators) flashes on the volumetric
+            # initialization state, but flash_ev.evaluate is a pure function of
+            # the numeric state vector, so sharing one flash cache per region
+            # between a worker's evaluators stays consistent (see set_operators).
+            point_store_configs = {
+                (attr, region): {
+                    'axes_origin': operator_axes_origin,
+                    'axes_step': operator_axes_step,
+                    'flash_axes_origin': self.axes_origin,
+                    'flash_axes_step': self.axes_step,
+                }
+                for attr, region in targets
+                if attr != 'thermal_var_operator'
+            }
             self._wrap_evaluators_parallel(
-                self._parallel_wrap_targets(),
+                targets,
                 evaluator_factory_hook,
                 n_workers,
+                point_store_configs=point_store_configs,
             )
 
         # Create actual accumulation and flux interpolator:
+        # Each operator set gets direct get/set access to its own interpolator's
+        # supporting-point store (attach_point_store), as in
+        # PhysicsBase.set_interpolators; thermal_var_operator is left uncached.
         self.acc_flux_itor = {}
         self.comp_itor = {}
         self.property_itor = {}
         for region in self.regions:
-            self.acc_flux_itor[region], _ = self.create_interpolator(
+            self.acc_flux_itor[region], res_n_slots = self.create_interpolator(
                 evaluator=self.reservoir_operators[region],
                 timer_name='reservoir interpolation',
                 n_ops=self.n_ops,
@@ -178,6 +304,12 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 algorithm=itor_type,
                 precision=itor_precision,
                 is_barycentric=is_barycentric,
+            )
+            self.reservoir_operators[region].attach_point_store(
+                self.acc_flux_itor[region],
+                n_slots=res_n_slots,
+                axes_origin=operator_axes_origin,
+                axes_step=operator_axes_step,
             )
 
             # ==============================================================================================================
@@ -192,6 +324,12 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 is_barycentric=is_barycentric,
             )
             self.n_comp_itor_ops = n_comp_ops
+            self.initial_operators[region].attach_point_store(
+                self.comp_itor[region],
+                n_slots=n_comp_ops,
+                axes_origin=operator_axes_origin,
+                axes_step=operator_axes_step,
+            )
 
             # ==============================================================================================================
             # Create property interpolator:
@@ -205,6 +343,12 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 is_barycentric=is_barycentric,
             )
             self.n_property_itor_ops = n_property_ops
+            self.property_operators[region].attach_point_store(
+                self.property_itor[region],
+                n_slots=n_property_ops,
+                axes_origin=operator_axes_origin,
+                axes_step=operator_axes_step,
+            )
         self.acc_flux_w_itor = self.acc_flux_itor[0]
 
         self.well_ctrl_itor, n_well_ctrl_ops = self.create_interpolator(
@@ -216,6 +360,12 @@ class ElementBasedReactiveFlow(PhysicsBase):
             precision=itor_precision,
         )
         self.n_well_ctrl_itor_ops = n_well_ctrl_ops
+        self.well_ctrl_operators.attach_point_store(
+            self.well_ctrl_itor,
+            n_slots=n_well_ctrl_ops,
+            axes_origin=operator_axes_origin,
+            axes_step=operator_axes_step,
+        )
         self.thermal_var_itor, n_thermal_var_ops = self.create_interpolator(
             self.thermal_var_operator,
             n_ops=self.thermal_var_operator.n_ops,

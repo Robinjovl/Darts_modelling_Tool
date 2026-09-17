@@ -132,6 +132,13 @@ def run_valgrind_for_model(model, timeout=1800):
     # ensure nested model paths have a directory to write into
     os.makedirs(os.path.dirname(vg_log), exist_ok=True)
 
+    # Clear any per-PID part files left over from a prior run of this model that
+    # crashed or timed out before reaching the merge step below. Without this,
+    # orphaned parts get swept into *this* run's merged vg_log by the same glob,
+    # silently double-counting stale errors as if they were fresh.
+    for stale_part in glob.glob(f'{vg_log}.*'):
+        os.remove(stale_part)
+
     # Build the inline Python snippet to invoke run_model_direct
     py_snippet = (
         'import sys, os; '

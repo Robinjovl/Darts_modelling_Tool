@@ -382,10 +382,15 @@ class PropertyContainer:
 
         return self.mass_source
 
-    def evaluate(self, state: value_vector):
+    def evaluate_flash(self, state):
         """
-        Evaluate the phase properties. Phase properties used only in the energy conservation equation
-        are evaluated using a different method.
+        Run the flash at the given state and store the results on this container.
+
+        After this call, ``ph``, ``nu``, ``x``, ``pressure`` and ``temperature`` hold
+        the flash output for `state`. Derived phase properties are computed separately
+        by :meth:`evaluate_properties`, so that tabulated flash results (see
+        :class:`~darts.physics.base.operator_evaluator.FlashOperators`) can be
+        restored via :meth:`set_flash_results` without re-flashing.
 
         :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
         :type state: value_vector
@@ -410,6 +415,68 @@ class PropertyContainer:
             "constant temperature in case of isothermal physics, "
             "self.flash.temperature in case of thermal"
         )
+
+    def flash_row_width(self) -> int:
+        """
+        Fixed float-row width needed to round-trip flash results through the C++ flash point store
+        (see :meth:`~darts.physics.base.operator_evaluator.FlashOperators.attach_point_store`).
+        Part of the mandatory flash-row contract together with :meth:`get_flash_snapshot`
+        and :meth:`set_flash_results` -- a subclass overriding any one of the three must
+        override all three (see :func:`~darts.physics.base.operator_evaluator.assert_flash_snapshot_consistent`).
+
+        :return: Row width = nu (np_fl) + x (np_fl * nc_fl) + temperature (1) + pressure (1)
+        :rtype: int
+        """
+        return self.np_fl + self.np_fl * self.nc_fl + 2
+
+    def get_flash_snapshot(self, row: np.ndarray) -> None:
+        """
+        Pack the flash results currently held by this container (set by :meth:`evaluate_flash`) into ``row``,
+        so :meth:`set_flash_results` can restore them later without re-flashing.
+
+        ``ph`` is not stored: it is a deterministic function of ``nu`` (see
+        :meth:`set_flash_results`), so it needs no slot of its own.
+
+        :param row: Pre-allocated row of length >= :meth:`flash_row_width`
+        :type row: numpy.ndarray
+        """
+        row[: self.np_fl] = self.nu
+        row[self.np_fl : self.np_fl + self.np_fl * self.nc_fl] = self.x.ravel()
+        row[self.np_fl + self.np_fl * self.nc_fl] = self.temperature
+        row[self.np_fl + self.np_fl * self.nc_fl + 1] = self.pressure
+
+    def set_flash_results(self, row: np.ndarray) -> None:
+        """
+        Restore flash results from a row produced by :meth:`get_flash_snapshot`,
+        skipping :meth:`run_flash`.
+
+        Leaves the container in the same state as :meth:`evaluate_flash` at the
+        state the row was taken, so :meth:`evaluate_properties` can follow.
+
+        :param row: Row obtained from :meth:`get_flash_snapshot` (or read back from
+                    the flash point store)
+        :type row: numpy.ndarray
+        """
+        self.clean_arrays()
+        self.nu = row[: self.np_fl].copy()
+        self.x = (
+            row[self.np_fl : self.np_fl + self.np_fl * self.nc_fl]
+            .reshape(self.np_fl, self.nc_fl)
+            .copy()
+        )
+        self.ph = np.flatnonzero(self.nu > 0)
+        self.temperature = row[self.np_fl + self.np_fl * self.nc_fl]
+        self.pressure = row[self.np_fl + self.np_fl * self.nc_fl + 1]
+
+    def evaluate_properties(self, state):
+        """
+        Evaluate derived phase properties from the flash results currently held by
+        this container (set by :meth:`evaluate_flash` or :meth:`set_flash_results`).
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
+        :type state: value_vector
+        """
+        _, _, zc = self.get_state(state)
 
         for j in self.ph:
             M = np.sum(self.Mw[: self.nc_fl] * self.x[j][: self.nc_fl])
@@ -478,6 +545,23 @@ class PropertyContainer:
         self.mass_source = self.evaluate_mass_source(
             self.pressure, self.temperature, zc
         )
+
+        return
+
+    def evaluate(self, state: value_vector):
+        """
+        Evaluate the phase properties. Phase properties used only in the energy conservation equation
+        are evaluated using a different method.
+
+        Composition of :meth:`evaluate_flash` and :meth:`evaluate_properties`. Subclasses
+        overriding this method monolithically opt out of flash-result reuse (see
+        :func:`~darts.physics.base.operator_evaluator.supports_flash_reuse`).
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
+        :type state: value_vector
+        """
+        self.evaluate_flash(state)
+        self.evaluate_properties(state)
 
         return
 

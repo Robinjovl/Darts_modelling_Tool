@@ -57,6 +57,7 @@ class EoSPhysics(PhysicsBase):
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
         history_fields: Iterable[HistoryField] | None = None,
+        share_flash_operators: bool = True,
     ):
         """
         Constructor initializes PhysicsBase only.
@@ -65,6 +66,11 @@ class EoSPhysics(PhysicsBase):
 
         :param phases: List of phase labels, expected in flash output order (see
             ``self.flash_evs[region].flash_params.eos_order`` and per-EoS ``root_order``)
+        :param share_flash_operators: If True (default), all operator sets of a region share
+            one FlashOperators instance (see :meth:`~darts.physics.base.physics.PhysicsBase.set_operators`).
+            If False, each operator set builds its own private FlashOperators with no
+            cross-operator-set reuse of tabulated flash results.
+        :type share_flash_operators: bool
         """
         PhysicsBase.__init__(
             self,
@@ -79,6 +85,7 @@ class EoSPhysics(PhysicsBase):
             state_spec=state_spec,
             cache=cache,
             history_fields=history_fields,
+            share_flash_operators=share_flash_operators,
         )
 
         self.flash_evs: dict[str | int | None, Mixture] = {}

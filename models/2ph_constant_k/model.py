@@ -38,7 +38,6 @@ class Model(DartsModel):
 
         # Time-stepping / Newton / linear-solver configuration moved to set_solver()
         # (called from DartsModel.reset() before engine.init).
-
         self.timer.node["initialization"].stop()
 
         self.initial_values = {
@@ -468,14 +467,12 @@ class ModelProperties(PropertyContainer):
         # Mw = np.ones(self.nph)
         super().__init__(phases_name=phases_name, components_name=components_name, Mw=Mw, eps_z=eps_z, temperature=1.)
 
-    def evaluate(self, state: value_vector):
+    def evaluate_flash(self, state: value_vector):
         """
-        Class methods which evaluates the state operators for the element based physics
+        Run the flash and store composition/phase split, pressure, temperature.
 
         :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
         :type state: value_vector
-
-        :return: updated value for operators, stored in values
         """
         # Composition vector and pressure from state:
         pressure, temperature, zc = self.get_state(state)
@@ -485,16 +482,27 @@ class ModelProperties(PropertyContainer):
 
         self.ph = self.run_flash(pressure, temperature, zc)
 
+    def evaluate_properties(self, state: value_vector):
+        """
+        Compute derived phase properties (density, viscosity, saturation, relperm,
+        capillary pressure, mass source) from the flash results currently held by
+        this container.
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
+        :type state: value_vector
+        """
+        _, _, zc = self.get_state(state)
+
         for j in self.ph:
             M = np.sum(self.Mw * self.x[j][:])
 
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :])  # output in [kg/m3]
+            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure, self.temperature, self.x[j, :])  # output in [kg/m3]
 
             ##########################################################
             self.dens_m[j] = self.dens[j] / M  # molar density [kg/m3]/[kg/kmol]=[kmol/m3]
             ##########################################################
 
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(pressure, temperature, self.x[j, :], self.dens[j])  # output in [cp]
+            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(self.pressure, self.temperature, self.x[j, :], self.dens[j])  # output in [cp]
         self.compute_saturation()
 
         self.pc = np.array(self.capillary_pressure_ev.evaluate(self.sat))
@@ -503,6 +511,4 @@ class ModelProperties(PropertyContainer):
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc = np.array([0, 0])
 
-        mass_source = self.evaluate_mass_source(pressure, temperature, zc)
-
-        return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, mass_source
+        self.mass_source = self.evaluate_mass_source(self.pressure, self.temperature, zc)

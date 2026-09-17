@@ -135,16 +135,150 @@ class PropertyContainer(BasePropertyContainer):
 
         return role_to_idx
 
-    def evaluate(self, state):
+    def evaluate_flash(self, state):
         """
-        Class methods which evaluates the state operators for the element based physics
+        Run the geochemical equilibrium solve at the given state and store the raw
+        flash outputs on this container.
+
+        Only the expensive third-party equilibrium call lives here; the derived
+        properties are computed from the stored outputs in :meth:`evaluate_properties`,
+        so tabulated results (see :class:`~darts.physics.base.operator_evaluator.FlashOperators`)
+        can be restored via :meth:`set_flash_results` without re-solving.
+        Also captures the full-species molar fractions (``molar_aq_fractions``/``molar_gas_fractions``),
+        so :class:`OutputPropertyContainer` sharing this container's tabulated flash via
+        ``flash_region`` can read them from the row instead of re-solving.
 
         :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
         :type state: value_vector
-
-        :return: updated value for operators, stored in values
         """
-        nu_v, x, y, rho_phases, self.kin_state, _, _, _ = self.flash_ev.evaluate(state)
+        (
+            nu_v,
+            x,
+            y,
+            rho_phases,
+            kin_state,
+            fluid_volume,
+            molar_aq_fractions,
+            molar_gas_fractions,
+        ) = self.flash_ev.evaluate(state)
+        self.flash_nu_v = nu_v
+        # Kept for ConversionOperators (volumetric-to-molar initialization), which
+        # reuses tabulated flash results through the same row contract.
+        self.flash_fluid_volume = float(fluid_volume)
+        self.flash_x_aq = np.asarray(x, dtype=float).copy()
+        self.flash_y_gas = np.asarray(y, dtype=float).copy()
+        self.flash_rho_phases = dict(rho_phases)
+        self.kin_state = kin_state
+        self.flash_molar_aq_fractions = np.asarray(
+            molar_aq_fractions, dtype=float
+        ).copy()
+        self.flash_molar_gas_fractions = np.asarray(
+            molar_gas_fractions, dtype=float
+        ).copy()
+
+    def flash_row_width(self) -> int:
+        """
+        Fixed float-row width needed to round-trip flash results through the C++ flash point store.
+        Part of the mandatory flash-row contract together with :meth:`get_flash_snapshot`
+        and :meth:`set_flash_results` -- overriding any one of the three requires overriding all three
+        (see :func:`~darts.physics.base.operator_evaluator.assert_flash_snapshot_consistent`).
+
+        Layout: nu_v (1) + x_aq (nc) + y_gas (nc) + rho_phases (2: 'aq', 'gas') +
+        kin_state (3 fixed activities + one 'SR_<mineral>' per mineral) +
+        molar_aq_fractions (n_aq species) + molar_gas_fractions (n_gas species) +
+        fluid_volume (1). The species fractions are unused by this container's own
+        :meth:`evaluate_properties` but let :class:`OutputPropertyContainer` share
+        this row via ``flash_region`` instead of re-solving; ``fluid_volume`` is
+        consumed by ``ConversionOperators`` during initialization.
+
+        :return: Row width = 2*nc + n_solid + 7 + n_aq + n_gas
+        :rtype: int
+        """
+        if len(self.flash_ev.mineral_names) != self.n_solid:
+            raise ValueError(
+                f"flash_ev.mineral_names ({len(self.flash_ev.mineral_names)}) must "
+                f"match n_solid ({self.n_solid}) for the flash row layout to be valid"
+            )
+        n_aq = len(self.flash_ev.aqueous_species)
+        n_gas = len(self.flash_ev.gas_species)
+        return 2 * self.nc + self.n_solid + 7 + n_aq + n_gas
+
+    def get_flash_snapshot(self, row) -> None:
+        """
+        Pack the raw flash outputs currently held by this container (set by :meth:`evaluate_flash`)
+        into ``row``, so :meth:`set_flash_results` can restore them later without re-solving.
+
+        :param row: Pre-allocated row of length >= :meth:`flash_row_width`
+        :type row: numpy.ndarray
+        """
+        nc = self.nc
+        row[0] = self.flash_nu_v
+        row[1 : 1 + nc] = self.flash_x_aq
+        row[1 + nc : 1 + 2 * nc] = self.flash_y_gas
+        row[1 + 2 * nc] = self.flash_rho_phases['aq']
+        row[2 + 2 * nc] = self.flash_rho_phases['gas']
+        row[3 + 2 * nc] = self.kin_state['Act(H+)']
+        row[4 + 2 * nc] = self.kin_state['Act(CO2)']
+        row[5 + 2 * nc] = self.kin_state['Act(H2O)']
+        base = 6 + 2 * nc
+        for i, mineral in enumerate(self.flash_ev.mineral_names):
+            row[base + i] = self.kin_state['SR_' + mineral]
+        base_species = base + self.n_solid
+        n_aq = len(self.flash_molar_aq_fractions)
+        n_gas = len(self.flash_molar_gas_fractions)
+        row[base_species : base_species + n_aq] = self.flash_molar_aq_fractions
+        row[base_species + n_aq : base_species + n_aq + n_gas] = (
+            self.flash_molar_gas_fractions
+        )
+        row[base_species + n_aq + n_gas] = self.flash_fluid_volume
+
+    def set_flash_results(self, row) -> None:
+        """
+        Restore raw flash outputs from a row produced by :meth:`get_flash_snapshot`,
+        skipping the equilibrium solve.
+
+        :param row: Row obtained from :meth:`get_flash_snapshot` (or read back from
+                    the flash point store)
+        :type row: numpy.ndarray
+        """
+        nc = self.nc
+        self.flash_nu_v = float(row[0])
+        self.flash_x_aq = row[1 : 1 + nc].copy()
+        self.flash_y_gas = row[1 + nc : 1 + 2 * nc].copy()
+        self.flash_rho_phases = {
+            'aq': float(row[1 + 2 * nc]),
+            'gas': float(row[2 + 2 * nc]),
+        }
+        kin_state = {
+            'Act(H+)': float(row[3 + 2 * nc]),
+            'Act(CO2)': float(row[4 + 2 * nc]),
+            'Act(H2O)': float(row[5 + 2 * nc]),
+        }
+        base = 6 + 2 * nc
+        for i, mineral in enumerate(self.flash_ev.mineral_names):
+            kin_state['SR_' + mineral] = float(row[base + i])
+        self.kin_state = kin_state
+        base_species = base + self.n_solid
+        n_aq = len(self.flash_ev.aqueous_species)
+        n_gas = len(self.flash_ev.gas_species)
+        self.flash_molar_aq_fractions = row[base_species : base_species + n_aq].copy()
+        self.flash_molar_gas_fractions = row[
+            base_species + n_aq : base_species + n_aq + n_gas
+        ].copy()
+        self.flash_fluid_volume = float(row[base_species + n_aq + n_gas])
+
+    def evaluate_properties(self, state):
+        """
+        Evaluate derived phase properties from the flash outputs currently held by
+        this container (set by :meth:`evaluate_flash` or :meth:`set_flash_results`).
+
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
+        :type state: value_vector
+        """
+        nu_v = self.flash_nu_v
+        x = self.flash_x_aq
+        y = self.flash_y_gas
+        rho_phases = self.flash_rho_phases
         idx_g = self.phase_idx['gas']
         idx_a = self.phase_idx['aq']
         self.nu_solid = state[self.s_mask_state]
@@ -218,7 +352,7 @@ class PropertyContainer(BasePropertyContainer):
             )
 
 
-class OutputPropertyContainer:
+class OutputPropertyContainer(PropertyContainer):
     """
     Helper that prepares chemistry species-based output properties
 
@@ -236,30 +370,40 @@ class OutputPropertyContainer:
     - activity of CO2
     - saturation ratio of minerals
     - reaction rate of minerals
+
+    Inherits :class:`PropertyContainer`'s ``evaluate_flash``/``flash_row_width``/
+    ``get_flash_snapshot``/``set_flash_results`` unchanged,
+    so this container can share a region's tabulated flash results via ``flash_region``
+    (see :meth:`~PhysicsBase.add_property_region`) or run privately with no code duplication.
+    Only :meth:`evaluate_properties` differs: species-level output quantities instead of
+    :class:`PropertyContainer`'s phase properties (dens, mu, kr, ...).
     """
 
     def __init__(self, property_container, props_name: list[str] | None = None):
         self.property = property_container
         self.nc = property_container.nc
         self.nph = property_container.nph
+        self.n_solid = property_container.n_solid
+        self.flash_ev = property_container.flash_ev
+        self.eps_z = property_container.eps_z
 
-        self.x = np.zeros(len(self.property.flash_ev.aqueous_species))
-        self.y = np.zeros(len(self.property.flash_ev.gas_species))
+        self.x = np.zeros(len(self.flash_ev.aqueous_species))
+        self.y = np.zeros(len(self.flash_ev.gas_species))
         self.satV = 0.0
         self.porosity = 0.0
         self.ActH = 0.0
         self.ActCO2 = 0.0
-        self.SR = np.zeros(len(self.property.flash_ev.mineral_names))
+        self.SR = np.zeros(len(self.flash_ev.mineral_names))
         self.kin_rates = np.zeros(len(self.property.rock_compr_ev.keys()))
 
         self.output_props = {
             **{
                 'x_' + species: (lambda i=i: self.x[i])
-                for i, species in enumerate(self.property.flash_ev.aqueous_species)
+                for i, species in enumerate(self.flash_ev.aqueous_species)
             },
             **{
                 'y_' + species: (lambda i=i: self.y[i])
-                for i, species in enumerate(self.property.flash_ev.gas_species)
+                for i, species in enumerate(self.flash_ev.gas_species)
             },
             'satV': lambda: self.satV,
             'porosity': lambda: self.porosity,
@@ -267,28 +411,28 @@ class OutputPropertyContainer:
             'ActCO2': lambda: self.ActCO2,
             **{
                 'SR_' + mineral: (lambda i=i: self.SR[i])
-                for i, mineral in enumerate(self.property.flash_ev.mineral_names)
+                for i, mineral in enumerate(self.flash_ev.mineral_names)
             },
             **{
                 'rate_' + mineral: (lambda i=i: self.kin_rates[i])
-                for i, mineral in enumerate(self.property.flash_ev.mineral_names)
+                for i, mineral in enumerate(self.flash_ev.mineral_names)
             },
         }
 
-    def evaluate(self, state):
-        (
-            nu_v,
-            _,
-            _,
-            rho_phases,
-            kin_state,
-            _,
-            molar_aq_fractions,
-            molar_gas_fractions,
-        ) = self.property.flash_ev.evaluate(state)
+    def evaluate_properties(self, state):
+        """
+        Evaluate output properties from the flash outputs currently held by this
+        container (set by the inherited :meth:`PropertyContainer.evaluate_flash` or
+        :meth:`PropertyContainer.set_flash_results`).
 
-        self.x[:] = molar_aq_fractions
-        self.y[:] = molar_gas_fractions
+        :param state: state variables [pres, comp_0, ..., comp_N-1, temperature (optional)]
+        :type state: value_vector
+        """
+        nu_v = self.flash_nu_v
+        rho_phases = self.flash_rho_phases
+        kin_state = self.kin_state
+        self.x[:] = self.flash_molar_aq_fractions
+        self.y[:] = self.flash_molar_gas_fractions
 
         nu_s_minerals = state[self.property.s_mask_state]
         nu_s = nu_s_minerals.sum()
@@ -319,7 +463,7 @@ class OutputPropertyContainer:
         self.ActH = kin_state['Act(H+)']
         self.ActCO2 = kin_state['Act(CO2)']
 
-        for i, mineral in enumerate(self.property.flash_ev.mineral_names):
+        for i, mineral in enumerate(self.flash_ev.mineral_names):
             self.SR[i] = kin_state['SR_' + mineral]
 
         for i, k in enumerate(self.property.rock_compr_ev.keys()):

@@ -15,11 +15,15 @@ from darts.engines import *
 from darts.interpolators import *
 from darts.physics.base.history_extension import HistoryField, HistoryStateSupport
 from darts.physics.base.operator_evaluator import (
+    FlashOperators,
+    OperatorsBase,
     PropertyOperators,
     ReservoirOperators,
     ThermalVarOperator,
     WellCtrlOperators,
     WellOperators,
+    assert_flash_snapshot_consistent,
+    supports_flash_reuse,
 )
 from darts.tools.interpolation import linear_interp_extrapolate
 from darts.tools.obl_cache import OblCacheCodec
@@ -48,6 +52,8 @@ class PhysicsBase:
     :type engine: :class:`engine_base`
     :ivar property_containers: Set of :class:`PropertyContainer` objects for each of the regions for evaluation of reservoir cell properties
     :type property_containers: dict
+    :ivar flash_operators: Set of :class:`FlashOperators` objects for each of the regions, shared by the region's operator sets for reuse of tabulated flash results
+    :type flash_operators: dict
     :ivar reservoir_operators: Set of :class:`ReservoirOperators` objects for each of the regions for evaluation of reservoir cell states
     :type reservoir_operators: dict
     :ivar property_operators: :class:`PropertyOperators` object for evaluation and interpolation of properties
@@ -63,7 +69,7 @@ class PhysicsBase:
     """
 
     engine: engine_base
-    well_operators: operator_set_evaluator_iface
+    well_operators: OperatorsBase
     well_ctrl_operators: WellCtrlOperators
     thermal_var_operator: ThermalVarOperator
 
@@ -99,6 +105,7 @@ class PhysicsBase:
         state_spec: 'PhysicsBase.StateSpecification' = None,
         cache: bool = False,
         history_fields: Iterable[HistoryField] | None = None,
+        share_flash_operators: bool = True,
     ) -> None:
         """
         Configure the OBL grid and physics state for a compositional simulation.
@@ -134,6 +141,16 @@ class PhysicsBase:
             OBL axes (e.g. ``sg_max`` for Killough hysteresis) that are fed into operator
             interpolation but are NOT Newton unknowns. Pass ``None`` or an empty list for
             standard OBL behaviour.
+        :param share_flash_operators: If True (default), all operator sets of a region share
+            one :class:`~darts.physics.base.operator_evaluator.FlashOperators` instance (and,
+            when eligible, one native C++ flash point store), so a flash run for a given
+            supporting point by one operator set is reused by every other operator set of
+            that region instead of being recomputed (see :meth:`set_operators`). If False,
+            each operator set builds its own private ``FlashOperators`` with no cross-operator-set
+            reuse -- useful for isolating or benchmarking the reuse behaviour. Fixed for the
+            lifetime of this physics object; any ``flash_region`` aliasing passed to
+            :meth:`add_property_region` is ignored (with a warning) when this is False.
+        :type share_flash_operators: bool
         """
         # Default state_spec must be supplied here (rather than in the signature) because the
         # class reference PhysicsBase is not yet resolvable at default-evaluation time.
@@ -267,8 +284,20 @@ class PhysicsBase:
             atexit.register(self._finalize_cache)
             self._install_signal_handlers()
 
+        # Whether all operator sets of a region share one FlashOperators instance; see
+        # the constructor docstring. Fixed for the lifetime of this physics object.
+        self.share_flash_operators = share_flash_operators
+
+        # Maps region -> the region whose FlashOperators it uses (itself by default);
+        # set by add_property_region's flash_region param, consumed by set_operators().
         self.regions = []
+        self.flash_region = {}
         self.property_containers = {}
+
+        # C++ flash-result point store backing each region's FlashOperators,
+        # populated by set_interpolators(); None where unavailable (see set_interpolators).
+        self.flash_operators = {}
+        self.flash_itor = {}
         self.reservoir_operators = {}
         self.property_operators = {}
         # Output-side property operators/interpolators are populated lazily by
@@ -449,13 +478,24 @@ class PhysicsBase:
         else:
             raise NotImplementedError()
 
-    def add_property_region(self, property_container: Any, region: int = 0) -> None:
+    def add_property_region(
+        self,
+        property_container: Any,
+        region: int = 0,
+        flash_region: int | None = None,
+    ) -> None:
         """
         Register a property container for one region and propagate history metadata.
 
         :param property_container: Object for evaluation of properties
         :type property_container: :class:`PropertyContainer`
         :param region: Tag of the region, to be used as a key in `property_containers` dict
+        :param flash_region: If set, this region shares its FlashOperators with `flash_region`
+                    to avoid duplicate flash evaluation/caching when regions have identical flash inputs.
+                    Note: Must refer to a region registered without its own `flash_region` (no chained sharing).
+                    Ignored (with a warning) if ``share_flash_operators=False`` was passed to
+                    :meth:`PhysicsBase.__init__`.
+        :type flash_region: int, optional
         """
         # Tell the property container how many OBL history variables the physics appends
         # to the state vector so that it can locate primary vars correctly (e.g. temperature
@@ -464,26 +504,103 @@ class PhysicsBase:
         self.history.configure_property_container(property_container)
         self.property_containers[region] = property_container
         self.regions.append(region)
+        self.flash_region[region] = flash_region if flash_region is not None else region
         return
 
     def set_operators(self) -> None:
         """
-        Build :class:`ReservoirOperators` for each region, :class:`WellOperators` for the well cells,
-        :class:`WellCtrlOperators` for well controls, :class:`ThermalVarOperator` for the thermal
-        state variable, and :class:`PropertyOperators` for property evaluation.
+        Build
+        - :class:`FlashOperators`, :class:`ReservoirOperators` and :class:`PropertyOperators` for each region,
+        - :class:`WellOperators` for the well cells and :class:`WellCtrlOperators` for well controls,
+        - :class:`ThermalVarOperator` for the thermal state variable
+
+        When ``self.share_flash_operators`` (default, set at :meth:`__init__` time) all operator
+        sets of a region share the region's :class:`FlashOperators` instance.
+        This operator tabulates the flash results per OBL supporting point.
+        The flash runs (or is restored from the native point store) only once per point
+        regardless of which operator set evaluates it first.
+
+        Every ``PropertyContainer`` must implement ``evaluate_flash``/``evaluate_properties``
+        (a monolithic ``evaluate`` override raises ``ValueError`` here)
+        Its flash-snapshot methods (``get_flash_snapshot``/``set_flash_results``/``flash_row_width``) are
+        validated once via :func:`~darts.physics.base.operator_evaluator.assert_flash_snapshot_consistent`
+        A container that overrides the flash-snapshot format must override all three together,
+        and this fails fast if it doesn't, rather than silently losing flash-store caching later,
+        regardless of ``self.share_flash_operators``.
+
+        A region registered with ``flash_region=`` (see :meth:`add_property_region`)
+        shares that region's :class:`FlashOperators` instead of building its own.
+        Built in three passes below so sharing regions can be registered before or after the region they target.
         """
+        # Pass 1: build each non-sharing region's own FlashOperators, None when self.share_flash_operators is False
+        # Every PropertyContainer must implement evaluate_flash()/evaluate_properties()
+        for region in self.regions:
+            if self.flash_region[region] != region:
+                continue
+            container = self.property_containers[region]
+            if not supports_flash_reuse(container):
+                raise ValueError(
+                    f"{type(container).__name__} (region {region}) overrides evaluate() monolithically. "
+                    f"PropertyContainer subclasses must implement evaluate_flash()/evaluate_properties() instead. "
+                    f"Monolithic evaluate() overrides are no longer supported."
+                )
+            assert_flash_snapshot_consistent(container)
+            self.flash_operators[region] = (
+                FlashOperators(
+                    container,
+                    self.thermal,
+                    extrapolation_flag=self.extrapolation_flag,
+                    dz=self.dz,
+                )
+                if self.share_flash_operators
+                else None
+            )
+
+        # Pass 2: wire sharing regions to their target's FlashOperators.
+        for region in self.regions:
+            target = self.flash_region[region]
+            if target == region:
+                continue
+            if not self.share_flash_operators:
+                warnings.warn(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"is ignored because share_flash_operators=False -- region "
+                    f"{region} will build its own private FlashOperators instead "
+                    f"of sharing.",
+                    stacklevel=2,
+                )
+                self.flash_operators[region] = None
+                continue
+            if target not in self.flash_operators:
+                raise ValueError(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"was never registered"
+                )
+            if self.flash_region[target] != target:
+                raise ValueError(
+                    f"add_property_region: flash_region={target} for region {region} "
+                    f"itself aliases region {self.flash_region[target]} -- chained "
+                    f"flash_region sharing is not supported, point directly at the "
+                    f"canonical region"
+                )
+            self.flash_operators[region] = self.flash_operators[target]
+
+        # Pass 3: build the remaining per-region operator sets
+        # Each region always evaluates properties from its own container.
         for region in self.regions:
             self.reservoir_operators[region] = ReservoirOperators(
                 self.property_containers[region],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[region],
             )
             self.property_operators[region] = PropertyOperators(
                 self.property_containers[region],
                 self.thermal,
                 extrapolation_flag=self.extrapolation_flag,
                 dz=self.dz,
+                flash_operators=self.flash_operators[region],
             )
 
         self.well_operators = WellOperators(
@@ -491,6 +608,7 @@ class PhysicsBase:
             self.thermal,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
         self.well_ctrl_operators = WellCtrlOperators(
@@ -498,6 +616,7 @@ class PhysicsBase:
             self.thermal,
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
         self.thermal_var_operator = ThermalVarOperator(
@@ -506,6 +625,7 @@ class PhysicsBase:
             is_pt=(self.state_spec <= PhysicsBase.StateSpecification.PT),
             extrapolation_flag=self.extrapolation_flag,
             dz=self.dz,
+            flash_operators=self.flash_operators[self.regions[0]],
         )
 
     def set_engine(
@@ -568,26 +688,59 @@ class PhysicsBase:
             ``well_ctrl_operators``, ``thermal_var_operator``).
         :type evaluator_factory_hook: callable
         """
-        # Optionally wrap every evaluator with ParallelEvaluator for batch parallelism.
-        # All five wrap targets share a single multiprocessing pool so the total worker
-        # process count stays at n_workers regardless of how many evaluators are wrapped.
-        if parallel_evaluation:
-            self._wrap_evaluators_parallel(
-                self._parallel_wrap_targets(),
-                evaluator_factory_hook,
-                n_workers,
-            )
-
         # Reservoir/property/well interpolators consume the full OBL state
         # [primary vars | history vars]. The thermal-var interpolator uses a separate
         # primary PT grid for well initialization.
         operator_axes_origin, operator_axes_step = self.history.extend_axes(
             self.axes_origin, self.axes_step
         )
+
+        # Optionally wrap every evaluator with ParallelEvaluator for batch parallelism.
+        # All five wrap targets share a single multiprocessing pool so the total worker
+        # process count stays at n_workers regardless of how many evaluators are wrapped.
+        if parallel_evaluation:
+            targets = self._parallel_wrap_targets()
+            # Worker-local point-store caches (LocalPointStore): each worker
+            # evaluator caches its extrapolation supporting points (shipped back
+            # to the parent store after every batch) and shares one flash-row
+            # cache per region between its operator sets. thermal_var_operator is
+            # excluded -- it lives on a separate PT grid.
+            point_store_configs = {
+                (attr, region): {
+                    'axes_origin': operator_axes_origin,
+                    'axes_step': operator_axes_step,
+                    'flash_axes_origin': self.axes_origin,
+                    'flash_axes_step': self.axes_step,
+                }
+                for attr, region in targets
+                if attr != 'thermal_var_operator'
+            }
+            self._wrap_evaluators_parallel(
+                targets,
+                evaluator_factory_hook,
+                n_workers,
+                point_store_configs=point_store_configs,
+            )
+
         self.acc_flux_itor = {}
         self.property_itor = {}
+
+        # Each operator set below gets direct get/set access to its own
+        # interpolator's supporting-point store (attach_point_store), so boundary
+        # extrapolation (OperatorsBase.extrapolate) reuses tabulated rows instead
+        # of re-evaluating supporting points. attach_point_store itself degrades
+        # to a no-op for interpolators without the single-point API (older
+        # prebuilt extensions). ParallelEvaluator-wrapped evaluators forward
+        # the attach to the parent-side serial evaluator, which also receives the
+        # supporting-point rows worker processes ship back after each batch.
+
+        # Dedup for regions sharing one FlashOperators
+        # (add_property_region's flash_region): id(flash_operators) -> flash_itor
+        # The shared instance's dedicated flash interpolator/point store is built and attached only once.
+        built_flash_stores = {}
+
         for region in self.regions:
-            self.acc_flux_itor[region], _ = self.create_interpolator(
+            self.acc_flux_itor[region], res_n_slots = self.create_interpolator(
                 self.reservoir_operators[region],
                 n_ops=self.n_ops,
                 axes_step=operator_axes_step,
@@ -599,8 +752,14 @@ class PhysicsBase:
                 region=str(region),
                 is_barycentric=is_barycentric,
             )
+            self.reservoir_operators[region].attach_point_store(
+                self.acc_flux_itor[region],
+                n_slots=res_n_slots,
+                axes_origin=operator_axes_origin,
+                axes_step=operator_axes_step,
+            )
 
-            self.property_itor[region], _ = self.create_interpolator(
+            self.property_itor[region], prop_n_slots = self.create_interpolator(
                 self.property_operators[region],
                 n_ops=self.n_ops,
                 axes_step=operator_axes_step,
@@ -612,8 +771,71 @@ class PhysicsBase:
                 region=str(region),
                 is_barycentric=is_barycentric,
             )
+            self.property_operators[region].attach_point_store(
+                self.property_itor[region],
+                n_slots=prop_n_slots,
+                axes_origin=operator_axes_origin,
+                axes_step=operator_axes_step,
+            )
 
-        self.acc_flux_w_itor, _ = self.create_interpolator(
+            # FlashOperators gets its own interpolator so its supporting-point cache lives in the C++ point_data_store.
+            # Sharing the incremental disk-persistence machinery (OblCacheCodec) that acc_flux_itor/property_itor already use.
+            # n_ops requests exactly the row width for its flash snapshot (see PropertyContainer.flash_row_width)
+            # This interpolator is only ever accessed as a key/row point store, never interpolated through.
+            # The container's flash-snapshot methods were already validated in set_operators()
+            # The only remaining reasons to fall back to evaluating the flash uncached every call are:
+            # - a missing compiled (n_dims, n_ops) template for this region,
+            # - an un-rebuilt extension predating the try_get_point/set_point bindings.
+            flash_operators = self.flash_operators[region]
+            container = self.property_containers[region]
+            if (
+                flash_operators is not None
+                and id(flash_operators) in built_flash_stores
+            ):
+                # Shares another region's FlashOperators (add_property_region's
+                # flash_region); its dedicated flash interpolator/point store was
+                # already built and attached below for that region.
+                self.flash_itor[region] = built_flash_stores[id(flash_operators)]
+                continue
+            flash_itor = None
+            flash_n_slots = None
+            flash_row_width = (
+                container.flash_row_width() if flash_operators is not None else 0
+            )
+            if flash_operators is not None and flash_row_width > 0:
+                try:
+                    flash_itor, flash_n_slots = self.create_interpolator(
+                        flash_operators,
+                        n_ops=flash_row_width,
+                        platform=platform,
+                        algorithm=itor_type,
+                        precision=itor_precision,
+                        timer_name=f'flash {region:d} interpolation',
+                        region=str(region),
+                        is_barycentric=is_barycentric,
+                        include_history=False,
+                    )
+                    if not (
+                        hasattr(flash_itor, 'try_get_point')
+                        and hasattr(flash_itor, 'set_point')
+                    ):
+                        flash_itor = None
+                except ValueError:
+                    # No compiled OBL interpolator template for this region's
+                    # (n_dims, n_ops) -- flash results will be recomputed uncached
+                    # (see FlashOperators.ensure_flash).
+                    flash_itor = None
+            self.flash_itor[region] = flash_itor
+            if flash_operators is not None:
+                flash_operators.attach_point_store(
+                    flash_itor,
+                    n_slots=flash_n_slots,
+                    axes_origin=self.axes_origin,
+                    axes_step=self.axes_step,
+                )
+                built_flash_stores[id(flash_operators)] = flash_itor
+
+        self.acc_flux_w_itor, well_n_slots = self.create_interpolator(
             self.well_operators,
             n_ops=self.n_ops,
             axes_step=operator_axes_step,
@@ -624,6 +846,12 @@ class PhysicsBase:
             precision=itor_precision,
             region='-1',
             is_barycentric=is_barycentric,
+        )
+        self.well_operators.attach_point_store(
+            self.acc_flux_w_itor,
+            n_slots=well_n_slots,
+            axes_origin=operator_axes_origin,
+            axes_step=operator_axes_step,
         )
 
         self.well_ctrl_itor, self.n_well_ctrl_itor_ops = self.create_interpolator(
@@ -637,6 +865,15 @@ class PhysicsBase:
             precision=itor_precision,
             is_barycentric=is_barycentric,
         )
+        self.well_ctrl_operators.attach_point_store(
+            self.well_ctrl_itor,
+            n_slots=self.n_well_ctrl_itor_ops,
+            axes_origin=operator_axes_origin,
+            axes_step=operator_axes_step,
+        )
+        # thermal_var_itor is deliberately left without a point store: it lives on
+        # a separate PT grid (thermal_var_axes_*) that does not match the operator
+        # axes captured by attach_point_store, and it is a single cheap operator.
         # Thermal-var interpolator uses a PT-based grid: for P/PT that is the main
         # grid, for PH/PS it is the main grid with a temperature trailing axis
         # (defaulted in __init__). A model may override self.thermal_var_axes_step /
@@ -676,7 +913,12 @@ class PhysicsBase:
         return targets
 
     def _wrap_evaluators_parallel(
-        self, targets, evaluator_factory_hook, n_workers, start_method=None
+        self,
+        targets,
+        evaluator_factory_hook,
+        n_workers,
+        start_method=None,
+        point_store_configs=None,
     ):
         """
         Replace each evaluator listed in ``targets`` with a :class:`ParallelEvaluator`
@@ -693,6 +935,10 @@ class PhysicsBase:
             producing a picklable factory that returns a fresh evaluator.
         :param n_workers: pool size; defaults to ``os.cpu_count()``.
         :param start_method: multiprocessing start method (``None`` = platform default).
+        :param point_store_configs: optional dict ``(attribute, region) -> axes config``
+            wiring worker-local point-store caches (extrapolation supports + flash
+            rows) to the worker evaluators; see
+            :func:`~darts.physics.base.parallel_evaluator._attach_worker_stores`.
         """
         if evaluator_factory_hook is None:
             raise ValueError(
@@ -719,6 +965,7 @@ class PhysicsBase:
             n_workers=n_workers,
             start_method=start_method,
             silence_workers=silence,
+            store_configs=point_store_configs,
         )
 
         for attr, region in targets:
@@ -792,6 +1039,9 @@ class PhysicsBase:
             n_workers=n_workers,
             start_method=start_method,
             silence_workers=silence,
+            # Preserve the worker-local point-store wiring of the original pool;
+            # the newly added targets stay uncached unless configured elsewhere.
+            store_configs=old_pool._store_configs,
         )
 
         # Repoint all existing ParallelEvaluator wrappers at the new pool so
@@ -1187,8 +1437,8 @@ class PhysicsBase:
 
         # Exposed interpolator name pattern. It carries neither an index-type letter (the
         # index-type template parameter was dropped -- storage is keyed on a multi-index,
-        # so the index type is not part of the class identity) nor an "adaptive" token
-        # (the static interpolators are gone, so it distinguishes nothing):
+        # so the index type is not part of the class identity) nor a mode token (every
+        # interpolator is built the same way, so there is nothing left to distinguish):
         #   {algorithm}_{platform}_interpolator_{precision}_{n_dims}_{n_ops}
         itor_base = f"{algorithm}_{platform}_interpolator"
         itor_name = f"{itor_base}_{precision}_{n_dims:d}_{n_ops:d}"
@@ -1293,11 +1543,11 @@ class PhysicsBase:
                 return name
 
             # Caches created from here on use the simplified identity token, mirroring the
-            # interpolator names (no "adaptive": static interpolation is gone). A cache
-            # written by an earlier version hashes its "_adaptive_" spelling to a different
-            # file name; when such a file is already there it simply stays the cache file
-            # for this run (read from and appended to in place), so no existing cache is
-            # orphaned and none is duplicated on disk.
+            # interpolator names (no mode token left to distinguish). A cache written by
+            # an earlier version hashes its "_adaptive_" spelling to a different file name;
+            # when such a file is already there it simply stays the cache file for this run
+            # (read from and appended to in place), so no existing cache is orphaned and
+            # none is duplicated on disk.
             itor_cache_filename = cache_filename('_')
             if not os.path.exists(itor_cache_filename):
                 legacy_cache_filename = cache_filename('_adaptive_')
