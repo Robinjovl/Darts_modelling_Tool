@@ -27,7 +27,7 @@ def is_unstructured_generated_case(case):
     # the structured box path in reservoir.py. Listing them here is what lets a
     # single generate_mesh flag cover every case that can regenerate its mesh.
     base = os.path.basename(case)
-    return (base == 'case_5'
+    return (base.startswith('case_5')
             or base.startswith('no_damage_zone'))
 
 
@@ -154,11 +154,11 @@ def case_5_mesh_name(mesh_size):
 def case_5_mesh_size(case, default=200.0):
     """
     Far-field Gmsh size [m] encoded in a case_5_mesh_name() case name, e.g. 300.0
-    for 'case_5_mesh_300m'; `default` for any other case name.
+    for 'case_5_300'; `default` for any other case name.
     """
     base = os.path.basename(case)
-    if base.startswith('case_5_mesh_') and base.endswith('m'):
-        return float(base[len('case_5_mesh_'):-1].replace('p', '.'))
+    if base.startswith('case_5_'):
+        return float(base[len('case_5_'):-1].replace('p', '.'))
     return default
 
 

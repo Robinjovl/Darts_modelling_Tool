@@ -41,13 +41,11 @@ def input_data_case_5(physics_type='single_phase_thermal', mesh_dir='case_5',
     # Wells must connect to reservoir rock only, never to a confining layer
     # when their requested endpoint lies exactly on a material interface.
     idata.other.well_perforation_tags = (1,)
-
-    # case_2 and case_3 inherit this, so all three cases share one mesh
-    idata.other.mesh_dir = mesh_dir
     # Well mesh size retains the 1:20 ratio of the reference mesh.
     idata.other.bulk_mesh_size = float(bulk_mesh_size)
-    if not np.isfinite(idata.other.bulk_mesh_size) or idata.other.bulk_mesh_size <= 0.0:
-        raise ValueError('case_5 mesh size must be finite and positive')
+    mesh_dir = mesh_dir + '_' + str(int(idata.other.bulk_mesh_size))
+    # case_2 and case_3 inherit this, so all three cases share one mesh
+    idata.other.mesh_dir = mesh_dir
 
     # recompute derived values that depend on the overridden parameters above
     _set_reservoir_bounds(idata)
