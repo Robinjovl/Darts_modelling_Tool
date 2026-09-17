@@ -79,19 +79,7 @@ class BlackOilProperties(PropertyContainer):
         :return: updated value for operators, stored in values
         """
         # Composition vector and pressure from state:
-        vec_state_as_np = np.asarray(state)
-        self.pressure = vec_state_as_np[0]
-        self.temperature = vec_state_as_np[-1] if self.thermal else self.temperature
-
-        zc = np.insert(
-            vec_state_as_np[1:],
-            self.dependent_comp_idx,
-            1 - np.sum(vec_state_as_np[1:]),
-        )
-
-        if zc[self.dependent_comp_idx] < 0:
-            # print(zc)
-            zc = self.comp_out_of_bounds(zc)
+        self.pressure, self.temperature, zc = self.get_state(state)
 
         self.clean_arrays()
         # two-phase flash - assume water phase is always present and water component last
