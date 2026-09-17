@@ -2,6 +2,7 @@ import os
 import warnings
 from math import fabs
 
+import h5py
 import numpy as np
 
 from darts.discretizer import print_build_info as discretizer_pbi
@@ -666,22 +667,41 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         """
         return
 
-    def load_restart_data(self, reservoir_filepath: str, ts_idx: int = -1):
+    def load_restart_data(
+        self,
+        reservoir_filepath: str,
+        well_filepath: str | None = None,
+        ts_idx: int = -1,
+    ):
         """
         Loads data from a previous simulation and sets it for the current simulation.
         Beware that loading restart data resets the engine.
 
         :param reservoir_filepath: Path to the restart file containing reservoir block data.
         :type reservoir_filepath: str
+        :param well_filepath: Optional path to the restart file containing well-block data.
+            For backward compatibility, an integer second positional argument is treated
+            as ``ts_idx``.
+        :type well_filepath: str or None
         :param ts_idx: The timestep index to load from the file (default: -1 for the last timestep)
         :type ts_idx: int
+        :return: None
+        :rtype: None
         """
-        # check if the files with data exist
-        if not os.path.exists(
-            reservoir_filepath
-        ):  # or not os.path.exists(well_filepath):
+        if isinstance(well_filepath, int | np.integer):
+            if ts_idx != -1:
+                raise TypeError("ts_idx was provided both positionally and by keyword.")
+            ts_idx = int(well_filepath)
+            well_filepath = None
+
+        # Check all requested input files before mutating the model state.
+        if not os.path.exists(reservoir_filepath):
             raise FileNotFoundError(
                 f"The restart file does not exist: {reservoir_filepath}"
+            )
+        if well_filepath is not None and not os.path.exists(well_filepath):
+            raise FileNotFoundError(
+                f"The well restart file does not exist: {well_filepath}"
             )
 
         # Read data from the file
@@ -708,12 +728,104 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
                 history_values[key] = col
             else:
                 initial_values[key] = col  # unknown key: preserve legacy routing
+
+        well_restart_data = []
+        if well_filepath is not None:
+            with h5py.File(well_filepath, "r") as well_file:
+                well_times = well_file["dynamic/time"][:]
+
+            matching_timesteps = np.flatnonzero(
+                np.isclose(well_times, time_res[0], rtol=1e-10, atol=1e-12)
+            )
+            if matching_timesteps.size == 0:
+                raise ValueError(
+                    f"Well restart file {well_filepath} has no data at day "
+                    f"{time_res[0]}."
+                )
+
+            # A restarted output file may contain the same time more than once;
+            # use the most recently written occurrence.
+            well_ts_idx = int(matching_timesteps[-1])
+            _, well_cell_ids, Xwell, well_var_names = self.output.read_specific_data(
+                well_filepath, well_ts_idx
+            )
+
+            well_var_names = [
+                name.decode() if isinstance(name, bytes) else str(name)
+                for name in well_var_names
+            ]
+            missing_variables = [
+                name for name in self.physics.vars if name not in well_var_names
+            ]
+            if missing_variables:
+                raise ValueError(
+                    f"Well restart file {well_filepath} is missing primary "
+                    f"variables: {missing_variables}."
+                )
+
+            variable_indices = [
+                well_var_names.index(name) for name in self.physics.vars
+            ]
+            well_states = Xwell[0][:, variable_indices]
+
+            # well_data.h5 also contains reservoir cells adjacent to perforations.
+            # Well cells have global IDs starting at mesh.n_res_blocks.
+            well_cell_mask = well_cell_ids >= self.reservoir.mesh.n_res_blocks
+            well_cell_ids = well_cell_ids[well_cell_mask]
+            well_states = well_states[well_cell_mask]
+
+            if np.unique(well_cell_ids).size != well_cell_ids.size:
+                raise ValueError(
+                    f"Well restart file {well_filepath} contains duplicate well "
+                    "cell IDs."
+                )
+
+            state_by_cell_id = {
+                int(cell_id): state
+                for cell_id, state in zip(well_cell_ids, well_states, strict=True)
+            }
+            expected_cell_ids = {
+                cell_id
+                for well in self.reservoir.wells
+                for cell_id in range(well.well_head_idx, well.well_bottom_idx + 1)
+            }
+            loaded_cell_ids = set(state_by_cell_id)
+            missing_cell_ids = sorted(expected_cell_ids - loaded_cell_ids)
+            unexpected_cell_ids = sorted(loaded_cell_ids - expected_cell_ids)
+            if missing_cell_ids or unexpected_cell_ids:
+                raise ValueError(
+                    f"Well cells in {well_filepath} do not match the current "
+                    f"model. Missing cell IDs: {missing_cell_ids}; unexpected "
+                    f"cell IDs: {unexpected_cell_ids}."
+                )
+
+            for well in self.reservoir.wells:
+                cell_ids = np.arange(
+                    well.well_head_idx,
+                    well.well_bottom_idx + 1,
+                    dtype=np.int64,
+                )
+                states = np.vstack(
+                    [state_by_cell_id[int(cell_id)] for cell_id in cell_ids]
+                )
+                well.init_state = value_vector(states.flatten())
+                well_restart_data.append((cell_ids, states))
+
         self.physics.set_initial_conditions_from_array(
             mesh=self.reservoir.mesh, input_distribution=initial_values
         )
 
         self.reset()
         self.physics.engine.t = time_res[0]
+
+        # reset() lets well controls initialize their cells, which can overwrite
+        # init_state. Restore the exact saved state in both current/previous vectors.
+        for cell_ids, states in well_restart_data:
+            for cell_id, state in zip(cell_ids, states, strict=True):
+                start = int(cell_id) * self.physics.n_vars
+                for variable_idx, value in enumerate(state):
+                    self.physics.engine.X[start + variable_idx] = float(value)
+                    self.physics.engine.Xn[start + variable_idx] = float(value)
 
         # Push the restored history columns into engine.Xhistory. reset() has already allocated
         # the buffer, so set_engine_history_array only needs to overwrite its contents.
@@ -727,6 +839,8 @@ class DartsModel(LinearSolverBinding, LegacyConfigShims):
         # save initial conditions to *.h5 file
         print(rf'Restarting model from {reservoir_filepath} at day {time_res[0]}.')
         self.output.save_data_to_h5(kind='reservoir')
+        if well_restart_data:
+            self.output.save_data_to_h5(kind='well')
 
         return
 
