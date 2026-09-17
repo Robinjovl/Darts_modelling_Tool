@@ -1,3 +1,4 @@
+import copy
 import os
 
 import numpy as np
@@ -76,6 +77,13 @@ def _get_requested_well_properties(
     unknown_props = [prop for prop in requested_props if prop not in known_props]
     if unknown_props:
         raise KeyError("Unknown well output properties: " + ", ".join(unknown_props))
+
+    # Requesting a derived property by name implies enabling its evaluation.
+    include_overall_composition |= "z" in requested_props
+    include_phase_velocities |= any(prop in requested_props for prop in ("vG", "vL"))
+    include_phase_rates |= any(
+        prop in requested_props for prop in phase_rate_prop_names
+    )
 
     primary_prop_idxs = {
         prop: primary_prop_names.index(prop)
@@ -285,7 +293,6 @@ def save_dfm_well_props(
 
     if include_phase_velocities or include_phase_rates:
         pipe = coupled_model.wells[well_name]
-        pipe.reset_pipe_state()
         iter_counter = 0
         flag = 1
         time_from_zero = np.insert(time, 0, 0.0)
@@ -299,37 +306,66 @@ def save_dfm_well_props(
                 for prop_name in _get_phase_rate_prop_names(pc.phases_name)
             }
 
-        for i, dt in enumerate(time_step_sizes):
-            if i == 0:
-                Xn_ms_well = coupled_model.wells[
-                    well_name
-                ].initial_conditions.initial_conditions_vector
-            else:
-                Xn_ms_well = X_well_segments[i - 1, :, :].flatten()
-            X_ms_well = X_well_segments[i, :, :].flatten()
+        # The replay below mutates the live Pipe used by the running simulation
+        # (reset_pipe_state / eval_phase_vels / accept_pipe_state). Snapshot the
+        # state that persists across accepted time steps (the accepted-state
+        # container, the first-iteration flag, and the attributes
+        # _load_accepted_pipe_state restores) and put it back afterwards so
+        # saving results mid-simulation is side-effect free.
+        replayed_pipe_attrs = (
+            "is_first_first_iter",
+            "_accepted_pipe_state",
+            "iter_phases_props",
+            "rhoM_face",
+            "rhoM_vM",
+            "vM",
+            "vG",
+            "vL",
+        )
+        pipe_state_backup = {
+            attr: copy.deepcopy(getattr(pipe, attr))
+            for attr in replayed_pipe_attrs
+            if hasattr(pipe, attr)
+        }
+        try:
+            pipe.reset_pipe_state()
+            for i, dt in enumerate(time_step_sizes):
+                if i == 0:
+                    Xn_ms_well = coupled_model.wells[
+                        well_name
+                    ].initial_conditions.initial_conditions_vector
+                else:
+                    Xn_ms_well = X_well_segments[i - 1, :, :].flatten()
+                X_ms_well = X_well_segments[i, :, :].flatten()
 
-            phase_velocities = pipe.eval_phase_vels(
-                Xn_ms_well, X_ms_well, dt, time_from_zero[i], iter_counter, flag
-            )
-            num_interfaces = pipe.geometry.num_interfaces
-            if include_phase_velocities:
-                vG_data[i, :] = _pad_interface_values(
-                    phase_velocities[:num_interfaces], num_segments
+                phase_velocities = pipe.eval_phase_vels(
+                    Xn_ms_well, X_ms_well, dt, time_from_zero[i], iter_counter, flag
                 )
-                vL_data[i, :] = _pad_interface_values(
-                    phase_velocities[num_interfaces:], num_segments
-                )
-            if include_phase_rates:
-                phase_rates = _get_phase_rates(
-                    pipe, X_well_segments[i, :, :], phase_velocities, pc
-                )
-                for rate_type, rates in phase_rates.items():
-                    for phase_idx, phase_name in enumerate(pc.phases_name):
-                        prop_name = f"phase_{rate_type}_rate_{phase_name}"
-                        phase_rate_data[prop_name][i, :] = _pad_interface_values(
-                            rates[:, phase_idx], num_segments
-                        )
-            pipe.accept_pipe_state()
+                num_interfaces = pipe.geometry.num_interfaces
+                if include_phase_velocities:
+                    vG_data[i, :] = _pad_interface_values(
+                        phase_velocities[:num_interfaces], num_segments
+                    )
+                    vL_data[i, :] = _pad_interface_values(
+                        phase_velocities[num_interfaces:], num_segments
+                    )
+                if include_phase_rates:
+                    phase_rates = _get_phase_rates(
+                        pipe, X_well_segments[i, :, :], phase_velocities, pc
+                    )
+                    for rate_type, rates in phase_rates.items():
+                        for phase_idx, phase_name in enumerate(pc.phases_name):
+                            prop_name = f"phase_{rate_type}_rate_{phase_name}"
+                            phase_rate_data[prop_name][i, :] = _pad_interface_values(
+                                rates[:, phase_idx], num_segments
+                            )
+                pipe.accept_pipe_state()
+        finally:
+            for attr in replayed_pipe_attrs:
+                if attr in pipe_state_backup:
+                    setattr(pipe, attr, pipe_state_backup[attr])
+                elif hasattr(pipe, attr):
+                    delattr(pipe, attr)
 
         if include_phase_velocities:
             data["vG"] = vG_data.reshape(-1)

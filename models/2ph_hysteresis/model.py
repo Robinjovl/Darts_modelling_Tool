@@ -7,6 +7,7 @@ import numpy as np
 
 from darts.engines import value_vector
 from darts.models.cicd_model import CICDModel
+from darts.models.conditions import CellSource
 from darts.nonlinear_solvers import NewtonSolver
 from darts.physics.base.physics import PhysicsBase, HistoryField
 from darts.physics.properties.basic import ConstFunc
@@ -65,6 +66,67 @@ def default_corey_regions() -> dict[int, Corey]:
         a=0.8,
     )
     return {0: Corey(**base)}
+
+
+class WellCellMassSource(CellSource):
+    """CO2 / H2O mass source injected in the pseudo-well cells of the model.
+
+    This is the unified-conditions replacement of the model's ``set_rhs_flux``
+    override. The molar rates are ``inj_rate[1] / Mw_CO2`` into the CO2 equation
+    and ``inj_rate[0] / Mw_H2O`` into the H2O equation (positive INTO the cell,
+    the framework convention), with ``model.inj_rate`` re-read at every assembly
+    because ``update_injection_schedule()`` rewrites it whenever a timestep is
+    accepted.
+
+    The rate callback is state-dependent in the framework sense: the framework
+    gathers the ``(n_cells, n_vars)`` state of the declared cells, in the order
+    the cells were declared, and the callback uses the CELL PRESSURE
+    (``states[k, 0]``) together with the INJECTION composition and, when
+    hysteresis is on, the cell's ``sg_max`` history to evaluate the property
+    container of the cell's region -- exactly the per-cell evaluation the legacy
+    loop did, in the same order.
+
+    Note that the evaluation does not feed back into the rates (it never did):
+    it leaves the property container of each region holding the injection state
+    of the last well cell of that region, which is the behaviour the model was
+    verified with, so it is reproduced rather than dropped.
+    """
+
+    # Molar masses of the two components [kg/kmol], as the legacy source used
+    # them (the property container's Mw comes from CompData and would change the
+    # numbers).
+    M_CO2 = 44.01
+    M_H2O = 18.0
+
+    def __init__(self, model, cells):
+        self.model = model
+        super().__init__(cells=cells, rates=self.injection_rates)
+
+    def injection_rates(self, t, states):
+        """Framework rate callback: ``states`` is the (n_cells, n_vars) cell state."""
+        model = self.model
+        rates = np.zeros(states.shape)
+        if not model.rate_rhs:
+            return rates
+
+        sg_max = None
+        if "sg_max" in [field.label for field in model.physics.history_fields]:
+            sg_max = model.physics.get_engine_history_array(
+                "sg_max",
+                n_blocks=model.reservoir.mesh.n_blocks,
+            )
+
+        for k, well_cell in enumerate(self.cells):
+            state_values = [states[k, 0]] + model.inj_stream[0]
+            if sg_max is not None:
+                state_values.append(sg_max[well_cell])
+            region = int(model.op_num[well_cell])
+            model.physics.property_containers[region].evaluate(
+                value_vector(state_values)
+            )
+            rates[k, 0] = model.inj_rate[0] / self.M_H2O
+            rates[k, 1] = model.inj_rate[1] / self.M_CO2
+        return rates
 
 
 class Model(CICDModel):
@@ -246,6 +308,7 @@ class Model(CICDModel):
         self.well_cells = []
         for center in self.well_centers.values():
             self.well_cells.append(self.reservoir.find_cell_index(center))
+        self.conditions.add(WellCellMassSource(self, self.well_cells))
 
         if self.prod:
             self.reservoir.add_well("P1")
@@ -421,45 +484,6 @@ class Model(CICDModel):
                 is_inj=False,
                 target=self.p_prod,
             )
-
-    def set_rhs_flux(self, t: float | None = None) -> np.ndarray:
-        del t
-        n_vars = self.physics.n_vars
-        rhs_flux = np.zeros(self.reservoir.mesh.n_blocks * n_vars)
-
-        if not self.rate_rhs:
-            return rhs_flux
-
-        m_co2 = 44.01
-        m_h2o = 18.0
-        x = np.asarray(self.physics.engine.X)
-        history_labels = [h.label for h in self.physics.history_fields]
-        sg_max = None
-        if "sg_max" in history_labels:
-            sg_max = self.physics.get_engine_history_array(
-                "sg_max",
-                n_blocks=self.reservoir.mesh.n_blocks,
-            )
-
-        for well_cell in self.well_cells:
-            pressure = x[well_cell * n_vars]
-            co2_idx = well_cell * n_vars + 1
-            h2o_idx = well_cell * n_vars
-            state_values = [pressure] + self.inj_stream[0]
-            if sg_max is not None:
-                state_values.append(sg_max[well_cell])
-            state = value_vector(state_values)
-
-            region = int(self.op_num[well_cell])
-            property_container = self.physics.property_containers[region]
-            property_container.evaluate(state)
-
-            n_co2 = self.inj_rate[1] / m_co2
-            n_h2o = self.inj_rate[0] / m_h2o
-            rhs_flux[co2_idx] -= n_co2
-            rhs_flux[h2o_idx] -= n_h2o
-
-        return rhs_flux
 
     def update_injection_schedule(self, time: float | None = None) -> None:
         current_time = 0.0 if time is None else float(time)

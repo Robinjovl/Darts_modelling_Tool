@@ -131,41 +131,29 @@ class UnstructReservoir(ReservoirBase):
         return mesh
 
     def set_boundary_volume(self, boundary_volumes: dict):
-        # Set-up dictionary with data for boundary cells:
-        boundary_data = dict()  # Dictionary containing boundary condition data (coordinate and value of boundary):
-        boundary_data['first_boundary_dir'] = (
-            'X'  # Indicates the boundary is located at constant X (in this case!)
-        )
-        # Constant X-coordinate value at which the boundary is located (used to be 3.40885):
-        boundary_data["first_boundary_val"] = np.min(
-            self.discretizer.mesh_data.points[:, 0]
-        )
+        """Not available for unstructured meshes.
 
-        # Same as above but for the second boundary condition!
-        boundary_data["second_boundary_dir"] = "X"
-        # Constant X-coordinate value at which the boundary is located (used to be 13.0014):
-        boundary_data["second_boundary_val"] = np.max(
-            self.discretizer.mesh_data.points[:, 0]
-        )
+        The historical implementation called ``self.discretizer.calc_boundary_cells()``,
+        a method that does not exist on any discretizer in this repository, so this
+        entry point could never have run: it is kept only to fail loudly instead of
+        silently inheriting the no-op base implementation.
 
-        # Calculate boundary cells using the calc_boundary_cells method:
-        self.left_boundary_cells, self.right_boundary_cells = (
-            self.discretizer.calc_boundary_cells(boundary_data)
+        An unstructured mesh has no "six face slabs" to address, so an open /
+        constant-state far field has to be expressed explicitly: select the boundary
+        cells yourself (e.g. by coordinate) and multiply ``mesh.volume`` for them
+        BEFORE ``DartsModel.init()`` initializes the engine -- the engine caches
+        ``PV = volume * poro`` once, so a later write is silently ignored (see
+        :class:`~darts.models.conditions.ConstantStateBC`). Alternatively, drive the
+        far field with a well or a condition item.
+        """
+        raise NotImplementedError(
+            "UnstructReservoir.set_boundary_volume() is not implemented: the "
+            "six-face boundary-volume trick has no unstructured equivalent (the "
+            "previous body called discretizer.calc_boundary_cells(), which does "
+            "not exist). Select the boundary cells explicitly and scale "
+            "mesh.volume for them before model.init(), or express the open "
+            "boundary with a well / condition item."
         )
-
-        # Calc maximum size of well cells (used to have more homogeneous injection conditions by scaling the WI):
-        dummy_vol = np.array(self.volume, copy=True)
-        self.max_well_vol = np.max(
-            [
-                np.max(dummy_vol[self.left_boundary_cells]),
-                np.max(dummy_vol[self.right_boundary_cells]),
-            ]
-        )
-
-        self.volume[self.right_boundary_cells] = (
-            self.volume[self.right_boundary_cells] * 1e8
-        )
-        return
 
     def add_perforation(
         self,
@@ -179,6 +167,7 @@ class UnstructReservoir(ReservoirBase):
         skin: float = 0.0,
         ms_epm: bool = False,
         verbose: bool = False,
+        flow_law=None,
     ):
         """
         Function to add a perforation to the well
@@ -186,17 +175,59 @@ class UnstructReservoir(ReservoirBase):
         :param well_seg_idx: Currently, this is only used for struct_reservoir.
         :param res_cell_idx: Index of reservoir cell to be perforated
         :type res_cell_idx: Reservoir cell index for the unstructured reservoir grid must be an integer.
+        :param flow_law: Optional engine-side perforation flow law, e.g.
+                         :class:`~darts.pipes.linear_dfm_well_ipr.LinearIPR`; see
+                         :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.add_perforation`.
+                         Requires ``well_index=0.0``. Deliberately the LAST
+                         parameter, after ``verbose``, so historical positional
+                         calls keep their meaning.
+        :type flow_law: object or None
         """
         well = self.get_well(well_name)
+
+        # Translate the flow law BEFORE anything is mutated, so a wrong type or
+        # a failing to_engine() cannot leave a half-added perforation behind
+        # (finding F3).
+        engine_law = (
+            self._translate_perforation_flow_law(flow_law)
+            if flow_law is not None
+            else None
+        )
 
         perf_indices = np.array(well.perforations, dtype=int)
         # res_cell_idx has index=1 in perforation element: (well_block, res_cell_idx, well_index, well_indexD)
         perf_indices = perf_indices[:, 1] if len(well.perforations) > 0 else []
         if res_cell_idx in perf_indices:
+            if flow_law is not None:
+                raise ValueError(
+                    f"Well {well.name!r} already has a perforation of block "
+                    f"{res_cell_idx:d}, and this duplicate carries a flow law, "
+                    "which would then never be attached. Attach the flow law to "
+                    "the first perforation of that block instead."
+                )
             print(
                 "There are at least 2 wells locating in the same grid block!!! The mesh file should be modified!"
             )
             exit()
+
+        if well_index is None or well_indexD is None:
+            # calculate well index and get local index of reservoir block
+            # (side-effect free, so it can run BEFORE any well mutation)
+            wi, wid = self.discretizer.calc_equivalent_well_index(
+                res_cell_idx, well_diameter, skin
+            )
+            well_index = wi if well_index is None else well_index
+            well_indexD = wid if well_indexD is None else well_indexD
+
+        # Validated BEFORE any mutation (finding F3): these used to run after
+        # the well depths were already updated, so a negative index aborted
+        # with the depth mutation kept.
+        assert well_index >= 0
+        assert well_indexD >= 0
+
+        # Everything below mutates the well; captured so a rejected flow law
+        # rolls the well back to this point (finding F3).
+        state_snapshot = self._snapshot_perforation_state(well)
 
         #  update well depth
         perf_indices = np.append(perf_indices, res_cell_idx).astype(
@@ -205,17 +236,6 @@ class UnstructReservoir(ReservoirBase):
         # set well depth to the top perforation depth
         well.well_head_depth = np.array(self.mesh.depth, copy=False)[perf_indices].min()
         well.well_body_depth = well.well_head_depth
-
-        if well_index is None or well_indexD is None:
-            # calculate well index and get local index of reservoir block
-            wi, wid = self.discretizer.calc_equivalent_well_index(
-                res_cell_idx, well_diameter, skin
-            )
-            well_index = wi if well_index is None else well_index
-            well_indexD = wid if well_indexD is None else well_indexD
-
-        assert well_index >= 0
-        assert well_indexD >= 0
 
         # set well segment index (well block) equal to index of perforation layer
         if ms_epm:
@@ -226,6 +246,17 @@ class UnstructReservoir(ReservoirBase):
         well.perforations = well.perforations + [
             (well_block, res_cell_idx, well_index, well_indexD)
         ]
+
+        if engine_law is not None:
+            # After the perforation exists: the law is attached to it by index,
+            # and the engine's own validation (zero well index, non-negative
+            # productivity) runs here rather than at the first Newton iteration.
+            # A rejection rolls the whole method back (finding F3).
+            try:
+                well.set_perforation_flow_law(len(well.perforations) - 1, engine_law)
+            except Exception:
+                self._restore_perforation_state(well, state_snapshot)
+                raise
 
         if verbose:
             print(

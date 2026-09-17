@@ -11,6 +11,8 @@ from collections import defaultdict
 
 import pytest
 
+from darts.models.conditions import ConditionSet
+
 
 class _FakeTimerNode:
     def start(self):
@@ -142,7 +144,14 @@ class _Reservoir:
 
 class FakeModel:
     """Minimal stand-in for DartsModel exposing what the driver reads, plus the
-    backend-neutral ``_solve_linear_equation`` funnel (C++-solver path only)."""
+    backend-neutral ``_solve_linear_equation`` funnel (C++-solver path only).
+
+    Mirrors the post-assembly surface of the real model: the (empty) unified
+    ``conditions`` set that ``DartsModel.apply_rhs_flux`` applies, and the
+    ``after_assembly`` policy hook it ends with. That is the whole surface --
+    the legacy ``set_rhs_flux`` override and the ``rhs_flux_hooks`` list are
+    removed from ``DartsModel``, so there is nothing else to mirror.
+    """
 
     def __init__(self, engine, n_vars=2):
         self.verbose = 0
@@ -154,6 +163,8 @@ class FakeModel:
         self.n_newton_iters = []
         self.time_step_size = []
         self.reservoir = _Reservoir()
+        # Python-side condition/source surface of DartsModel (nothing registered).
+        self.conditions = ConditionSet()
 
         class _Physics:
             pass
@@ -168,6 +179,11 @@ class FakeModel:
         self.data_ts = _DataTS()
 
     def apply_rhs_flux(self, dt, t):
+        # Nothing registered -> no contribution to add; DartsModel still ends with
+        # the post-assembly hook, so the fake does too.
+        self.after_assembly(dt, t)
+
+    def after_assembly(self, dt, t):
         pass
 
     def _solve_linear_equation(self):

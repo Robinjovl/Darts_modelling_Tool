@@ -12,7 +12,7 @@ from darts.engines import (
     value_vector,
 )
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
-from darts.reservoirs.reservoir_base import ReservoirBase
+from darts.reservoirs.reservoir_base import BoundaryVolumeDict, ReservoirBase
 
 
 class StructReservoir(ReservoirBase):
@@ -103,14 +103,21 @@ class StructReservoir(ReservoirBase):
         self.is_cpg = is_cpg
         self.global_to_local = global_to_local
 
-        self.boundary_volumes = {
-            "xy_minus": None,
-            "xy_plus": None,
-            "yz_minus": None,
-            "yz_plus": None,
-            "xz_minus": None,
-            "xz_plus": None,
-        }
+        # Open / constant-state far field ("huge boundary volume" trick): the
+        # values set here are applied to mesh.volume inside discretize(), which
+        # must happen before the engine caches PV = volume * poro. The dict type
+        # refuses writes once the engine ran (see ReservoirBase and
+        # darts.models.conditions.ConstantStateBC).
+        self.boundary_volumes = BoundaryVolumeDict(
+            {
+                "xy_minus": None,
+                "xy_plus": None,
+                "yz_minus": None,
+                "yz_plus": None,
+                "xz_minus": None,
+                "xz_plus": None,
+            }
+        )
         self.connected_well_segments = {}
 
     def discretize(self, cache: bool = False, verbose: bool = False) -> conn_mesh:
@@ -197,6 +204,13 @@ class StructReservoir(ReservoirBase):
         return mesh
 
     def set_boundary_volume(self, boundary_volumes: dict):
+        """Apply the far-field boundary volumes to the six face slabs.
+
+        Called from :meth:`discretize`; see
+        :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.set_boundary_volume`
+        for the ordering requirement (the engine caches ``PV`` once).
+        """
+        self.assert_pore_volumes_mutable("set_boundary_volume")
         # apply changes
         volume = self.discretizer.volume
         if boundary_volumes["xy_minus"] is not None:
@@ -229,6 +243,7 @@ class StructReservoir(ReservoirBase):
         ms_epm: bool = None,
         with_peaceman_for_dfm_well: bool = False,
         verbose: bool = False,
+        flow_law=None,
     ):
         """
         Function to add a perforation to the well
@@ -236,8 +251,22 @@ class StructReservoir(ReservoirBase):
         :param with_peaceman_for_dfm_well: If True and the well is of type DFM, it uses the modified Darcy's law based
                                            on the Peaceman model. Otherwise, it uses the Darcy's law without modification.
         :type with_peaceman_for_dfm_well: bool
+        :param flow_law: Optional engine-side perforation flow law, e.g.
+                         :class:`~darts.pipes.linear_dfm_well_ipr.LinearIPR`; see
+                         :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.add_perforation`.
+                         Requires ``well_index=0.0``.
+        :type flow_law: object or None
         """
         well = self.get_well(well_name)
+
+        # Translate the flow law BEFORE anything is mutated, so a wrong type or
+        # a failing to_engine() cannot leave a half-added perforation behind
+        # (finding F3).
+        engine_law = (
+            self._translate_perforation_flow_law(flow_law)
+            if flow_law is not None
+            else None
+        )
 
         # calculate well index and get local index of reservoir block
         i, j, k = res_cell_idx
@@ -260,6 +289,13 @@ class StructReservoir(ReservoirBase):
             assert well_seg_idx is not None, (
                 "If the well is of the DFM type, well_seg_idx must be specified!"
             )
+            if well_seg_idx < 2:
+                raise ValueError(
+                    f"well_seg_idx={well_seg_idx} is invalid for DFM well "
+                    f"'{well_name}': well_seg_idx is 1-based and index 1 is the "
+                    "wellhead ghost segment, which cannot be perforated. "
+                    "Perforable segments are 2..num_segments."
+                )
             assert ms_epm is None, (
                 "If the well is of the DFM type, ms_epm must not be specified!"
             )
@@ -279,6 +315,12 @@ class StructReservoir(ReservoirBase):
         if well_indexD is None:
             well_indexD = wid
 
+        # Validated BEFORE any mutation (finding F3): these used to sit at the
+        # end of the method, AFTER the perforation was appended and its flow
+        # law attached, so a negative index aborted with the mutations kept.
+        assert well_index >= 0
+        assert well_indexD >= 0
+
         if well.ms_type == ms_well.MS_Type.EPM:
             # set well segment index (well block) equal to index of perforation layer
             if ms_epm:
@@ -288,6 +330,10 @@ class StructReservoir(ReservoirBase):
         elif well.ms_type == ms_well.MS_Type.DFM:
             # Subtract 2 from the specified well_seg_idx because the index is 1-based here and DFM wells don't have the ghost cell.
             well_block = well_seg_idx - 2
+
+        # Everything below mutates the well; captured so a rejected flow law
+        # rolls the well back to this point (finding F3).
+        state_snapshot = self._snapshot_perforation_state(well)
 
         # add completion only if target block is active
         if res_block_local > -1:
@@ -323,6 +369,15 @@ class StructReservoir(ReservoirBase):
 
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
+                    if flow_law is not None:
+                        self._restore_perforation_state(well, state_snapshot)
+                        raise ValueError(
+                            f"Well {well.name!r} already has a perforation of block "
+                            f"[{i:d}, {j:d}, {k:d}]; a duplicate is normally dropped "
+                            "with a warning, but this one carries a flow law, which "
+                            "would then be silently ignored. Attach the flow law to "
+                            "the first perforation of that block instead."
+                        )
                     print(
                         f'Neglected duplicate perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}]'
                     )
@@ -332,20 +387,36 @@ class StructReservoir(ReservoirBase):
                 (well_block, res_block_local, well_index, well_indexD)
             ]
 
+            if engine_law is not None:
+                # After the perforation exists: the law is attached to it by index,
+                # and the engine's own validation (zero well index, non-negative
+                # productivity) runs here rather than at the first Newton iteration.
+                # A rejection rolls the whole method back (finding F3).
+                try:
+                    well.set_perforation_flow_law(
+                        len(well.perforations) - 1, engine_law
+                    )
+                except Exception:
+                    self._restore_perforation_state(well, state_snapshot)
+                    raise
+
             if verbose:
                 print(
                     f'Added perforation for well {well.name} to block {res_block_local:d} '
                     f'[{i:d}, {j:d}, {k:d}] with WI={well_index:f} and WID={well_indexD:f}'
                 )
         else:
+            if flow_law is not None:
+                raise ValueError(
+                    f"Well {well.name!r}: block [{i:d}, {j:d}, {k:d}] is inactive, so "
+                    "the perforation is dropped -- but it carries a flow law, which "
+                    "would then be silently ignored, leaving the well uncoupled."
+                )
             if verbose:
                 print(
                     f'Neglected perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}] (inactive block)'
                 )
             return
-
-        assert well_index >= 0
-        assert well_indexD >= 0
 
         return
 

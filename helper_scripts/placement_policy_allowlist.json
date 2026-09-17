@@ -1,0 +1,115 @@
+{
+  "_README": [
+    "Exceptions to the darts/ placement policy checked by",
+    "helper_scripts/check_placement_policy.py (MR !305 review, section 6).",
+    "",
+    "Every entry needs 'module', 'clause' and a written 'justification' of at",
+    "least 40 characters; the checker refuses to run on an entry without one, and",
+    "warns about entries whose module has been fixed or deleted, so the list",
+    "cannot rot silently.",
+    "",
+    "'status' is informational and takes one of:",
+    "  seed        -- a deliberate library seed: general, documented, kept in the",
+    "                 package on purpose while its first consumer is written.",
+    "  pre-existing -- debt inherited from `development`, older than the branch",
+    "                 that introduced this check. Recorded, not endorsed: every",
+    "                 one of these needs a maintainer decision (give it a CI-wired",
+    "                 consumer, or move it out of the installable package).",
+    "",
+    "All entries below were verified to be flagged identically on the merge base",
+    "(development, 89679e42) -- this branch introduces none of them."
+  ],
+  "allow": [
+    {
+      "module": "darts.physics.properties.conductivity",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "Abstract Conductivity base plus one correlation, part of the documented physics-properties API (docs/api.rst) but not imported by any model or test; every CI model builds conductivity inline instead. Pre-existing on development; needs a consumer or removal.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.pipes.viz.plot_well_1d_reservoir_line_graphs",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "574-line DFM-well/reservoir line-graph plotter landed by an earlier pipes MR with no caller. The same class of file as the four plotters M0 adopted into the CI mains; it should get the same treatment, from a maintainer, in its own change.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.reservoirs.mesh.geometry.fluidflower",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "Hard-coded FluidFlower rig geometry (case-specific coordinates), referenced only from docs/technical_reference/reservoir.md. Fails the generality clause as well; kept because removing it is a separate, pre-existing decision.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.reservoirs.mesh.geometry.main",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "A __main__ demo script for the geometry shapes that ships inside the wheel and still uses implicit-relative imports ('from shapes import *'), so it cannot even be imported as darts.reservoirs.mesh.geometry.main. Pre-existing; belongs under models/ or docs/.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.reservoirs.mesh.geometry.map_mesh",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "Numba/KDTree helper for mapping properties between meshes, general in shape but with no in-repo caller, so nothing in CI compiles its jitted kernels. Pre-existing on development.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.reservoirs.unstruct_radial_reservoir",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "UnstructRadialReservoir has no model or test; its structured sibling struct_radial_reservoir is exercised, this one is not. Pre-existing on development; a reservoir class with no coverage is a maintainer decision, not a review-time deletion.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.tools.adgprs_io",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "Reader for AD-GPRS rate/HDF5 output, used for external benchmark comparisons that live outside this repository. Pre-existing on development; keep or move to a benchmarking repo is a maintainer call.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.tools.convert_vtu_to_msh",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "Standalone meshio-based vtu-to-msh converter, general and self-contained but with no in-repo caller and no test. Pre-existing on development.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.tools.eclipse_rates_io",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "Reader for Eclipse RSM-style rate tables, the input side of plot_eclipse; used for external benchmark comparisons that live outside this repository. Pre-existing on development.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.tools.fracture_network.merge_domain",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "Inverse of partition_domain in the fracture-network preprocessing chain; partition_domain is exercised by the fracture_network models, the merge half is not. Pre-existing on development; the natural fix is a unit test rather than deletion.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.tools.jacobian",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "Debug helpers for the assembled BCSR Jacobian (check_jacobian, write/read pkl, plot_bcsr_matrix). General and genuinely useful during development, but no model or test calls them, so nothing in CI notices when the engine's Jacobian accessors change shape. Pre-existing on development; the natural fix is a unit test.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.tools.plot_adgprs",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "Matplotlib overlays of AD-GPRS results on DARTS plots, the plotting side of adgprs_io; used for external benchmark comparisons that live outside this repository. Pre-existing on development.",
+      "first_seen": "development"
+    },
+    {
+      "module": "darts.tools.plot_eclipse",
+      "clause": "zero-consumer",
+      "status": "pre-existing",
+      "justification": "Matplotlib overlays of Eclipse results on DARTS plots, the plotting side of eclipse_rates_io; used for external benchmark comparisons that live outside this repository. Pre-existing on development.",
+      "first_seen": "development"
+    }
+  ]
+}

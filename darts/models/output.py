@@ -10,6 +10,8 @@ import xarray as xr
 
 from darts.engines import (
     index_vector,
+    ipr_rate_basis,
+    perforation_flow_law_type,
     timer_node,
     value_vector,
     well_control_iface,
@@ -227,7 +229,11 @@ class Output:
         self.precision_map = {"d": np.float64, "s": np.float32}
 
         self.thermal = self.physics.state_spec >= self.physics.StateSpecification.PT
-        self.properties = list(self.physics.property_containers[0].output_props.keys())
+        self.properties = list(
+            self.physics.property_containers[
+                self.physics.regions[0]
+            ].output_props.keys()
+        )
         if len(self.properties) < self.physics.n_ops:
             self.n_ops = self.physics.n_ops
         else:
@@ -373,7 +379,11 @@ class Output:
         self.n_ops = n_ops
 
         # Update the properties list
-        self.properties = list(self.physics.property_containers[0].output_props.keys())
+        self.properties = list(
+            self.physics.property_containers[
+                self.physics.regions[0]
+            ].output_props.keys()
+        )
 
         return
 
@@ -2097,6 +2107,13 @@ class Output:
             ["advective_heat_rates"] if advective_heat_rates and self.thermal else []
         )
 
+        # Engine-side perforation flow laws (finding R1): a non-Darcy
+        # perforation has a ZERO well index by construction, so the Darcy
+        # `operators * WI * pressure_term` below would export exactly 0.0 for
+        # it while the assembled law flux is not. calc_rates_at_conns computes
+        # those perforations law-aware instead.
+        perf_flow_laws = self._perforation_flow_laws(perfs_conn_idxs)
+
         for rate_type in rate_types:
             # Compute perforation rates
             rates_perfs = self.calc_rates_at_conns(
@@ -2105,6 +2122,7 @@ class Output:
                 geometric_WI,
                 self.thermal,
                 rate_type,
+                flow_laws=perf_flow_laws,
             )
             # Store perforation rates
             self.store_perf_rates(time_data_dict, rates_perfs, rate_type)
@@ -2193,6 +2211,32 @@ class Output:
 
         return perfs_conn_idxs, well_head_conn_idxs, geometric_WI, well_head_conn_trans
 
+    def _perforation_flow_laws(self, perfs_conn_idxs):
+        """Engine-side flow law of each perforation connection, or ``None``.
+
+        Returns a list parallel to ``perfs_conn_idxs`` holding the
+        ``perforation_flow_law`` of every perforation that carries a non-Darcy
+        law (matched by its (well block, reservoir block) pair, the same way
+        the engine resolves the laws to connections) and ``None`` for every
+        ordinary Darcy perforation. Used by :meth:`store_well_time_data` /
+        :meth:`calc_rates_at_conns` for law-aware rate reporting (finding R1).
+        """
+        laws_by_pair = {}
+        for well in self.reservoir.wells:
+            for perf_idx, perf in enumerate(well.perforations):
+                law = well.get_perforation_flow_law(perf_idx)
+                if law.law != perforation_flow_law_type.DARCY:
+                    well_block = int(well.well_body_idx) + int(perf[0])
+                    laws_by_pair[(well_block, int(perf[1]))] = law
+        if not laws_by_pair:
+            return [None] * len(perfs_conn_idxs)
+        block_m = np.array(self.reservoir.mesh.block_m, copy=False)
+        block_p = np.array(self.reservoir.mesh.block_p, copy=False)
+        return [
+            laws_by_pair.get((int(block_m[k]), int(block_p[k])))
+            for k in perfs_conn_idxs
+        ]
+
     def store_perf_rates(
         self, time_data_dict: dict, rates_perfs: np.ndarray, rate_type: str
     ):
@@ -2208,7 +2252,7 @@ class Output:
         :param rate_type: Type of the well rate
         :type rate_type: str
         """
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
         total_perf_idx = 0
         for well in self.reservoir.wells:
             for perf_idx in range(len(well.perforations)):
@@ -2249,7 +2293,7 @@ class Output:
         :param rate_type: Type of the well rate
         :type rate_type: str
         """
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
         total_perf_idx = 0
         for well in self.reservoir.wells:
             tag = f"well_{well.name}"
@@ -2303,7 +2347,7 @@ class Output:
         :param rate_type: Type of the well rate
         :type rate_type: str
         """
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
         for well_idx, well in enumerate(self.reservoir.wells):
             tag = f"well_{well.name}"
             if rate_type.startswith("phase_"):
@@ -2337,7 +2381,7 @@ class Output:
         cell_id = h5_well_data["dynamic"]["cell_id"]
         variable_names = h5_well_data["dynamic"]["variable_names"]
         X = h5_well_data["dynamic"]["X"]
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
 
         for well in self.reservoir.wells:
             BHP = np.zeros(nt)
@@ -2371,7 +2415,7 @@ class Output:
         Super engine operators expose explicit gravity and capillary-pressure
         operators.
         """
-        pc = physics.property_containers[0]
+        pc = physics.property_containers[physics.regions[0]]
 
         if hasattr(reservoir_operator, "GRAV_OP"):
             grav_start = reservoir_operator.GRAV_OP
@@ -2395,6 +2439,7 @@ class Output:
         trans: np.ndarray,
         thermal: bool,
         rate_type: str,
+        flow_laws: list = None,
     ):
         """
         Calculate different types of rates at perforations or wellhead connections of wells.
@@ -2413,6 +2458,15 @@ class Output:
         :type thermal: bool
         :param rate_type: Type of well rate to calculate
         :type rate_type: str
+        :param flow_laws: Optional list parallel to ``conn_idxs`` holding the
+            engine-side ``perforation_flow_law`` of each connection, or ``None``
+            for an ordinary Darcy connection (see
+            :meth:`_perforation_flow_laws`). Connections carrying a non-Darcy
+            law have a zero well index by construction, so their rates are
+            computed from the law -- with the SAME state/operator arithmetic
+            the engine assembles -- instead of ``operators * WI * dp`` (which
+            would be identically zero; finding R1).
+        :type flow_laws: list
         """
         # Evaluate position of block_m, block_p in stored data for every connection
         block_m = h5_well_data["static"]["block_m"]
@@ -2429,8 +2483,8 @@ class Output:
 
         physics = self.physics
 
-        pc = physics.property_containers[0]
-        ne = physics.reservoir_operators[0].ne
+        pc = physics.property_containers[physics.regions[0]]
+        ne = physics.reservoir_operators[physics.regions[0]].ne
 
         p_idx = h5_well_data["dynamic"]["variable_names"].index("pressure")
         if thermal:
@@ -2455,7 +2509,7 @@ class Output:
         n_well_ctrl_ops = getattr(
             physics, "n_well_ctrl_itor_ops", physics.well_ctrl_operators.n_ops
         )
-        n_reservoir_ops = physics.reservoir_operators[0].n_ops
+        n_reservoir_ops = physics.reservoir_operators[physics.regions[0]].n_ops
         n_vars = physics.n_vars
         # The reservoir / well-control interpolators consume the full OBL state
         # [primary | history] (n_state axes), but the well H5 stores only the primary
@@ -2492,17 +2546,65 @@ class Output:
             )
             return np.asarray(values).reshape(batch_size, n_ops)
 
-        reservoir_ops_m = evaluate_ops(
-            states_m_2d, n_reservoir_ops, physics.acc_flux_itor[0]
-        )
-        reservoir_ops_p = evaluate_ops(
-            states_p_2d, n_reservoir_ops, physics.acc_flux_itor[0]
-        )
+        # Reservoir-operator rows are evaluated per BLOCK OPERATOR SLOT, not
+        # with one hard-coded region (finding F1): the engine assembles every
+        # block with the interpolator ``mesh.op_num`` maps it to in the model's
+        # ``op_list`` — the very list handed to ``engine.init()`` and to this
+        # object — which ``DartsModel.set_op_list()`` lays out as
+        # ``[acc_flux_itor[regions[0]], ..., acc_flux_itor[regions[-1]],
+        # acc_flux_w_itor]``. The well-operator table shares the
+        # ``OperatorsSuper`` layout and, for the region-``regions[0]`` property
+        # container it is built on, holds the same FLUX/GRAV/SAT/LAMBDA/ENTH/
+        # TEMP values as the reservoir table, so single-region exports are
+        # unchanged. Evaluating everything with region ``regions[0]``
+        # mis-reports any connection whose endpoint block lies in another
+        # operator region.
+        if self.op_list is not None:
+            slot_itors = list(self.op_list)
+        else:
+            slot_itors = [physics.acc_flux_itor[r] for r in physics.regions] + [
+                physics.acc_flux_w_itor
+            ]
+        op_num = np.asarray(self.op_num)
+        slots_m = op_num[np.asarray(block_m)[conn_idxs]].astype(int)
+        slots_p = op_num[np.asarray(block_p)[conn_idxs]].astype(int)
+        for endpoint, slots in (("block_m", slots_m), ("block_p", slots_p)):
+            if np.any((slots < 0) | (slots >= len(slot_itors))):
+                raise NotImplementedError(
+                    f"calc_rates_at_conns: {endpoint} carries operator slots "
+                    f"{sorted(set(slots.tolist()))}, outside the model's "
+                    f"operator list of {len(slot_itors)} interpolator(s); "
+                    "rate export cannot resolve blocks mapped past the "
+                    "operator list."
+                )
+
+        def evaluate_reservoir_ops(states_2d, slots):
+            """One reservoir/well operator row per batch row, each evaluated
+            with the interpolator of its block's own operator slot."""
+            out = np.empty((batch_size, n_reservoir_ops))
+            for slot in np.unique(slots):
+                ks = np.nonzero(slots == slot)[0]
+                rows = (time_idx * n_conns + ks[None, :]).ravel()
+                sub = states_2d[rows]
+                n_sub = sub.shape[0]
+                values = value_vector(np.zeros(n_sub * n_reservoir_ops))
+                dvalues = value_vector(np.zeros((n_sub * n_reservoir_ops) * n_state))
+                slot_itors[slot].evaluate_with_derivatives(
+                    value_vector(sub.ravel()),
+                    index_vector(np.arange(n_sub).astype(np.int32)),
+                    values,
+                    dvalues,
+                )
+                out[rows] = np.asarray(values).reshape(n_sub, n_reservoir_ops)
+            return out
+
+        reservoir_ops_m = evaluate_reservoir_ops(states_m_2d, slots_m)
+        reservoir_ops_p = evaluate_reservoir_ops(states_p_2d, slots_p)
 
         p = h5_well_data["dynamic"]["X"][:, :, p_idx]
         dp = p[:, cell_p] - p[:, cell_m]
 
-        reservoir_operator = physics.reservoir_operators[0]
+        reservoir_operator = physics.reservoir_operators[physics.regions[0]]
         grav_m, _ = self.get_gravity_and_capillary_pressure_ops(
             physics, reservoir_operator, reservoir_ops_m
         )
@@ -2524,6 +2626,35 @@ class Output:
             "phase_volumetric_rates",
             "advective_heat_rates",
         ]:
+            # KNOWN LIMITATION (2026-08-25 adversarial verification of the F1
+            # fix): the phase-rate families read the well-control rate
+            # operators, of which the physics builds exactly ONE table -- on
+            # the ``regions[0]`` property container (physics.py builds a
+            # single ``WellCtrlOperators``) -- so unlike the component
+            # families above they cannot be evaluated per operator region.
+            # A reservoir endpoint outside ``regions[0]`` therefore exports
+            # phase rates with regions[0] fluid properties (matching the
+            # legacy C++ reporting); warn instead of staying silent.
+            # law-carrying connections are exempt: the law branch below
+            # overwrites their rows with region-aware arithmetic
+            darcy = np.array(
+                [flow_laws is None or flow_laws[k] is None for k in range(n_conns)],
+                dtype=bool,
+            )
+            foreign = sorted(
+                set(slots_m[darcy & (slots_m > 0) & (slots_m < len(slot_itors) - 1)])
+                | set(slots_p[darcy & (slots_p > 0) & (slots_p < len(slot_itors) - 1)])
+            )
+            if foreign:
+                warnings.warn(
+                    f"{rate_type} export: connection endpoints in operator "
+                    f"region slot(s) {foreign} are evaluated with the single "
+                    "well-control rate-operator table (built on the first "
+                    "region's property container) -- phase-rate families are "
+                    "not region-aware; the component_molar/component_mass "
+                    "families and native flow-law rates are.",
+                    stacklevel=2,
+                )
             well_ops_m = evaluate_ops(
                 states_m_2d, n_well_ctrl_ops, physics.well_ctrl_itor
             )
@@ -2686,7 +2817,10 @@ class Output:
         ]:
             ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
         elif rate_type in ["component_molar_rates", "component_mass_rates"]:
-            ops_reshaped = ops.reshape(n_ts, n_conns, -1)
+            # explicit width rather than -1: a well set with ZERO perforation
+            # connections (couplings declared directly, without a dummy
+            # perforation) makes this a size-0 reshape, where -1 is ambiguous
+            ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph * pc.nc_fl)
         elif rate_type == "advective_heat_rates":
             ops_reshaped = ops.reshape(n_ts, n_conns, pc.nph)
 
@@ -2696,6 +2830,141 @@ class Output:
         else:
             pressure_term = phase_p_diff
         rates = -ops_reshaped * tran * pressure_term
+
+        # ------------------------------------------------------------------
+        # Engine-side perforation flow laws (finding R1). A law-carrying
+        # perforation has WI == 0 by construction, so the Darcy product above
+        # is identically zero for it; overwrite its rates with the law flux,
+        # mirroring the engine assembly arithmetic exactly — including the
+        # operator REGION of the upstream block, since the endpoint rows above
+        # are evaluated per operator slot (finding F1) — (the shared C++
+        # source of truth is perforation_law_rates() in ms_well.cpp, pinned
+        # against this mirror by tests/pipes/test_native_ipr_rates.py):
+        #
+        #   q_total = intercept + productivity * (p_well - p_res - offset)
+        #             (positive from the well INTO the reservoir, which is the
+        #             positive-for-injection sign of the Darcy rates above)
+        #   z_c     from the UPSTREAM state, clipped at sim_eps, renormalized
+        #   rho_m   = sum_j s_j * sum_c FLUX_OP[j, c]   (molar density)
+        #   rho_mas = sum_j s_j * GRAV_OP[j]            (mass density)
+        #   Mw      = rho_mas / rho_m                   (1 when rho_m == 0)
+        #   m_rate  = q_total | q_total / Mw | q_total * rho_m   (per basis)
+        #
+        # The law defines TOTAL rates; per-phase columns receive the total
+        # split by the corresponding upstream phase fraction from the same
+        # operators (molar fraction s_j rho_mj / rho_m for molar/heat rates,
+        # mass fraction for mass rates, saturation for volumetric rates), so
+        # the sum over phases is exactly the assembled total. Component
+        # columns hold m_rate * z_c (times the component molecular weight for
+        # mass rates), stored in the phase-0 slots -- component rates are only
+        # ever consumed summed over phases. The advective heat rate follows
+        # the dead-state-referenced reporting convention of the Darcy branch:
+        # m_rate * (h - h_dead), with both mixture molar enthalpies read from
+        # the same operator table (the assembly's potential-energy term
+        # spe * Mw is excluded here exactly as it is for Darcy perforations).
+        # ------------------------------------------------------------------
+        law_conns = (
+            [(k, law) for k, law in enumerate(flow_laws) if law is not None]
+            if flow_laws is not None
+            else []
+        )
+        if law_conns:
+            eps_z = float(getattr(self.params, "sim_eps", 1e-12))
+            nc_fl = pc.nc_fl
+            nph = pc.nph
+            sat_start = reservoir_operator.SAT_OP
+            flux_start = reservoir_operator.FLUX_OP
+            grav_start = reservoir_operator.GRAV_OP
+
+            if rate_type == "advective_heat_rates":
+                reservoir_ops_m_dead = evaluate_reservoir_ops(states_m_dead, slots_m)
+                reservoir_ops_p_dead = evaluate_reservoir_ops(states_p_dead, slots_p)
+
+            def law_mixture(ops_up):
+                """(sat, flux, per-phase molar density, per-phase mass density,
+                rho_m, rho_mass) of the upstream blocks, one row per time."""
+                sat = ops_up[:, sat_start : sat_start + nph]
+                flux = ops_up[:, flux_start : flux_start + ne * nph]
+                flux = flux.reshape(n_ts, nph, ne)
+                f = np.sum(flux[:, :, :nc_fl], axis=2)
+                grav = ops_up[:, grav_start : grav_start + nph]
+                rho_m = np.sum(sat * f, axis=1)
+                rho_mass = np.sum(sat * grav, axis=1)
+                return sat, flux, f, grav, rho_m, rho_mass
+
+            for k, law in law_conns:
+                rows = np.arange(n_ts) * n_conns + k
+                p_well = p[:, cell_m[k]]
+                p_res = p[:, cell_p[k]]
+                q_tot = law.intercept + law.productivity * (p_well - p_res - law.offset)
+                pick_well = (q_tot >= 0.0)[:, None]
+                states_up = np.where(pick_well, states_m_2d[rows], states_p_2d[rows])
+                ops_up = np.where(
+                    pick_well, reservoir_ops_m[rows], reservoir_ops_p[rows]
+                )
+
+                # upstream overall composition from the STATE, clipped at
+                # sim_eps and renormalized (as the engine does)
+                if nc_fl == 1:
+                    z = np.ones((n_ts, 1))
+                else:
+                    w = np.empty((n_ts, nc_fl))
+                    w[:, :-1] = states_up[:, 1:nc_fl]
+                    w[:, -1] = 1.0 - np.sum(w[:, :-1], axis=1)
+                    w = np.maximum(w, eps_z)
+                    z = w / np.sum(w, axis=1, keepdims=True)
+
+                sat, flux, f, grav, rho_m, rho_mass = law_mixture(ops_up)
+                has_fluid = rho_m > 0.0
+                safe_rho_m = np.where(has_fluid, rho_m, 1.0)
+                # the engine's no-fluid fallback: Mw = 1 when rho_m == 0
+                mw_mix = np.where(has_fluid, rho_mass, 1.0) / safe_rho_m
+
+                if law.basis == ipr_rate_basis.MASS:
+                    m_rate = q_tot / mw_mix
+                elif law.basis == ipr_rate_basis.VOLUMETRIC:
+                    m_rate = q_tot * rho_m
+                else:  # MOLAR
+                    m_rate = q_tot
+
+                # upstream MOLAR phase fraction nu_j = s_j rho_mj / rho_m
+                nu = np.where(has_fluid[:, None], sat * f, 0.0) / safe_rho_m[:, None]
+
+                if rate_type in ("component_molar_rates", "component_mass_rates"):
+                    out = np.zeros((n_ts, nph * nc_fl))
+                    comp = m_rate[:, None] * z
+                    if rate_type == "component_mass_rates":
+                        comp = comp * np.asarray(pc.Mw[:nc_fl])[None, :]
+                    out[:, :nc_fl] = comp  # phase-0 slots; summed over phases
+                elif rate_type == "phase_molar_rates":
+                    out = m_rate[:, None] * nu
+                elif rate_type == "phase_mass_rates":
+                    has_mass = rho_mass > 0.0
+                    frac = (
+                        np.where(has_mass[:, None], sat * grav, 0.0)
+                        / np.where(has_mass, rho_mass, 1.0)[:, None]
+                    )
+                    out = (m_rate * mw_mix)[:, None] * frac
+                elif rate_type == "phase_volumetric_rates":
+                    q_vol = np.where(has_fluid, m_rate / safe_rho_m, 0.0)
+                    out = q_vol[:, None] * sat
+                else:  # advective_heat_rates
+                    rho_h = np.sum(sat * flux[:, :, nc_fl], axis=1)
+                    h_mix = np.where(has_fluid, rho_h, 0.0) / safe_rho_m
+                    ops_up_dead = np.where(
+                        pick_well,
+                        reservoir_ops_m_dead[rows],
+                        reservoir_ops_p_dead[rows],
+                    )
+                    sat_d, flux_d, _, _, rho_m_d, _ = law_mixture(ops_up_dead)
+                    has_fluid_d = rho_m_d > 0.0
+                    rho_h_d = np.sum(sat_d * flux_d[:, :, nc_fl], axis=1)
+                    h_dead = np.where(has_fluid_d, rho_h_d, 0.0) / np.where(
+                        has_fluid_d, rho_m_d, 1.0
+                    )
+                    out = (m_rate * (h_mix - h_dead))[:, None] * nu
+
+                rates[:, k, :] = out
 
         return rates
 
@@ -2844,7 +3113,7 @@ class Output:
         :param perf_idx: Index of the perforation. This index starts from zero and the order depends on the order at which perforations are added to the wellbore using the add_perforation method.
         :type perf_idx: int
         """
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
         keys = []
         tag = f"well_{well_name}_perf_{perf_idx}_"
         rate_type = rtype.split("_")[1]
@@ -2876,7 +3145,7 @@ class Output:
         :param well_name: Name of the well
         :type well_name: str
         """
-        pc = self.physics.property_containers[0]
+        pc = self.physics.property_containers[self.physics.regions[0]]
         keys = []
         base = f"well_{well_name}_"
         rate_type = rtype.split("_")[1]

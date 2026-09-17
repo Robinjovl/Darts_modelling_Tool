@@ -70,6 +70,34 @@ int engine_super_cpu<NC, NP, THERMAL>::init(conn_mesh *mesh_, std::vector<ms_wel
       max_axis_temp = thermal_var_etor->get_axis_max(T_VAR);
   }
 
+  // Stash this engine's operator-table layout on every well that carries a
+  // perforation flow law, so ms_well::calc_rates* can REPORT the law flux with
+  // the exact arithmetic this engine assembles (perforation_law_rates -- the
+  // shared source of truth; review finding R1). Reporting `p_diff * wi` there
+  // would export identically zero, because a non-Darcy perforation has a zero
+  // well index by construction.
+  for (ms_well *w : well_list_)
+  {
+    if (w->has_non_darcy_perforation())
+    {
+      perforation_law_layout &layout = w->law_layout;
+      layout.n_vars = N_VARS;
+      layout.p_var = P_VAR;
+      layout.z_var = Z_VAR;
+      layout.nc = NC;
+      layout.np = NP;
+      layout.ne = NE;
+      layout.n_ops = N_OPS;
+      layout.sat_op = SAT_OP;
+      layout.flux_op = FLUX_OP;
+      layout.grav_op = GRAV_OP;
+      layout.thermal = THERMAL ? 1 : 0;
+      layout.eps_z = params->sim_eps;
+      w->law_cell_spe = &mesh->cell_spe;
+      w->law_layout_set = true;
+    }
+  }
+
   return 0;
 }
 
@@ -94,6 +122,103 @@ void engine_super_cpu<NC, NP, THERMAL>::enable_flux_output()
   }
 }
 
+// ---------------------------------------------------------------------------
+// Perforation flow laws (engine-side well flux laws)
+// ---------------------------------------------------------------------------
+//
+// A perforation whose flow law is LINEAR_IPR carries
+//
+//     q_total = intercept + productivity * (p_well - p_res - offset)      [1]
+//
+// positive FROM the well INTO the reservoir. `q_total` is a total rate in the
+// units of the law's basis (kmol/day, kg/day, or m3/day at upstream in-situ
+// conditions) and is converted to component molar rates with the state and the
+// mixture properties of the UPSTREAM block:
+//
+//     m       = q_total                    (MOLAR)
+//             = q_total / Mw               (MASS)
+//             = q_total * rho_m            (VOLUMETRIC)
+//     q_c     = m * z_c
+//     q_e     = m * (h + spe * Mw)                                        [2]
+//
+// The three upstream mixture properties are read from the SAME interpolated
+// operator table the rest of the assembly uses, so the law is differentiated
+// exactly rather than by finite differences:
+//
+//     rho_m   = sum_j  SAT_j * sum_c FLUX_OP[j, c]   = sum_j s_j rho_mj   [kmol/m3]
+//     rho_mass= sum_j  SAT_j * GRAV_OP[j]            = sum_j s_j rho_j    [kg/m3]
+//     rho_h   = sum_j  SAT_j * FLUX_OP[j, NC]        = sum_j s_j rho_mj h_j
+//     Mw      = rho_mass / rho_m           (mixture molecular weight, kg/kmol)
+//     h       = rho_h    / rho_m           (mixture molar enthalpy, kJ/kmol)
+//
+// The identity Mw = sum_c Mw_c z_c holds because rho_j = rho_mj * sum_c Mw_c x_cj,
+// so the mass/molar density ratio IS the mole-weighted mixture weight -- which is
+// why no per-component molecular weight table has to be handed to the engine.
+// Likewise h = sum_j nu_j h_j with nu_j = s_j rho_mj / rho_m, which is exactly the
+// mixture molar enthalpy.
+//
+// z_c is taken from the upstream STATE (clipped at params->sim_eps and
+// renormalized), not from the operators, so that sum_c z_c == 1 identically and
+// the composition split is the state's own.
+//
+// The residual convention is the engine's: RHS[i] accumulates -dt*(inflow), so
+// a rate leaving block i is added with a plus sign.
+//
+// Steps [1]-[5] (rates and analytic derivatives) live in the shared
+// perforation_law_rates() helper in ms_well.cpp, which the rate REPORTING
+// paths (ms_well::calc_rates*, value-only) call as well -- one source of
+// truth, so what is reported IS what was assembled (review finding R1). Only
+// the scatter [6] stays here.
+template <uint8_t NC, uint8_t NP, bool THERMAL>
+void engine_super_cpu<NC, NP, THERMAL>::add_perforation_flow_law(
+    index_t conn_idx, index_t i, index_t j, index_t diag_idx, index_t jac_idx,
+    value_t dt, const std::vector<value_t> &X, value_t *Jac, std::vector<value_t> &RHS)
+{
+    const perforation_law_conn &pconn = perforation_law_conns[perforation_law_of_conn[conn_idx]];
+    const perforation_flow_law &law = pconn.law;
+    const index_t wb = pconn.well_block;
+    const index_t rb = pconn.res_block;
+    const bool i_is_well = (i == wb);
+    (void)j;
+
+    perforation_law_layout layout;
+    layout.n_vars = N_VARS;
+    layout.p_var = P_VAR;
+    layout.z_var = Z_VAR;
+    layout.nc = NC;
+    layout.np = NP;
+    layout.ne = NE;
+    layout.n_ops = N_OPS;
+    layout.sat_op = SAT_OP;
+    layout.flux_op = FLUX_OP;
+    layout.grav_op = GRAV_OP;
+    layout.thermal = THERMAL ? 1 : 0;
+    layout.eps_z = params->sim_eps;
+
+    // [1]-[5] rates (positive from the well into the reservoir) and analytic
+    // derivatives w.r.t. the states of both connected blocks
+    value_t rate[NE];
+    value_t drate_w[NE * N_VARS], drate_r[NE * N_VARS];
+    perforation_law_rates(law, wb, rb, layout, X.data(), op_vals_arr.data(), op_ders_arr.data(),
+                          THERMAL ? mesh->cell_spe.data() : nullptr,
+                          rate, drate_w, drate_r);
+
+    // [6] scatter into row i: the well side loses the rate, the reservoir side gains it
+    const value_t sgn = i_is_well ? 1.0 : -1.0;
+    for (uint8_t c = 0; c < NE; c++)
+    {
+        RHS[i * N_VARS + c] += sgn * rate[c] * dt;
+
+        const value_t *d_self = i_is_well ? &drate_w[c * N_VARS] : &drate_r[c * N_VARS];
+        const value_t *d_other = i_is_well ? &drate_r[c * N_VARS] : &drate_w[c * N_VARS];
+        for (uint8_t v = 0; v < N_VARS; v++)
+        {
+            Jac[diag_idx + c * N_VARS + v] += sgn * d_self[v] * dt;
+            Jac[jac_idx + c * N_VARS + v] += sgn * d_other[v] * dt;
+        }
+    }
+}
+
 template <uint8_t NC, uint8_t NP, bool THERMAL>
 int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS)
 {
@@ -109,6 +234,12 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
     const std::vector<index_t>& velocity_offset = mesh->velocity_offset;
     const std::vector<index_t>& op_num = mesh->op_num;
     const std::vector<value_t>& cell_spe = mesh->cell_spe;
+    // Engine-side perforation flow laws. Hoisted to a raw pointer, null unless
+    // some perforation declares one: the connection loop writes RHS and Jac, so
+    // the compiler cannot prove a std::vector member is not aliased by those
+    // writes and would reload its begin/end on every connection.
+    const int *perf_law_of_conn =
+        perforation_law_of_conn.empty() ? nullptr : perforation_law_of_conn.data();
 
     value_t* Jac = jacobian->get_values();
     index_t* diag_ind = jacobian->get_diag_ind();
@@ -670,6 +801,14 @@ int engine_super_cpu<NC, NP, THERMAL>::assemble_jacobian_array(value_t dt, std::
                 }
             }
 
+
+            // [4b] engine-side perforation flow law (e.g. a linear IPR). The
+            // perforation carries a zero well index, so the Darcy branch above
+            // contributed nothing to it and this is the whole coupling.
+            if (perf_law_of_conn != nullptr && perf_law_of_conn[conn_idx] >= 0)
+            {
+                add_perforation_flow_law(conn_idx, i, j, diag_idx, jac_idx, dt, X, Jac, RHS);
+            }
 
             conn_idx++;
             if (j < n_res_blocks)

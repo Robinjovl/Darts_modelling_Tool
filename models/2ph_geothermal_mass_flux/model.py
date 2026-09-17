@@ -1,5 +1,6 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.models.cicd_model import CICDModel
+from darts.models.conditions import CellSource
 from darts.engines import value_vector, ms_well
 from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
@@ -102,27 +103,32 @@ class Model(CICDModel):
                                                is_inj=False, target=-self.well_rate, phase_name='wat')
 
 
-    def set_rhs_flux(self, t: float = None):
+    def set_boundary_conditions(self):
         '''
-        function to specify the inflow or outflow to the cells
-        it sets up self.rhs_flux vector on nvar * ncells size
-        which will be added to rhs in darts_model.run_python function
+        Mass-flux pseudo-boundary: a constant in/outflow imposed directly on the
+        cells listed in self.inflow_cells, the mode='rhs' alternative to the
+        producer well of mode='wells'. Registered as a unified condition item
+        (self.conditions); mode='wells' registers nothing and is driven by the
+        well controls instead.
+        '''
+        if self.wells_mode != 'rhs':
+            return
+        self.conditions.add(CellSource(cells=self.inflow_cells, rates=self.mass_flux_rates))
+
+    def mass_flux_rates(self, t: float):
+        '''
+        Rates of the mass-flux pseudo-boundary, positive INTO the cell, in the
+        residual units of the target equation, re-read from self.outflow on every
+        Newton iteration.
         :param inflow_cells: cell indices where to apply inflow or outflow
         :param inflow_var_idx: variable index [0..nvars-1]
         :param outflow: inflow_var_idx<nc => kMol/day, else kJ/day (thermal var)
-        if outflow < 0 then it is actually inflow
+        a positive outflow removes from the cell, so it enters the source with a
+        minus sign; if outflow < 0 then it is actually inflow
         '''
-        nv = self.physics.n_vars
-        nb = self.reservoir.mesh.n_blocks
-        n_res_blocks = self.reservoir.mesh.n_res_blocks
-        rhs_flux = np.zeros(nb * nv)
-
-        # extract pointer to values corresponding to var_idx
-        rhs_flux_var = rhs_flux[self.inflow_var_idx:n_res_blocks*nv:nv]
-        # set values for the cells defined in inflow_cells
-        rhs_flux_var[self.inflow_cells] = self.outflow
-
-        return rhs_flux
+        rates = np.zeros((len(self.inflow_cells), self.physics.n_vars))
+        rates[:, self.inflow_var_idx] = -self.outflow
+        return rates
 
 
 class ModelProperties(PropertyContainer):

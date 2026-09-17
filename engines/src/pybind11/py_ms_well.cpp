@@ -50,6 +50,16 @@ void pybind_ms_well(py::module& m)
         .def_readonly("well_bottom_idx", &ms_well::well_bottom_idx)
 
         .def_readwrite("perforations", &ms_well::perforations)
+        .def_readwrite("perforation_flow_laws", &ms_well::perforation_flow_laws,
+            "Per-perforation flow law, parallel to `perforations` (DARCY beyond its size)")
+        .def("set_perforation_flow_law", &ms_well::set_perforation_flow_law,
+            "Attach a flow law to one existing perforation (requires well_index == 0)",
+            "perforation_index"_a, "law"_a)
+        .def("get_perforation_flow_law", &ms_well::get_perforation_flow_law,
+            "Flow law of one perforation; DARCY when none was attached",
+            "perforation_index"_a, py::return_value_policy::copy)
+        .def("has_non_darcy_perforation", &ms_well::has_non_darcy_perforation,
+            "Whether any perforation of this well carries a non-DARCY flow law")
         // For lateral heat transfer in DFM wells
         .def_readwrite("with_lateral_heat_transfer", &ms_well::with_lateral_heat_transfer)
         .def_readwrite("connections_for_lateral_heat_transfer", &ms_well::connections_for_lateral_heat_transfer)
@@ -72,5 +82,25 @@ void pybind_ms_well(py::module& m)
         .value("EPM", ms_well::MS_Type::EPM)
         .value("DFM", ms_well::MS_Type::DFM)
         .export_values();
+
+    py::enum_<perforation_flow_law_type>(m, "perforation_flow_law_type",
+        "How the flux across a well perforation is computed")
+        .value("DARCY", perforation_flow_law_type::DARCY)
+        .value("LINEAR_IPR", perforation_flow_law_type::LINEAR_IPR);
+
+    py::enum_<ipr_rate_basis>(m, "ipr_rate_basis",
+        "Basis in which the total rate of a LINEAR_IPR perforation is expressed")
+        .value("MOLAR", ipr_rate_basis::MOLAR)
+        .value("MASS", ipr_rate_basis::MASS)
+        .value("VOLUMETRIC", ipr_rate_basis::VOLUMETRIC);
+
+    py::class_<perforation_flow_law>(m, "perforation_flow_law",
+        "Parameters of the flow law of one well perforation")
+        .def(py::init<>())
+        .def_readwrite("law", &perforation_flow_law::law)
+        .def_readwrite("basis", &perforation_flow_law::basis)
+        .def_readwrite("productivity", &perforation_flow_law::productivity)
+        .def_readwrite("offset", &perforation_flow_law::offset)
+        .def_readwrite("intercept", &perforation_flow_law::intercept);
 }
 #endif // PYBIND11_ENABLED

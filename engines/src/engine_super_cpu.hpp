@@ -118,6 +118,25 @@ public:
 
   int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS);
 
+  /// @brief This engine assembles non-Darcy perforation flow laws (CPU only).
+  bool supports_perforation_flow_laws() const override { return true; }
+
+  /// @brief Add the perforation flow-law flux of one connection to row `i`.
+  ///
+  /// Called from assemble_jacobian_array() for a connection whose perforation
+  /// carries a non-Darcy flow law. The perforation's well index is zero, so the
+  /// Darcy branch above contributed nothing to it and this is the entire
+  /// well-reservoir coupling across that interface.
+  ///
+  /// @param conn_idx  connection index (mesh ordering, == CSR ordering minus diagonals)
+  /// @param i         row block, @param j column block (one is the well segment)
+  /// @param diag_idx  offset of the (i,i) block in the CSR values array
+  /// @param jac_idx   offset of the (i,j) block in the CSR values array
+  void add_perforation_flow_law(index_t conn_idx, index_t i, index_t j,
+                                index_t diag_idx, index_t jac_idx, value_t dt,
+                                const std::vector<value_t> &X, value_t *Jac,
+                                std::vector<value_t> &RHS);
+
   //double calc_newton_residual();
 
   int adjoint_gradient_assembly(value_t dt, std::vector<value_t>& X, csr_matrix_base* jacobian, std::vector<value_t>& RHS);

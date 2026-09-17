@@ -4,9 +4,9 @@ import os
 
 from dataclasses import dataclass
 from darts.models.darts_model import DartsModel
+from darts.models.conditions import CellSource, DirichletPin
 from darts.nonlinear_solvers import Norm, NewtonSolver, ChopSpec
 from darts.engines import value_vector
-from darts.input.input_data import linear_solver_types
 from math import fabs
 try:
     from darts.engines import copy_data_to_device, copy_data_to_host, allocate_device_data
@@ -89,6 +89,44 @@ property_regions  = [0, 1, 2, 3, 4, 5, 6]
 layers_to_regions = {"1": 0, "2": 1, "3": 2, "4": 3, "5": 4, "6": 5, "7": 6}
 ######
 
+
+class ProjectedStateNewtonSolver(NewtonSolver):
+    """Newton solver that projects the model's state-pinning conditions before
+    every assembly.
+
+    This model pins the geothermal temperature of the top/bottom cell rows with a
+    DirichletPin(mode='state') (see Model.register_conditions). The pin has to be
+    written BEFORE engine.assemble_linear_system(), so that the residual, the
+    Jacobian and the convergence test are all evaluated at the pinned state --
+    the ordering that used to be guaranteed by this model's private copy of the
+    Newton loop (and, before the conditions layer, by its set_top_bot_temp()).
+
+    The stock NewtonSolver has no pre-assembly per-iteration stage (see
+    ConditionItem.project_state), so the same ordering is reproduced with the two
+    hooks that bracket it:
+
+    * run_timestep()   -- the projection preceding the FIRST assembly of the step,
+    * post_iteration() -- called immediately after every Newton update, i.e.
+                          immediately before the next assembly.
+
+    Nothing touches engine.X between those points and the assembly, so the state
+    entering every assembly is identical to the private loop's. The projection is
+    idempotent, and DirichletPin re-asserts the same values post-assembly through
+    the regular conditions stage.
+    """
+
+    def run_timestep(self, dt: float, t: float, verbose: int | None = None) -> bool:
+        # projection before the first assembly of this timestep
+        self.model.conditions.project_state(t)
+        return super().run_timestep(dt, t, verbose)
+
+    def post_iteration(self, dt: float, t: float, iteration: int):
+        super().post_iteration(dt, t, iteration)
+        # the Newton update just moved the pinned entries: re-project them before
+        # the next assembly sees them
+        self.model.conditions.project_state(t)
+
+
 class Model(DartsModel):
     def __init__(self, specs):
         super().__init__()
@@ -110,8 +148,16 @@ class Model(DartsModel):
         # reproduces the bounded-baseline timestep/cut counts and runtime. (The previous
         # global chop uses relative |dX|/|X|, which over-restricts near z~1e-11 and did
         # not prevent the cuts; looser local caps >=0.1 let the solver reach t<0 K -> NaN.)
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=12,
-                                           chop=ChopSpec(mode='local', factor=0.01),
+        # NOTE on the chop factor: this model ran its own copy of the Newton loop
+        # until the loop was migrated onto the framework solver. That copy called
+        # engine.apply_newton_update() directly and never synced the spec to the
+        # engine, so the requested factor 0.01 was inert and the engine default
+        # (local chop, factor 0.1) is what actually ran. The value below is that
+        # effective value, so the migration is bit-identical. Tightening it to
+        # 0.01 (as the comment above proposes) is a numerical change and needs
+        # its own re-baseline of the SPE11b run.
+        self.nonlinear_solver = ProjectedStateNewtonSolver(tolerance=1e-3, max_iterations=12,
+                                           chop=ChopSpec(mode='local', factor=0.1),
                                            norm=Norm.L2)  # Norm.LINF if you use m.set_rhs() for injection
         self.set_sim_params(first_ts=1e-6, mult_ts=2, max_ts=365, tol_linear=1e-4,
                             it_linear=50)
@@ -289,57 +335,109 @@ class Model(DartsModel):
         else:
             pass
 
-    def apply_rhs_flux(self, dt: float, t: float):
-        if self.specs['RHS'] is False:
-            # If the function has not been overloaded, pass
+    def register_conditions(self):
+        """Register the Python-side conditions of the RHS (well-less) formulation.
+
+        Called at the end of set_boundary_conditions(), i.e. after set_op_list()
+        and after the reservoir resolved well_cells / top_cells / bot_cells, and
+        before DartsModel.init() compiles and binds the set.
+
+        Two items replace what this model used to hand-roll:
+
+        * a CellSource carrying the CO2/H2O mass injection (and, for the thermal
+          formulation, the injected enthalpy) of every well cell -- the former
+          set_rhs_flux()/apply_rhs_flux() pair;
+        * a DirichletPin(mode='state') prescribing the geothermal temperature of
+          the top and bottom cell rows -- the former set_top_bot_temp(), which
+          run_timestep() called (with an explicit GPU host round-trip) before
+          every assembly. The pin is projected from the same place, now through
+          self.conditions.project_state(t) driven by ProjectedStateNewtonSolver;
+          the item owns the round-trip.
+        """
+        if self.specs['RHS'] is not True:
+            # wells carry the injection: no Python-side source, and no pin
             return
-        rhs = np.array(self.physics.engine.RHS, copy=False)
-        n_res = self.reservoir.mesh.n_res_blocks * self.physics.n_vars
-        rhs[:n_res] += self.set_rhs_flux(t) * dt
+
+        # CO2/H2O (+ enthalpy) injection in the well cells. well_cells is one
+        # entry per well, each a cell index or an array of them; the flattened
+        # order is the order the old nested loop wrote them in.
+        wells = [np.atleast_1d(np.asarray(well)).ravel() for well in self.reservoir.well_cells]
+        self.source_cells = np.concatenate(wells) if wells else np.empty(0, dtype=np.int64)
+        # per source cell: which well it belongs to, and how many cells that well has
+        self.source_well_idx = np.concatenate(
+            [np.full(len(well), i, dtype=np.int64) for i, well in enumerate(wells)]
+        ) if wells else np.empty(0, dtype=np.int64)
+        self.source_well_size = np.concatenate(
+            [np.full(len(well), len(well), dtype=np.int64) for well in wells]
+        ) if wells else np.empty(0, dtype=np.int64)
+        self._enthalpy_op_idx = None  # resolved on first evaluation
+        self.conditions.add(CellSource(cells=self.source_cells, rates=self.injection_rates))
+
+        # Geothermal temperature of the top and bottom rows. The values are a
+        # callable because reservoir.centroids is only assigned in
+        # set_initial_conditions() for the ny != 1 (SPE11c) reservoir, i.e. after
+        # this runs.
+        if self.physics.thermal:
+            self.pinned_cells = np.concatenate(
+                (np.asarray(self.reservoir.bot_cells, dtype=np.int64),
+                 np.asarray(self.reservoir.top_cells, dtype=np.int64))
+            )
+            self.conditions.add(DirichletPin(cells=self.pinned_cells,
+                                             equation=self.physics.n_vars - 1,
+                                             values=self.geothermal_temperature,
+                                             mode='state'))
         return
 
-    def set_rhs_flux(self, t: float = None):
-        if self.specs['RHS'] is True:
-            nc = self.physics.nc
-            nv = self.physics.n_vars
-            nb = self.reservoir.mesh.n_res_blocks
-            rhs = np.zeros(nb * nv)
+    def geothermal_temperature(self, t: float = None):
+        """Pinned temperature of self.pinned_cells: T = 70 - 0.025 * z, origin at bottom."""
+        return 273.15 + 70 - self.reservoir.centroids[self.pinned_cells, 2] * 0.025
 
-            region = 0
-            molar_masses = self.physics.property_containers[region].Mw
-            mole_fractions = self.inj_stream[:nc]
-            n_comp = np.zeros(nc)
-            nu_idxV = list(self.physics.property_containers[region].output_props.keys()).index("nu_V")
-            nu_idxA = list(self.physics.property_containers[region].output_props.keys()).index("nu_Aq")
-            enth_idx = list(self.physics.property_containers[region].output_props.keys()).index("enthalpy_V")
-            enth_idxAq = list(self.physics.property_containers[region].output_props.keys()).index("enthalpy_Aq")
+    def injection_rates(self, t: float, states: np.ndarray) -> np.ndarray:
+        """Injected component (and energy) rates of every source cell.
 
-            for i, well in enumerate(self.reservoir.well_cells):
-                for well_cell in well:
-                    p_wellcell = self.physics.engine.X[well_cell * nv]
-                    if self.physics.thermal:
-                        state = value_vector([p_wellcell, *self.inj_stream[:-2], self.inj_stream[-1]])
-                    else:
-                        state = value_vector([p_wellcell] + self.inj_stream[:-2])
+        Rates are positive INTO the cell, in the engine residual units per day
+        (kmol/day per component equation, kJ/day for the energy equation); the
+        framework applies rhs[cell, c] -= rate * dt, which is what the old
+        set_rhs_flux()/apply_rhs_flux() pair spelled out by hand.
 
-                    values = value_vector(np.zeros(self.physics.n_ops))
-                    # values_np = np.array(values)
-                    self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
-                    enth = values[nu_idxV] * values[enth_idx] + values[nu_idxA] * values[enth_idxAq]  # mole fraction moles in vapour [V/V+A] * molar enthalpy of vapour [kJ/kmol] + aq
-                    # enth = self.physics.property_containers[0].compute_total_enthalpy(state)
-                    avg_molar_mass = sum(mf * M for mf, M in zip(mole_fractions, molar_masses))
-                    tot_moles = self.inj_rate[i] / avg_molar_mass / len(well)  # kg/day / kg/mol -> mol/day
+        :param t: current time [days] (the rates depend on it only through the
+            injection schedule, which set_well_rhs() writes into self.inj_rate)
+        :param states: (n_source_cells, n_vars) state of the source cells
+        """
+        nc = self.physics.nc
+        nv = self.physics.n_vars
+        region = 0
+        molar_masses = self.physics.property_containers[region].Mw
+        mole_fractions = self.inj_stream[:nc]
 
-                    for comp_idx in range(nc):
-                        comp_flux_idx = well_cell * nv + comp_idx  # Index
-                        n_comp[comp_idx] = tot_moles * mole_fractions[comp_idx]  # Compute component moles
-                        rhs[comp_flux_idx] -= n_comp[comp_idx]  # Update rhs
+        if self._enthalpy_op_idx is None:
+            output_props = list(self.physics.property_containers[region].output_props.keys())
+            self._enthalpy_op_idx = (output_props.index("nu_V"), output_props.index("nu_Aq"),
+                                     output_props.index("enthalpy_V"), output_props.index("enthalpy_Aq"))
+        nu_idxV, nu_idxA, enth_idx, enth_idxAq = self._enthalpy_op_idx
 
-                    if self.physics.thermal:
-                        temp_idx = well_cell * nv + nv - 1  # Last equation index (temperature)
-                        rhs[temp_idx] -= enth * tot_moles
+        rates = np.zeros((len(self.source_cells), nv))
+        for k, well_cell in enumerate(self.source_cells):
+            p_wellcell = float(states[k, 0])
+            if self.physics.thermal:
+                state = value_vector([p_wellcell, *self.inj_stream[:-2], self.inj_stream[-1]])
+            else:
+                state = value_vector([p_wellcell] + self.inj_stream[:-2])
 
-            return rhs
+            values = value_vector(np.zeros(self.physics.n_ops))
+            self.physics.property_itor[self.op_num[well_cell]].evaluate(state, values)
+            enth = values[nu_idxV] * values[enth_idx] + values[nu_idxA] * values[enth_idxAq]  # mole fraction moles in vapour [V/V+A] * molar enthalpy of vapour [kJ/kmol] + aq
+            avg_molar_mass = sum(mf * M for mf, M in zip(mole_fractions, molar_masses))
+            # kg/day / kg/mol -> mol/day
+            tot_moles = self.inj_rate[self.source_well_idx[k]] / avg_molar_mass / self.source_well_size[k]
+
+            for comp_idx in range(nc):
+                rates[k, comp_idx] = tot_moles * mole_fractions[comp_idx]
+
+            if self.physics.thermal:
+                rates[k, nv - 1] = enth * tot_moles  # last equation (energy)
+
+        return rates
 
     def set_physics(self, temperature: float = None):
         """Physical properties"""
@@ -681,6 +779,8 @@ class Model(DartsModel):
                     self.reservoir.bot_cells.append(ids[self.reservoir.discretizer.centroid_all_cells[ids, 2].argmin()])
         else:
             pass
+
+        self.register_conditions()
         return
 
     def set_str_boundary_volume_multiplier(self):
@@ -736,163 +836,6 @@ class Model(DartsModel):
             mass_components[component_name] = mass_vapor[component_name] + mass_aqueous[component_name]
 
         return mass_components, mass_vapor, mass_aqueous
-
-    def set_top_bot_temp(self):
-        nv = self.physics.n_vars
-        for bot_cell in self.reservoir.bot_cells:
-            # T = 70 - 0.025 * z  - origin at bottom
-            T_spec_bot = 273.15 + 70 - self.reservoir.centroids[bot_cell, 2] * 0.025
-            target_cell = bot_cell*nv+nv-1
-            self.physics.engine.X[target_cell] = T_spec_bot
-
-        for top_cell in self.reservoir.top_cells:
-            # T = 70 - 0.025 * z  - origin at bottom
-            T_spec_top = 273.15 + 70 - self.reservoir.centroids[top_cell, 2] * 0.025
-            target_cell = top_cell*nv+nv-1
-            self.physics.engine.X[target_cell] = T_spec_top
-        return
-
-
-    def run_timestep(self, dt: float, t: float, verbose: bool = True):
-        """
-        Method to solve Newton loop for specified timestep
-
-        :param dt: Timestep size [days]
-        :type dt: float
-        :param t: Current time [days]
-        :type t: float
-        :param verbose: Switch for verbose, default is True
-        :type verbose: bool
-        """
-        assert dt > 0, "Time step size must be a positive value!"
-
-        max_newt = self.nonlinear_solver.spec.max_iterations
-        max_residual = np.zeros(max_newt + 1)
-        solver = self.nonlinear_solver
-        status = solver.status
-        status.reset()
-        self.nonlinear_solver.spec.well_tolerance_multiplier = 1e2
-        self.timer.node["simulation"].start()
-
-        residual_history = []
-        for i in range(max_newt + 1):
-
-            if self.physics.thermal and self.specs['RHS'] is True:
-                # apply bottom and top boundary conditions
-
-                if self.platform == 'gpu':
-                    copy_data_to_host(self.physics.engine.X, self.physics.engine.get_X_d())
-
-                self.set_top_bot_temp()
-
-                if self.platform == 'gpu':
-                    copy_data_to_device(self.physics.engine.X, self.physics.engine.get_X_d())
-
-            # Update well phase velocities and derivatives if DFM wells are used
-            if self.has_dfm_well:
-                self.update_dfm_well_vels_and_ders(dt, t, i)
-
-            # assemble Jacobian and residual of reservoir and well blocks
-            self.physics.engine.assemble_linear_system(dt)
-
-            # apply RHS flux
-            self.apply_rhs_flux(dt, t)
-
-
-            if self.platform == "gpu":
-                copy_data_to_device(
-                    self.physics.engine.RHS, self.physics.engine.get_RHS_d()
-                )
-
-            if not self.has_dfm_well:
-                status.newton_residual = (
-                    self.physics.engine.calc_newton_residual()
-                )  # calc norm of residual
-            else:
-                # Method is either 1 or 2
-                status.newton_residual = (
-                    self.physics.engine.calc_coupled_well_reservoir_residual(
-                        self.nonlinear_solver.spec.coupled_well_res_norm_method
-                    )
-                )
-
-            max_residual[i] = status.newton_residual
-            counter = 0
-            for j in range(i):
-                denom = max(np.fabs(max_residual[i]), np.finfo(float).eps)
-                if (
-                    abs(max_residual[i] - max_residual[j]) / denom
-                    < self.nonlinear_solver.spec.stationary_point_tolerance
-                ):
-                    counter += 1
-            if counter > 2:
-                if verbose:
-                    print("Stationary point detected!")
-                break
-
-            status.well_residual = self.physics.engine.calc_well_residual()
-            residual_history.append(
-                (
-                    status.newton_residual,  # matrix residual
-                    status.well_residual,  # well residual
-                    1.0,
-                )
-            )  # Newton update coefficient
-
-            status.n_newton = i
-            #  check tolerance if it converges
-            if (
-                status.newton_residual < self.nonlinear_solver.spec.tolerance
-                and status.well_residual
-                < self.nonlinear_solver.spec.tolerance * self.nonlinear_solver.spec.well_tolerance_multiplier
-            ) or status.n_newton == max_newt:
-                if i > 0:  # min_i_newton
-                    break
-
-            if isinstance(self.data_ts.linear_type, linear_solver_types):
-                # solvers via Python interface
-                if self.data_ts.linear_type in [
-                    linear_solver_types.CPU_PETSC_CPR,
-                    linear_solver_types.CPU_PETSC_FS,
-                ]:
-                    self.petsc_solve_linear_equation()
-                elif self.data_ts.linear_type in [linear_solver_types.CPU_PARDISO]:
-                    self.pardiso_solve_linear_equation()
-                else:
-                    raise Exception(
-                        "Unknown linear solver type", self.data_ts.linear_type
-                    )
-            else:
-                # compile-time C++ linear solvers
-                r_code = self.physics.engine.solve_linear_equation()
-                status.linear_solver_rc = r_code
-                if r_code != 0:
-                    # failed linear solve: do NOT apply a stale update; the
-                    # post-loop verdict reads status.linear_solver_rc -> fail
-                    self._linear_solver_rc_last = r_code
-                    break
-                status.n_linear += self.physics.engine.get_last_linear_iters()
-            self.timer.node["newton update"].start()
-            self.physics.engine.apply_newton_update(dt)
-            self.timer.node["newton update"].stop()
-
-        # End of newton loop: convergence verdict previously made by the C++
-        # post_newtonloop (linear solver rc + residual re-check), now in Python.
-        converged = not (
-            status.linear_solver_rc != 0
-            or status.newton_residual >= self.nonlinear_solver.spec.tolerance
-            or status.well_residual > 1e2 * self.nonlinear_solver.spec.tolerance
-        )
-        converged = self.physics.engine.post_newtonloop(dt, t, converged)
-        solver.stats.update(converged, status)
-
-        self.time.append(t)
-        self.n_newton_iters.append(status.n_newton)
-        self.time_step_size.append(dt)
-
-        self.timer.node["simulation"].stop()
-
-        return converged
 
     def set_well_rhs(self, Dt, inj_rate, event1, event2):
         if self.physics.engine.t >= 25 * Dt and self.physics.engine.t < 50 * Dt and event1:

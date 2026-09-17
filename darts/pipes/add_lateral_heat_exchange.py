@@ -1,6 +1,15 @@
+import warnings
+
 import numpy as np
 
+from darts.models.conditions import (
+    AssemblyContext,
+    BlockCSRView,
+    ConditionItem,
+    pattern_identity,
+)
 from darts.pipes.define_pipe_geometry import PipeGeometry
+from darts.pipes.linear_dfm_well_ipr import well_cell_property_container
 
 
 class SemiAnalyticalWellLateralHeatTransfer:
@@ -94,29 +103,30 @@ class SemiAnalyticalWellLateralHeatTransfer:
         This class defines lateral heat transfer between the wellbore the geometry of which is entered as the first
         input argument of the constructor and the surrounding rock/soil using a semi-analytical lateral heat
         transfer model.
-        Note that from the input args "U" and "well_layers_props", only one must be specified.
+        Note that from the input args "Ui" and "well_layers_props", exactly one must be specified
+        (and well_layers_props is not implemented yet — pass Ui).
 
         :param pipe_name: Name of the pipe (well) for which SemiAnalyticalWellLateralHeatTransfer is added.
         :type pipe_name: str
         :param pipe_geometry: The geometry of the pipe (well) for which lateral heat transfer is intended to be defined
         :type pipe_geometry: PipeGeometry
         :param earth_thermal_props: A dictionary containing earth thermal properties including these keys:
-        "T": Earth temperature with the number of elements equal to the number of segments of the wellbore (list)
-        "c": Earth specific heat capacity (float or list)
-        "K": Earth thermal conductivity (float or list)
-        "rho": Earth density (float or list)
+        "T": Earth temperature [K] with the number of elements equal to the number of segments of the wellbore (list)
+        "c": Earth specific heat capacity [J/kg/K] (float or list)
+        "K": Earth thermal conductivity [W/m/K] (float or list)
+        "rho": Earth density [kg/m3] (float or list)
         :type earth_thermal_props: dict
-        :param outermost_layer_OD: The outside diameter of the outermost layer of the wellbore before the formation, so
-        it could be a casing, a cement sheath, etc.
+        :param outermost_layer_OD: The outside diameter [m] of the outermost layer of the wellbore before the
+        formation, so it could be a casing, a cement sheath, etc.
         :type outermost_layer_OD: float
         :param perforated_segments: The list of the indices of the segments which are perforated. If not specified,
         it is assumed that the pipe has no perforated segments.
         :type perforated_segments: list
-        :param Ui: Overall heat transfer coefficient based on the inner pipe diameter. If Ui is not specified,
-        well_layers_props must be specified.
+        :param Ui: Overall heat transfer coefficient [W/m2/K] based on the inner pipe diameter. Exactly one of
+        Ui and well_layers_props must be specified.
         :type Ui: float
-        :param well_layers_props: The properties of the layers surrounding the fluid in the wellbore to thermal
-        calculations. If well_layers_props is not specified, Ui must be specified.
+        :param well_layers_props: The properties of the layers surrounding the fluid in the wellbore for thermal
+        calculations (Willhite U calculation). NOT IMPLEMENTED — pass Ui instead.
         :type well_layers_props: dict
         :param time_function_name: The name of the time function used for transient calculation of heat transfer.
         Available options are "Ramey", "Chiu&Thakur", and "Zhang". Default is "Chiu&Thakur".
@@ -155,14 +165,20 @@ class SemiAnalyticalWellLateralHeatTransfer:
         # Calculate earth thermal diffusivity
         self.alpha = self.K_earth / (self.rho_earth * self.c_earth)
 
+        if (Ui is None) == (well_layers_props is None):
+            raise ValueError(
+                "Specify exactly one of Ui and well_layers_props for "
+                "SemiAnalyticalWellLateralHeatTransfer."
+            )
         if well_layers_props is not None:
-            # The ID of the smallest pipe specified in well_layers_props
-            # must be the same value as the pip_IR in the class PipeGeometry
-            self.well_layers_props = well_layers_props
-            # Calculate U
+            raise NotImplementedError(
+                "Willhite U calculation from well_layers_props is not "
+                "implemented; pass Ui (based on the inner pipe area) instead."
+            )
 
         self.tubing_IR = pipe_geometry.pipe_IR
         self.Ui = Ui
+        self._ramey_warned = False
 
         self.time_function_name = time_function_name
         self.outermost_layer_OD = outermost_layer_OD
@@ -189,32 +205,60 @@ class SemiAnalyticalWellLateralHeatTransfer:
                 f'** SemiAnalyticalWellLateralHeatTransfer for the well "{pipe_name}" is added!'
             )
 
-    def evaluate(self, T_segments, simulation_timer):
+    def _time_function(self, simulation_timer_seconds):
+        """Dimensionless formation-resistance time function f(t) per segment.
+
+        :param simulation_timer_seconds: Simulation timer [seconds]
+        :return: f(t) as an array over the well segments
         """
-        :param T_segments: Fluid temperature inside the segment [Kelvin]
-        :param simulation_timer: Simulation timer [day]
-        :return Lateral heat rate [kJ/day]
-        """
-        simulation_timer = simulation_timer * 24 * 60 * 60
         # Time function evaluation
         if self.time_function_name == "Ramey":
             # Ramey's long-time asymptotic expression is not suitable before about seven days.
             f_t = -np.log(
                 (self.outermost_layer_OD / 2)
-                / (2 * np.sqrt(self.alpha * simulation_timer))
+                / (2 * np.sqrt(self.alpha * simulation_timer_seconds))
             )
             f_t -= 0.29
+            # At early times the asymptote turns non-positive, which flips the
+            # heat-rate sign / blows up the division; clamp to a positive floor.
+            floor = 1e-6
+            if np.any(f_t < floor):
+                if not self._ramey_warned:
+                    self._ramey_warned = True
+                    # f(t) <= 0 for t <= r_h^2 * e^0.58 / (4*alpha)
+                    t_invalid_days = float(
+                        np.max(
+                            (self.outermost_layer_OD / 2 * np.exp(0.29)) ** 2
+                            / (4 * self.alpha)
+                        )
+                        / (24 * 60 * 60)
+                    )
+                    warnings.warn(
+                        f"Ramey time function is non-positive at "
+                        f"t = {simulation_timer_seconds / (24 * 60 * 60):.4g} d; "
+                        f"the long-time asymptote is invalid for roughly "
+                        f"t < {t_invalid_days:.3g} d with these properties (and "
+                        "inaccurate below about seven days). f(t) was clamped to "
+                        f"{floor:g}; use the 'Chiu&Thakur' or 'Zhang' time "
+                        "function for early times.",
+                        stacklevel=3,
+                    )
+                f_t = np.maximum(f_t, floor)
         elif self.time_function_name == "Chiu&Thakur":
             # Chiu and Thakur time function: Provides a reasonable approximation of transient wellbore-formation heat
             # exchange while avoiding the early time discontinuity that results from using Ramey's time function.
             f_t = 0.982 * np.log(
                 1
                 + 1.81
-                * np.sqrt(self.alpha * simulation_timer)
+                * np.sqrt(self.alpha * simulation_timer_seconds)
                 / (self.outermost_layer_OD / 2)
             )
         elif self.time_function_name == "Zhang":
-            t_d = self.alpha * simulation_timer / (self.outermost_layer_OD / 2) ** 2
+            t_d = (
+                self.alpha
+                * simulation_timer_seconds
+                / (self.outermost_layer_OD / 2) ** 2
+            )
             beta = np.empty_like(t_d)
             early_time = t_d < 2.8
             beta[early_time] = (
@@ -230,30 +274,25 @@ class SemiAnalyticalWellLateralHeatTransfer:
             raise TypeError(
                 "Unrecognized time function name " + self.time_function_name
             )
+        return f_t
 
-        # Lateral heat rate evaluation
-        if self.Ui is not None:
-            # For constant overall heat transfer coefficient
-            self.q_lateral_heat = (
-                2
-                * np.pi
-                * self.K_earth
-                * self.segment_lengths
-                * (self.T_earth - T_segments)
-                / (f_t + self.K_earth / (self.tubing_IR * self.Ui))
-            )
-        elif self.well_layers_props is not None:
-            # Calculate the overall heat transfer coefficient using Willhite's formula
-            U_to = "Willhite's formula"
-            r_to = "tubing_outside_radius"
-            self.q_lateral_heat = (
-                2
-                * np.pi
-                * self.K_earth
-                * self.segment_lengths
-                * (self.T_earth - T_segments)
-                / (f_t + self.K_earth / (r_to * U_to))
-            )
+    def evaluate(self, T_segments, simulation_timer):
+        """
+        :param T_segments: Fluid temperature inside the segment [Kelvin]
+        :param simulation_timer: Simulation timer [day]
+        :return Lateral heat rate [kJ/day]
+        """
+        f_t = self._time_function(simulation_timer * 24 * 60 * 60)
+
+        # Lateral heat rate evaluation for constant overall heat transfer coefficient
+        self.q_lateral_heat = (
+            2
+            * np.pi
+            * self.K_earth
+            * self.segment_lengths
+            * (self.T_earth - T_segments)
+            / (f_t + self.K_earth / (self.tubing_IR * self.Ui))
+        )
 
         # Set the lateral heat rate of the perforated well segments to zero
         self.q_lateral_heat[self.perforated_segments] = 0
@@ -262,33 +301,169 @@ class SemiAnalyticalWellLateralHeatTransfer:
             self.q_lateral_heat * 24 * 60 * 60 / 1000
         )  # Multiplying the heat rate by 24 * 60 * 60 / 1000 converts the unit from Joule/second to kJ/day
 
+    def conductance(self, simulation_timer):
+        """Per-segment fluid-to-earth thermal conductance C(t) [kJ/day/K].
 
-class SemiAnalyticalWellLateralHeatTransferHook:
+        Defined by q = C * (T_earth - T_fluid) with q in kJ/day (the rate
+        :meth:`evaluate` returns), so C is the analytic sensitivity
+        ``-dq/dT_fluid``. Perforated segments have C = 0, matching the zeroed
+        rate.
+
+        :param simulation_timer: Simulation timer [day]
+        :return: Conductance per segment [kJ/day/K]
+        """
+        f_t = self._time_function(simulation_timer * 24 * 60 * 60)
+        conductance = (
+            2
+            * np.pi
+            * self.K_earth
+            * self.segment_lengths
+            / (f_t + self.K_earth / (self.tubing_IR * self.Ui))
+        ) * (24 * 60 * 60 / 1000)  # W/K = J/s/K -> kJ/day/K
+        conductance[self.perforated_segments] = 0.0
+        return conductance
+
+
+class SemiAnalyticalWellLateralHeatTransferHook(ConditionItem):
     """
-    Hook that connects a SemiAnalyticalWellLateralHeatTransfer evaluator to the Newton solver.
+    Condition item connecting a SemiAnalyticalWellLateralHeatTransfer evaluator to the Newton solver.
 
     At each Newton iteration, it reads the current segment temperatures from the engine
     state vector, evaluates the lateral heat rates, and subtracts them from the energy
-    equation entries of the RHS vector.
+    equation entries of the RHS vector — for the well-BODY segments only (segments
+    ``1 .. num_segments - 1``): the wellhead segment rows carry the well-control
+    equations and must never receive source terms.
 
-    Create an instance in set_wells() and register it by appending to model.rhs_flux_hooks::
+    Units: the evaluator returns the heat rate in kJ/day; the engine energy residual
+    is dt-scaled with dt in days, so the RHS receives kJ, consistent with the
+    engine's energy-equation convention.
+
+    For the PT state specification the analytic Jacobian diagonal
+    ``dR_energy/dT += C(t) * dt`` (C from :meth:`SemiAnalyticalWellLateralHeatTransfer
+    .conductance`) is also added, and ``provides_jacobian`` is True. For the PH
+    state specification the hook stays RHS-only: the temperature entering the rate
+    is LAGGED within the Newton iteration (no analytic dT/d(p,h) chain yet), so
+    ``provides_jacobian`` is False. The hook is reachable only for DFM wells, which
+    require platform='cpu' (asserted in DartsModel.init), so the block-CSR Jacobian
+    is exposed.
+
+    The PH flash uses the property container of the WELL region -- the one
+    ``PhysicsBase.set_operators`` gives to ``WellOperators``, i.e.
+    ``property_containers[physics.regions[0]]`` -- resolved once at bind time
+    (:meth:`_resolve`) rather than hard-coded to region 0, so a multi-region
+    model cannot silently flash the wrong fluid. A missing container raises.
+
+    Create an instance in set_wells() and register it on the unified conditions
+    layer::
 
         lateral_heat_ev = SemiAnalyticalWellLateralHeatTransfer(...)
-        self.rhs_flux_hooks.append(
+        self.conditions.add(
             SemiAnalyticalWellLateralHeatTransferHook(self, self.reservoir.get_well(well_name), lateral_heat_ev)
         )
+
+    The framework then owns the lifecycle: :meth:`bind` resolves the property
+    container and the (energy, T) diagonal positions once ``init()`` has built
+    the engine, and :meth:`apply` receives the per-iteration
+    :class:`~darts.models.conditions.AssemblyContext` rather than reaching into
+    ``model.physics.engine`` itself. The item is ADDITIVE and reports the energy
+    rows of the well-body segments through :meth:`written_rows`, so a constraint
+    item claiming one of them is refused at ``init()``.
+
+    It declares no Jacobian stencil: every block it writes is a well-segment
+    DIAGONAL block, which the pattern always contains.
     """
 
     def __init__(self, model, well, lateral_heat_ev):
         self.model = model
         self.well = well
         self.lateral_heat_ev = lateral_heat_ev
+        self.provides_jacobian = (
+            model.physics.state_spec == model.physics.StateSpecification.PT
+        )
+        self._jac_idx = (
+            None  # flat jac_vals indices of the (energy, T) diagonal entries
+        )
+        # Property container used to flash the well segments on the PH path.
+        # Every block this hook touches is a WELL block, and the engine
+        # evaluates well cells with WellOperators, which PhysicsBase builds
+        # from property_containers[physics.regions[0]] -- so that is the region
+        # to flash with, not a hard-coded 0. Resolved once (see _resolve), not
+        # per Newton iteration.
+        self._property_container = None
 
-    def apply(self, dt: float, t: float):
+    def _resolve(self):
+        """Bind-time resolution of the region-dependent property container.
+
+        Only the PH path flashes a property container (for PT the segment
+        temperature is a primary variable), so the lookup -- and its loud
+        failure when the well region has no registered container -- happens
+        here rather than inside the Newton loop.
+        """
+        if self._property_container is None:
+            self._property_container = well_cell_property_container(
+                self.model.physics, self.well.well_head_idx
+            )
+        return self._property_container
+
+    # ------------------------------------------------------------- lifecycle
+    def bind(self, model):
+        """Resolve the property container and the (energy, T) diagonal entries.
+
+        Called once by :meth:`darts.models.conditions.ConditionSet.compile` at
+        the end of ``init()``, so an unsupported state specification and a well
+        region without a registered property container both fail there instead
+        of on the first Newton iteration.
+
+        :param model: the model being initialized
+        """
+        self.model = model
+        physics = model.physics
+        if physics.state_spec == physics.StateSpecification.PH:
+            self._resolve()
+        elif physics.state_spec != physics.StateSpecification.PT:
+            raise NotImplementedError(
+                f"SemiAnalyticalWellLateralHeatTransferHook does not support state_spec={physics.state_spec!r}."
+            )
+
+        self._jac_idx = None
+        if not self.provides_jacobian:
+            return
+        # PT only: the flat jac_vals indices of the (energy, T) diagonal entries
+        # of the well BODY segments. They are stamped with the pattern they were
+        # resolved against, so a re-initialized engine re-binds instead of
+        # writing at stale offsets (ConditionItem.rebind_if_stale).
+        n_vars = physics.n_vars
+        well = self.well
+        jac = BlockCSRView(physics.engine, n_vars, pattern=pattern_identity(model))
+        diag_pos = np.array(
+            [
+                jac.diag_pos(well.well_head_idx + segment)
+                for segment in range(1, well.num_segments)
+            ],
+            dtype=np.int64,
+        )
+        self._jac_idx = diag_pos * jac.block_size + (n_vars - 1) * n_vars + (n_vars - 1)
+        self.stamp_pattern(model)
+
+    def written_rows(self, model):
+        """The energy rows of the well BODY segments (review item E6).
+
+        Segment 0 -- the wellhead block, whose rows are the well-control
+        equations -- is structurally excluded, exactly as in :meth:`apply`.
+        """
+        n_vars = int(model.physics.n_vars)
+        head = int(self.well.well_head_idx)
+        return [
+            (head + segment) * n_vars + (n_vars - 1)
+            for segment in range(1, int(self.well.num_segments))
+        ]
+
+    def apply(self, ctx: AssemblyContext):
         physics = self.model.physics
         well = self.well
-        n_vars = physics.n_vars
-        X = np.asarray(physics.engine.X)
+        n_vars = ctx.n_vars
+        dt, t = ctx.dt, ctx.t
+        X = ctx.X
         X_well = X[
             well.well_head_idx * n_vars : (well.well_head_idx + well.num_segments)
             * n_vars
@@ -297,22 +472,30 @@ class SemiAnalyticalWellLateralHeatTransferHook:
         if physics.state_spec == physics.StateSpecification.PT:
             T_segments = X_well[:, -1]
         elif physics.state_spec == physics.StateSpecification.PH:
+            property_container = self._resolve()
             T_segments = np.zeros(well.num_segments)
             for i in range(well.num_segments):
-                physics.property_containers[0].evaluate(X_well[i])
-                T_segments[i] = physics.property_containers[0].temperature
+                property_container.evaluate(X_well[i])
+                T_segments[i] = property_container.temperature
         else:
             raise NotImplementedError(
                 f"SemiAnalyticalWellLateralHeatTransferHook does not support state_spec={physics.state_spec!r}."
             )
 
         lateral_heat_rate = self.lateral_heat_ev.evaluate(T_segments, t + dt)
-        rhs = np.asarray(physics.engine.RHS)
-        rhs_well = rhs[
+        rhs_well = ctx.rhs[
             well.well_head_idx * n_vars : (well.well_head_idx + well.num_segments)
             * n_vars
         ].reshape(well.num_segments, n_vars)
-        rhs_well[:, -1] -= lateral_heat_rate * dt
+        # segment 0 is the wellhead block, whose rows are well-control equations
+        rhs_well[1:, -1] -= lateral_heat_rate[1:] * dt
+
+        if self.provides_jacobian:
+            # PT: analytic diagonal dR_energy/dT. The residual received
+            # -C*(T_earth - T)*dt, so dR_energy/dT = +C*dt. Energy equation row
+            # and temperature column are both the last variable for PT.
+            conductance = self.lateral_heat_ev.conductance(t + dt)  # kJ/day/K
+            ctx.jac.jac_vals[self._jac_idx] += conductance[1:] * dt
 
 
 def add_numerical_well_lateral_heat_transfer(

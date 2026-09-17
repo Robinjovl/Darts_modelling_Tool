@@ -25,7 +25,7 @@ from darts.discretizer import index_vector as index_vector_discr
 from darts.discretizer import value_vector as value_vector_discr
 from darts.engines import conn_mesh, timer_node
 from darts.reservoirs.mesh.struct_discretizer import StructDiscretizer
-from darts.reservoirs.reservoir_base import ReservoirBase
+from darts.reservoirs.reservoir_base import BoundaryVolumeDict, ReservoirBase
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
@@ -56,6 +56,22 @@ class CPG_Reservoir(ReservoirBase):
         self.minpv = minpv  # minimal pore volume threshold to make cells inactive, m3
 
         self.snap_counter = 0
+
+        # Record of the far-field boundary volumes applied by
+        # set_boundary_volume(); kept in the same six-face form the structured
+        # reservoirs use so darts.models.conditions.ConstantStateBC can read one
+        # place. Writing it here has no effect by itself -- set_boundary_volume()
+        # is the entry point that touches the mesh.
+        self.boundary_volumes = BoundaryVolumeDict(
+            {
+                "xy_minus": None,
+                "xy_plus": None,
+                "yz_minus": None,
+                "yz_plus": None,
+                "xz_minus": None,
+                "xz_plus": None,
+            }
+        )
 
         self.vtk_filenames_and_times = {}
         self.vtkobj = 0
@@ -436,6 +452,29 @@ class CPG_Reservoir(ReservoirBase):
     def set_boundary_volume(
         self, xy_minus=-1, xy_plus=-1, yz_minus=-1, yz_plus=-1, xz_minus=-1, xz_plus=-1
     ):
+        """Assign a far-field volume to the outermost ACTIVE cell of each face.
+
+        Actnum-aware variant of the "huge boundary volume" open / constant-state
+        far field; a value of ``-1`` leaves the face untouched. Must be called
+        after :meth:`discretize` and followed by :meth:`apply_volume_depth`, and
+        both must happen BEFORE ``DartsModel.init()`` initializes the engine:
+        the engine caches ``PV = volume * poro`` once and a later volume write is
+        silently ignored (guarded below, see
+        :class:`~darts.models.conditions.ConstantStateBC`).
+        """
+        self.assert_pore_volumes_mutable("set_boundary_volume")
+        # record what was requested, for ConstantStateBC to validate
+        for face, value in (
+            ("xy_minus", xy_minus),
+            ("xy_plus", xy_plus),
+            ("yz_minus", yz_minus),
+            ("yz_plus", yz_plus),
+            ("xz_minus", xz_minus),
+            ("xz_plus", xz_plus),
+        ):
+            if value > -1:
+                self.boundary_volumes[face] = value
+
         mesh_volume = np.array(self.volume_all_cells, copy=False)
         local_to_global = np.array(self.discr_mesh.local_to_global, copy=False)
         global_to_local = np.array(self.discr_mesh.global_to_local, copy=False)
@@ -541,13 +580,30 @@ class CPG_Reservoir(ReservoirBase):
         skin: float = 0.0,
         ms_epm: bool = False,
         verbose: bool = False,
+        flow_law=None,
     ):
         """
         Function to add a perforation to the well
 
         :param well_seg_idx: Currently, this is only used for struct_reservoir.
+        :param flow_law: Optional engine-side perforation flow law, e.g.
+                         :class:`~darts.pipes.linear_dfm_well_ipr.LinearIPR`; see
+                         :meth:`~darts.reservoirs.reservoir_base.ReservoirBase.add_perforation`.
+                         Requires ``well_index=0.0``. Deliberately the LAST
+                         parameter, after ``verbose``, so historical positional
+                         calls keep their meaning.
+        :type flow_law: object or None
         """
         well = self.get_well(well_name)
+
+        # Translate the flow law BEFORE anything is mutated, so a wrong type or
+        # a failing to_engine() cannot leave a half-added perforation behind
+        # (finding F3).
+        engine_law = (
+            self._translate_perforation_flow_law(flow_law)
+            if flow_law is not None
+            else None
+        )
 
         # calculate well index and get local index of reservoir block
         # ijk indices are is 1-based (starts from 1)
@@ -568,6 +624,12 @@ class CPG_Reservoir(ReservoirBase):
             well_indexD = wiD
 
         if res_block_local < 0:
+            if flow_law is not None:
+                raise ValueError(
+                    f"Well {well.name!r}: block [{i}, {j}, {k}] is inactive, so "
+                    "the perforation is dropped -- but it carries a flow law, which "
+                    "would then be silently ignored, leaving the well uncoupled."
+                )
             if verbose:
                 print(
                     f"Neglected perforation for well {well.name} to block [{i}, {j}, {k}] (inactive block)"
@@ -587,6 +649,10 @@ class CPG_Reservoir(ReservoirBase):
         else:
             well_block = 0
 
+        # Everything below mutates the well; captured so a rejected flow law
+        # rolls the well back to this point (finding F3).
+        state_snapshot = self._snapshot_perforation_state(well)
+
         # add completion only if target block is active
         if res_block_local > -1:
             if len(well.perforations) == 0:  # if adding the first perforation
@@ -602,6 +668,15 @@ class CPG_Reservoir(ReservoirBase):
                 well.well_body_depth = well.well_head_depth
             for p in well.perforations:
                 if p[0] == well_block and p[1] == res_block_local:
+                    if flow_law is not None:
+                        self._restore_perforation_state(well, state_snapshot)
+                        raise ValueError(
+                            f"Well {well.name!r} already has a perforation of block "
+                            f"[{i:d}, {j:d}, {k:d}]; a duplicate is normally dropped "
+                            "with a warning, but this one carries a flow law, which "
+                            "would then be silently ignored. Attach the flow law to "
+                            "the first perforation of that block instead."
+                        )
                     print(
                         f'Neglected duplicate perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}]'
                     )
@@ -609,6 +684,18 @@ class CPG_Reservoir(ReservoirBase):
             well.perforations = well.perforations + [
                 (well_block, res_block_local, well_index, well_indexD)
             ]
+            if engine_law is not None:
+                # After the perforation exists: the law is attached to it by index,
+                # and the engine's own validation (zero well index, non-negative
+                # productivity) runs here rather than at the first Newton iteration.
+                # A rejection rolls the whole method back (finding F3).
+                try:
+                    well.set_perforation_flow_law(
+                        len(well.perforations) - 1, engine_law
+                    )
+                except Exception:
+                    self._restore_perforation_state(well, state_snapshot)
+                    raise
             if verbose:
                 c = self.centroids_all_cells[res_block_local].values
                 print(

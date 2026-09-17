@@ -16,6 +16,7 @@ from darts.engines import matrix, pm_discretizer, Face, vector_face_vector, face
 from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
 from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_bulk_modulus, get_biot_modulus
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
+from darts.reservoirs.boundary_spec import stuck_roller
 from darts.reservoirs.mesh.geometrymodule import FType
 from darts.engines import timer_node
 from darts.discretizer import elem_loc
@@ -160,7 +161,7 @@ class UnstructReservoirCustom(UnstructReservoirMech):
         self.set_boundary_conditions_pm_discretizer()
     def set_mandel_boundary_conditions(self, idata, v_north=0.):
         self.set_boundary_conditions(idata)
-        self.boundary_conditions[self.bnd_tags['BND_Y+']]['mech'] = self.bc_type.STUCK_ROLLER(v_north)
+        self.boundary_conditions[self.bnd_tags['BND_Y+']].mech = stuck_roller(v_north)
         self.set_boundary_conditions_pm_discretizer()
     def update_mandel_boundary(self, time, idata: InputData):
         '''

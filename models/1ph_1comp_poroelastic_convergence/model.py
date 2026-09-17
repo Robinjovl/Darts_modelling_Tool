@@ -1,6 +1,6 @@
 from darts.models.thmc_model import THMCModel
 from reservoir import UnstructReservoirCustom
-from darts.reservoirs.unstruct_reservoir_mech import bound_cond
+from darts.reservoirs.boundary_spec import FaceBoundary, aquifer, stuck
 import numpy as np
 import os
 from darts.input.input_data import InputData
@@ -52,8 +52,6 @@ class Model(THMCModel):
             type_mech = 'poroelasticity'  # Note: not supported with thermal
         self.idata = InputData(type_hydr=type_hydr, type_mech=type_mech, init_type='uniform')
 
-        self.bc_type = bound_cond()  # get predefined constants for boundary conditions
-
         self.idata.mesh.bnd_tags = {}
         bnd_tags = self.idata.mesh.bnd_tags  # short name
         bnd_tags['BND_X-'] = 991
@@ -65,7 +63,7 @@ class Model(THMCModel):
         self.idata.mesh.matrix_tags = [99991]
 
         self.idata.boundary = {}
-        nf_s = {'flow': self.bc_type.AQUIFER(0), 'temp': self.bc_type.AQUIFER(0), 'mech': self.bc_type.STUCK(0.0, [0.0, 0.0, 0.0])}
+        nf_s = FaceBoundary(flow=aquifer(0), temp=aquifer(0), mech=stuck(0.0, [0.0, 0.0, 0.0]))
         self.idata.boundary[bnd_tags['BND_X-']] = nf_s
         self.idata.boundary[bnd_tags['BND_X+']] = nf_s
         self.idata.boundary[bnd_tags['BND_Y-']] = nf_s

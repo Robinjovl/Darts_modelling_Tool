@@ -124,6 +124,15 @@ Models
    :show-inheritance:
    :special-members: __init__
 
+Conditions
+##########
+
+.. automodule:: darts.models.conditions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+
 Output
 ######
 .. autoclass:: darts.models.output.Output

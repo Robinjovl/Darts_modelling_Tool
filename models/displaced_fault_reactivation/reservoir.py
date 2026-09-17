@@ -11,7 +11,9 @@ from darts.engines import timer_node
 
 from darts.reservoirs.mesh.unstruct_discretizer import UnstructDiscretizer
 #from darts.reservoirs.mesh.geometrymodule import FType
-from darts.reservoirs.unstruct_reservoir_mech import get_rock_compressibility, bound_cond
+from darts.reservoirs.unstruct_reservoir_mech import get_rock_compressibility
+from darts.reservoirs.boundary_spec import (FaceBoundary, load, no_flow, pm_discretizer_row, roller,
+                                            stuck, stuck_roller, stuck_t_load_n)
 from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags, get_lambda_mu, get_bulk_modulus, get_biot_modulus
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
 
@@ -26,8 +28,6 @@ class UnstructReservoir(UnstructReservoirMech):
         self.rho_s = rock_density
         self.rho_f = fluid_density
         self.mesh_file = mesh_file
-
-        self.bc_type = bound_cond()  # get predefined constants for boundary conditions
 
         self.cache_discretizer = cache_discretizer
         self.cache_filename = 'cached_preprocessing.pkl'
@@ -211,16 +211,16 @@ class UnstructReservoir(UnstructReservoirMech):
         self.fh = lambda y: -self.K0 * (self.sigma_yy(y) + self.biot * self.p0(y)) + self.biot * self.p0(y)
         self.eps_yy = lambda y: (1 - 2 * nu) / 2 / self.mu / (1 - nu) * (self.sigma_yy(y) + self.biot * self.p0(y))
 
-        self.unstr_discr.boundary_conditions[991] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.LOAD(-0.0, [0.0, 0.0, 0.0]), 'cells': []}
-        self.unstr_discr.boundary_conditions[992] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.LOAD(-0.0, [0.0, 0.0, 0.0]), 'cells': []}
-        self.unstr_discr.boundary_conditions[993] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.LOAD(self.sigma_yy(-self.H / 2), [0.0, 0.0, 0.0]), 'cells': []}
-        self.unstr_discr.boundary_conditions[994] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.LOAD(self.sigma_yy(self.H / 2), [0.0, 0.0, 0.0]), 'cells': []}
-        self.unstr_discr.boundary_conditions[995] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.ROLLER, 'cells': []}
-        self.unstr_discr.boundary_conditions[996] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.ROLLER, 'cells': []}
-        self.unstr_discr.boundary_conditions[998] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.STUCK_T_LOAD_N(self.sigma_yy(-self.H / 2), [0.0, 0.0, 0.0]), 'cells': []}
-        self.unstr_discr.boundary_conditions[999] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.STUCK_T_LOAD_N(0.0, [0.0, 0.0, 0.0]), 'cells': []}
-        self.unstr_discr.boundary_conditions[1] =   {'flow': {'a': 0.0, 'b': 1.0, 'r': 0.0},
-                                                        'mech': {'an': 1.0, 'bn': 0.0, 'rn': 0.0, 'at': 1.0, 'bt': 0.0, 'rt': np.array([0.0, 0.0, 0.0])}, 'cells': [] }
+        self.unstr_discr.boundary_conditions[991] = FaceBoundary(flow=no_flow(), mech=load(-0.0, [0.0, 0.0, 0.0]))
+        self.unstr_discr.boundary_conditions[992] = FaceBoundary(flow=no_flow(), mech=load(-0.0, [0.0, 0.0, 0.0]))
+        self.unstr_discr.boundary_conditions[993] = FaceBoundary(flow=no_flow(), mech=load(self.sigma_yy(-self.H / 2), [0.0, 0.0, 0.0]))
+        self.unstr_discr.boundary_conditions[994] = FaceBoundary(flow=no_flow(), mech=load(self.sigma_yy(self.H / 2), [0.0, 0.0, 0.0]))
+        self.unstr_discr.boundary_conditions[995] = FaceBoundary(flow=no_flow(), mech=roller())
+        self.unstr_discr.boundary_conditions[996] = FaceBoundary(flow=no_flow(), mech=roller())
+        self.unstr_discr.boundary_conditions[998] = FaceBoundary(flow=no_flow(), mech=stuck_t_load_n(self.sigma_yy(-self.H / 2), [0.0, 0.0, 0.0]))
+        self.unstr_discr.boundary_conditions[999] = FaceBoundary(flow=no_flow(), mech=stuck_t_load_n(0.0, [0.0, 0.0, 0.0]))
+        # fracture boundary
+        self.unstr_discr.boundary_conditions[1] = FaceBoundary(flow=no_flow(), mech=stuck(0.0, [0.0, 0.0, 0.0]))
         self.unstr_discr.fracture_aperture = 1
         self.unstr_discr.load_mesh_with_bounds()
         self.unstr_discr.calc_cell_neighbours()
@@ -272,24 +272,23 @@ class UnstructReservoir(UnstructReservoirMech):
             prop_id = b_cell.prop_id
             n = self.get_normal_to_bound_face(bound_id)
             P = np.identity(3) - np.outer(n, n)
-            mech = self.unstr_discr.boundary_conditions[prop_id]['mech']
-            flow = self.unstr_discr.boundary_conditions[prop_id]['flow']
-            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+            bnd = self.unstr_discr.boundary_conditions[prop_id]
+            bc = pm_discretizer_row(bnd.facets())
             self.pm.bc.append(matrix(bc, len(bc), 1))
+            rn = bnd.mech.rn
             if (prop_id == 991 or prop_id == 992 or prop_id == 999):
-                mech['rn'] = -self.fh(b_cell.centroid[1])
-                #mech['rn'] = -np.interp(b_cell.centroid[1], self.ux_pt, self.ux)
-            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
-            self.bc_rhs[4 * bound_id + 3] = flow['r']
+                rn = -self.fh(b_cell.centroid[1])
+                #rn = -np.interp(b_cell.centroid[1], self.ux_pt, self.ux)
+            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = rn * n + bnd.mech.rt
+            self.bc_rhs[4 * bound_id + 3] = bnd.flow.r
             self.bc_rhs_prev[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
-            self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
+            self.bc_rhs_prev[4 * bound_id + 3] = bnd.flow.r
             self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
-            self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
+            self.bc_rhs_ref[4 * bound_id + 3] = bnd.flow.r
 
         for bound_id in range(len(self.unstr_discr.bound_cell_info_dict), self.unstr_discr.bound_cell_count):
-            mech = self.unstr_discr.boundary_conditions[self.unstr_discr.frac_bound_cell_info_dict[bound_id].prop_id]['mech']
-            flow = self.unstr_discr.boundary_conditions[self.unstr_discr.frac_bound_cell_info_dict[bound_id].prop_id]['flow']
-            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+            bnd = self.unstr_discr.boundary_conditions[self.unstr_discr.frac_bound_cell_info_dict[bound_id].prop_id]
+            bc = pm_discretizer_row(bnd.facets())
             self.pm.bc.append(matrix(bc, len(bc), 1))
         self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc
@@ -345,18 +344,18 @@ class UnstructReservoir(UnstructReservoirMech):
         self.pt994 = np.array(data994['Points:0'], dtype=np.float64)
         self.uy994 = np.array(data994['u_y'], dtype=np.float64)
 
-        self.unstr_discr.boundary_conditions[991] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.STUCK_ROLLER(0.0), 'cells': []}
-        self.unstr_discr.boundary_conditions[981] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.STUCK_ROLLER(0.0), 'cells': []}
-        self.unstr_discr.boundary_conditions[992] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.STUCK_ROLLER(0.0), 'cells': []}
-        self.unstr_discr.boundary_conditions[982] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.STUCK_ROLLER(0.0), 'cells': []}
-        self.unstr_discr.boundary_conditions[993] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.STUCK_ROLLER(0.0), 'cells': []}
-        self.unstr_discr.boundary_conditions[994] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.STUCK_ROLLER(0.0), 'cells': []}
-        self.unstr_discr.boundary_conditions[995] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.ROLLER, 'cells': []}
-        self.unstr_discr.boundary_conditions[996] = {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.ROLLER, 'cells': []}
+        self.unstr_discr.boundary_conditions[991] = FaceBoundary(flow=no_flow(), mech=stuck_roller(0.0))
+        self.unstr_discr.boundary_conditions[981] = FaceBoundary(flow=no_flow(), mech=stuck_roller(0.0))
+        self.unstr_discr.boundary_conditions[992] = FaceBoundary(flow=no_flow(), mech=stuck_roller(0.0))
+        self.unstr_discr.boundary_conditions[982] = FaceBoundary(flow=no_flow(), mech=stuck_roller(0.0))
+        self.unstr_discr.boundary_conditions[993] = FaceBoundary(flow=no_flow(), mech=stuck_roller(0.0))
+        self.unstr_discr.boundary_conditions[994] = FaceBoundary(flow=no_flow(), mech=stuck_roller(0.0))
+        self.unstr_discr.boundary_conditions[995] = FaceBoundary(flow=no_flow(), mech=roller())
+        self.unstr_discr.boundary_conditions[996] = FaceBoundary(flow=no_flow(), mech=roller())
         # top and bottom fracture boundaries
-        self.unstr_discr.boundary_conditions[1] =   {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.STUCK(0.0, 0.0), 'cells': [] }
+        self.unstr_discr.boundary_conditions[1] = FaceBoundary(flow=no_flow(), mech=stuck(0.0, 0.0))
         # side fracture boundaries
-        self.unstr_discr.boundary_conditions[2] =   {'flow': self.bc_type.NO_FLOW, 'mech': self.bc_type.ROLLER, 'cells': [] }
+        self.unstr_discr.boundary_conditions[2] = FaceBoundary(flow=no_flow(), mech=roller())
 
         self.unstr_discr.fracture_aperture = 1
         self.unstr_discr.load_mesh(permx=self.permx, permy=self.permy, permz=self.permz, frac_aper=self.unstr_discr.fracture_aperture)
@@ -416,35 +415,34 @@ class UnstructReservoir(UnstructReservoirMech):
             prop_id = b_cell.prop_id
             n = self.get_normal_to_bound_face(bound_id)
             P = np.identity(3) - np.outer(n, n)
-            mech = self.unstr_discr.boundary_conditions[prop_id]['mech']
-            flow = self.unstr_discr.boundary_conditions[prop_id]['flow']
-            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+            bnd = self.unstr_discr.boundary_conditions[prop_id]
+            bc = pm_discretizer_row(bnd.facets())
             self.pm.bc.append(matrix(bc, len(bc), 1))
+            # the prescribed normal displacement of the side boundaries follows
+            # the analytic profile, so it is per boundary face, not per tag
+            rn = bnd.mech.rn
             if prop_id == 991:
-                mech['rn'] = -np.interp(b_cell.centroid[1], self.pt991, self.ux991)
+                rn = -np.interp(b_cell.centroid[1], self.pt991, self.ux991)
             elif prop_id == 981:
-                mech['rn'] = -np.interp(b_cell.centroid[1], self.pt991, self.ux991)
-                #flow['r'] = self.p0(b_cell.centroid[1]) - 200
+                rn = -np.interp(b_cell.centroid[1], self.pt991, self.ux991)
             elif prop_id == 992:
-                mech['rn'] = np.interp(b_cell.centroid[1], self.pt992, self.ux992)
+                rn = np.interp(b_cell.centroid[1], self.pt992, self.ux992)
             elif prop_id == 982:
-                mech['rn'] = np.interp(b_cell.centroid[1], self.pt992, self.ux992)
-                #flow['r'] = self.p0(b_cell.centroid[1]) - 300
+                rn = np.interp(b_cell.centroid[1], self.pt992, self.ux992)
             elif prop_id == 993:
-               mech['rn'] = -np.interp(b_cell.centroid[0], self.pt993, self.uy993)
+                rn = -np.interp(b_cell.centroid[0], self.pt993, self.uy993)
             elif (prop_id == 994):
-               mech['rn'] = np.interp(b_cell.centroid[0], self.pt994, self.uy994)
-            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = mech['rn'] * n + mech['rt']
-            self.bc_rhs[4 * bound_id + 3] = flow['r']
+                rn = np.interp(b_cell.centroid[0], self.pt994, self.uy994)
+            self.bc_rhs[4 * bound_id:4 * bound_id + 3] = rn * n + bnd.mech.rt
+            self.bc_rhs[4 * bound_id + 3] = bnd.flow.r
             self.bc_rhs_prev[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
-            self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
+            self.bc_rhs_prev[4 * bound_id + 3] = bnd.flow.r
             self.bc_rhs_ref[4 * bound_id:4 * bound_id + 3] = np.array([0, 0, 0])
-            self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
+            self.bc_rhs_ref[4 * bound_id + 3] = bnd.flow.r
         for bound_id in range(len(self.unstr_discr.bound_face_info_dict), \
                               self.unstr_discr.bound_faces_tot + self.unstr_discr.frac_bound_faces_tot):
-            mech = self.unstr_discr.boundary_conditions[self.unstr_discr.frac_bound_face_info_dict[bound_id].prop_id]['mech']
-            flow = self.unstr_discr.boundary_conditions[self.unstr_discr.frac_bound_face_info_dict[bound_id].prop_id]['flow']
-            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+            bnd = self.unstr_discr.boundary_conditions[self.unstr_discr.frac_bound_face_info_dict[bound_id].prop_id]
+            bc = pm_discretizer_row(bnd.facets())
             self.pm.bc.append(matrix(bc, len(bc), 1))
         self.bc_rhs_prev = np.copy(self.bc_rhs)
         self.pm.bc_prev = self.pm.bc

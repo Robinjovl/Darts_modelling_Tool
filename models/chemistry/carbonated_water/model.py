@@ -6,6 +6,7 @@ import os
 import darts
 from darts.models.output import Output
 from darts.models.cicd_model import CICDModel
+from darts.models.conditions import CellSource
 from darts.reservoirs.struct_reservoir import StructReservoir
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from darts.physics.chemistry.property_container import (
@@ -382,7 +383,7 @@ class Model(CICDModel):
         self.physics.hypercube_cap = max(200_000, 20 * int(self.n_res_blocks))
 
         # Flashes whose per-iteration dilution fallback we police in run_timestep /
-        # apply_rhs_flux. Only those exposing pop_dilution_report() (PHREEQC) qualify; the
+        # after_assembly. Only those exposing pop_dilution_report() (PHREEQC) qualify; the
         # reaktoro flash is silently ignored. NOTE: with parallel_evaluation=True the model is
         # reconstructed per worker (base DartsModel.get_evaluator_factory / ModelEvaluatorFactory),
         # so each worker uses its own flash copy; the budget/warning are only enforced in the
@@ -639,20 +640,29 @@ class Model(CICDModel):
                                                verbose=True, well_diameter=w_d, well_index=well_index,
                                                well_indexD=well_index)
 
-    def set_rhs_flux(self, t: float = None):
+    def injection_rates(self, t: float = None):
+        """
+        Element molar rates [kmol/day] of the injected water stream, positive INTO the
+        cell, one row per injection cell.
+
+        Re-evaluated on every Newton iteration (as the former set_rhs_flux was), so the
+        driver can switch the injection on and off between m.run() calls by assigning
+        self.inj_rate -- main.py runs the equilibration phase with inj_rate = 0.
+        """
         nv = self.physics.n_vars
-        nb = self.reservoir.mesh.n_blocks
-        rhs_flux = np.zeros(nb * nv)
-
         rho_m_h20 = 1000 / 18.015 # kmol/m3
-        for cell_id in self.inj_cells:
-            for i in range(nv - 1):
-                rhs_flux[cell_id * nv + i] = -self.inj_rate * rho_m_h20 * self.inj_stream[i]
-            rhs_flux[cell_id * nv + nv - 1] = -self.inj_rate * rho_m_h20 * (1 - np.sum(self.inj_stream))
+        stream = np.asarray(self.inj_stream, dtype=float)
 
-        return rhs_flux
+        rates = np.empty((len(self.inj_cells), nv))
+        rates[:, :nv - 1] = self.inj_rate * rho_m_h20 * stream[:nv - 1]
+        rates[:, nv - 1] = self.inj_rate * rho_m_h20 * (1 - np.sum(self.inj_stream))
+
+        return rates
 
     def set_boundary_conditions(self):
+        # Volumetric water injection in the inlet cells, as element molar source rates.
+        self.conditions.add(CellSource(cells=self.inj_cells, rates=self.injection_rates))
+
         # New boundary condition by adding wells:
         w = self.reservoir.wells[0]
         self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP, is_inj=False,
@@ -667,7 +677,7 @@ class Model(CICDModel):
         into a non-convergence so the existing dt-cut machinery in :meth:`run` reduces dt
         and retries from the last converged state. This covers a PHREEQC failure (when even
         maximal dilution fails, or when the dilution fallback was needed in more than
-        ``self.dilution_max_newton_iters`` nonlinear iterations — see :meth:`apply_rhs_flux`)
+        ``self.dilution_max_newton_iters`` nonlinear iterations — see :meth:`after_assembly`)
         as well as a Reaktoro solver failure (``ReaktoroFlashError``), keeping the
         simulation alive in either case.
         """
@@ -701,20 +711,33 @@ class Model(CICDModel):
                 self.time_step_size.append(dt)
             except Exception:
                 pass
+            # DartsModel.run_timestep fires conditions.on_timestep_failed() from its
+            # else-branch, which the exception skips: fire it here so the condition
+            # items still see exactly one lifecycle event per timestep attempt. (Every
+            # shipped item leaves the hook at the ConditionItem no-op, so this changes
+            # nothing numerically today; it keeps the contract honest for items that
+            # do carry per-attempt state.)
+            try:
+                self.conditions.on_timestep_failed(dt, t)
+            except Exception:
+                pass
             return 0  # converged = False -> run() else-branch cuts dt
 
-    def apply_rhs_flux(self, dt: float, t: float):
+    def after_assembly(self, dt: float, t: float):
         """
-        Apply the injection RHS flux, then police the PHREEQC dilution fallback.
+        Police the PHREEQC dilution fallback once the system is assembled.
 
-        Called once per Newton iteration immediately after ``assemble_linear_system`` (so any
-        supporting-point dilution that happened during this assembly is now recorded in the
-        tracked flashes). Emits a single accumulated warning per nonlinear iteration with
-        min/max state statistics, and enforces the per-timestep dilution-iteration budget by
-        raising :class:`PhreeqcFlashError` (caught in :meth:`run_timestep`) once exceeded.
+        Called by ``DartsModel.apply_rhs_flux`` once per Newton iteration, right after the
+        injection source of :meth:`injection_rates` was added to the assembled system (so
+        any supporting-point dilution that happened during this assembly is now recorded in
+        the tracked flashes). This is a post-assembly policy check that contributes nothing
+        to the system, which is exactly what the ``after_assembly`` hook is for -- overriding
+        ``apply_rhs_flux`` instead would bypass the model's condition items.
+
+        Emits a single accumulated warning per nonlinear iteration with min/max state
+        statistics, and enforces the per-timestep dilution-iteration budget by raising
+        :class:`PhreeqcFlashError` (caught in :meth:`run_timestep`) once exceeded.
         """
-        super().apply_rhs_flux(dt, t)
-
         tracked = getattr(self, '_tracked_flashes', [])
         reports = [r for r in (fl.pop_dilution_report() for fl in tracked) if r]
         if not reports:

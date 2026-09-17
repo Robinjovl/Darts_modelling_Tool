@@ -67,7 +67,7 @@ void MechDiscretizer<MODE>::init()
 	}
   }
 
-  for (index_t i = mesh::MIN_CONNS_PER_ELEM; i <= mesh::MAX_CONNS_PER_ELEM; i++) 
+  for (index_t i = mesh::MIN_CONNS_PER_ELEM; i <= mesh::MAX_CONNS_PER_ELEM; i++)
   {
 	pre_grad_A_u[i] = Matrix(ND * i, ND * ND);
 	pre_grad_R_u[i] = Matrix(ND * i, n_unknowns * MAX_STENCIL);
@@ -142,7 +142,9 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		// Coefficients that define boundary condition
 		const auto& an = bc_thm.mech_normal.a[conn.elem_id2 - mesh->n_cells];
 		const auto& bn = bc_thm.mech_normal.b[conn.elem_id2 - mesh->n_cells];
-		const auto& at = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
+		// 'at' is the tangential Dirichlet coefficient (.a), not .b: this counting pass
+		// must select the same faces as the assembly pass below, which reads .a
+		const auto& at = bc_thm.mech_tangen.a[conn.elem_id2 - mesh->n_cells];
 		const auto& bt = bc_thm.mech_tangen.b[conn.elem_id2 - mesh->n_cells];
 
 		if (NEUMANN_BOUNDARIES_GRAD_RECONSTRUCTION || an != 0.0 || at != 0.0)	n_cur_faces++;
@@ -204,20 +206,20 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		r1 = dot(n_vec, conn.c - c1);
 		r2 = dot(n_vec, c2 - conn.c);
 		assert(r1 > 0.0);		assert(r2 > 0.0);
-		y1.values = std::valarray<value_t>((c1 + r1 * n_vec).values.data(), ND);	 
+		y1.values = std::valarray<value_t>((c1 + r1 * n_vec).values.data(), ND);
 		y2.values = std::valarray<value_t>((c2 - r2 * n_vec).values.data(), ND);
-		
+
 		// projection to normal
 		B1n = biots[cell_id1] * n;				B2n = biots[cell_id2] * n;
 		if constexpr  (MODE == THERMOPOROELASTIC)
 		{
 		  A1n = th_exps[cell_id1] * n;			A2n = th_exps[cell_id2] * n;
 		}
-		
+
 		// main matrix
 		A(ND * face_id * A.N, { ND, (uint8_t)A.N }, { (uint8_t)A.N, 1 }) = (T2 * make_block_diagonal((y2 - y1).transpose(), ND) + r2 * (G1 - G2) +
 					(r2 * T1 + r1 * T2) * make_block_diagonal(n.transpose(), ND)).values;
-		
+
 		// RHS
 		res1 = findInVector(st, cell_id1);
 		if (res1.first) { id1 = res1.second; }
@@ -228,7 +230,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		if (res2.first) { id2 = res2.second; }
 		else { id2 = st.size(); st.push_back(cell_id2); }
 		rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id2, { ND, ND }, { (size_t)rhs_mult.N, 1 }) += T2.values;
-		
+
 		if (GRADIENTS_EXTENDED_STENCIL) // use of \nabla p_2
 		{
 		  // left Biot term: B_1 * n * (p_1 + (x_c - x_1)^T * \nabla p_1)
@@ -279,8 +281,8 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 		{
 			// r_2 * (p_{\beta1} * B_1 * n - p_{\beta2} * B_2 * n )
 			// p_{\beta1} remains the same, p_{\beta2} uses the following approximation
-			// p_{\beta 2} = p_2 + (x_\beta - y_2 - r_2 / \lambda_2 * (K_1 * n - \gamma_2) )^T * \nabla p_1 + 
-			// + r_2 / \lambda_2 * \rho * g * \nabla z * (K_1 - K_2) * n  
+			// p_{\beta 2} = p_2 + (x_\beta - y_2 - r_2 / \lambda_2 * (K_1 * n - \gamma_2) )^T * \nabla p_1 +
+			// + r_2 / \lambda_2 * \rho * g * \nabla z * (K_1 - K_2) * n
 			rhs_mult(ND * face_id * rhs_mult.N + n_unknowns * id1 + ND, { ND, 1 }, { (size_t)rhs_mult.N, 1 }) += r2 * B1n.values;
 			if constexpr (MODE == THERMOPOROELASTIC)
 			{
@@ -320,7 +322,7 @@ void MechDiscretizer<MODE>::reconstruct_displacement_gradients_per_cell(const TH
 			for (index_t k = 0; k < g1.stencil.size(); k++) // grad(p) = sum_i(a_i * p_i) + b
 			{
 				// add grad_term matrix to rhs_mult matrix. These matrices have different stencils.
-				// Find a column index in rhs_mult where to add. If there is no such index, add 
+				// Find a column index in rhs_mult where to add. If there is no such index, add
 				cur_cell_id = g1.stencil[k];
 				res1 = findInVector(st, cur_cell_id);
 				if (res1.first) { id1 = res1.second; }
@@ -534,7 +536,7 @@ void MechDiscretizer<MODE>::keep_same_stencil_gradients()
   index_t i, j;
   std::vector<index_t> new_stencil;
   new_stencil.reserve(MAX_STENCIL);
-  
+
   for (index_t cell_id = 0; cell_id < mesh->region_ranges.at(mesh::FRACTURE).second; cell_id++)
   {
 	auto& p_grad = p_grads[cell_id];
@@ -632,7 +634,7 @@ void MechDiscretizer<MODE>::calc_interface_approximations()
 		calc_matrix_matrix(conn, flux.flow, with_thermal);
 
 		// multiply matrix by area
-		flux.hooke.a.values *= conn.area;		  
+		flux.hooke.a.values *= conn.area;
 		flux.biot_traction.a.values *= conn.area;
 		flux.vol_strain.a.values *= conn.area;
 		flux.flow.darcy.a.values *= sign * conn.area;
@@ -816,8 +818,8 @@ void MechDiscretizer<MODE>::calc_matrix_matrix_mech(const mesh::Connection& conn
 }
 
 template <MechDiscretizerMode MODE>
-void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& conn, 
-													  MechApproximation<MODE>& flux, 
+void MechDiscretizer<MODE>::calc_matrix_boundary_mech(const mesh::Connection& conn,
+													  MechApproximation<MODE>& flux,
 													  index_t conn_id)
 {
   Matrix c1_mat(ND, 1), conn_mat(ND, 1), n(ND, 1), P(ND, ND), y1(ND, 1);
@@ -991,7 +993,7 @@ void MechDiscretizer<MODE>::calc_cell_centered_stress_velocity_approximations()
 	auto& R = pre_R[n_faces];
 	auto& st_approx = pre_stress_approx[n_faces];
 	auto& vel_approx = pre_vel_approx[n_faces];
-	
+
 	// assemble matrices for approximation
 	for (loop_face_id = mesh->adj_matrix_offset[i], face_id = 0; loop_face_id < mesh->adj_matrix_offset[i + 1]; loop_face_id++)
 	{

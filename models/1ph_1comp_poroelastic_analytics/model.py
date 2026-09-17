@@ -5,7 +5,8 @@ import os
 from darts.engines import sim_params
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import get_bulk_modulus, get_rock_compressibility, get_isotropic_stiffness
-from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus, bound_cond
+from darts.reservoirs.unstruct_reservoir_mech import get_biot_modulus
+from darts.reservoirs.boundary_spec import FaceBoundary, aquifer, free, load, no_flow, roller, stuck, stuck_roller
 from darts.input.input_data import InputData, linear_solver_types
 
 
@@ -55,8 +56,7 @@ class Model(THMCModel):
         self.idata.fluid.heat_capacity *= self.idata.fluid.Mw / self.idata.fluid.density  # convert from [kJ/m3/K] to [kJ/kmol/K]
         self.idata.fluid.thermal_conductivity = 0. # it is not used in the mech. engines
 
-        self.bc_type = bound_cond()  # get predefined constants for boundary conditions
-        NO_FLOW = self.bc_type.NO_FLOW  # short name
+        NO_FLOW = no_flow()  # short name
         self.idata.mesh.bnd_tags = {}
         bnd_tags = self.idata.mesh.bnd_tags  # short name
 
@@ -76,18 +76,18 @@ class Model(THMCModel):
             # 0 to 55 MPa (550 bars)
             self.idata.other.load_horiz = -50
 
-            confining = self.bc_type.LOAD(self.idata.other.load_horiz, [0.0, 0.0, 0.0])
+            confining = load(self.idata.other.load_horiz, [0.0, 0.0, 0.0])
             p_init = self.idata.initial.initial_pressure
-            f_top = self.bc_type.AQUIFER(p_init)
+            f_top = aquifer(p_init)
 
             inflow = False
             #inflow = True
             if inflow:
-                vertic = self.bc_type.STUCK(0, [0,0,0])
-                f_bottom = self.bc_type.AQUIFER(p_init + 0.5)
+                vertic = stuck(0, [0,0,0])
+                f_bottom = aquifer(p_init + 0.5)
             else:
-                vertic = self.bc_type.LOAD(self.idata.other.load_vertic, [0.0, 0.0, 0.0])
-                f_bottom = self.bc_type.AQUIFER(p_init)
+                vertic = load(self.idata.other.load_vertic, [0.0, 0.0, 0.0])
+                f_bottom = aquifer(p_init)
 
         bnd_tags['BND_X-'] = 991
         bnd_tags['BND_X+'] = 992
@@ -114,11 +114,11 @@ class Model(THMCModel):
             self.idata.other.Fa = -100.0  # bar * m
 
             self.idata.boundary = {}
-            nf_r = {'flow': NO_FLOW, 'mech': self.bc_type.ROLLER}
+            nf_r = FaceBoundary(flow=NO_FLOW, mech=roller())
             self.idata.boundary[bnd_tags['BND_X-']] = nf_r
-            self.idata.boundary[bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.idata.initial.initial_pressure), 'mech': self.bc_type.FREE}
+            self.idata.boundary[bnd_tags['BND_X+']] = FaceBoundary(flow=aquifer(self.idata.initial.initial_pressure), mech=free())
             self.idata.boundary[bnd_tags['BND_Y-']] = nf_r
-            self.idata.boundary[bnd_tags['BND_Y+']] = {'flow': NO_FLOW, 'mech': self.bc_type.STUCK_ROLLER(0.)}
+            self.idata.boundary[bnd_tags['BND_Y+']] = FaceBoundary(flow=NO_FLOW, mech=stuck_roller(0.))
             self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
             self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
         elif case == 'terzaghi':
@@ -135,10 +135,10 @@ class Model(THMCModel):
             self.idata.other.F = -100.0 # bar * m
 
             self.idata.boundary = {}
-            nf_r = {'flow': NO_FLOW, 'mech': self.bc_type.ROLLER}
+            nf_r = FaceBoundary(flow=NO_FLOW, mech=roller())
             self.idata.boundary[bnd_tags['BND_X-']] = nf_r
-            self.idata.boundary[bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.idata.initial.initial_pressure),
-                                                       'mech': self.bc_type.LOAD(self.idata.other.F, [0.0, 0.0, 0.0])}
+            self.idata.boundary[bnd_tags['BND_X+']] = FaceBoundary(flow=aquifer(self.idata.initial.initial_pressure),
+                                                                   mech=load(self.idata.other.F, [0.0, 0.0, 0.0]))
             self.idata.boundary[bnd_tags['BND_Y-']] = nf_r
             self.idata.boundary[bnd_tags['BND_Y+']] = nf_r
             self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
@@ -174,10 +174,10 @@ class Model(THMCModel):
             self.idata.mesh.matrix_tags = [99991, 99992]
 
             self.idata.boundary = {}
-            nf_r = {'flow': NO_FLOW, 'mech': self.bc_type.ROLLER}
+            nf_r = FaceBoundary(flow=NO_FLOW, mech=roller())
             self.idata.boundary[bnd_tags['BND_X-']] = nf_r
-            self.idata.boundary[bnd_tags['BND_X+']] = {'flow': self.bc_type.AQUIFER(self.idata.initial.initial_pressure),
-                                                       'mech': self.bc_type.LOAD(self.idata.other.F, [0.0, 0.0, 0.0])}
+            self.idata.boundary[bnd_tags['BND_X+']] = FaceBoundary(flow=aquifer(self.idata.initial.initial_pressure),
+                                                                   mech=load(self.idata.other.F, [0.0, 0.0, 0.0]))
             self.idata.boundary[bnd_tags['BND_Y-']] = nf_r
             self.idata.boundary[bnd_tags['BND_Y+']] = nf_r
             self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
@@ -204,13 +204,13 @@ class Model(THMCModel):
             self.idata.mesh.mesh_filename = get_mesh_filename(self.mesh, suffix='_bai')
 
             self.idata.boundary = {}
-            nf_r = {'flow': NO_FLOW, 'mech': self.bc_type.ROLLER, 'temp': NO_FLOW}
+            nf_r = FaceBoundary(flow=NO_FLOW, mech=roller(), temp=NO_FLOW)
             self.idata.boundary[bnd_tags['BND_X-']] = nf_r
             self.idata.boundary[bnd_tags['BND_X+']] = nf_r
             self.idata.boundary[bnd_tags['BND_Y-']] = nf_r
-            self.idata.boundary[bnd_tags['BND_Y+']] = {'flow': self.bc_type.AQUIFER(self.idata.initial.initial_pressure),
-                                                       'mech': self.bc_type.LOAD(self.idata.other.F, [0.0, 0.0, 0.0]),
-                                                       'temp': self.bc_type.AQUIFER(self.idata.initial.initial_temperature + 50)}
+            self.idata.boundary[bnd_tags['BND_Y+']] = FaceBoundary(flow=aquifer(self.idata.initial.initial_pressure),
+                                                                   mech=load(self.idata.other.F, [0.0, 0.0, 0.0]),
+                                                                   temp=aquifer(self.idata.initial.initial_temperature + 50))
             self.idata.boundary[bnd_tags['BND_Z-']] = nf_r
             self.idata.boundary[bnd_tags['BND_Z+']] = nf_r
         self.idata.rock.stiffness = get_isotropic_stiffness(self.idata.rock.E, self.idata.rock.nu)

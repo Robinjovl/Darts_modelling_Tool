@@ -797,10 +797,9 @@ class WellOperators(OperatorsSuper):
             ] = self.property.x[j][: self.nc_fl] * self.property.dens_m[j]
 
         """ Molar density operator """
-        # molar density: rho_mj [kmol/m3]
-        values_np[self.DENS_OP + self.property.ph] = self.property.dens_m[
-            self.property.ph
-        ]
+        # Well blocks deliberately leave DENS_OP unset: the engine only uses it
+        # multiplied by UPSAT_OP, which stays zero for wells, so the
+        # diffusion/dispersion products vanish.
 
         """ Gamma operator for diffusion (for heat conduction and molecular diffusion) """
 

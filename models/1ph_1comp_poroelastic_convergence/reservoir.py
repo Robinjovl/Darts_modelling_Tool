@@ -14,6 +14,7 @@ from rhs import RhsPoroelastic, RhsThermoporoelastic
 from scipy.linalg import null_space
 from darts.reservoirs.mesh.transcalc import TransCalculations as TC
 from darts.reservoirs.unstruct_reservoir_mech import UnstructReservoirMech
+from darts.reservoirs.boundary_spec import pm_discretizer_row
 from darts.reservoirs.unstruct_reservoir_mech import set_domain_tags
 
 
@@ -148,9 +149,10 @@ class UnstructReservoirCustom(UnstructReservoirMech):
             u = sol[:3]
             p = sol[3]
             prop_id = self.unstr_discr.bound_face_info_dict[bound_id].prop_id
-            mech = self.unstr_discr.boundary_conditions[prop_id]['mech']
-            flow = self.unstr_discr.boundary_conditions[prop_id]['flow']
-            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+            # pm_discretizer is poroelastic-only: drop the thermal channel the
+            # same conditions carry for the thermoporoelastic (mech) runs
+            bc = pm_discretizer_row(
+                self.unstr_discr.boundary_conditions[prop_id].facets(thermal=False))
             self.pm.bc.append(matrix(bc, len(bc), 1))
             self.bc_rhs[4 * bound_id:4 * bound_id + 3] = n.dot(u) * n + P.dot(u)
             self.bc_rhs[4 * bound_id + 3] = p

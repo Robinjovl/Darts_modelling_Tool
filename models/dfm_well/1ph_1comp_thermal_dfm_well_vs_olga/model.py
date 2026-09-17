@@ -14,6 +14,10 @@ from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
 from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 
+from darts.pipes.add_lateral_heat_exchange import (
+    SemiAnalyticalWellLateralHeatTransfer,
+    SemiAnalyticalWellLateralHeatTransferHook,
+)
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
 from darts.pipes.pipe import Pipe
@@ -21,14 +25,44 @@ from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
 from darts.pipes.linear_dfm_well_ipr import (
     LinearDFMWellIPRHook,
     LinearDFMWellIPRConnection,
+    LinearIPR,
     PI_Type,
 )
 
+#: Productivity index of the single perforation, kg/day/bar
+IPR_PRODUCTIVITY = 1e5
+
 
 class Model(CICDModel):
-    def __init__(self):
+    def __init__(self, formulation=None):
+        """Single-phase thermal DFM well benchmarked against OLGA.
+
+        :param formulation: optional test-suite variant of the base model:
+
+            * ``None`` (default) — the base model, unchanged.
+            * ``'lateral_heat'`` — adds the semi-analytical wellbore-earth lateral heat
+              exchange (Chiu&Thakur time function) through
+              SemiAnalyticalWellLateralHeatTransferHook.
+            * ``'exclude_top'`` — excludes the top (well-control) block from the DFM
+              velocity evaluation in the pipe.
+            * ``'ipr_engine'`` — the base model with the linear IPR assembled
+              ENGINE-SIDE as a perforation flow law
+              (``add_perforation(flow_law=LinearIPR(...))``) instead of by the
+              per-Newton Python condition item. A CI case with its OWN
+              references (``run_test_suite2.py`` registers it): the analytic
+              derivatives change the iteration path, so it does not reproduce
+              the Python-hook references bit-for-bit.
+        :type formulation: str or None
+        """
         # Call base class constructor
         super().__init__()
+
+        assert formulation in (None, 'lateral_heat', 'exclude_top', 'ipr_engine'), \
+            f"unknown formulation {formulation!r}"
+        #: whether the linear IPR is assembled engine-side rather than by the
+        #: Python condition item; the rest of the model is identical
+        self.engine_side_ipr = formulation == 'ipr_engine'
+        self.formulation = None if self.engine_side_ipr else formulation
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -171,36 +205,78 @@ class Model(CICDModel):
 
         # %% Store well props
         self.wells = {'I1': Pipe('I1', well_1_geometry, self.physics, self.reservoir, well_1_initial_conditions,
+                                 exclude_top_control_block_from_velocity=(self.formulation == 'exclude_top'),
                                  verbose=verbose)}
 
         self.reservoir.add_well(well_1_name, well_1_ms_type, well_geometry=well_1_geometry)
 
-        # Well with a single perforation
+        # The lowermost well segment is coupled to reservoir cell (1, 1, 1)
         well_1_perforated_segment = well_1_geometry.num_segments
 
-        self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
-                                       well_diameter=well_1_geometry.pipe_ID,
-                                       well_index=0.0,
-                                       well_indexD=0.0,
-                                       )
-
-        self.rhs_flux_hooks.append(
-            LinearDFMWellIPRHook(
-                self,
-                [
-                    LinearDFMWellIPRConnection(
-                        well_name=well_1_name,
-                        perforation_index=len(
-                            self.reservoir.get_well(well_1_name).perforations
+        if self.engine_side_ipr:
+            # Engine-side variant: the perforation IS the IPR, assembled in C++.
+            # The engine law lives ON a perforation, so this variant keeps the
+            # zero-well-index perforation as the law's carrier.
+            self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1),
+                                           well_seg_idx=well_1_perforated_segment,
+                                           well_diameter=well_1_geometry.pipe_ID,
+                                           well_index=0.0,
+                                           well_indexD=0.0,
+                                           flow_law=self.get_ipr_flow_law(),
+                                           )
+        else:
+            # Python-hook variants: NO perforation at all. The connection is
+            # addressed directly by (well segment, reservoir block); the hook
+            # DECLARES the coupling and the framework adds it to the mesh as a
+            # zero-transmissibility connection before the engine allocates its
+            # matrix -- exactly what the zero-WI "dummy" perforation used to
+            # smuggle in (review item E5). Cell (1, 1, 1) is local block 0
+            # (I fastest, K slowest, mapped through global_to_local).
+            discretizer = self.reservoir.discretizer
+            res_block = int(discretizer.global_to_local[0])
+            self.conditions.add(
+                LinearDFMWellIPRHook(
+                    self,
+                    [
+                        LinearDFMWellIPRConnection(
+                            well_name=well_1_name,
+                            well_segment_index=well_1_perforated_segment,
+                            res_block_index=res_block,
+                            pi=IPR_PRODUCTIVITY,
+                            pi_type=PI_Type.MASS,
+                            ipr_pressure_offset=0.0,
                         )
-                        - 1,
-                        pi=1e5,
-                        pi_type=PI_Type.MASS,
-                        ipr_pressure_offset=0.0,
-                    )
-                ],
+                    ],
+                )
             )
-        )
+
+        if self.formulation == 'lateral_heat':
+            # Semi-analytical wellbore-earth lateral heat exchange. The earth temperature
+            # profile matches the initial linear ambient temperature of the pipe, so the
+            # lateral heat flux develops as injection perturbs the well temperature.
+            earth_thermal_props = {
+                'T': pipe_head_temperature + temp_grad * well_1_geometry.TVD_segments,  # K
+                'c': 1000.0,  # J/kg/K
+                'K': 2.5,  # W/m/K
+                'rho': 2650.0,  # kg/m3
+            }
+            lateral_heat_ev = SemiAnalyticalWellLateralHeatTransfer(
+                well_1_name, well_1_geometry, earth_thermal_props,
+                outermost_layer_OD=0.2, Ui=20.0,
+                perforated_segments=[well_1_perforated_segment - 1],  # 0-based segment index
+                time_function_name='Chiu&Thakur', verbose=verbose)
+            self.conditions.add(
+                SemiAnalyticalWellLateralHeatTransferHook(
+                    self, self.reservoir.get_well(well_1_name), lateral_heat_ev))
+
+    def get_ipr_flow_law(self):
+        """The IPR of this model as an engine-side perforation flow law.
+
+        The same coefficients the Python condition item uses, so the two paths
+        cannot drift apart -- and the single override point a test needs to turn
+        the engine-side law off without changing anything else about the model.
+        """
+        return LinearIPR(productivity=IPR_PRODUCTIVITY, basis=PI_Type.MASS, offset=0.0)
 
     def set_well_controls(self):
         """

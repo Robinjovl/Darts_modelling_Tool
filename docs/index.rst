@@ -30,6 +30,7 @@ Welcome to open-DARTS documentation!
 
    for_developers/darts_gitlab_setup.md
    for_developers/parallel_operators.md
+   for_developers/conditions_lowering.md
 
 .. toctree::
    :maxdepth: 2
@@ -38,6 +39,7 @@ Welcome to open-DARTS documentation!
    technical_reference/glossary.md
    technical_reference/reservoir.md
    technical_reference/wells.md
+   technical_reference/conditions.md
 
 .. toctree::
    :maxdepth: 2

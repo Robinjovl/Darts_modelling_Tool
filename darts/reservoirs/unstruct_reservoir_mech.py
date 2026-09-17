@@ -6,9 +6,7 @@ import numpy as np
 from scipy.linalg import null_space
 
 from darts.discretizer import (
-    BoundaryCondition,
     Mesh,
-    THMBoundaryCondition,
     elem_loc,
     poro_mech_discretizer,
     thermoporo_mech_discretizer,
@@ -33,79 +31,56 @@ from darts.engines import (
 from darts.engines import Stiffness as engine_stiffness
 from darts.engines import matrix33 as engine_matrix33
 from darts.input.input_data import InputData
+from darts.reservoirs.boundary_spec import (
+    BoundaryValueBC,
+    aquifer,
+    compile_mech_discretizer,
+    compile_pm_discretizer,
+    flow_rate,
+    free,
+    load,
+    no_flow,
+    pm_discretizer_row,
+    roller,
+    stuck,
+    stuck_roller,
+    stuck_t_load_n,
+)
 
 
 class bound_cond:
     '''
-    General representation of boundary condition: a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann)
+    DEPRECATED vocabulary: the dict spelling of a*p + b*f = r (a=1,b=0 - Dirichlet, a=0,b=1 - Neumann).
+
+    Every entry is the ``to_legacy()`` form of the typed constructor of the same
+    name in :mod:`darts.reservoirs.boundary_spec` -- one source of truth, so the
+    dicts stay bit-identical while they last. Declare boundaries with
+    ``FaceBoundary(flow=no_flow(), mech=roller())`` instead; feeding these dicts
+    to a reservoir emits a DeprecationWarning (once per process).
     '''
 
     def __init__(self):
         # flow
-        self.NO_FLOW = {'a': 0.0, 'b': 1.0, 'r': 0.0}
-        self.AQUIFER = lambda p: {'a': 1.0, 'b': 0.0, 'r': p}
-        self.FLOW = lambda flow: {
-            'a': 0.0,
-            'b': 1.0,
-            'r': flow,
-        }  # TODO normed to area ? units?
+        self.NO_FLOW = no_flow().to_legacy()
+        self.AQUIFER = lambda p: aquifer(p).to_legacy()
+        self.FLOW = lambda flow: flow_rate(
+            flow
+        ).to_legacy()  # TODO normed to area ? units?
 
         # mechanics
         # for mechanical boundary conditions, Dirichlet means setting displacements [m.] and Neumann means setting load [bars]
         # roller allows sliding along the boundary, but not moving away from it, so normal displacement is zero and shear stress is zero
         #  1*displ_n + 0*stress_n = 0, 'n' means normal to the boundary face
         #  0*displ_t + 1*stress_t = 0, 't' means parallel to the boundary face
-        self.ROLLER = {
-            'an': 1.0,
-            'bn': 0.0,
-            'rn': 0.0,
-            'at': 0.0,
-            'bt': 1.0,
-            'rt': np.array([0, 0, 0]),
-        }
-        self.FREE = {
-            'an': 0.0,
-            'bn': 1.0,
-            'rn': 0.0,
-            'at': 0.0,
-            'bt': 1.0,
-            'rt': np.array([0, 0, 0]),
-        }
-        self.STUCK = lambda un, ut: {
-            'an': 1.0,
-            'bn': 0.0,
-            'rn': un,
-            'at': 1.0,
-            'bt': 0.0,
-            'rt': np.array(ut),
-        }
+        self.ROLLER = roller().to_legacy()
+        self.FREE = free().to_legacy()
+        self.STUCK = lambda un, ut: stuck(un, ut).to_legacy()
         # Fn, Ft are normal and tangential load
-        self.LOAD = lambda Fn, Ft: {
-            'an': 0.0,
-            'bn': 1.0,
-            'rn': Fn,
-            'at': 0.0,
-            'bt': 1.0,
-            'rt': np.array(Ft),
-        }
+        self.LOAD = lambda Fn, Ft: load(Fn, Ft).to_legacy()
         # the same as ROLLER except rn is non-zero
-        self.STUCK_ROLLER = lambda un: {
-            'an': 1.0,
-            'bn': 0.0,
-            'rn': un,
-            'at': 0.0,
-            'bt': 1.0,
-            'rt': np.array([0.0, 0.0, 0.0]),
-        }
+        self.STUCK_ROLLER = lambda un: stuck_roller(un).to_legacy()
         # doesn't allow shearing, but allows normal displacement and apply load in the normal direction
-        self.STUCK_T_LOAD_N = lambda Fn, ut: {
-            'an': 0.0,
-            'bn': 1.0,
-            'rn': Fn,
-            'at': 1.0,
-            'bt': 0.0,
-            'rt': np.array(ut),
-        }
+        self.STUCK_T_LOAD_N = lambda Fn, ut: stuck_t_load_n(Fn, ut).to_legacy()
         # | TYPE             |  a_n  |  b_n  |   r_n   |  a_t  |  b_t  |    r_t     |  comments          |
         # -------------------------------------------------------------------------------------------------
         # | ROLLER           |  1.0   |  0.0  |   0.0   |  0.0  |  1.0  |   [0,0,0] | un = 0, st = 0
@@ -249,6 +224,8 @@ class UnstructReservoirMech:
         self.mesh = conn_mesh()
         self.n_dim = 3
         self.n_dim_sq = self.n_dim * self.n_dim
+        # deprecated dict vocabulary, kept for out-of-tree models; declare
+        # conditions with boundary_spec.FaceBoundary + no_flow()/roller()/...
         self.bc_type = bound_cond()
         self.cell_property = fluid_vars + ['ux', 'uy', 'uz']
         ne = len(fluid_vars)
@@ -273,6 +250,13 @@ class UnstructReservoirMech:
         self.n_state = ne
         self.n_vars = self.n_state + self.n_dim
         self.n_bc_vars = 1 + thermoporoelasticity + self.n_dim
+
+        # VALUE half of the boundary spec (the r of a*u + b*f = r): owns the
+        # bc_rhs fill, the mesh view writes and the n/n+1 rotation. Driven
+        # directly from init_bc_rhs()/update_trans()/update() rather than
+        # registered on model.conditions, which still rejects every item on a
+        # mechanics model (see BoundaryValueBC's docstring).
+        self.bc_values = BoundaryValueBC(self)
 
     def set_equilibrium(self, zero_conduction: bool = False):
         if self.discretizer_name == 'pm_discretizer':
@@ -572,62 +556,61 @@ class UnstructReservoirMech:
         self.pz_bounds = np.array(self.mesh.pz_bounds, copy=False)
         self.pz_bounds[:] = p_z_t
 
-    def init_bc_rhs(self):
+    def boundary_tag_ids(self):
+        """{boundary tag: indices of its boundary elements} (mech_discretizer)."""
+        offset = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+        return {
+            tag: np.where(self.tags == tag)[0] - offset
+            for tag in self.domain_tags[elem_loc.BOUNDARY]
+        }
+
+    def boundary_normals(self, tag_ids):
+        """Outward normals of the listed boundary elements (mech_discretizer).
+
+        Only rows listed in ``tag_ids`` are filled; the rest stay zero.
+        """
+        offset = self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
+        normals = np.zeros((self.n_bounds, self.n_dim))
+        for ids in tag_ids.values():
+            for id in ids:
+                assert self.adj_matrix_cols[self.id_sorted[id]] == id + offset
+                conn = self.conns[self.id_boundary_conns[id]]
+                n = np.array(conn.n.values)
+                conn_c = np.array(conn.c.values)
+                c1 = np.array(self.centroids[conn.elem_id1].values)
+                if n.dot(conn_c - c1) < 0:
+                    n *= -1.0
+                normals[id] = n
+        return normals
+
+    def bound_face_prop_ids(self):
+        """Boundary tag of every pm_discretizer boundary face, in face order."""
+        return [
+            self.unstr_discr.bound_face_info_dict[id].prop_id
+            for id in range(len(self.unstr_discr.bound_face_info_dict))
+        ]
+
+    def init_bc_rhs(self, t: float = 0.0):
+        """Fill ``bc_rhs`` (and, on the pm path, ``pm.bc``) from the spec.
+
+        Re-reads ``boundary_conditions`` every call: models mutate the dicts in
+        place at runtime (e.g. the Mandel north-boundary displacement).
+        """
         if self.discretizer_name == 'mech_discretizer':
-            for tag in self.domain_tags[elem_loc.BOUNDARY]:
-                ids = (
-                    np.where(self.tags == tag)[0]
-                    - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
-                )
-                bc = self.boundary_conditions[tag]
-                # flow
-                self.bc_rhs[self.n_bc_vars * ids + self.p_bc_var] = bc['flow']['r']
-                # energy
-                if self.thermoporoelasticity:
-                    self.bc_rhs[self.n_bc_vars * ids + self.t_bc_var] = bc['temp']['r']
-                # mechanics
-                for id in ids:
-                    assert (
-                        self.adj_matrix_cols[self.id_sorted[id]]
-                        == id + self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
-                    )
-                    conn = self.conns[self.id_boundary_conns[id]]
-                    n = np.array(conn.n.values)
-                    conn_c = np.array(conn.c.values)
-                    c1 = np.array(self.centroids[conn.elem_id1].values)
-                    if n.dot(conn_c - c1) < 0:
-                        n *= -1.0
-                    self.bc_rhs[
-                        self.n_bc_vars * id + self.u_bc_var : self.n_bc_vars * id
-                        + self.u_bc_var
-                        + self.n_dim
-                    ] = bc['mech']['rn'] * n + bc['mech']['rt']
+            tag_ids = self.boundary_tag_ids()
+            normals = self.boundary_normals(tag_ids)
+            self.bc_values.sync(self.boundary_conditions)
+            self.bc_values.write_mech_discretizer(tag_ids, normals, t=t)
         elif self.discretizer_name == 'pm_discretizer':
+            prop_ids = self.bound_face_prop_ids()
+            normals = np.array(
+                [self.get_normal_to_bound_face(id) for id in range(len(prop_ids))]
+            )
+            self.bc_values.sync(self.unstr_discr.boundary_conditions)
             self.pm.bc.clear()
-            for id in range(len(self.unstr_discr.bound_face_info_dict)):
-                n = self.get_normal_to_bound_face(id)
-                # P = np.identity(3) - np.outer(n, n)
-                mech = self.unstr_discr.boundary_conditions[
-                    self.unstr_discr.bound_face_info_dict[id].prop_id
-                ]['mech']
-                flow = self.unstr_discr.boundary_conditions[
-                    self.unstr_discr.bound_face_info_dict[id].prop_id
-                ]['flow']
-                bc = [
-                    mech['an'],
-                    mech['bn'],
-                    mech['at'],
-                    mech['bt'],
-                    flow['a'],
-                    flow['b'],
-                ]
-                self.pm.bc.append(matrix(bc, len(bc), 1))
-                self.bc_rhs[
-                    self.n_bc_vars * id + self.u_bc_var : self.n_bc_vars * id
-                    + self.u_bc_var
-                    + self.n_dim
-                ] = mech['rn'] * n + mech['rt']
-                self.bc_rhs[self.n_bc_vars * id + self.p_bc_var] = flow['r']
+            for bc_matrix in compile_pm_discretizer(self.bc_values.types, prop_ids):
+                self.pm.bc.append(bc_matrix)
+            self.bc_values.write_pm_discretizer(prop_ids, normals, t=t)
 
     def init_arrays_boundary_condition(self):
         self.set_vars_pm_discretizer()
@@ -644,87 +627,32 @@ class UnstructReservoirMech:
             ]  # store it to self. as it will be used in init_bc_rhs() further
             self.id_boundary_conns = self.adj_matrix[self.id_sorted]
 
-            ap = np.ones(self.n_bounds)
-            bp = np.zeros(self.n_bounds)
-            amn = np.zeros(self.n_bounds)
-            bmn = np.zeros(self.n_bounds)
-            amt = np.zeros(self.n_bounds)
-            bmt = np.zeros(self.n_bounds)
-            if self.thermoporoelasticity:
-                at = np.zeros(self.n_bounds)
-                bt = np.zeros(self.n_bounds)
-
-            for tag in self.domain_tags[elem_loc.BOUNDARY]:
-                ids = (
-                    np.where(self.tags == tag)[0]
-                    - self.discr_mesh.region_ranges[elem_loc.BOUNDARY][0]
-                )
-                bc = self.boundary_conditions[tag]
-                ap[ids] = bc['flow']['a']
-                bp[ids] = bc['flow']['b']
-                amn[ids] = bc['mech']['an']
-                bmn[ids] = bc['mech']['bn']
-                amt[ids] = bc['mech']['at']
-                bmt[ids] = bc['mech']['bt']
-                if self.thermoporoelasticity:
-                    at[ids] = bc['temp']['a']
-                    bt[ids] = bc['temp']['b']
-
-            self.cpp_bc = THMBoundaryCondition()
-            self.cpp_bc.flow.a = value_vector(ap)
-            self.cpp_bc.flow.b = value_vector(bp)
-            self.cpp_bc.mech_normal.a = value_vector(amn)
-            self.cpp_bc.mech_normal.b = value_vector(bmn)
-            self.cpp_bc.mech_tangen.a = value_vector(amt)
-            self.cpp_bc.mech_tangen.b = value_vector(bmt)
-            if self.thermoporoelasticity:
-                self.cpp_bc.thermal.a = value_vector(at)
-                self.cpp_bc.thermal.b = value_vector(bt)
-            # to use base discretizer's class function reconstruct_pressure_gradients_per_cell
-            # which doesn't know the new THMBoundaryCondition class yet
-            self.cpp_flow = BoundaryCondition()
-            self.cpp_flow.a = value_vector(ap)
-            self.cpp_flow.b = value_vector(bp)
-            if self.thermoporoelasticity:
-                self.cpp_heat = BoundaryCondition()
-                self.cpp_heat.a = value_vector(at)
-                self.cpp_heat.b = value_vector(bt)
+            # TYPE half of the boundary spec (the a, b of a*u + b*f = r):
+            # compiled once into the C++ discretizer's boundary objects
+            self.bc_values.sync(self.boundary_conditions)
+            self.cpp_bc, self.cpp_flow, self.cpp_heat = compile_mech_discretizer(
+                self.bc_values.types, self.boundary_tag_ids(), self.n_bounds
+            )
         elif self.discretizer_name == 'pm_discretizer':
             self.unstr_discr.p_ref = np.zeros(self.n_matrix + self.n_fracs)
             self.unstr_discr.p_ref[:] = self.p_init
-            for bound_id in range(len(self.unstr_discr.bound_face_info_dict)):
-                n = self.get_normal_to_bound_face(bound_id)
-                np.identity(3) - np.outer(n, n)
-                mech = self.unstr_discr.boundary_conditions[
-                    self.unstr_discr.bound_face_info_dict[bound_id].prop_id
-                ]['mech']
-                flow = self.unstr_discr.boundary_conditions[
-                    self.unstr_discr.bound_face_info_dict[bound_id].prop_id
-                ]['flow']
-                # if flow['a'] == 1.0:
-                #    c = self.unstr_discr.bound_face_info_dict[bound_id].centroid
-                #    if c[1] > 250 and c[1] < 750: bc.extend([flow['a'], flow['b'], 0.5 * self.p_init])
-                #    else: bc.extend([0.0, 1.0, 0.0])
-                # else:
-                bc = [
-                    mech['an'],
-                    mech['bn'],
-                    mech['at'],
-                    mech['bt'],
-                    flow['a'],
-                    flow['b'],
-                ]
-                self.pm.bc.append(matrix(bc, len(bc), 1))
-                self.bc_rhs[4 * bound_id : 4 * bound_id + 3] = (
-                    mech['rn'] * n + mech['rt']
-                )  # TODO use init_bc_rhs
-                self.bc_rhs[4 * bound_id + 3] = flow['r']
-                self.bc_rhs_prev[4 * bound_id : 4 * bound_id + 3] = np.array(
-                    [0, 0, 0]
-                )  # prev can be not inited if bnd cond doesn't change
-                self.bc_rhs_prev[4 * bound_id + 3] = flow['r']
+            prop_ids = self.bound_face_prop_ids()
+            normals = np.array(
+                [self.get_normal_to_bound_face(id) for id in range(len(prop_ids))]
+            )
+            self.bc_values.sync(self.unstr_discr.boundary_conditions)
+            for bc_matrix in compile_pm_discretizer(self.bc_values.types, prop_ids):
+                self.pm.bc.append(bc_matrix)
+            self.bc_values.write_pm_discretizer(prop_ids, normals)
+            # bc_rhs_prev/bc_rhs_ref hold no mechanical part: the previous and
+            # the reference state are only used for the flow value, and the
+            # previous one may never be filled if the bc does not change
+            for bound_id, tag in enumerate(prop_ids):
+                flow_r = self.bc_values.values[tag].evaluate().flow
+                self.bc_rhs_prev[4 * bound_id : 4 * bound_id + 3] = np.array([0, 0, 0])
+                self.bc_rhs_prev[4 * bound_id + 3] = flow_r
                 self.bc_rhs_ref[4 * bound_id : 4 * bound_id + 3] = np.array([0, 0, 0])
-                self.bc_rhs_ref[4 * bound_id + 3] = flow['r']
+                self.bc_rhs_ref[4 * bound_id + 3] = flow_r
             # self.bc_rhs_prev = np.copy(self.bc_rhs)
             self.pm.bc_prev = self.pm.bc
             self.unstr_discr.f = np.zeros(
@@ -733,21 +661,24 @@ class UnstructReservoirMech:
 
     def init_bc_fractures(self):
         assert self.discretizer_name == 'pm_discretizer'
+        self.bc_values.sync(self.unstr_discr.boundary_conditions)
+        types = self.bc_values.types
         for bound_id in range(
             len(self.unstr_discr.bound_face_info_dict),
             self.unstr_discr.bound_faces_tot + self.unstr_discr.frac_bound_faces_tot,
         ):
-            mech = self.unstr_discr.boundary_conditions[
-                self.unstr_discr.frac_bound_face_info_dict[bound_id].prop_id
-            ]['mech']
-            flow = self.unstr_discr.boundary_conditions[
-                self.unstr_discr.frac_bound_face_info_dict[bound_id].prop_id
-            ]['flow']
-            bc = [mech['an'], mech['bn'], mech['at'], mech['bt'], flow['a'], flow['b']]
+            tag = self.unstr_discr.frac_bound_face_info_dict[bound_id].prop_id
+            bc = pm_discretizer_row(types[tag])
             self.pm.bc.append(matrix(bc, len(bc), 1))
         self.pm.bc_prev = self.pm.bc
 
     def set_boundary_conditions_pm_discretizer(self):
+        """Hand the declared conditions to the python discretizer.
+
+        It indexes boundaries by face and fills the per-tag ``cells`` list
+        while reading the mesh, so the lists start empty (the subscript works
+        on a FaceBoundary and on a legacy dict alike).
+        """
         if self.discretizer_name == 'pm_discretizer':
             self.unstr_discr.boundary_conditions = self.boundary_conditions
             for key in self.boundary_conditions.keys():
@@ -1012,21 +943,16 @@ class UnstructReservoirMech:
         self.wells = []
 
     def update_trans(self, dt, x):
-        if self.discretizer_name == 'mech_discretizer':
-            self.bc[:] = self.bc_rhs
-            self.bc_prev[:] = self.bc_rhs_prev
-        elif self.discretizer_name == 'pm_discretizer':
+        if self.discretizer_name == 'pm_discretizer':
             # update transient sources / sinks
             self.f[:] = self.unstr_discr.f
-            # update boundaries at n+1 / n timesteps
-            self.bc[: 4 * self.unstr_discr.bound_faces_tot] = self.bc_rhs
-            self.bc_prev[: 4 * self.unstr_discr.bound_faces_tot] = self.bc_rhs_prev
+        # push the boundary values at n+1 / n into the mesh (zero-copy views)
+        self.bc_values.push()
 
     def update(self, dt, time):
-        # update local array
-        self.bc_rhs_prev = np.copy(self.bc_rhs)
-        if self.discretizer_name == 'pm_discretizer':
-            self.pm.bc_prev = self.pm.bc
+        # rotate the boundary values n+1 -> n; C++ rotates its own half of the
+        # time lag (tran_biot_n) in post_newtonloop
+        self.bc_values.on_timestep_start(dt, time)
 
     def set_vars_pm_discretizer(self):
         # make vars with the same name as in mech_discretize to avoid code duplication

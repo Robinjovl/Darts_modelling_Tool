@@ -177,6 +177,22 @@ public:
 
 	virtual int init_jacobian_structure(csr_matrix_base *jacobian);
 
+	/// @brief Whether this engine assembles non-Darcy perforation flow laws.
+	///
+	/// A perforation flow law is a well-assembler term: only an engine whose
+	/// assembly knows about it may run a model that declares one. Engines that
+	/// do not override this refuse such a model at init() instead of silently
+	/// dropping the well-reservoir coupling.
+	virtual bool supports_perforation_flow_laws() const { return false; }
+
+	/// @brief Resolve every non-Darcy perforation to its two mesh connections.
+	///
+	/// Called at the end of init_base(), when the mesh connection list is frozen
+	/// and the well block indices are assigned. Leaves both arrays empty -- and
+	/// so costs the assembly one empty-vector test per connection -- when no
+	/// perforation carries a flow law.
+	void build_perforation_flow_laws();
+
 	// newton loop
 	virtual int assemble_jacobian_array(value_t dt, std::vector<value_t> &X, csr_matrix_base *jacobian, std::vector<value_t> &RHS) = 0;
 
@@ -377,6 +393,24 @@ public:
 
 	/// @brief vector of wells
 	std::vector<ms_well *> wells;
+
+	/// @brief One perforation carrying a non-Darcy flow law, resolved to blocks.
+	///
+	/// The law is held BY VALUE: it is snapshotted at init(), so mutating the
+	/// well's flow law afterwards has no effect until the engine is re-initialized.
+	struct perforation_law_conn
+	{
+		index_t well_block;
+		index_t res_block;
+		perforation_flow_law law;
+	};
+
+	/// @brief [n_conns] index into `perforation_law_conns`, or -1 for an ordinary
+	/// connection. Empty when no perforation carries a flow law.
+	std::vector<int> perforation_law_of_conn;
+
+	/// @brief the perforations carrying a flow law, in well/perforation order
+	std::vector<perforation_law_conn> perforation_law_conns;
 
 	/// @brief unsorted map containing well information (BHP, rates)
 	std::unordered_map<std::string, std::vector<value_t>> time_data;
@@ -1039,6 +1073,11 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	//Xn.resize (n_vars * mesh->n_blocks);
 	RHS.resize(n_vars * mesh->n_blocks);
 	dX.resize(n_vars * mesh->n_blocks);
+
+	// Resolve engine-side perforation flow laws now that the connection list is
+	// frozen and the well block indices are assigned. Throws if any well declares
+	// one and this engine cannot assemble it.
+	build_perforation_flow_laws();
 
 	sprintf(buffer, "\nSTART SIMULATION\n-------------------------------------------------------------------------------------------------------------\n");
 	std::cout << buffer << std::flush;

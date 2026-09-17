@@ -18,22 +18,14 @@ Comparison of the results are available in the following Excel file:
     https://gitlab.com/open-darts/dwell/-/blob/compare_with_darts_well/examples/two_phase/dwell_darts_well_comparison.xlsx?ref_type=heads
 """
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import os
-
 from darts.engines import redirect_darts_output
-from darts.pipes.save_results import save_dfm_well_props
-from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
-from darts.pipes.viz.plot_heat_map_contourf import plot_heat_map_contourf
-
 from model import Model
 
+from darts.pipes.save_results import save_dfm_well_props
+from darts.pipes.viz.plot_heat_map_pcolormesh import plot_heat_map_pcolormesh
 
 redirect_darts_output('run.log')
 coupled_model = Model()
-coupled_model.reservoir.grav_acceleration_for_spe = 9.80665
 coupled_model.init()
 coupled_model.set_output()
 
@@ -59,4 +51,3 @@ save_dfm_well_props(
 )
 
 plot_heat_map_pcolormesh('I1', coupled_model, show_plot=False)
-# plot_heat_map_contourf('I1', coupled_model, show_plot=False)
