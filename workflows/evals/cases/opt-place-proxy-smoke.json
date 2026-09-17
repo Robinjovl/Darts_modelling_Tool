@@ -1,0 +1,15 @@
+{
+ "name": "opt-place-proxy-smoke",
+ "workflow": "optimize",
+ "study": "opt-place-proxy-smoke",
+ "prompt": "Repository: {repo} (read-only). Python for every command: {python}. Write files only under {run_dir}. Task: use the optimization-open-darts skill to relocate injector I1 of the Brugge proxy (models/Uniform_Brugge) for maximum cumulative oil over 60 days with report times 20, 40 and 60 days, producers P1, P2 and P3 observed, minimum spacing 300 m, at most 4 candidates, seed_root 31. Do not run simulations yourself: write the study spec as {run_dir}/study.json and submit it with `PYTHONPATH={repo} {python} -m workflows.evals.broker --spec {run_dir}/study.json --study opt-place-proxy-smoke` (the socket is in $WORKFLOWS_BROKER). Run the estimate first (--command estimate). Report the best cell, its objective, and the regret of the baseline.",
+ "budget": {
+  "max_turns": 40,
+  "simulations": 10,
+  "max_usd": 5.0
+ },
+ "tolerance": 0.05,
+ "seeds": [
+  31
+ ]
+}

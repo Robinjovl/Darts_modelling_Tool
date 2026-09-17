@@ -1,0 +1,20 @@
+{
+ "name": "hm-proxy-twin-smoke",
+ "workflow": "hm-esmda",
+ "study": "hm-proxy-twin-smoke",
+ "tier": "smoke",
+ "prompt": "Repository: {repo} (read-only). Python for every command: {python}. Write files only under {run_dir}. Task: use the history-matching-open-darts skill to run an ES-MDA identical-twin test on the Brugge proxy (models/Uniform_Brugge): uncertain log10-permeability field (name k, sigma 0.3 in log10, correlation range 1500 m), observations = oil rate of producers P1, P5 and P10 at 20, 40, 60, 80 and 100 days with 5% relative noise, last 20% of the history held out, ensemble size 6, 2 assimilation steps, localization length 1500 m, seed_root 21. Do not run simulations yourself: write the study spec as {run_dir}/study.json, run the estimate (`PYTHONPATH={repo} {python} -m workflows.evals.broker --spec {run_dir}/study.json --study hm-proxy-twin-smoke --command estimate`), generate the truth (`--command truth`), then assimilate (`--command run`); the socket is in $WORKFLOWS_BROKER. Report chi2, held-out RMSE, coverage and spread ratio per step and say whether the match passes the gates.",
+ "budget": {
+  "max_turns": 50,
+  "simulations": 19,
+  "max_usd": 6.0
+ },
+ "tolerance": {
+  "held_out_rmse": 2.487,
+  "coverage_low": 0.6,
+  "spread_ratio_min": 0.1
+ },
+ "seeds": [
+  21
+ ]
+}

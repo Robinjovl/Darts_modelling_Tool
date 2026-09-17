@@ -96,7 +96,7 @@ pre-commit run -v --files /absolute/path/to/file.py --show-diff-on-failure
 ```bash
 FILES="$(
   {
-    git ls-files -- 'darts' 'tests' 'helper_scripts' '.cicd' \
+    git ls-files -- 'darts' 'tests' 'helper_scripts' 'workflows' '.cicd' \
                     '.gitlab-ci.yml' '.pre-commit-config.yaml' 'pyproject.toml'
   } | grep -E '\.(py|ya?ml|toml)$'
 )"

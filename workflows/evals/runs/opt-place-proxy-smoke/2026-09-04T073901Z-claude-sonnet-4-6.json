@@ -1,0 +1,40 @@
+{
+ "broker_requests": [
+  {
+   "command": "estimate",
+   "spec_hash": "acc44cd55cddad67803970f831fb90d48cd25fde70d4d7f2d3588e8ff9cfb7eb",
+   "study": "opt-place-proxy-smoke"
+  },
+  {
+   "command": "run",
+   "spec_hash": "acc44cd55cddad67803970f831fb90d48cd25fde70d4d7f2d3588e8ff9cfb7eb",
+   "study": "opt-place-proxy-smoke"
+  }
+ ],
+ "case": "opt-place-proxy-smoke",
+ "cpu_s": 3.5,
+ "exit_code": 0,
+ "git_head": "9238b286",
+ "model": "claude-sonnet-4-6",
+ "num_turns": 24,
+ "peak_rss_mb": 259.2,
+ "result_text": "Results:\n\n| | |\n|---|---|\n| **Best cell** | **326** (`c00326`) at centroid (11 559.1 m, 5 163.1 m, 36.0 m) |\n| **Best objective** | **64 533.76 m\u00b3** cumulative oil over 60 days (trapezoid of P1+P2+P3 oil rates at t = 20, 40, 60 d) |\n| **Baseline objective** | 60 251.72 m\u00b3 (I1 at its original location) |\n| **Regret of baseline** | **1.0** \u2014 the baseline captures 0% of the available improvement; moving I1 to cell 326 improves cumulative oil by ~4 282 m\u00b3 (+7.1%) |\n\n**Estimate (pre-run):** 5 simulations planned (1 baseline + 4 candidates seeded from seed_root=31), 5% expected retries, 8.5\u201314 s wall time \u2014 all within budget.",
+ "run_root": "/oahu/data/avnovikov/tmp/claude-515366/-oahu-data-avnovikov/a5eddba3-6202-4b1d-b0d3-01fd12a0b649/scratchpad/eval3_opt",
+ "score": {
+  "case": "opt-place-proxy-smoke",
+  "gates_version": "0.1.0",
+  "passed": true,
+  "regret": 0.0,
+  "score_version": "0.1.0",
+  "uninformative": false
+ },
+ "started_utc": "2026-09-04T07:39:01Z",
+ "tokens": {
+  "cache_creation_input_tokens": 25895,
+  "cache_read_input_tokens": 405297,
+  "input_tokens": 20,
+  "output_tokens": 4244
+ },
+ "total_cost_usd": 0.28241535,
+ "wall_s": 107.7
+}

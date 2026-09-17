@@ -1,0 +1,16 @@
+{
+ "name": "ens-proxy-smoke",
+ "workflow": "ensemble",
+ "study": "ens-proxy-smoke",
+ "tier": "smoke",
+ "prompt": "Repository: {repo} (read-only). Python for every command: {python}. Write files only under {run_dir}. Task: use the ensemble-study-open-darts skill on the Brugge proxy (models/Uniform_Brugge) to quantify P10/P50/P90 of the oil rate of producers P1, P2 and P3 at 20, 40 and 60 days under three uncertain inputs: a transmissibility multiplier (log-uniform 0.5-2, name tm), a well-index multiplier (log-uniform 0.5-2, name wi) and a log-permeability field (name k, 3 components, correlation range 1500 m). Use a Latin hypercube design with 8 members and seed_root 11. Do not run simulations yourself: write the study spec as {run_dir}/study.json, run the estimate with `PYTHONPATH={repo} {python} -m workflows.evals.broker --spec {run_dir}/study.json --study ens-proxy-smoke --command estimate`, then submit with `--command run` (socket in $WORKFLOWS_BROKER); the broker runs and analyzes the study. Report the P10/P50/P90 with their intervals for each producer at 60 days and the number of failed members.",
+ "budget": {
+  "max_turns": 40,
+  "simulations": 8,
+  "max_usd": 5.0
+ },
+ "tolerance": 0.05,
+ "seeds": [
+  11
+ ]
+}

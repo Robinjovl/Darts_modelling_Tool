@@ -1,0 +1,36 @@
+{
+ "broker_requests": [
+  {
+   "command": "estimate",
+   "spec_hash": "98ad6ed051d60f1d8da4eabccedaf094d2c10dff654a1c0ce12b989a0d50ef15",
+   "study": "ens-proxy-smoke"
+  },
+  {
+   "command": "run",
+   "spec_hash": "98ad6ed051d60f1d8da4eabccedaf094d2c10dff654a1c0ce12b989a0d50ef15",
+   "study": "ens-proxy-smoke"
+  }
+ ],
+ "case": "ens-proxy-smoke",
+ "cpu_s": 5.2,
+ "exit_code": 0,
+ "git_head": "7b805737",
+ "model": "claude-sonnet-4-6",
+ "num_turns": 34,
+ "peak_rss_mb": 266.7,
+ "result_text": "---\n\n## Results\n\n**Study:** `ens-proxy-smoke` \u2014 LHS design, n=8, seed_root=11, 3 uncertain inputs (tm, wi, k[3])\n**Failed members: 0** (8/8 succeeded)\n\n### P10 / P50 / P90 of oil rate at **60 days** (m\u00b3/day, production positive)\n\n| Well | P10 | P50 | P90 |\n|------|-----|-----|-----|\n| **P1** | 199.2  [CI: 188.0 \u2013 368.7] | 390.1  [CI: 272.6 \u2013 499.4] | 657.8  [CI: 401.2 \u2013 806.7] |\n| **P2** | 411.3  [CI: 394.5 \u2013 604.3] | 652.9  [CI: 491.9 \u2013 886.3] | 1076.4  [CI: 701.0 \u2013 1175.8] |\n| **P3** | 232.5  [CI: 205.3 \u2013 349.6] | 372.6  [CI: 284.1 \u2013 530.1] | 621.2  [CI: 411.1 \u2013 700.9] |\n\nBootstrap 90% confidence intervals (2000 resamples). With only n=8 members the intervals are wide \u2014 all P10/P90 differences are **not resolved** at this sample size.\n\n### Full table (all report times)\n\n| Well | t (d) | P10 | P50 | P90 |\n|------|-------|-----|-----|-----|\n| P1 | 20 | 270.5 | 422.6 | 660.9 |\n| P1 | 40 | 200.4 | 390.7 | 654.2 |\n| P1 | 60 | 199.2 | 390.1 | 657.8 |\n| P2 | 20 | 433.4 | 665.5 | 1079.2 |\n| P2 | 40 | 410.0 | 651.7 | 1073.9 |\n| P2 | 60 | 411.3 | 652.9 | 1076.4 |\n| P3 | 20 | 247.0 | 381.0 | 627.0 |\n| P3 | 40 | 230.8 | 370.2 | 620.1 |\n| P3 | 60 | 232.5 | 372.6 | 621.2 |\n\n**Notes:** Rates are roughly stable from day 20 \u2192 60 for all producers (BHP-controlled wells). P2 produces highest (~1.7\u00d7 P1/P3 at P50). The P90/P10 ratio is ~3\u00d7 for all three wells, reflecting the combined uncertainty across tm, wi, and the 3-component permeability field. Increase n to \u2265 32 before drawing quantitative conclusions.",
+ "run_root": "/oahu/data/avnovikov/tmp/claude-515366/-oahu-data-avnovikov/a5eddba3-6202-4b1d-b0d3-01fd12a0b649/scratchpad/eval2_ens",
+ "score": {
+  "error": "FileNotFoundError(2, 'No such file or directory')",
+  "passed": false
+ },
+ "started_utc": "2026-09-04T07:33:24Z",
+ "tokens": {
+  "cache_creation_input_tokens": 39626,
+  "cache_read_input_tokens": 740477,
+  "input_tokens": 27,
+  "output_tokens": 9802
+ },
+ "total_cost_usd": 0.5178516,
+ "wall_s": 223.4
+}

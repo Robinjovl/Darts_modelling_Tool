@@ -1,6 +1,6 @@
 ---
 name: verify-open-darts
-description: Run the mandatory verification stack when changes affect runtime code, numerical behavior, tests, packaging, or build/test behavior in open-DARTS. Trigger for edits under darts/, engines/, discretizer/, linear_solvers/, models/, tests/, helper_scripts/, pyproject.toml, setup.py, CMakeLists.txt, .gitlab-ci.yml, or .cicd/jobs/.
+description: Run the mandatory verification stack when changes affect runtime code, numerical behavior, tests, packaging, or build/test behavior in open-DARTS. Trigger for edits under darts/, engines/, discretizer/, linear_solvers/, models/, tests/, helper_scripts/, workflows/, pyproject.toml, setup.py, CMakeLists.txt, .gitlab-ci.yml, or .cicd/jobs/.
 ---
 
 # Verify open-DARTS

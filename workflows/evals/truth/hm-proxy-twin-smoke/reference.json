@@ -1,0 +1,104 @@
+{
+ "case": "hm-proxy-twin-smoke",
+ "identities": {
+  "score_version": "0.1.0",
+  "truth_generation_hash": "bb36fe91d3bf0fe39ef7fbfcdf69cebc150f47766c05a3f3ac6a4ba7fe58283e",
+  "workflow_run_hash": "a09bd5f5d33b6723afe8b8fc785a0de3f4f070971d65aa97d70b45068c1d7b95"
+ },
+ "note": "gates for the smoke tier are set from this reference run (ne=6, 2 steps); the full tier uses the design's fixed gates",
+ "reference_final_step": {
+  "chi2_train": 8.426081045041505,
+  "coverage80_held_out": 0.6666666666666666,
+  "held_out_rmse": 1.9893052328195657,
+  "rmse_log10_vs_truth": 0.3805100543286374,
+  "spread_ratio": 0.850521293589204,
+  "step": 2
+ },
+ "reference_steps": [
+  {
+   "chi2_train": 4023.005041010476,
+   "coverage80_held_out": 0.0,
+   "held_out_rmse": 50.962788415885186,
+   "rmse_log10_vs_truth": 0.41392928829668185,
+   "spread_ratio": 1.0,
+   "step": 0
+  },
+  {
+   "chi2_train": 115.61884438243577,
+   "coverage80_held_out": 0.6666666666666666,
+   "held_out_rmse": 8.239148947891994,
+   "rmse_log10_vs_truth": 0.36081097850940486,
+   "spread_ratio": 0.8962583092340805,
+   "step": 1
+  },
+  {
+   "chi2_train": 8.426081045041505,
+   "coverage80_held_out": 0.6666666666666666,
+   "held_out_rmse": 1.9893052328195657,
+   "rmse_log10_vs_truth": 0.3805100543286374,
+   "spread_ratio": 0.850521293589204,
+   "step": 2
+  }
+ ],
+ "study_spec": {
+  "compute": {
+   "max_workers": 6,
+   "memory_per_member_gb": null,
+   "platform": "cpu",
+   "retries": 2,
+   "threads_per_member": 1,
+   "walltime_s": 1800.0
+  },
+  "design": {
+   "localization_length_m": 1500.0,
+   "n_steps": 2,
+   "ne": 6
+  },
+  "model": {
+   "adapter": "workflows.adapters.brugge_proxy",
+   "cls": "Model",
+   "kwargs": {},
+   "model_dir": "/oahu/data/avnovikov/open-darts-skills/models/Uniform_Brugge",
+   "module": "model"
+  },
+  "name": "hm-proxy-twin-smoke",
+  "observations": {
+   "held_out_fraction": 0.2,
+   "quantities": [
+    "oil_rate"
+   ],
+   "report_times": [
+    20.0,
+    40.0,
+    60.0,
+    80.0,
+    100.0
+   ],
+   "sigma_abs": null,
+   "sigma_floor": 1e-12,
+   "sigma_rel": 0.05,
+   "wells": [
+    "P1",
+    "P5",
+    "P10"
+   ]
+  },
+  "parameters": [
+   {
+    "args": {
+     "range_m": 1500.0,
+     "sigma_log10": 0.3
+    },
+    "family": "LogPermField",
+    "name": "k"
+   }
+  ],
+  "reference": {},
+  "seed_root": 21,
+  "spec_version": 1,
+  "workflow": "hm-esmda"
+ },
+ "tier": "smoke",
+ "truth_generation_hash": "bb36fe91d3bf0fe39ef7fbfcdf69cebc150f47766c05a3f3ac6a4ba7fe58283e",
+ "x_true_log10_mean": 2.5481251613322167
+}

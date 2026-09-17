@@ -2,6 +2,7 @@ from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, ms_well
 from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
+import os
 
 from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from mesh_creator import mesh_creator
@@ -13,9 +14,21 @@ from darts.physics.properties.black_oil import *
 
 
 class Model(DartsModel):
-    def __init__(self):
+    def __init__(self, input_dir=None, mesh_file=None, regenerate_mesh=True, perm=None, well_coords=None):
+        """
+        :param input_dir: directory holding ``Brugge_struct/`` (default: the current directory)
+        :param mesh_file: path of the gmsh mesh to write/read (default: ``Brugge_model.msh``)
+        :param regenerate_mesh: regenerate the mesh with gmsh even if ``mesh_file`` exists (default True)
+        :param perm: matrix permeability [mD], scalar or per-cell array (default 500)
+        :param well_coords: optional {well name: [x, y, z]} overriding coordinates read from the input file
+        """
         # Call base class constructor
         super().__init__()
+        self.input_dir = '.' if input_dir is None else os.fspath(input_dir)
+        self.mesh_file = 'Brugge_model.msh' if mesh_file is None else os.fspath(mesh_file)
+        self.regenerate_mesh = regenerate_mesh
+        self.perm = 500 if perm is None else perm
+        self.well_coords = dict(well_coords) if well_coords else None
 
         # Measure time spend on reading/initialization
         self.timer.node["initialization"].start()
@@ -41,23 +54,25 @@ class Model(DartsModel):
     def set_reservoir(self):
         """Reservoir"""
         # GMSH file where mesh will be saved
-        mesh_file = 'Brugge_model.msh'
+        mesh_file = self.mesh_file
 
         # description of structured Brugge model
         (nx, ny, nz) = (139, 48, 9)
-        struct_mesh_path = 'Brugge_struct/dxdydz.in'
-        ACTNUM_path = 'Brugge_struct/ACTNUM.in'
-        depth_path = 'Brugge_struct/depth.in'
-        well_coord_path = 'Brugge_struct/well_coord_Brugge.txt'
+        struct = os.path.join(self.input_dir, 'Brugge_struct')
+        struct_mesh_path = os.path.join(struct, 'dxdydz.in')
+        ACTNUM_path = os.path.join(struct, 'ACTNUM.in')
+        depth_path = os.path.join(struct, 'depth.in')
+        well_coord_path = os.path.join(struct, 'well_coord_Brugge.txt')
         lc_bound = [200, 2500]
         thickness = 72  # the thickness of real reservoir, in meter
         random_seed = 999  # set different seed to generate different versions of mesh with the same set of parameters
 
-        mesh_creator(random_seed, nx, ny, nz, lc_bound, thickness, struct_mesh_path, ACTNUM_path,
-                     depth_path, mesh_file, well_coord_path)
+        if self.regenerate_mesh or not os.path.exists(mesh_file):
+            mesh_creator(random_seed, nx, ny, nz, lc_bound, thickness, struct_mesh_path, ACTNUM_path,
+                         depth_path, mesh_file, well_coord_path)
 
         # Some permeability input data for the simulation
-        const_perm = 500
+        const_perm = self.perm
         permx = const_perm  # Matrix permeability in the x-direction [mD]
         permy = const_perm  # Matrix permeability in the y-direction [mD]
         permz = const_perm  # Matrix permeability in the z-direction [mD]
@@ -76,7 +91,7 @@ class Model(DartsModel):
         return
 
     def set_wells(self):
-        well_coord = np.genfromtxt('Brugge_struct/well_coord_Brugge.txt')
+        well_coord = np.genfromtxt(os.path.join(self.input_dir, 'Brugge_struct', 'well_coord_Brugge.txt'))
         n_injector = 10  # the first 10 wells are injectors
         n_wells = 30  # the number of wells
         calc_equiv_WI = True
@@ -96,6 +111,8 @@ class Model(DartsModel):
             else:
                 name = "P" + str(i + 1 - n_injector)
 
+            if self.well_coords and name in self.well_coords:
+                wc = np.asarray(self.well_coords[name], dtype=float)
             self.reservoir.add_well(name)
             idx = self.reservoir.find_cell_index(wc)
             self.reservoir.add_perforation(name, res_cell_idx=idx, well_index=well_index_list[i], well_indexD=0)
@@ -112,7 +129,7 @@ class Model(DartsModel):
         # initial composition should be backtracked from saturations
         self.ini_stream = [0.001225901537, 0.7711341309]
 
-        pvt = 'Brugge_struct/physics.in'
+        pvt = os.path.join(self.input_dir, 'Brugge_struct', 'physics.in')
         property_container = BlackOilProperties(phases_name=phases, components_name=components,
                                                  Mw=np.ones(len(components)), eps_z=epsilon, temperature=1.)
 
