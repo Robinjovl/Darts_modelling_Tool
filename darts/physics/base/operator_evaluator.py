@@ -702,9 +702,9 @@ class ReservoirOperators(OperatorsSuper):
             self.property.eq_phase_idxs
         ]
 
-        # E4-> capillarity
-        values_np[self.PC_OP + eq_phase_idxs_mobile] = self.property.pc[
-            eq_phase_idxs_mobile
+        # E4-> capillarity: all fluid phases (fluid_phase_idxs)
+        values_np[self.PC_OP + self.fluid_phase_idxs] = self.property.pc[
+            self.fluid_phase_idxs
         ]
 
         """ Permeability multiplier k/kmax """

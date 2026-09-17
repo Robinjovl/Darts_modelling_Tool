@@ -764,7 +764,8 @@ class PropertyContainer:
             self.history_values = {}
 
         if isinstance(self.capillary_pressure_ev, dict):
-            for j in eq_phase_idxs_mobile:
+            # Capillary pressure is defined for all fluid phases (absent does not mean pc -> 0)
+            for j in self.fluid_phase_idxs:
                 pc_ev = self.capillary_pressure_ev[self.phases_name[j]]
                 if self.history_values and isinstance(pc_ev, HistoryAwareCapPressure):
                     self.pc[j] = pc_ev.evaluate(self.sat[j], **self.history_values)
