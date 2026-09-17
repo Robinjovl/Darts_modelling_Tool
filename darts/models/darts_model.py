@@ -217,7 +217,6 @@ class DartsModel:
         n_solid: int = None,
         parallel_evaluation: bool = False,
         n_workers: int = None,
-        schur_elim_kinetic: bool = True,
     ):
         """
         Function to initialize the model, which includes:
@@ -250,10 +249,6 @@ class DartsModel:
         :type parallel_evaluation: bool
         :param n_workers: Number of worker processes for parallel evaluation (default: os.cpu_count())
         :type n_workers: int
-        :param schur_elim_kinetic: Auto-detect kinetic component equations with no
-            flux/diffusion term and Schur-eliminate them in the default linear
-            solver (see ``PhysicsBase.init_physics()``). Default ``True``.
-        :type schur_elim_kinetic: bool
         """
         verbose = self.verbose if verbose is None else verbose
 
@@ -304,7 +299,6 @@ class DartsModel:
             n_workers=n_workers,
             evaluator_factory_hook=evaluator_factory_hook,
             verbose_evaluators=int(verbose) >= self.VERBOSE_EVALUATORS,
-            schur_elim_kinetic=schur_elim_kinetic,
         )
         init_timer.node["physics init & OBL cache load"].stop()
         if platform == "gpu":
@@ -504,15 +498,12 @@ class DartsModel:
                     max_iterations=50,  # max Krylov iterations per solve
                     print_level=0,  # solver verbosity
                     proprietary_linear_type=None,  # enum for non-registry builds
-                    # Cell-local (kinetic, no flux/diffusion term) equations to
-                    # Schur-eliminate, auto-detected by init_physics() -- see
-                    # PropertyContainer.schur_eliminable_comp_idxs(). 0/None if
-                    # schur_elim_kinetic=False or none are eligible.
-                    schur_elim_count=getattr(self.physics, "schur_elim_count", 0),
-                    schur_elim_rows=getattr(self.physics, "schur_elim_rows", None)
-                    or None,
-                    schur_elim_cols=getattr(self.physics, "schur_elim_cols", None)
-                    or None,
+                    # Cell-local (kinetic, no flux/diffusion term) equations are
+                    # auto-detected by init_physics() (see
+                    # PropertyContainer.schur_eliminable_comp_idxs()) and, by this
+                    # default schur_elim_kinetic=True, Schur-eliminated by
+                    # LinearSolver._apply_gpu_solver(). Override with
+                    # self.linear_solver.spec.schur_elim_kinetic = False to disable.
                 )
             else:
                 # CPU default: FGMRES around the two-stage CPR preconditioner

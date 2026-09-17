@@ -862,10 +862,18 @@ class GPUSolverSpec(LinearSolverSpec):
     #: size N-K. Honoured by the AMGX-CPR family of GPU solvers; mirrors
     #: ``SchurEliminationSpec`` on the CPU side. When > 0, :attr:`schur_elim_rows`
     #: / :attr:`schur_elim_cols` (each of length K) give the explicit eliminated
-    #: (row, column) pairs.
+    #: (row, column) pairs. Leave at 0 to let :attr:`schur_elim_kinetic` decide
+    #: instead of naming the pairs explicitly.
     schur_elim_count: int = 0
     schur_elim_rows: list[int] | None = None
     schur_elim_cols: list[int] | None = None
+    #: When :attr:`schur_elim_count` is 0 (not explicitly set), auto-populate
+    #: :attr:`schur_elim_count` / :attr:`schur_elim_rows` / :attr:`schur_elim_cols`
+    #: at solver-apply time from the physics' auto-detected kinetic component
+    #: equations with no flux/diffusion term (``PhysicsBase.schur_elim_rows`` /
+    #: ``schur_elim_cols``, see ``PropertyContainer.schur_eliminable_comp_idxs()``).
+    #: Set ``False`` to disable auto Schur-elimination of kinetic components.
+    schur_elim_kinetic: bool = True
 
     def build(self, block_size: int):
         raise NotImplementedError(

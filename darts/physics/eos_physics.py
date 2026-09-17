@@ -138,7 +138,6 @@ class EoSPhysics(PhysicsBase):
         n_workers: int | None = None,
         evaluator_factory_hook=None,
         verbose_evaluators: bool = False,
-        schur_elim_kinetic: bool = True,
     ):
         """
         Check that set_mixture() has been called and call PhysicsBase.init_physics() wrapper
@@ -161,7 +160,6 @@ class EoSPhysics(PhysicsBase):
             n_workers=n_workers,
             evaluator_factory_hook=evaluator_factory_hook,
             verbose_evaluators=verbose_evaluators,
-            schur_elim_kinetic=schur_elim_kinetic,
         )
 
     def get_flash_ev(self, region: int = None):
