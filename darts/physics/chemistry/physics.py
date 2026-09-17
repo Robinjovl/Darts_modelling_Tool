@@ -256,10 +256,9 @@ class ElementBasedReactiveFlow(PhysicsBase):
         # The chemistry interpolators below are created without explicit axes, so
         # create_interpolator defaults them to the primary axes plus one axis per
         # history field -- the same axes the point-store attaches must use.
-        operator_axes_step = self.axes_step + [h.axes_step for h in self.history_fields]
-        operator_axes_origin = self.axes_origin + [
-            h.axes_origin for h in self.history_fields
-        ]
+        operator_axes_origin, operator_axes_step = self.history.extend_axes(
+            self.axes_origin, self.axes_step
+        )
 
         # Optionally wrap every chemistry evaluator with ParallelEvaluator via a
         # single shared pool. Chemistry has no separate well_operators (well uses
