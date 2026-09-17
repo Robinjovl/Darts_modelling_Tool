@@ -35,6 +35,7 @@ class ElementBasedReactiveFlow(PhysicsBase):
         sim_eps_multiplier: float = 10,
         extrapolation_flag: bool = True,
         cache: bool = True,
+        share_flash_operators: bool = True,
     ):
         """
         Constructor for ElementBasedReactiveFlow class.
@@ -48,6 +49,10 @@ class ElementBasedReactiveFlow(PhysicsBase):
         :param sim_eps_multiplier: Multiplier on epsilon_z to obtain sim_eps.
         :param extrapolation_flag: Enable extrapolation logic for z[last] < 0 (n_el >= 3).
         :param cache: Cache supporting points to disk between runs.
+        :param share_flash_operators: If True (default), all operator sets of a region
+            share one FlashOperators instance. If False, each builds its own private
+            FlashOperators with no cross-operator-set reuse. See :meth:`set_operators`.
+        :type share_flash_operators: bool
         """
         vars = ["p"] + elements[:-1]
         self.initial_operators = {}
@@ -63,10 +68,11 @@ class ElementBasedReactiveFlow(PhysicsBase):
             extrapolation_flag=extrapolation_flag,
             timer=timer,
             cache=cache,
+            share_flash_operators=share_flash_operators,
         )
         self.vars = vars
 
-    def set_operators(self, share_flash_operators: bool = True) -> None:
+    def set_operators(self) -> None:
         """
         Function to set operator objects:
         - :class:`ReservoirOperators` for each of the reservoir regions
@@ -75,10 +81,10 @@ class ElementBasedReactiveFlow(PhysicsBase):
         - :class:`ThermalVarOperator` for the thermal state variable
         - :class:`PropertyOperator` for the evaluation of output properties
 
-        When ``share_flash_operators`` (default), all operator sets of a region --
-        including the output :class:`PropertyOperators`, built on the separate
-        ``output_property_containers[region]`` object -- share that region's
-        :class:`FlashOperators` instance, so the geochemical equilibrium solve runs
+        When ``self.share_flash_operators`` (default, set at :meth:`__init__` time),
+        all operator sets of a region -- including the output :class:`PropertyOperators`,
+        built on the separate ``output_property_containers[region]`` object -- share that
+        region's :class:`FlashOperators` instance, so the geochemical equilibrium solve runs
         only once per OBL supporting point regardless of which operator set evaluates
         it first. ``OutputPropertyContainer`` implements the same flash-row contract as
         ``PropertyContainer`` (see :class:`~darts.physics.chemistry.property_container.OutputPropertyContainer`),
@@ -87,13 +93,8 @@ class ElementBasedReactiveFlow(PhysicsBase):
 
         A region registered with ``flash_region=`` (see :meth:`~add_property_region`)
         shares that region's :class:`FlashOperators` instead of building its own.
-
-        :param share_flash_operators: If True (default), all operator sets of a region
-            share one FlashOperators instance. If False, ``None`` is passed instead, so each
-            builds its own private FlashOperators with no cross-operator-set reuse.
-        :type share_flash_operators: bool
         """
-        # Pass 1: build each non-sharing region's own FlashOperators, None when share_flash_operators is False
+        # Pass 1: build each non-sharing region's own FlashOperators, None when self.share_flash_operators is False
         for region in self.regions:
             if self.flash_region[region] != region:
                 continue
@@ -112,7 +113,7 @@ class ElementBasedReactiveFlow(PhysicsBase):
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
                 )
-                if share_flash_operators
+                if self.share_flash_operators
                 else None
             )
 
@@ -121,7 +122,7 @@ class ElementBasedReactiveFlow(PhysicsBase):
             target = self.flash_region[region]
             if target == region:
                 continue
-            if not share_flash_operators:
+            if not self.share_flash_operators:
                 warnings.warn(
                     f"add_property_region: flash_region={target} for region {region} "
                     f"is ignored because share_flash_operators=False -- region "

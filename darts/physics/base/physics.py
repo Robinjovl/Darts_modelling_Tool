@@ -105,6 +105,7 @@ class PhysicsBase:
         state_spec: 'PhysicsBase.StateSpecification' = None,
         cache: bool = False,
         history_fields: Iterable[HistoryField] | None = None,
+        share_flash_operators: bool = True,
     ) -> None:
         """
         Configure the OBL grid and physics state for a compositional simulation.
@@ -140,6 +141,16 @@ class PhysicsBase:
             OBL axes (e.g. ``sg_max`` for Killough hysteresis) that are fed into operator
             interpolation but are NOT Newton unknowns. Pass ``None`` or an empty list for
             standard OBL behaviour.
+        :param share_flash_operators: If True (default), all operator sets of a region share
+            one :class:`~darts.physics.base.operator_evaluator.FlashOperators` instance (and,
+            when eligible, one native C++ flash point store), so a flash run for a given
+            supporting point by one operator set is reused by every other operator set of
+            that region instead of being recomputed (see :meth:`set_operators`). If False,
+            each operator set builds its own private ``FlashOperators`` with no cross-operator-set
+            reuse -- useful for isolating or benchmarking the reuse behaviour. Fixed for the
+            lifetime of this physics object; any ``flash_region`` aliasing passed to
+            :meth:`add_property_region` is ignored (with a warning) when this is False.
+        :type share_flash_operators: bool
         """
         # Default state_spec must be supplied here (rather than in the signature) because the
         # class reference PhysicsBase is not yet resolvable at default-evaluation time.
@@ -273,6 +284,10 @@ class PhysicsBase:
             atexit.register(self._finalize_cache)
             self._install_signal_handlers()
 
+        # Whether all operator sets of a region share one FlashOperators instance; see
+        # the constructor docstring. Fixed for the lifetime of this physics object.
+        self.share_flash_operators = share_flash_operators
+
         # Maps region -> the region whose FlashOperators it uses (itself by default);
         # set by add_property_region's flash_region param, consumed by set_operators().
         self.regions = []
@@ -369,7 +384,6 @@ class PhysicsBase:
         n_workers: int | None = None,
         evaluator_factory_hook=None,
         verbose_evaluators: bool = False,
-        share_flash_operators: bool = True,
     ) -> None:
         """
         Initialise engines, operators, and interpolators for this physics object.
@@ -396,8 +410,6 @@ class PhysicsBase:
                                        for constructing a fresh evaluator per worker process.
                                        Required when ``parallel_evaluation=True``.
         :type evaluator_factory_hook: callable
-        :param share_flash_operators: Share FlashOperators between other operator sets, default is True
-        :type share_flash_operators: bool
         """
         # OBL grid is fully defined by (axes_origin, axes_step) — see __init__.
         # No more determine_obl_bounds() call: the adaptive interpolator caches cells
@@ -428,7 +440,7 @@ class PhysicsBase:
             self.property_containers[region].check_properties()
 
         # Set operators and interpolators
-        self.set_operators(share_flash_operators=share_flash_operators)
+        self.set_operators()
         self.set_interpolators(
             platform,
             itor_type,
@@ -481,8 +493,8 @@ class PhysicsBase:
         :param flash_region: If set, this region shares its FlashOperators with `flash_region`
                     to avoid duplicate flash evaluation/caching when regions have identical flash inputs.
                     Note: Must refer to a region registered without its own `flash_region` (no chained sharing).
-                    Ignored (with a warning) if ``share_flash_operators=False`` at
-                    :meth:`PhysicsBase.init_physics` time.
+                    Ignored (with a warning) if ``share_flash_operators=False`` was passed to
+                    :meth:`PhysicsBase.__init__`.
         :type flash_region: int, optional
         """
         # Tell the property container how many OBL history variables the physics appends
@@ -495,15 +507,15 @@ class PhysicsBase:
         self.flash_region[region] = flash_region if flash_region is not None else region
         return
 
-    def set_operators(self, share_flash_operators: bool = True) -> None:
+    def set_operators(self) -> None:
         """
         Build
         - :class:`FlashOperators`, :class:`ReservoirOperators` and :class:`PropertyOperators` for each region,
         - :class:`WellOperators` for the well cells and :class:`WellCtrlOperators` for well controls,
         - :class:`ThermalVarOperator` for the thermal state variable
 
-        When ``share_flash_operators`` (default) all operator sets of a region share
-        the region's :class:`FlashOperators` instance.
+        When ``self.share_flash_operators`` (default, set at :meth:`__init__` time) all operator
+        sets of a region share the region's :class:`FlashOperators` instance.
         This operator tabulates the flash results per OBL supporting point.
         The flash runs (or is restored from the native point store) only once per point
         regardless of which operator set evaluates it first.
@@ -514,24 +526,13 @@ class PhysicsBase:
         validated once via :func:`~darts.physics.base.operator_evaluator.assert_flash_snapshot_consistent`
         A container that overrides the flash-snapshot format must override all three together,
         and this fails fast if it doesn't, rather than silently losing flash-store caching later,
-        regardless of ``share_flash_operators``.
+        regardless of ``self.share_flash_operators``.
 
         A region registered with ``flash_region=`` (see :meth:`add_property_region`)
         shares that region's :class:`FlashOperators` instead of building its own.
         Built in three passes below so sharing regions can be registered before or after the region they target.
-
-        :param share_flash_operators: If True (default), all operator sets of a region
-            share one FlashOperators instance (and, when eligible, one native C++
-            flash point store). If False, ``None`` is passed to every operator set
-            instead, so each builds its own private FlashOperators with no
-            cross-operator-set reuse and no native store (see
-            ``OperatorsBase.__init__``'s standalone-instance path) -- useful for
-            isolating or benchmarking the sharing behaviour. Any ``flash_region``
-            aliasing is then ignored (with a warning), since there is no shared
-            instance left to point at.
-        :type share_flash_operators: bool
         """
-        # Pass 1: build each non-sharing region's own FlashOperators, None when share_flash_operators is False
+        # Pass 1: build each non-sharing region's own FlashOperators, None when self.share_flash_operators is False
         # Every PropertyContainer must implement evaluate_flash()/evaluate_properties()
         for region in self.regions:
             if self.flash_region[region] != region:
@@ -551,7 +552,7 @@ class PhysicsBase:
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
                 )
-                if share_flash_operators
+                if self.share_flash_operators
                 else None
             )
 
@@ -560,7 +561,7 @@ class PhysicsBase:
             target = self.flash_region[region]
             if target == region:
                 continue
-            if not share_flash_operators:
+            if not self.share_flash_operators:
                 warnings.warn(
                     f"add_property_region: flash_region={target} for region {region} "
                     f"is ignored because share_flash_operators=False -- region "

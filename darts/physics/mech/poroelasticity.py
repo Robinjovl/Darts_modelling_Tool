@@ -38,6 +38,7 @@ class Poroelasticity(PhysicsBase):
         state_spec: PhysicsBase.StateSpecification = PhysicsBase.StateSpecification.P,
         cache: bool = False,
         discretizer: str = 'mech_discretizer',
+        share_flash_operators: bool = True,
     ):
         """
         Constructor of the Poroelasticity Physics class. Defines the OBL grid for P-z
@@ -54,6 +55,10 @@ class Poroelasticity(PhysicsBase):
         :param state_spec: P (default), PT, or PH.
         :param cache: Cache supporting points to disk between runs.
         :param discretizer: 'mech_discretizer' (default) or 'pm_discretizer'.
+        :param share_flash_operators: If True (default), all operator sets of a region
+            share one FlashOperators instance. If False, each builds its own private
+            FlashOperators with no cross-operator-set reuse. See :meth:`set_operators`.
+        :type share_flash_operators: bool
         """
         super().__init__(
             components=components,
@@ -66,6 +71,7 @@ class Poroelasticity(PhysicsBase):
             extrapolation_flag=extrapolation_flag,
             state_spec=state_spec,
             cache=cache,
+            share_flash_operators=share_flash_operators,
         )
 
         self.n_dim = 3
@@ -103,7 +109,7 @@ class Poroelasticity(PhysicsBase):
         else:  # discretizer == 'pm_discretizer':
             return eval(f"engine_pm_{platform}")()
 
-    def set_operators(self, share_flash_operators: bool = True) -> None:
+    def set_operators(self) -> None:
         """
         Function to set operator objects: :class:`SinglePhaseGeomechanicsOperators` or
         :class:`GeomechanicsReservoirOperators` (depending on ``discretizer``) for each of
@@ -111,22 +117,17 @@ class Poroelasticity(PhysicsBase):
         :class:`WellCtrlOperators` for well controls, :class:`ThermalVarOperator` for the
         thermal state variable, and a :class:`PropertyOperator` for the evaluation of properties.
 
-        When ``share_flash_operators`` (default) all operator sets of a region share the
-        region's :class:`FlashOperators` instance, so the flash runs only once per OBL
-        supporting point regardless of which operator set evaluates it first. The well-side
-        operator sets share the first region's instance.
+        When ``self.share_flash_operators`` (default, set at :meth:`__init__` time) all
+        operator sets of a region share the region's :class:`FlashOperators` instance, so the
+        flash runs only once per OBL supporting point regardless of which operator set
+        evaluates it first. The well-side operator sets share the first region's instance.
 
         A region registered with ``flash_region=`` (see
         :meth:`~darts.physics.base.physics.PhysicsBase.add_property_region`) shares that
         region's :class:`FlashOperators` instead of building its own. Built in three passes
         below so sharing regions can be registered before or after the region they target.
-
-        :param share_flash_operators: If True (default), all operator sets of a region share
-            one FlashOperators instance. If False, ``None`` is passed instead, so each builds
-            its own private FlashOperators with no cross-operator-set reuse.
-        :type share_flash_operators: bool
         """
-        # Pass 1: build each non-sharing region's own FlashOperators, None when share_flash_operators is False
+        # Pass 1: build each non-sharing region's own FlashOperators, None when self.share_flash_operators is False
         for region, prop_container in self.property_containers.items():
             if self.flash_region[region] != region:
                 continue
@@ -144,7 +145,7 @@ class Poroelasticity(PhysicsBase):
                     extrapolation_flag=self.extrapolation_flag,
                     dz=self.dz,
                 )
-                if share_flash_operators
+                if self.share_flash_operators
                 else None
             )
 
@@ -153,7 +154,7 @@ class Poroelasticity(PhysicsBase):
             target = self.flash_region[region]
             if target == region:
                 continue
-            if not share_flash_operators:
+            if not self.share_flash_operators:
                 warnings.warn(
                     f"add_property_region: flash_region={target} for region {region} "
                     f"is ignored because share_flash_operators=False. "
