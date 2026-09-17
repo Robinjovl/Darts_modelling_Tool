@@ -479,8 +479,7 @@ class PhysicsBase:
         :type property_container: :class:`PropertyContainer`
         :param region: Tag of the region, to be used as a key in `property_containers` dict
         :param flash_region: If set, this region shares its FlashOperators with `flash_region`
-                    instead of building its own. Avoids duplicate flash evaluation/caching when
-                    two regions have identical flash inputs.
+                    to avoid duplicate flash evaluation/caching when regions have identical flash inputs.
                     Note: Must refer to a region registered without its own `flash_region` (no chained sharing).
                     Ignored (with a warning) if ``share_flash_operators=False`` at
                     :meth:`PhysicsBase.init_physics` time.
@@ -505,19 +504,17 @@ class PhysicsBase:
 
         When ``share_flash_operators`` (default) all operator sets of a region share
         the region's :class:`FlashOperators` instance.
-        This operator tabulates the flash results per OBL supporting point
-        The flash runs (or is restored from
-        the native point store) only once per point regardless of which operator set
-        evaluates it first. The well-side operator sets share the first region's
-        instance.
+        This operator tabulates the flash results per OBL supporting point.
+        The flash runs (or is restored from the native point store) only once per point
+        regardless of which operator set evaluates it first.
 
         Every ``PropertyContainer`` must implement ``evaluate_flash``/``evaluate_properties``
         (a monolithic ``evaluate`` override raises ``ValueError`` here)
         Its flash-snapshot methods (``get_flash_snapshot``/``set_flash_results``/``flash_row_width``) are
         validated once via :func:`~darts.physics.base.operator_evaluator.assert_flash_snapshot_consistent`
-        -- a container that overrides the flash-snapshot format must override all
-        three together, and this fails fast if it doesn't, rather than silently
-        losing flash-store caching later, regardless of ``share_flash_operators``.
+        A container that overrides the flash-snapshot format must override all three together,
+        and this fails fast if it doesn't, rather than silently losing flash-store caching later,
+        regardless of ``share_flash_operators``.
 
         A region registered with ``flash_region=`` (see :meth:`add_property_region`)
         shares that region's :class:`FlashOperators` instead of building its own.
@@ -731,8 +728,8 @@ class PhysicsBase:
         # interpolator's supporting-point store (attach_point_store), so boundary
         # extrapolation (OperatorsBase.extrapolate) reuses tabulated rows instead
         # of re-evaluating supporting points. attach_point_store itself degrades
-        # to a no-op for interpolators without the single-point API (static mode,
-        # older prebuilt extensions). ParallelEvaluator-wrapped evaluators forward
+        # to a no-op for interpolators without the single-point API (older
+        # prebuilt extensions). ParallelEvaluator-wrapped evaluators forward
         # the attach to the parent-side serial evaluator, which also receives the
         # supporting-point rows worker processes ship back after each batch.
 
@@ -782,13 +779,11 @@ class PhysicsBase:
 
             # FlashOperators gets its own interpolator so its supporting-point cache lives in the C++ point_data_store.
             # Sharing the incremental disk-persistence machinery (OblCacheCodec) that acc_flux_itor/property_itor already use.
-            # Restricted to adaptive mode
             # n_ops requests exactly the row width for its flash snapshot (see PropertyContainer.flash_row_width)
             # This interpolator is only ever accessed as a key/row point store, never interpolated through.
             # The container's flash-snapshot methods were already validated in set_operators()
             # The only remaining reasons to fall back to evaluating the flash uncached every call are:
             # - a missing compiled (n_dims, n_ops) template for this region,
-            # - static mode,
             # - an un-rebuilt extension predating the try_get_point/set_point bindings.
             flash_operators = self.flash_operators[region]
             container = self.property_containers[region]
@@ -806,18 +801,13 @@ class PhysicsBase:
             flash_row_width = (
                 container.flash_row_width() if flash_operators is not None else 0
             )
-            if (
-                flash_operators is not None
-                and flash_row_width > 0
-                and itor_mode == 'adaptive'
-            ):
+            if flash_operators is not None and flash_row_width > 0:
                 try:
                     flash_itor, flash_n_slots = self.create_interpolator(
                         flash_operators,
                         n_ops=flash_row_width,
                         platform=platform,
                         algorithm=itor_type,
-                        mode=itor_mode,
                         precision=itor_precision,
                         timer_name=f'flash {region:d} interpolation',
                         region=str(region),
@@ -887,9 +877,6 @@ class PhysicsBase:
         # grid, for PH/PS it is the main grid with a temperature trailing axis
         # (defaulted in __init__). A model may override self.thermal_var_axes_step /
         # self.thermal_var_axes_origin before init_physics().
-        # Thermal-var interpolator uses a PT-based grid; the derived physics class may
-        # set self.thermal_var_axes_step / self.thermal_var_axes_origin to override the
-        # default (which mirrors the main grid).
         thermal_step = getattr(self, 'thermal_var_axes_step', None)
         thermal_origin = getattr(self, 'thermal_var_axes_origin', None)
         self.thermal_var_itor, _ = self.create_interpolator(
@@ -1449,8 +1436,8 @@ class PhysicsBase:
 
         # Exposed interpolator name pattern. It carries neither an index-type letter (the
         # index-type template parameter was dropped -- storage is keyed on a multi-index,
-        # so the index type is not part of the class identity) nor an "adaptive" token
-        # (the static interpolators are gone, so it distinguishes nothing):
+        # so the index type is not part of the class identity) nor a mode token (every
+        # interpolator is built the same way, so there is nothing left to distinguish):
         #   {algorithm}_{platform}_interpolator_{precision}_{n_dims}_{n_ops}
         itor_base = f"{algorithm}_{platform}_interpolator"
         itor_name = f"{itor_base}_{precision}_{n_dims:d}_{n_ops:d}"
@@ -1555,11 +1542,11 @@ class PhysicsBase:
                 return name
 
             # Caches created from here on use the simplified identity token, mirroring the
-            # interpolator names (no "adaptive": static interpolation is gone). A cache
-            # written by an earlier version hashes its "_adaptive_" spelling to a different
-            # file name; when such a file is already there it simply stays the cache file
-            # for this run (read from and appended to in place), so no existing cache is
-            # orphaned and none is duplicated on disk.
+            # interpolator names (no mode token left to distinguish). A cache written by
+            # an earlier version hashes its "_adaptive_" spelling to a different file name;
+            # when such a file is already there it simply stays the cache file for this run
+            # (read from and appended to in place), so no existing cache is orphaned and
+            # none is duplicated on disk.
             itor_cache_filename = cache_filename('_')
             if not os.path.exists(itor_cache_filename):
                 legacy_cache_filename = cache_filename('_adaptive_')

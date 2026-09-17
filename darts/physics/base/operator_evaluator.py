@@ -34,13 +34,12 @@ def assert_flash_snapshot_consistent(property_container) -> None:
     aren't all defined together by the same class.
 
     :class:`FlashOperators` tabulates flash results as fixed-size float rows in a
-    C++ point store (see :meth:`FlashOperators.attach_point_store`), reading
-    and writing them through exactly these three methods. ``PropertyContainer``
-    (base) defines all three together for the ``(nu, x, temperature, pressure)``
-    layout; a subclass overriding the flash-snapshot format (e.g. chemistry's
-    geochemical-equilibrium outputs) must override all three together, so the row
-    ``get_flash_snapshot`` packs and the row ``set_flash_results`` unpacks always
-    agree. Overriding only some of them would silently break the flash store (wrong
+    C++ point store (see :meth:`FlashOperators.attach_point_store`).
+    ``PropertyContainer`` defines all three together for the ``(nu, x, T, P)`` layout
+    A subclass overriding the flash-snapshot format (e.g. chemistry physics)
+    must override all three together, so the row ``get_flash_snapshot`` packs
+    and the row ``set_flash_results`` unpacks always agree.
+    Overriding only some of them would silently break the flash store (wrong
     field packed in the wrong slot) rather than announce the mismatch, so this is
     checked once, eagerly, when a region's operators are built
     (:meth:`~darts.physics.base.physics.PhysicsBase.set_operators`) instead of
@@ -180,10 +179,9 @@ class OperatorsBase(operator_set_evaluator_iface):
         """
         Wire this operator set to its own interpolator's supporting-point store,
         so tabulated rows are read/written directly through
-        ``itor.try_get_point``/``itor.set_point``. Called by
-        :meth:`~darts.physics.base.physics.PhysicsBase.set_interpolators` once the
-        operator set's interpolator has been created (and its on-disk cache, if
-        any, loaded).
+        ``itor.try_get_point``/``itor.set_point``.
+        Called by :meth:`~darts.physics.base.physics.PhysicsBase.set_interpolators`
+        once the operator set's interpolator has been created.
 
         The store is the same ``point_data_store`` the interpolator materializes
         supporting points into, keyed on the integer multi-index this
@@ -207,9 +205,8 @@ class OperatorsBase(operator_set_evaluator_iface):
 
         Leave unattached (or pass ``itor=None``) to disable caching entirely.
         An ``itor`` that does not expose ``try_get_point``/``set_point`` is
-        treated as None, so static-mode interpolators (single-point store access
-        is adaptive-only) and prebuilt extensions predating those bindings
-        degrade to uncached evaluation without the caller having to check.
+        treated as None, so a prebuilt extension predating those bindings
+        degrades to uncached evaluation without the caller having to check.
         Also unattached: regions with no compiled OBL template for this
         (n_dims, n_ops), and evaluators wrapped in ``ParallelEvaluator``
         (worker-process evaluators are fresh instances that are never attached).
@@ -559,17 +556,14 @@ class FlashOperators(OperatorsBase):
     One instance is shared by all operator sets of a property region (see
     :meth:`~darts.physics.base.physics.PhysicsBase.set_operators`): the first operator
     set to evaluate at a supporting point computes the flash and tabulates the result
-    in the C++ flash point store (see :meth:`attach_point_store`); every other operator
-    set evaluating at the same point restores the tabulated result via :meth:`ensure_flash`
-    instead of recomputing it. The tabulation is keyed on the primary state coordinates of
-    the supporting point (OBL history axes are excluded — the flash does not depend on
-    them), so reuse is independent of the order in which the interpolators discover their
-    supporting points. All interpolators of a region share identical axes origin/step,
-    hence coinciding supporting points produce bit-identical coordinates and exact keys
-    match. When no flash store is attached (itor_mode='static', or a standalone instance
-    never wired to a Physics interpolator — try_get_point/set_point exist only on adaptive
-    interpolators), there is no cache at all: :meth:`ensure_flash` runs the flash directly
-    on every call.
+    in the C++ flash point store (see :meth:`attach_point_store`).
+    Every other operator set evaluating at the same point restores the tabulated result
+    via :meth:`ensure_flash` instead of recomputing it.
+    All interpolators of a region share identical axes origin/step, hence coinciding
+    supporting points produce bit-identical coordinates and exact keys match.
+    When no flash store is attached (a standalone instance never wired to a Physics
+    interpolator), there is no cache at all: :meth:`ensure_flash` runs the flash
+    directly on every call.
 
     It also implements the evaluator interface itself, exposing phase fractions ``nu``,
     phase compositions ``x`` and temperature as operator values, so it can back an
@@ -616,8 +610,9 @@ class FlashOperators(OperatorsBase):
         else:
             self.n_ops = 0
 
-        # Hit = a flash-store lookup found a tabulated result; miss = evaluate_flash had
-        # to run (flash-store miss, or no flash store attached at all -- see ensure_flash).
+        # Only tallied when a flash store is attached (see ensure_flash): hit = a
+        # flash-store lookup found a tabulated result; miss = the key wasn't in the
+        # store and evaluate_flash had to run.
         self.cache_hits = 0
         self.cache_misses = 0
 
@@ -625,20 +620,13 @@ class FlashOperators(OperatorsBase):
         """
         Wire this FlashOperators to its dedicated interpolator's supporting-point
         store, so :meth:`ensure_flash` reads/writes flash-snapshot rows directly
-        (same mechanism as :meth:`OperatorsBase.attach_point_store`, which see).
-        The stored rows are the container's flash snapshots -- for the base layout
-        ``(nu, x, T, P)``, a strict prefix-superset of this operator set's values
-        ``(nu, x, T)``, so :meth:`extrapolate`'s cache hits stay consistent with
-        :meth:`evaluate`. The store is keyed on the primary OBL axes only
-        (history axes are excluded -- the flash does not depend on them), so pass
-        primary-only ``axes_origin``/``axes_step``.
+        (same mechanism as :meth:`OperatorsBase.attach_point_store`).
+        The stored rows are the container's flash snapshots ``(nu, x, T, P)``,
+        so :meth:`extrapolate`'s cache hits stay consistent with :meth:`evaluate`.
+        The store is keyed on the primary OBL axes only, so pass ``axes_origin``/``axes_step``.
 
-        Refuses to attach when the container declares no flash row
-        (``flash_row_width() <= 0``); :meth:`ensure_flash` then runs the flash
-        directly on every call. (The container's flash-snapshot methods are
-        validated once, eagerly, by :func:`assert_flash_snapshot_consistent` in
-        :meth:`~darts.physics.base.physics.PhysicsBase.set_operators`, so by the
-        time this is called they're already known to be consistent.)
+        Refuses to attach when the container declares no flash row (``flash_row_width() <= 0``)
+        :meth:`ensure_flash` then runs the flash directly on every call.
 
         :param itor: This region's dedicated FlashOperators interpolator, or None.
         :param n_slots: Values per cached point: at least
@@ -688,8 +676,8 @@ class FlashOperators(OperatorsBase):
 
         Tabulation goes through the C++ flash point store when one is attached (see
         :meth:`attach_point_store`); otherwise there is no cache and the flash is
-        recomputed on every call (itor_mode='static', or a standalone instance never
-        wired to a Physics interpolator).
+        recomputed on every call (a standalone instance never wired to a Physics
+        interpolator).
 
         :param state_np: State at the supporting point [pres, comp_0, ..., comp_N-1, (temp), (history)]
         :type state_np: np.ndarray
@@ -699,7 +687,6 @@ class FlashOperators(OperatorsBase):
             return
 
         self.property.evaluate_flash(state_np)
-        self.cache_misses += 1
 
     def evaluate(self, state, values):
         """

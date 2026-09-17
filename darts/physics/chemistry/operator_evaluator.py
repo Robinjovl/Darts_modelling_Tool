@@ -15,7 +15,7 @@ class ReservoirOperators(BaseReservoirOperators):
     p - pressure in [bar]
     z_{1}, ..., z_{n_m} - mineral molar fractions within rock + fluid mixture
     z_{n_m+1}, ..., z_{n_c-1} - fluid molar fractions within only fluid
-    values are the same as in OperatorsSuper
+    values are the same as in ReservoirOperators (base)
     """
 
     def __init__(
@@ -37,7 +37,7 @@ class ReservoirOperators(BaseReservoirOperators):
         :param flash_operators: Shared :class:`FlashOperators` of this property region
         :type flash_operators: FlashOperators, optional
         """
-        # set some properties to -1 to use OperatorsSuper constructor
+        # set some properties to -1 to use the base ReservoirOperators constructor
         # TODO: refactor in future
         property_container.nc_fl = -1
         property_container.np_fl = -1

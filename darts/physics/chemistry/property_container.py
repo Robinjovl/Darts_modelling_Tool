@@ -142,12 +142,9 @@ class PropertyContainer(BasePropertyContainer):
 
         Only the expensive third-party equilibrium call lives here; the derived
         properties are computed from the stored outputs in :meth:`evaluate_properties`,
-        so tabulated results (see
-        :class:`~darts.physics.base.operator_evaluator.FlashOperators`) can be restored
-        via :meth:`set_flash_results` without re-solving. Also captures the full-species
-        molar fractions (``molar_aq_fractions``/``molar_gas_fractions`` -- a different,
-        finer-grained basis than ``x``/``y``: per individual aqueous/gas species rather
-        than per element) even though :meth:`evaluate_properties` below doesn't use them,
+        so tabulated results (see :class:`~darts.physics.base.operator_evaluator.FlashOperators`)
+        can be restored via :meth:`set_flash_results` without re-solving.
+        Also captures the full-species molar fractions (``molar_aq_fractions``/``molar_gas_fractions``),
         so :class:`OutputPropertyContainer` sharing this container's tabulated flash via
         ``flash_region`` can read them from the row instead of re-solving.
 

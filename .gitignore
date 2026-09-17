@@ -34,8 +34,7 @@ darts/build_info.txt
 darts/CHANGELOG.md
 
 # simulation results
-results_*/**
-solution.pvd
+**/results*/**
 
 *.exp
 *.png
@@ -62,3 +61,4 @@ solution.pvd
 *.txt
 *.pvd
 *.vtp
+*.out
