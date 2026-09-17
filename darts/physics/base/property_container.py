@@ -23,8 +23,15 @@ class PropertyContainer:
         """What a kinetic (non-equilibrium) phase's raw zc entry/entries represent."""
 
         BULK_VOLUME_FRACTION = 0
-        """The raw zc entry already is the bulk volume fraction;
-        Restricted to exactly one component per phase"""
+        """The raw zc entry already is the phase's pore-volume fraction
+        (contributes to phi_s); restricted to exactly one component per phase
+        (model N minerals as N such phases, not one phase with N components;
+         phi_s already sums over however many there are).
+
+        Physically meaningful only under a poro=1 reservoir/mesh with the
+        entire rock matrix tracked as BULK_VOLUME_FRACTION kinetic
+        component(s), rather than as a separate, untracked inert matrix
+        """
 
         MOLE_FRACTION = 1
         """The raw zc entry is a mole fraction of the combined (fluid + kinetic) total;
@@ -195,7 +202,9 @@ class PropertyContainer:
         self.mass_source = np.zeros(self.nc)
         self.energy_source = 0.0
 
-        # phi_s/phi_f: fraction of bulk volume not/available to the pooled eq_phase_idxs + MoleFractionKinetic (self.mole_basis_phase_idxs()) basis
+        # phi_s/phi_f: pore-volume fraction not/available to the pooled eq_phase_idxs +
+        # MoleFractionKinetic (self.mole_basis_phase_idxs()) basis;
+        # see KineticFormulation.BULK_VOLUME_FRACTION's docstring for the poro=1 precondition.
         self.phi_s = 0.0
         self.phi_f = 1.0
         self.permporo_mult = 1.0
@@ -225,7 +234,12 @@ class PropertyContainer:
     ):
         """kin_formulation/nc_kin_per_phase (one entry per kinetic phase), the derived
         kin_phase_idxs/bulk_kin_phase_idxs/bulk_kin_comp_idxs/mole_kin_phase_idxs/
-        mole_kin_comp_idxs, and the independent solid/fluid phase and component idx sets."""
+        mole_kin_comp_idxs, and the independent solid/fluid phase and component idx sets.
+
+        kin_phase_idxs/kin_comp_idxs are hardcoded trailing (see kin_phase_idxs)
+        A model with kinetic phases/components anywhere else in phases_name/components_name
+        can't be expressed here today; generalizing to explicit, non-trailing index arrays
+        is the prerequisite for ever migrating that class onto this one."""
         # A single (non-list) value is shorthand for "every kinetic phase";
         # the length/sum asserts below will still catch a genuine mismatch.
         if isinstance(kin_formulation, PropertyContainer.KineticFormulation):
@@ -264,7 +278,8 @@ class PropertyContainer:
             ([0], np.cumsum(self.nc_kin_per_phase)[:-1])
         )
 
-        # Kinetic phases are always the last np_kin phases (Flash.set_kinetic_phase() order).
+        # Kinetic phases are always the last np_kin phases (Flash.set_kinetic_phase()
+        # order): hardcoded trailing, not a configurable index array; see docstring above.
         self.kin_phase_idxs = np.arange(self.np_eq, self.nph)
 
         # BULK_VOLUME_FRACTION phases/components: dens_m*sat can't be split across
@@ -725,7 +740,8 @@ class PropertyContainer:
 
         self.compute_saturation()
 
-        # phi_s: fraction of bulk volume NOT covered by self.mole_basis_phase_idxs() (sums only bulk_kin_phase_idxs)
+        # phi_s: pore-volume fraction NOT covered by self.mole_basis_phase_idxs() (sums
+        # over however many BULK_VOLUME_FRACTION phases exist -- see its docstring)
         self.phi_s = np.sum(self.sat[self.bulk_kin_phase_idxs])
         self.phi_f = 1.0 - self.phi_s
         self.permporo_mult = self.permporo_mult_ev.evaluate(self.phi_f)
