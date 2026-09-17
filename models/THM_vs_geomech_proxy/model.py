@@ -370,7 +370,7 @@ class Model(THMCModel):
             phases = ['wat', 'oil']
             self.cell_property = ['pressure'] + ['water']
 
-            property_container = ModelProperties(phases_name=phases, components_name=components,
+            property_container = DeadOilProperties(phases_name=phases, components_name=components,
                                                  Mw=np.ones(len(phases)), eps_z=self.idata.obl.epsilon_z,
                                                  temperature=None)
 
@@ -642,9 +642,3 @@ def set_initial_conditions_from_depth_table(self, mesh, input_distribution: dict
     # set initial displacements
     for i in range(self.n_dim):
         np.asarray(mesh.displacement)[i::self.n_dim] = input_displacement[i]
-
-
-class ModelProperties(DeadOilProperties):
-    def evaluate(self, state):
-        super().evaluate(state)
-        return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, self.mass_source

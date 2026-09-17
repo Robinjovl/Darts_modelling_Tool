@@ -113,7 +113,7 @@ class Model(DartsModel):
         self.cell_property = ['pressure'] + ['water']
         self.cell_property += ['temperature']
 
-        property_container = ModelProperties(phases_name=phases, components_name=components,
+        property_container = DeadOilProperties(phases_name=phases, components_name=components,
                                              Mw=np.ones(len(phases)), eps_z=epsilon, temperature=None)
 
         # Define property evaluators based on custom properties
@@ -166,9 +166,3 @@ class Model(DartsModel):
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=True, target=self.p_init+10., inj_composition=self.inj[:-1],
                                                inj_temp=self.inj[-1])
-
-
-class ModelProperties(DeadOilProperties):
-    def evaluate(self, state):
-        super().evaluate(state)
-        return self.ph, self.sat, self.x, self.dens, self.dens_m, self.mu, self.kr, self.pc, self.mass_source
