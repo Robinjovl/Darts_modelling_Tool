@@ -17,6 +17,28 @@ from darts.engines import (
 from darts.physics.base.operator_evaluator import PropertyOperators
 from darts.physics.base.physics import PhysicsBase
 from darts.tools.hdf5_tools import load_hdf5_to_dict
+from darts.tools.production_accounting import (
+    _containers,
+    _evaluate_standard_phase_state,
+    _fluid_definition,
+    _initial_states,
+    _pore_volumes,
+    _region_ids,
+    _resolve_well_regions,
+    _standard_phase_state,
+    _well_names,
+    calculate,
+    calculate_compositional_recovery_factor,
+    calculate_compositional_stoiip,
+    calculate_field_totals,
+    calculate_gor,
+    calculate_initial_inventory,
+    calculate_injected_pore_volumes,
+    calculate_volume_recovery_factors,
+    compute_component_rf,
+    convert_rates_to_standard_conditions,
+    resolve_well_roles,
+)
 from darts.tools.vtk_io import write_lines_vtp, write_pvd
 
 # ── Picklable accessors for output-property dicts ─────────────────────────────
@@ -158,6 +180,27 @@ class Output:
     * The key naming formats for the rates stored in the ``time_data`` dictionary can be
       found `here <https://open-darts.gitlab.io/open-darts/technical_reference/wells.html>`_.
     """
+
+    _containers = _containers
+    _fluid_definition = _fluid_definition
+    _well_names = _well_names
+    _pore_volumes = _pore_volumes
+    _region_ids = _region_ids
+    _resolve_well_regions = _resolve_well_regions
+    _standard_phase_state = staticmethod(_standard_phase_state)
+    _evaluate_standard_phase_state = staticmethod(_evaluate_standard_phase_state)
+    _initial_states = _initial_states
+    resolve_well_roles = resolve_well_roles
+    convert_rates_to_standard_conditions = convert_rates_to_standard_conditions
+    calculate_field_totals = calculate_field_totals
+    calculate_injected_pore_volumes = calculate_injected_pore_volumes
+    calculate_volume_recovery_factors = calculate_volume_recovery_factors
+    calculate_initial_inventory = calculate_initial_inventory
+    calculate_compositional_stoiip = calculate_compositional_stoiip
+    calculate_compositional_recovery_factor = calculate_compositional_recovery_factor
+    calculate_gor = calculate_gor
+    compute_component_rf = compute_component_rf
+    calculate = calculate
 
     def __init__(
         self,
