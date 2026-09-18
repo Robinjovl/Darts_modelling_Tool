@@ -1169,6 +1169,65 @@ class Output:
 
         return time, cell_id, X, var_names
 
+    def _property_itor_stride(self) -> int:
+        """Operator slots per cell in the property interpolator evaluated below.
+
+        ``self.n_ops`` sizes the RESERVOIR operator set, which is also what the
+        compositional physics builds its ``property_itor`` from -- but not the
+        chemistry physics, which sizes that interpolator by its own property
+        list (``n_property_itor_ops``). Striding by ``self.n_ops`` there reads
+        the wrong slots and returns numbers from unrelated operators. When
+        output-only property interpolators exist, ``set_phase_properties`` has
+        already set ``self.n_ops`` to match them.
+        """
+        if getattr(self.physics, 'output_property_itor', None):
+            return self.n_ops
+        return int(getattr(self.physics, 'n_property_itor_ops', 0) or self.n_ops)
+
+    def _secondary_property_indices(self, secondary_props: list) -> dict:
+        """Map each secondary property name onto its slot in the operator values.
+
+        Resolved against the property OPERATORS that will actually be evaluated,
+        not against ``physics.property_containers``. An operator's ``props_idx``
+        is built from whatever container it was handed, and the chemistry physics
+        (:class:`~darts.physics.chemistry.physics.ElementBasedReactiveFlow`) hands
+        its property operators a SEPARATE ``output_property_containers[region]``
+        -- so porosity, mineral saturation ratios and reaction rates never appear
+        on ``property_containers`` and could not be requested at all. Falls back
+        to the containers for a physics that exposes no usable operators (for
+        instance when they are wrapped for parallel evaluation, in which case
+        ``set_phase_properties`` has already mirrored the names onto them).
+
+        :raises KeyError: if a name is produced by no region's operators
+        """
+        operators = (
+            self.physics.output_property_operators
+            if getattr(self.physics, 'output_property_itor', None)
+            else getattr(self.physics, 'property_operators', None)
+        )
+        sources = [
+            op.props_idx
+            for op in (operators or {}).values()
+            if getattr(op, 'props_idx', None)
+        ]
+        if not sources:
+            sources = [
+                {name: j for j, name in enumerate(container.output_props)}
+                for container in self.physics.property_containers.values()
+            ]
+
+        indices = {}
+        for prop in secondary_props:
+            for source in sources:
+                if prop in source:
+                    indices[prop] = source[prop]
+                    break
+            else:
+                raise KeyError(
+                    f"Secondary property '{prop}' not found in any property container."
+                )
+        return indices
+
     def output_properties(
         self,
         sol_filepath: str = None,
@@ -1254,18 +1313,7 @@ class Output:
 
         # List of secondary properties
         secondary_props = [prop for prop in output_properties if prop not in var_names]
-        secondary_prop_idxs = {}
-        for prop in secondary_props:
-            for container in self.physics.property_containers.values():
-                if prop in container.output_props:
-                    secondary_prop_idxs[prop] = list(
-                        container.output_props.keys()
-                    ).index(prop)
-                    break
-            else:
-                raise KeyError(
-                    f"Secondary property '{prop}' not found in any property container."
-                )
+        secondary_prop_idxs = self._secondary_property_indices(secondary_props)
 
         # define property array dictionary
         property_array = {
@@ -1295,9 +1343,10 @@ class Output:
                         np.stack([X[j::n_vars] for j in range(n_vars)]).T.flatten()
                     )
 
-                values = value_vector(np.zeros(self.n_ops * nb))
+                n_prop_ops = self._property_itor_stride()
+                values = value_vector(np.zeros(n_prop_ops * nb))
                 values_numpy = np.array(values, copy=False)
-                dvalues = value_vector(np.zeros(self.n_ops * nb * n_vars))
+                dvalues = value_vector(np.zeros(n_prop_ops * nb * n_vars))
 
                 # Prefer the output-only property interpolators (built by
                 # set_phase_properties/filter_phase_props) when they exist.
@@ -1313,7 +1362,7 @@ class Output:
                     )
 
                     for prop_name, prop_idx in secondary_prop_idxs.items():
-                        temp = values_numpy[prop_idx :: self.n_ops]
+                        temp = values_numpy[prop_idx::n_prop_ops]
                         property_array[prop_name][k][block_idx] = temp[block_idx]
 
         return timesteps, property_array
@@ -1952,18 +2001,7 @@ class Output:
 
         # List of secondary properties
         secondary_props = [prop for prop in output_properties if prop not in var_names]
-        secondary_prop_idxs = {}
-        for prop in secondary_props:
-            for container in self.physics.property_containers.values():
-                if prop in container.output_props:
-                    secondary_prop_idxs[prop] = list(
-                        container.output_props.keys()
-                    ).index(prop)
-                    break
-            else:
-                raise KeyError(
-                    f"Secondary property '{prop}' not found in any property container."
-                )
+        secondary_prop_idxs = self._secondary_property_indices(secondary_props)
 
         # Define property array dictionary
         property_array = {
@@ -1980,9 +2018,10 @@ class Output:
                 np.stack([X[j::n_vars] for j in range(n_vars)]).T.flatten()
             )
 
-            values = value_vector(np.zeros(self.n_ops * nb))
+            n_prop_ops = self._property_itor_stride()
+            values = value_vector(np.zeros(n_prop_ops * nb))
             values_numpy = np.array(values, copy=False)
-            dvalues = value_vector(np.zeros(self.n_ops * nb * n_vars))
+            dvalues = value_vector(np.zeros(n_prop_ops * nb * n_vars))
 
             # Prefer the output-only property interpolators (built by
             # set_phase_properties/filter_phase_props) when they exist.
@@ -1998,7 +2037,7 @@ class Output:
                 )
 
                 for prop_name, prop_idx in secondary_prop_idxs.items():
-                    temp = values_numpy[prop_idx :: self.n_ops]
+                    temp = values_numpy[prop_idx::n_prop_ops]
                     property_array[prop_name][0][block_idx] = temp[block_idx]
 
         return time, property_array

@@ -1268,9 +1268,10 @@ class PhysicsBase:
             # onto one cache file.
             signature_evaluator = getattr(evaluator, "_serial_evaluator", evaluator)
 
-            def cache_filename(itor_token: str) -> str:
+            def cache_filename(itor_token: str, region_token: str = None) -> str:
                 """Cache file name for one spelling of the interpolator identity token."""
-                itor_cache_signature = f"{type(signature_evaluator).__name__}{itor_token}{precision}_{n_dims:d}_{signature_n_ops:d}_{region}"
+                region_tag = region if region_token is None else region_token
+                itor_cache_signature = f"{type(signature_evaluator).__name__}{itor_token}{precision}_{n_dims:d}_{signature_n_ops:d}_{region_tag}"
                 # geenral itor has a different point_data format
                 if general:
                     itor_cache_signature += "_general_"
@@ -1300,13 +1301,22 @@ class PhysicsBase:
             # orphaned and none is duplicated on disk.
             itor_cache_filename = cache_filename('_')
             if not os.path.exists(itor_cache_filename):
-                legacy_cache_filename = cache_filename('_adaptive_')
-                if os.path.exists(legacy_cache_filename):
-                    print(
-                        "Using OBL cache written under the legacy signature:",
-                        legacy_cache_filename,
-                    )
-                    itor_cache_filename = legacy_cache_filename
+                # Older spellings of the same interpolator identity, most recent first.
+                # The untagged-region spelling is only safe for a single-region physics:
+                # with several regions every one of them would fall back onto that one
+                # file, which is exactly the collision the region tag prevents. (It
+                # exists because ElementBasedReactiveFlow used to omit the tag.)
+                legacy_names = [cache_filename('_adaptive_')]
+                if region and len(getattr(self, 'regions', [0])) <= 1:
+                    legacy_names.append(cache_filename('_', region_token=''))
+                for legacy_cache_filename in legacy_names:
+                    if os.path.exists(legacy_cache_filename):
+                        print(
+                            "Using OBL cache written under the legacy signature:",
+                            legacy_cache_filename,
+                        )
+                        itor_cache_filename = legacy_cache_filename
+                        break
             # Fast path: a numpy-array snapshot (.keys.npy / .vals.npy) next to the
             # pickle restores the whole cache with one bulk read + a single C++ copy,
             # skipping pickle's per-point object graph and the dict round-trip. Used
