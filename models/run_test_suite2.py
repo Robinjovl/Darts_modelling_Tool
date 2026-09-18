@@ -434,10 +434,17 @@ if __name__ == '__main__':
     if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = '1'
 
-    # run larger set of models (takes longer)
-    test_all_models = False
-    if os.getenv('TEST_ALL_MODELS') != None and os.getenv('TEST_ALL_MODELS') == '1':
-        test_all_models = True
+    # run the extended case selection (adds fracture_network case_4/case_5 below;
+    # the expensive solver-specific cases are gated by `heavy_models`, not this flag):
+    # on request (TEST_ALL_MODELS=1), when regenerating reference .pkl files
+    # (UPLOAD_PKL=1) so those cases get references too, or in the final check of a
+    # non-draft merge request (MR_NON_DRAFT=1, set by workflow:rules in .gitlab-ci.yml)
+    test_all_models = (
+        os.getenv('TEST_ALL_MODELS') == '1'
+        or os.getenv('UPLOAD_PKL') == '1'
+        or os.getenv('MR_NON_DRAFT') == '1'
+    )
+    print('test_all_models=', test_all_models)
 
     # Keep the ODLS env normalization for its side effect (reference-pkl
     # suffix selection via get_pkl_suffix), but no longer use it to gate the
@@ -454,6 +461,7 @@ if __name__ == '__main__':
     # run_testing() and runs on the open-source lane as well, now that the in-tree
     # FS-CPR solves all four of its physics variants (see the note there).
     heavy_models = _normalize_odls_env()
+    print('heavy_models=', heavy_models)
 
     rcode = run_testing(platform, overwrite, heavy_models, test_all_models)
     exit(rcode)

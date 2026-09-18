@@ -2,6 +2,22 @@ workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_MESSAGE =~ /(\[skip ci\]|\[ci skip\]|\[skip pipeline\]|\[skip-cicd\]|\[skip cicd\]|\[skip-cd\]|\[skip cd\])/i'
       when: never
+    # Draft MR pipeline -> MR_NON_DRAFT stays "0" (fast checks only).
+    # CI_MERGE_REQUEST_DRAFT is the authoritative flag; the title regex is a fallback for the cases when variable is not defined.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && ($CI_MERGE_REQUEST_DRAFT == "true" || $CI_MERGE_REQUEST_TITLE =~ /^\s*(\[draft\]|\(draft\)|draft:)/i)'
+      variables:
+        MR_NON_DRAFT: "0"
+      when: always
+    # Ready (non-draft) MR pipeline -> the "final check": valgrind + full model set.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      variables:
+        MR_NON_DRAFT: "1"
+      when: always
+    # Push to an UNPROTECTED branch that has an open MR -> the MR pipeline above covers it; skip the duplicate branch pipeline.
+    # Protected branches (development, main) are excluded: they are MR sources themselves (e.g. development -> main),
+    # and their push pipelines are the integration check, not a duplicate.
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_COMMIT_REF_PROTECTED != "true"'
+      when: never
     - when: always
 
 # ---------------------------------------------------------------------------
@@ -15,12 +31,21 @@ variables:
   #   "1" -> enable all four BOS twins for an explicitly opted-in pipeline
   # Set RUN_BOS_JOBS=1 in a manual or scheduled pipeline to run them.
   RUN_BOS_JOBS: "0"
+  # Set by workflow:rules above: "1" only for merge-request pipelines whose MR is NOT a draft.
+  # Enables the longer valgrind job in MR pipelines and the test_all_models selection in models/run_test_suite2.py.
+  # Marking an MR ready does not start a pipeline by itself: play the manual build-linux-valgrind job
+  # in the existing pipeline, or push a commit / run a new pipeline to also get test_all_models.
+  MR_NON_DRAFT: "0"
 
 stages:
     - pre_commit
     - build_images
     - build
     - test
+    # Valgrind: present in EVERY merge-request pipeline. In a draft pipeline
+    # build-linux-valgrind is a blocking manual job, so the pipeline stays
+    # "blocked" (not green) until it is played.
+    - final_validation
     - deploy
     - ingest
 

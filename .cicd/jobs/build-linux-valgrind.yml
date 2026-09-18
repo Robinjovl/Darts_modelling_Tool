@@ -2,18 +2,30 @@ include:
   - local: '.cicd/jobs/build-linux-base.yml'
 
 build-linux-valgrind:
-    stage: build
+    # final_validation: shown last in the pipeline graph. The job keeps the
+    # inherited .build-linux needs, so once allowed it starts as soon as the
+    # image is available.
+    stage: final_validation
+    interruptible: true
     tags:
         - linux
     rules:
         # Skip on .pkl reference-upload runs: valgrind instrumentation is irrelevant there.
         - if: $UPLOAD_PKL == "1"
           when: never
-        - if: $CI_COMMIT_REF_PROTECTED == "true"
+        # Deliberate override: run valgrind even while the MR is a draft.
+        # TEST_CUSTOM_BRANCH / TEST_ALL_PYTHONS intentionally do not enable valgrind.
+        - if: $RUN_FINAL_VALIDATION == "1"
+        # GitLab evaluates rules only when a pipeline is created, and marking an
+        # MR ready does not start a new one. So the job exists in every MR
+        # pipeline: in a draft one it is a blocking manual job, which keeps the
+        # pipeline "blocked" (never "success") until it is played.
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $MR_NON_DRAFT != "1"
+          when: manual
+          allow_failure: false
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
-        - if: $TEST_CUSTOM_BRANCH == "1"
-        - if: $TEST_ALL_PYTHONS == "1"
     extends: .build-linux
     variables:
         # Open-source in-tree solvers (the proprietary `-a` variant was
