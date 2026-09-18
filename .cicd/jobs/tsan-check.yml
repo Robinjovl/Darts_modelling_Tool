@@ -12,7 +12,20 @@ tsan-check:
     needs:
         - build-linux-tsan
     script:
-        - apt-get update -qq && apt-get install -y -qq libtsan0
+        # Package name isn't stable across Debian releases (libtsan0,
+        # libtsan2, ... track GCC's sanitizer-runtime SONAME bumps), so
+        # resolve it from apt-cache instead of hardcoding one -- matches
+        # tsan_check.py's resolve_libtsan(), which doesn't hardcode the .so
+        # path either.
+        - apt-get update -qq
+        - |
+          TSAN_PKG="$(apt-cache search --names-only '^libtsan[0-9]*$' | sort -V | tail -n1 | cut -d' ' -f1)"
+          if [ -z "$TSAN_PKG" ]; then
+            echo "ERROR: no libtsan* package found in apt repositories" >&2
+            exit 1
+          fi
+          echo "Installing TSan runtime package: $TSAN_PKG"
+          apt-get install -y -qq "$TSAN_PKG"
         - echo ">>> Running ThreadSanitizer data-race check <<<"
         - python helper_scripts/tsan_check.py
     artifacts:
