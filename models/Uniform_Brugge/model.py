@@ -1,4 +1,4 @@
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import sim_params, ms_well
 from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
@@ -7,12 +7,12 @@ from darts.reservoirs.unstruct_reservoir import UnstructReservoir
 from mesh_creator import mesh_creator
 
 from darts.physics.base.physics import PhysicsBase
-from darts.physics.base.property_container import PropertyContainer
+from darts.physics.black_oil import BlackOilProperties
 
 from darts.physics.properties.black_oil import *
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -23,11 +23,20 @@ class Model(CICDModel):
         self.set_reservoir()
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10)
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=2, runtime=2000,
-                            tol_linear=1e-3, it_linear=50)
+        # Solver/time-stepping configuration moved to set_solver() (called at top of reset()).
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 0.0001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 2
+        self.ts_control.runtime = 2000
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10)
+        self.linear_solver.spec.tolerance = 1e-3
+        self.linear_solver.spec.max_iterations = 50
 
     def set_reservoir(self):
         """Reservoir"""
@@ -104,7 +113,8 @@ class Model(CICDModel):
         self.ini_stream = [0.001225901537, 0.7711341309]
 
         pvt = 'Brugge_struct/physics.in'
-        property_container = ModelProperties(phases_name=phases, components_name=components, pvt=pvt, eps_z=epsilon)
+        property_container = BlackOilProperties(phases_name=phases, components_name=components,
+                                                 Mw=np.ones(len(components)), eps_z=epsilon, temperature=1.)
 
         """ properties correlations """
         property_container.flash_ev = flash_black_oil(pvt)
@@ -151,96 +161,3 @@ class Model(CICDModel):
             else:
                 self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
                                                is_inj=False, target=150.)
-
-class ModelProperties(PropertyContainer):
-    def __init__(self, phases_name, components_name, pvt, eps_z=1e-11):
-        # Call base class constructor
-        self.nph = len(phases_name)
-        Mw = np.ones(self.nph)
-
-        super().__init__(phases_name, components_name, Mw, eps_z=eps_z, temperature=1.)
-        self.pvt = pvt
-        self.surf_dens = get_table_keyword(self.pvt, 'DENSITY')[0]
-        self.surf_oil_dens = self.surf_dens[0]
-        self.surf_wat_dens = self.surf_dens[1]
-        self.surf_gas_dens = self.surf_dens[2]
-
-    def evaluate(self, state):
-        """
-        Class methods which evaluates the state operators for the element based physics
-        :param state: state variables [pres, comp_0, ..., comp_N-1]
-        :param values: values of the operators (used for storing the operator values)
-        :return: updated value for operators, stored in values
-        """
-        # Composition vector and pressure from state:
-        vec_state_as_np = np.asarray(state)
-        self.pressure = vec_state_as_np[0]
-
-        zc = np.append(vec_state_as_np[1:], 1 - np.sum(vec_state_as_np[1:]))
-
-        if zc[-1] < 0:
-            # print(zc)
-            zc = self.comp_out_of_bounds(zc)
-
-        self.clean_arrays()
-        # two-phase flash - assume water phase is always present and water component last
-        (xgo, V, pbub) = self.flash_ev.evaluate(self.pressure, zc)
-        for i in range(self.nph):
-            self.x[i, i] = 1
-
-        if V < 0:
-            self.ph = np.array([1, 2], dtype=np.intp)
-        else:  # assume oil and water are always exists
-            self.x[1][0] = xgo
-            self.x[1][1] = 1 - xgo
-            self.ph = np.array([0, 1, 2], dtype=np.intp)
-
-        for j in self.ph:
-            M = 0
-            # molar weight of mixture
-            for i in range(self.nc):
-                M += self.Mw[i] * self.x[j][i]
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(self.pressure, pbub, xgo)  # output in [kg/m3]
-            self.dens_m[j] = self.dens[j] / M
-            self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate(self.pressure, pbub)  # output in [cp]
-
-        self.nu[2] = zc[2]
-        # two phase undersaturated condition
-        if self.pressure > pbub:
-            self.nu[0] = 0
-            self.nu[1] = zc[1]
-        else:
-            self.nu[1] = zc[1] / (1 - xgo)
-            self.nu[0] = 1 - self.nu[1] - self.nu[2]
-
-        self.compute_saturation(self.ph)
-
-        for j in self.ph:
-            self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[0], self.sat[2])
-
-        pcow = self.capillary_pressure_ev['pcow'].evaluate(self.sat[2])
-        pcgo = self.capillary_pressure_ev['pcgo'].evaluate(self.sat[0])
-
-        self.pc = np.array([-pcgo, 0, pcow])
-
-        return
-
-    def evaluate_at_cond(self, pressure, zc):
-
-        self.sat[:] = 0
-
-        if zc[-1] < 0:
-            # print(zc)
-            zc = self.comp_out_of_bounds(zc)
-
-        self.ph = []
-        for j in range(self.nph):
-            if zc[j] > self.eps_z:
-                self.ph.append(j)
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].dens_sc
-
-        self.ph = np.array(self.ph)
-        self.nu = zc
-        self.compute_saturation(self.ph)
-
-        return self.sat, self.dens_m

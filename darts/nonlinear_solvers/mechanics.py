@@ -88,6 +88,13 @@ class MechanicsNewtonSolver(NewtonSolver):
         self.status.reset()
         status = self.status
         model._linear_solver_rc_last = 0
+        # Push the spec's kernel controls into the engine, exactly as
+        # NewtonSolver.run_timestep does. Without this the engine keeps its
+        # constructor defaults -- newton_chop_mode = NEWTON_LOCAL_CHOP, whose
+        # branch is commented out in engine_super_elastic_cpu -- so the global
+        # chop THMCModel asks for (chop.mode='global', factor=0.2) never runs
+        # and multi-component mechanics models lose Newton chopping entirely.
+        spec.sync_to_engine(engine)
         tol = spec.tolerance
         well_tol = self.well_tolerance_coefficient * tol
         converged = 0

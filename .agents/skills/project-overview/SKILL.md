@@ -11,7 +11,7 @@ When the planned work leads to build, install, test, debug, docs, or lint comman
 ## Steps
 
 1. Read `references/project-overview.md` to identify the relevant subsystem.
-2. Map requested changes to concrete paths (`darts/`, `engines/`, `interpolation/`, `discretizer/`, `solvers/`, `models/`, `tests/`, `docs/`).
+2. Map requested changes to concrete paths (`darts/`, `engines/`, `interpolation/`, `discretizer/`, `linear_solvers/`, `models/`, `tests/`, `docs/`).
 3. Confirm the execution path (build, lint, tests) and the session conda environment plan before editing.
 
 ## Conventions

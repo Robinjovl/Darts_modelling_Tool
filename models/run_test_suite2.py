@@ -6,6 +6,7 @@ from contextlib import redirect_stdout
 
 from darts.engines import sim_params
 from darts.engines import print_build_info as engines_pbi
+from darts.tools.cicd_tools import check_performance as cicd_check_performance
 from compare_well_time_series import (
     compare_generated_well_time_series,
     create_well_time_series_snapshot,
@@ -50,7 +51,7 @@ def _normalize_odls_env():
 def _pkl_suffix():
     return get_pkl_suffix()
 
-def run_testing(platform, overwrite, iter_solvers, test_all_models):
+def run_testing(platform, overwrite, heavy_models, test_all_models):
     base_dir = os.getcwd()  # base directory is models/
     logs_dir = os.path.join(base_dir, "_logs")  # directory in which log files will be saved
     os.makedirs(logs_dir, exist_ok=True)
@@ -102,9 +103,14 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
             os.path.join('dfm_well', '2ph_2comp_isothermal_dfm_inclined_well_vs_olga'),
         ]
 
+    # Poromechanics. Every case runs the in-tree FS-CPR on the open-source
+    # lane, including the multi-variable-flow ones (NE = N_VARS - 3 > 1: thermo
+    # or multi-phase flow coupled to mechanics), whose flow stage is a nested
+    # block CPR -- see fs_cpr_solver_config::p_stage_type.
     test_dirs_mech = ['1ph_1comp_poroelastic_analytics']
     test_args_mech = []
-    for case in ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']:
+    mech_cases = ['terzaghi', 'mandel', 'terzaghi_two_layers', 'bai']  # bai -> NE = 2
+    for case in mech_cases:
         for discr_name in ['mech_discretizer', 'pm_discretizer']:
             if case == 'bai' and discr_name == 'pm_discretizer':
                 continue # is not supported by poroelastic as bai is thermoporoelasticity
@@ -113,10 +119,10 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                     continue
                 test_args_mech.append([case, discr_name, mesh])
 
-    test_dirs_mech += ['1ph_1comp_poroelastic_convergence']
+    test_dirs_mech += ['1ph_1comp_poroelastic_convergence']  # NE = 2
     test_args_mech = [test_args_mech, [['']]]  # no args for the convergence test
 
-    if iter_solvers:
+    if platform == 'cpu':
         test_dirs_mech += ['SPE10_mech']
         physics_list = ['single_phase', 'single_phase_thermal', 'dead_oil', 'dead_oil_thermal']
         meshes_list = ['data_10_10_10']
@@ -126,6 +132,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
                 test_args_mech_spe10.append([mesh, physics])
         test_args_mech += [test_args_mech_spe10]
 
+    if heavy_models:
         test_dirs_mech += ['displaced_fault_reactivation']
         test_args_fault = []
         config = {'mode': 'quasi_static',
@@ -149,18 +156,16 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # CPG (C++ discr)
     test_dirs_cpg = ['cpg_sloping_fault']
     cpg_cases_list = ['generate_5x3x4']
-    if iter_solvers:  # run this case only for the build with iterative solvers
+    if heavy_models:  # heavier cases -- skipped on GPU suite runs (job time limit)
         cpg_cases_list += ['generate_51x51x1', '40x40x10', '40x40x10_hcap', '40x40x10_regions']
     test_args_cpg = []
     for case_geom in cpg_cases_list:
         for physics_type in ['geothermal', 'deadoil']:
-            # 'wperiodic' variant disabled: the zero-rate "stop" control makes the well
-            # block singular for the CPR preconditioner (CPU/GPU) -> "Matrix D can't be
-            # inversed"; it only completes on ODLS. Skipped until the well setup or CPR
-            # robustness is fixed.
-            for wctrl in ['wrate', 'wbhp']:
-                if physics_type == 'deadoil' and wctrl == 'wrate':
+            for wctrl in ['wrate', 'wbhp', 'wperiodic']:
+                if physics_type == 'deadoil' and wctrl in ['wrate', 'wperiodic']:
                     continue  # TODO fix convergence
+                if case_geom != 'generate_5x3x4' and wctrl == 'wperiodic':
+                    continue
                 case = case_geom + '_' + wctrl
                 test_args_cpg.append([case, physics_type])
     test_args_cpg = [test_args_cpg]
@@ -221,7 +226,7 @@ def run_testing(platform, overwrite, iter_solvers, test_all_models):
     # check main.py files and compare well time-series pkl files when they are produced
     failed_models_main = []
     accepted_dirs += ['CCS']
-    if iter_solvers:  # run this case only for the build with iterative solvers
+    if heavy_models:  # heavier cases -- skipped on GPU suite runs (job time limit)
         accepted_dirs += [ 'SPE11b']
     n_total_mainpy = 0
     models_root = model_dir
@@ -381,7 +386,7 @@ def check_performance(mod, formulation=None):
     overwrite = 0
     if os.getenv('UPLOAD_PKL') != None and os.getenv('UPLOAD_PKL') == '1':
         overwrite = 1
-    failed = m.check_performance(overwrite=overwrite, pkl_suffix=pkl_suffix + tag)
+    failed = cicd_check_performance(m, overwrite=overwrite, pkl_suffix=pkl_suffix + tag)
     if formulation is not None:
         failed_well_time_series, _, _ = compare_generated_well_time_series(
             model_path,
@@ -440,7 +445,21 @@ if __name__ == '__main__':
     if os.getenv('TEST_ALL_MODELS') != None and os.getenv('TEST_ALL_MODELS') == '1':
         test_all_models = True
 
-    iter_solvers = _normalize_odls_env()
+    # Keep the ODLS env normalization for its side effect (reference-pkl
+    # suffix selection via get_pkl_suffix), but no longer use it to gate the
+    # heavy models: after the ODLS/non-ODLS CI consolidation the open-source
+    # build is the only CPU CI variant, and its iterative solvers
+    # (FGMRES+CPR / MGR) handle the formerly `-a`-only cases (SPE10_mech,
+    # displaced_fault_reactivation, the extra CPG geometries, SPE11b). GPU
+    # suite runs keep the lighter set (they already brush the job time limit).
+    _normalize_odls_env()
+    # displaced_fault_reactivation, the extra CPG geometries and SPE11b still run on
+    # the iterative/BOS lane only. _normalize_odls_env() already returns False under
+    # TEST_GPU=1, so this keeps the GPU-suite skip too.
+    # SPE10_mech is no longer part of this set: it is gated on `platform == 'cpu'` in
+    # run_testing() and runs on the open-source lane as well, now that the in-tree
+    # FS-CPR solves all four of its physics variants (see the note there).
+    heavy_models = _normalize_odls_env()
 
-    rcode = run_testing(platform, overwrite, iter_solvers, test_all_models)
+    rcode = run_testing(platform, overwrite, heavy_models, test_all_models)
     exit(rcode)

@@ -4,9 +4,9 @@
 #include <string.h>
 #include <string>
 
-#include "openDARTS/config/version.hpp"
-#include "openDARTS/linear_solvers/csr_matrix.hpp"
-#include "openDARTS/linear_solvers/data_types.hpp"
+#include "version.hpp"
+#include "csr_matrix.hpp"
+#include "data_types.hpp"
 
 #include "test_common.hpp"
 
@@ -23,7 +23,7 @@ int main()
     The output is compared to a reference result.
   */
   int error_output = 0;
-  
+
   error_output += test_csr_format_string_input();
   error_output += test_csr_format_char_input();
 

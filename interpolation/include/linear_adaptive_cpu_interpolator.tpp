@@ -50,9 +50,10 @@ void linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>::get_supporting_point(
     {
         slot[j] = this->new_operator_values[j];
         values[j] = this->new_operator_values[j];
-        if (std::isnan(this->new_operator_values[j]))
+        // isfinite (not just isnan): an inf operator poisons interpolation like a nan
+        if (!std::isfinite(this->new_operator_values[j]))
         {
-            printf("OBL generation warning: nan operator detected! Operator %d for point (", j);
+            printf("OBL generation warning: non-finite operator detected! Operator %d for point (", j);
             for (int a = 0; a < N_DIMS; a++)
             {
                 printf("%lf, ", this->new_point_coords[a]);
@@ -146,9 +147,10 @@ void linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>::materialize_missing_points
         {
             double val = batch_values[i * N_OPS + op];
             slot[op] = val;
-            if (std::isnan(val))
+            // isfinite (not just isnan): an inf operator poisons interpolation like a nan
+            if (!std::isfinite(val))
             {
-                printf("OBL generation warning: nan operator detected! Operator %d for point (", op);
+                printf("OBL generation warning: non-finite operator detected! Operator %d for point (", op);
                 for (int a = 0; a < N_DIMS; a++)
                     printf("%lf, ", batch_coords[i * N_DIMS + a]);
                 printf(") is %lf\n", val);

@@ -37,11 +37,11 @@ time_steps = [
 
 for i, dt in enumerate(time_steps):
     if i == 1:
-        coupled_model.data_ts.dt_max = 5 / (24 * 60 * 60)
+        coupled_model.ts_control.dt_max = 5 / (24 * 60 * 60)
     elif i == 2:
-        coupled_model.data_ts.dt_max = 10 / (24 * 60 * 60)
+        coupled_model.ts_control.dt_max = 10 / (24 * 60 * 60)
     elif i == 3:
-        coupled_model.data_ts.dt_max = 15 / (24 * 60 * 60)
+        coupled_model.ts_control.dt_max = 15 / (24 * 60 * 60)
 
     coupled_model.run(dt)
     coupled_model.output.well_output_to_vtp(ith_step=i + 1, output_properties=output_props)

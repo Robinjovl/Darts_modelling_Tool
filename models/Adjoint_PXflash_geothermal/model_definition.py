@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import ms_well
 from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
@@ -9,10 +9,10 @@ from darts.models.opt.opt_module_settings import OptModuleSettings
 from darts.input.input_data import InputData
 
 
-class Model(CICDModel, OptModuleSettings):
+class Model(DartsModel, OptModuleSettings):
     def __init__(self, T, report_step=120, perm=300, poro=0.2, iapws_physics=False):
         # call base class constructor
-        CICDModel.__init__(self)
+        DartsModel.__init__(self)
         OptModuleSettings.__init__(self)
 
         # measure time spend on reading/initialization
@@ -25,13 +25,22 @@ class Model(CICDModel, OptModuleSettings):
         self.iapws_physics = iapws_physics
         self.set_input_data()
         self.set_physics()
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1000, tol_linear=1e-6)
+        # solver/time-stepping config moved to set_solver() (called at top of reset())
 
         self.init_pressure = 200.
         self.init_temperature = 350.
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 0.0001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 5
+        self.ts_control.runtime = 1000
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
+        self.linear_solver.spec.tolerance = 1e-6
 
     def set_reservoir(self, perm, poro):
         """Reservoir construction"""
@@ -208,7 +217,7 @@ class Model(CICDModel, OptModuleSettings):
         for ts in time_step_arr:
             self.set_well_controls()
 
-            CICDModel.run(self, ts, verbose=export_to_vtk)
+            DartsModel.run(self, ts, verbose=export_to_vtk)
             self.physics.engine.report()
             if export_to_vtk:
                 ith_step += 1

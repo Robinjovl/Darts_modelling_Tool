@@ -9,7 +9,6 @@ class Initialize:
         self,
         physics,
         algorithm: str = 'multilinear',
-        mode: str = 'adaptive',
         is_barycentric: bool = False,
         aq_idx: int = None,
         h2o_idx: int = None,
@@ -19,7 +18,6 @@ class Initialize:
 
         :param physics: Physics object
         :param algorithm: Type of interpolation (multilinear/linear), default is multilinear
-        :param mode: Interpolation mode (static/adaptive), default is adaptive
         :param is_barycentric: Bool for barycentric interpolation, default is False
         :param aq_idx: Index of Aq phase
         :param h2o_idx: Index of H2O-component
@@ -118,10 +116,11 @@ class Initialize:
             extrapolation_flag=self.physics.extrapolation_flag,
             dz=self.physics.dz,
         )
-        # PT-parametrization for the initialization itor: use the main grid by default,
-        # but with a thermal-var override (T in [273.15, 273.15 + 300] step ~1 K) for
-        # geothermal-derived physics. Defaults to physics.axes_step / physics.axes_origin
-        # when no override is set.
+        # PT-parametrization for the initialization itor: it evaluates properties from a
+        # PT state, so it rides the physics' thermal-var grid -- the main grid for P/PT,
+        # and the main grid with a temperature trailing axis (273.15 K origin, 1 K cells
+        # by default) for PH/PS. Falls back to physics.axes_step / physics.axes_origin
+        # when neither thermal_var_axes_* attribute is set.
         thermal_step = getattr(self.physics, 'thermal_var_axes_step', None)
         thermal_origin = getattr(self.physics, 'thermal_var_axes_origin', None)
         self.itor, n_ops = physics.create_interpolator(
@@ -131,7 +130,6 @@ class Initialize:
             axes_origin=thermal_origin,
             timer_name='initialization itor',
             algorithm=algorithm,
-            mode=mode,
             is_barycentric=is_barycentric,
             include_history=False,
         )

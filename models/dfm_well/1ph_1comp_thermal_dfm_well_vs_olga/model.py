@@ -1,6 +1,6 @@
 import numpy as np
 
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import ms_well, value_vector, well_control_iface
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
@@ -11,8 +11,8 @@ from darts.physics.eos_physics import EoSPhysics
 from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
-from darts.physics.properties.viscosity import Fenghour1998, Islam2012
-from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+from darts.physics.properties.viscosity import Fenghour1998
+from darts.physics.properties.eos_properties import EoSDensity
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
@@ -25,7 +25,7 @@ from darts.pipes.linear_dfm_well_ipr import (
 )
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -38,15 +38,22 @@ class Model(CICDModel):
         self.zero = 1e-10
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
-                                           chop=ChopSpec(mode='local'),
-                                           coupled_well_res_norm_method=2)
-        self.set_sim_params(first_ts=1/(24*60*60), mult_ts=2, max_ts=2/(24*60*60), tol_linear=1e-4,
-                            it_linear=10,
-                            runtime=10 / 24 / 60,   # This runtime will be used when CI test is conducted without the main file
-                            )
+        self.ts_control.dt_first = 1/(24*60*60)
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 2/(24*60*60)
+        self.ts_control.runtime = 10 / 24 / 60  # This runtime will be used when CI test is conducted without the main file
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        # Linear-solver settings live on self.linear_solver (the LinearSolverSpec).
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
+            chop=ChopSpec(mode='local'),
+            coupled_well_res_norm_method=2)
+        self.linear_solver.spec.tolerance = 1e-4
+        self.linear_solver.spec.max_iterations = 10
 
     def set_reservoir(self):
         (nr, nz) = (2, 1)

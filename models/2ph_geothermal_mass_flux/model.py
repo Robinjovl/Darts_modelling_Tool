@@ -1,5 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, ms_well
 from darts.nonlinear_solvers import NewtonSolver
 import numpy as np
@@ -12,7 +12,7 @@ from darts.physics.properties.density import DensityBasic
 from darts.physics.properties.enthalpy import EnthalpyBasic
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self, mode='rhs', well_rate=1, outflow=1000):
         # call base class constructor
         super().__init__()
@@ -25,8 +25,7 @@ class Model(CICDModel):
         self.wells_mode = mode
         self.set_physics()
 
-        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
-        self.set_sim_params(first_ts=0.0001, mult_ts=2, max_ts=5, runtime=1, tol_linear=1e-6)
+        # solver/time-stepping configuration moved to set_solver() (called by base reset())
 
         # add outflux to the middle cell
         self.inflow_cells = np.array([self.reservoir.nx // 2])
@@ -34,6 +33,16 @@ class Model(CICDModel):
         self.outflow = outflow if mode == 'rhs' else 0
 
         self.timer.node["initialization"].stop()
+
+    def set_solver(self):
+        self.ts_control.dt_first = 0.0001
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 2
+        self.ts_control.dt_max = 5
+        self.ts_control.runtime = 1
+        super().set_solver()  # platform default nonlinear + linear solvers
+        self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
+        self.linear_solver.spec.tolerance = 1e-6
 
     def set_reservoir(self):
         """Reservoir construction"""
@@ -157,25 +166,10 @@ class ModelProperties(PropertyContainer):
             self.mu[j] = self.viscosity_ev[self.phases_name[j]].evaluate()  # output in [cp]
 
         self.nu[0] = 1
-        self.compute_saturation(self.ph)
+        self.compute_saturation()
 
         for j in self.ph:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc[j] = 0
 
         return
-
-    def evaluate_at_cond(self, pressure, zc):
-
-        self.sat[:] = 0
-
-        ph = [0]
-        for j in ph:
-            self.dens_m[j] = self.density_ev[self.phases_name[j]].evaluate(1, 0)
-
-        self.dens_m = [1025, 0.77]  # to match DO based on PVT
-
-        self.nu[0] = 1
-        self.compute_saturation(ph)
-
-        return self.sat, self.dens_m

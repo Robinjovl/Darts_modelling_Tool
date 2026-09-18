@@ -168,6 +168,8 @@ class NewtonSolver(NonlinearSolver):
         :param verbose: Verbosity level; ``None`` inherits ``model.verbose``.
         :return: True if the timestep converged.
         """
+        from darts.models.darts_model import DartsModel
+
         model = self.model
         engine = self.engine
         spec = self.spec
@@ -197,7 +199,13 @@ class NewtonSolver(NonlinearSolver):
             # apply RHS flux
             model.apply_rhs_flux(dt, t)
 
-            if model.platform == "gpu":
+            # The device RHS is authoritative after assembly; re-upload only when a
+            # host-side flux modification actually touched the host mirror (!280 --
+            # an unconditional copy costs a device transfer every Newton iteration).
+            if model.platform == "gpu" and (
+                model.has_dfm_well
+                or type(model).set_rhs_flux is not DartsModel.set_rhs_flux
+            ):
                 from darts.engines import copy_data_to_device
 
                 copy_data_to_device(engine.RHS, engine.get_RHS_d())
@@ -269,9 +277,9 @@ class NewtonSolver(NonlinearSolver):
                 status.well_residual,
             )
 
-        model.time.append(t)
-        model.n_newton_iters.append(status.n_newton)
-        model.time_step_size.append(dt)
+        model.ts_control.time.append(t)
+        self.n_newton_iters.append(status.n_newton)
+        model.ts_control.time_step_size.append(dt)
 
         self.timer.node["simulation"].stop()
         return converged

@@ -61,29 +61,29 @@ report_steps = [
 for i, dt in enumerate(report_steps):
 
     if i == 1:
-        coupled_model.data_ts.dt_max = 5 / (24 * 60 * 60)
+        coupled_model.ts_control.dt_max = 5 / (24 * 60 * 60)
     elif i == 4:
-        coupled_model.data_ts.dt_max = 10 / (24 * 60 * 60)
+        coupled_model.ts_control.dt_max = 10 / (24 * 60 * 60)
     elif i == 7:
-        coupled_model.data_ts.dt_max = 20 / (24 * 60 * 60)
+        coupled_model.ts_control.dt_max = 20 / (24 * 60 * 60)
     elif i == 8:
-        coupled_model.data_ts.dt_max = 30 / (24 * 60 * 60)
+        coupled_model.ts_control.dt_max = 30 / (24 * 60 * 60)
     elif i == 11:
-        coupled_model.data_ts.dt_max = 60 / (24 * 60 * 60)
+        coupled_model.ts_control.dt_max = 60 / (24 * 60 * 60)
     elif i == 12:
-        coupled_model.data_ts.dt_max = 10 / (24 * 60)
+        coupled_model.ts_control.dt_max = 10 / (24 * 60)
     elif i == 17:
-        coupled_model.data_ts.dt_max = 2 / 24
+        coupled_model.ts_control.dt_max = 2 / 24
     elif i == 20:
-        coupled_model.data_ts.dt_max = 10 / 24
+        coupled_model.ts_control.dt_max = 10 / 24
     elif i == 21:
-        coupled_model.data_ts.dt_max = 1
+        coupled_model.ts_control.dt_max = 1
 
     # # For injection at a constant WHP
     # if i == 1:
-    #     coupled_model.data_ts.dt_max = 1 / (24 * 60 * 60)
+    #     coupled_model.ts_control.dt_max = 1 / (24 * 60 * 60)
     # elif i == 2:
-    #     coupled_model.data_ts.dt_max = 5 / (24 * 60 * 60)
+    #     coupled_model.ts_control.dt_max = 5 / (24 * 60 * 60)
 
     coupled_model.run(dt)
     coupled_model.output.output_to_vtk(ith_step=i+1, output_properties=output_props)

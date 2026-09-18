@@ -1,13 +1,4 @@
-from enum import Enum
-
 import numpy as np
-
-
-# set PETSC solver types with negative values to easily distinguish c++ solvers and PETSC
-class linear_solver_types(Enum):
-    CPU_PETSC_CPR = -1  # CPR for flow
-    CPU_PETSC_FS = -2  # fixed stress for poromechanics
-    CPU_PARDISO = -10  # direct parallel solver
 
 
 class RockProps:
@@ -426,6 +417,7 @@ class WellData:
             bhp_constraint=bhp_constraint,
             temperature=temperature,
             phase_name=phase_name,
+            inj_composition=inj_composition,
         )
         self.wells[name].controls.append((time, wctrl))
 
@@ -435,7 +427,12 @@ class WellData:
         if inj_composition is None:
             inj_composition = []
         wctrl = WellControl()
-        wctrl.inj_bhp_control(bhp=bhp, temperature=temperature, phase_name=phase_name)
+        wctrl.inj_bhp_control(
+            bhp=bhp,
+            temperature=temperature,
+            phase_name=phase_name,
+            inj_composition=inj_composition,
+        )
         self.wells[name].controls.append((time, wctrl))
 
 

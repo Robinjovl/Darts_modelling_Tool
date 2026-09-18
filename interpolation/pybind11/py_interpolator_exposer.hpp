@@ -8,13 +8,10 @@
 #include <cstring>
 #include <vector>
 
-#include "multilinear_static_cpu_interpolator.hpp"
 #include "multilinear_adaptive_cpu_interpolator.hpp"
 
-#include "linear_static_cpu_interpolator.hpp"
 #include "linear_adaptive_cpu_interpolator.hpp"
 #ifdef WITH_GPU
-#include "multilinear_static_gpu_interpolator.hpp"
 #include "multilinear_adaptive_gpu_interpolator.hpp"
 #endif //WITH_GPU
 
@@ -220,10 +217,12 @@ template <uint8_t N_DIMS, uint16_t N_OPS>
 struct interpolator_exposer
 {
   // template function used to expose different interpolators with the same Python interface.
-  // Exposed name pattern: <base_name>_<s|d>_<N_DIMS>_<N_OPS>. The former index-type letter
-  // (_i_/_l_) is gone: adaptive storage is keyed on cell_key_t, so the index type is no
-  // longer part of the class identity (physics_base.py still falls back to the legacy
-  // suffixed names when running against an older prebuilt library).
+  // Exposed name pattern: <base_name>_<s|d>_<N_DIMS>_<N_OPS>. Two tokens that used to sit
+  // in <base_name> are gone: the index-type letter (_i_/_l_), because storage is keyed on
+  // cell_key_t and the index type is no longer part of the class identity, and the
+  // "adaptive" qualifier, because the static interpolators were removed and every
+  // interpolator is adaptive. physics.py builds exactly this name -- there is no fallback
+  // to the old spellings, so a stale compiled module fails with a "rebuild" message.
   template <typename f_t, typename interpolator_class>
   void expose_class(py::module &m, std::string base_name)
   {
@@ -570,25 +569,6 @@ struct interpolator_exposer
              "path"_a, "bitmap_off"_a, "keys_off"_a, "vals_off"_a, "capacity"_a, "count"_a)
           .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
       }
-      else if constexpr (std::is_same_v<interpolator_class, linear_static_cpu_interpolator<N_DIMS, N_OPS>>)
-      {
-        py::class_<interpolator_class,
-          operator_set_gradient_evaluator_iface>(m, name.c_str(), long_name.c_str())
-          .def(py::init<operator_set_evaluator_iface*, std::vector<value_t> &, std::vector<value_t> &, std::vector<index_t> &, bool>(), py::keep_alive<1, 2>()) /* (evaluator, axes_origin, axes_step, axes_points, is_barycentric) */
-          .def("evaluate_with_derivatives", &interpolator_class::evaluate_with_derivatives,
-            "Evaluate operators and derivatives (v)", "state"_a, "block_idx"_a, "values"_a, "derivatives"_a)
-          .def("init_timer_node", &interpolator_class::init_timer_node,
-            "Initialize timer", "timer_node"_a)
-          .def("init", &interpolator_class::init, "Initialize interpolator")
-          .def("write_to_file", &interpolator_class::write_to_file, "Write interpolator data to file")
-          .def("evaluate", &interpolator_class::evaluate,
-            "Evaluate operators", "state"_a, "values"_a)
-          // linear_static_cpu_interpolator stores point_data as std::vector<double>
-          // (dense supporting-point payload) and has no dirty_point_data tracker;
-          // the append-only delta hooks therefore do not apply to this branch.
-          .def_readwrite("point_data", &interpolator_class::point_data)
-          .def_readwrite("use_barycentric_interpolation", &interpolator_class::use_barycentric_interpolation);
-      }
 #ifdef WITH_GPU
       else if constexpr (std::is_same_v<interpolator_class, multilinear_adaptive_gpu_interpolator<f_t, N_DIMS, N_OPS>>)
       {
@@ -794,35 +774,31 @@ struct interpolator_exposer
   //   FULL:    multilinear_adaptive + linear_adaptive.
   // One exposed class per (algorithm, platform, precision): the adaptive classes carry
   // no index-type template parameter any more (storage is keyed on cell_key_t), so the
-  // former uint32/uint64 duplicates are gone and names carry no index-type letter.
+  // former uint32/uint64 duplicates are gone and names carry no index-type letter. The
+  // exposed names also drop the "adaptive" token: with the static interpolators removed
+  // it no longer distinguishes anything (the C++ class names keep it).
   void expose(py::module &m)
   {
     // do not expose multilinear for higher dimensions, as it becomes inefficient
     if constexpr (N_DIMS <= 12)
     {
-      expose_class<double, multilinear_adaptive_cpu_interpolator<double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_cpu_interpolator");
+      expose_class<double, multilinear_adaptive_cpu_interpolator<double, N_DIMS, N_OPS>>(m, "multilinear_cpu_interpolator");
     }
-    // expose_class<float, multilinear_adaptive_cpu_interpolator<float, N_DIMS, N_OPS>>(m, "multilinear_adaptive2_cpu_interpolator");
+    // expose_class<float, multilinear_adaptive_cpu_interpolator<float, N_DIMS, N_OPS>>(m, "multilinear2_cpu_interpolator");
 
 #if !defined(OD_INTERP_PROFILE_MINIMAL)
     // Linear adaptive — exposed under FULL. Like the multilinear adaptive classes it
     // carries no index-type template parameter (int32-native vertex enumeration).
-    expose_class<double, linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>>(m, "linear_adaptive_cpu_interpolator");
+    expose_class<double, linear_adaptive_cpu_interpolator<N_DIMS, N_OPS>>(m, "linear_cpu_interpolator");
 #endif
-    //expose_class<double, linear_static_cpu_interpolator<N_DIMS, N_OPS>>(m, "linear_static_cpu_interpolator");
-    // we expose static versions only when needed
     //#ifdef WITH_GPU
-    //expose_class<double, multilinear_static_cpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_static_cpu_interpolator");
 //#endif
-// we expose static GPU versions only when GPU build is active
 #ifdef WITH_GPU
 
-    //expose_class<double, multilinear_static_gpu_interpolator<uint32_t, double, N_DIMS, N_OPS>>(m, "multilinear_static_gpu_interpolator");
-    //expose_class<float, multilinear_static_gpu_interpolator<uint32_t, float, N_DIMS, N_OPS>>(m, "multilinear_static_gpu_interpolator");
 
-    expose_class<double, multilinear_adaptive_gpu_interpolator<double, N_DIMS, N_OPS>>(m, "multilinear_adaptive_gpu_interpolator");
+    expose_class<double, multilinear_adaptive_gpu_interpolator<double, N_DIMS, N_OPS>>(m, "multilinear_gpu_interpolator");
 
-    // expose_class<float, multilinear_adaptive_gpu_interpolator<float, N_DIMS, N_OPS>>(m, "multilinear_adaptive_gpu_interpolator");
+    // expose_class<float, multilinear_adaptive_gpu_interpolator<float, N_DIMS, N_OPS>>(m, "multilinear_gpu_interpolator");
 
 #endif //WITH_GPU
   }
