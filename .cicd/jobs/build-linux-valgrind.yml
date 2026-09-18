@@ -2,8 +2,9 @@ include:
   - local: '.cicd/jobs/build-linux-base.yml'
 
 build-linux-valgrind:
-    # final_validation (not build): in an MR pipeline this job waits for
-    # mr-ready-gate, which lives in the preceding validation_gate stage.
+    # final_validation: shown last in the pipeline graph. The job keeps the
+    # inherited .build-linux needs, so once allowed it starts as soon as the
+    # image is available.
     stage: final_validation
     interruptible: true
     tags:
@@ -12,20 +13,17 @@ build-linux-valgrind:
         # Skip on .pkl reference-upload runs: valgrind instrumentation is irrelevant there.
         - if: $UPLOAD_PKL == "1"
           when: never
-        # Every MR pipeline contains this job -- draft ones too -- but it starts
-        # only once mr-ready-gate has been played (draft) or has run (ready).
-        # A matched rules:needs replaces the inherited .build-linux needs
-        # completely, so the image producer is repeated here.
+        # Deliberate override: run valgrind even while the MR is a draft.
+        # TEST_CUSTOM_BRANCH / TEST_ALL_PYTHONS intentionally do not enable valgrind.
+        - if: $RUN_FINAL_VALIDATION == "1"
+        # GitLab evaluates rules only when a pipeline is created, and marking an
+        # MR ready does not start a new one. So the job exists in every MR
+        # pipeline: in a draft one it is a blocking manual job, which keeps the
+        # pipeline "blocked" (never "success") until it is played.
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $MR_NON_DRAFT != "1"
+          when: manual
+          allow_failure: false
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-          needs:
-            - job: mr-ready-gate
-              artifacts: false
-            - job: docker-image-builder
-              optional: true
-              artifacts: false
-        # Non-MR pipelines keep the inherited .build-linux needs.
-        - if: $TEST_CUSTOM_BRANCH == "1"
-        - if: $TEST_ALL_PYTHONS == "1"
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/
     extends: .build-linux

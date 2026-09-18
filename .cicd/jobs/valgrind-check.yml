@@ -1,6 +1,5 @@
 .linux-profiler-base:
-    # Same stage as build-linux-valgrind: same-stage `needs` is allowed, and the
-    # gate in validation_gate already sequences both in an MR pipeline.
+    # Same stage as build-linux-valgrind: same-stage `needs` is allowed.
     stage: final_validation
     interruptible: true
     tags:
@@ -15,10 +14,9 @@
         - if: $UPLOAD_PKL == "1"
           when: never
         # Eligibility must mirror build-linux-valgrind.yml (this job `needs` it).
-        # In an MR pipeline the job is always created; it starts after the gate
-        # because the valgrind build it depends on does.
-        - if: $TEST_CUSTOM_BRANCH == "1"
-        - if: $TEST_ALL_PYTHONS == "1"
+        # In a draft MR pipeline the job is created but waits until the manual
+        # valgrind build has been played.
+        - if: $RUN_FINAL_VALIDATION == "1"
         - if: $CI_COMMIT_REF_PROTECTED == "true"
         - if: $CI_PIPELINE_SOURCE == "merge_request_event"
         - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG =~ /^v?[0-9]+\.[0-9]+\.[0-9]+/

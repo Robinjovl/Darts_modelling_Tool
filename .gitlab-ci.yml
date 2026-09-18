@@ -32,7 +32,8 @@ variables:
   RUN_BOS_JOBS: "1"
   # Set by workflow:rules above: "1" only for merge-request pipelines whose MR is NOT a draft.
   # Enables the longer valgrind job in MR pipelines and the test_all_models selection in models/run_test_suite2.py.
-  # Marking an MR ready does not start a pipeline by itself - push a commit or trigger it manually.
+  # Marking an MR ready does not start a pipeline by itself: play the manual build-linux-valgrind job
+  # in the existing pipeline, or push a commit / run a new pipeline to also get test_all_models.
   MR_NON_DRAFT: "0"
 
 stages:
@@ -40,10 +41,9 @@ stages:
     - build_images
     - build
     - test
-    # Gate + final validation: present in EVERY merge-request pipeline. In a draft
-    # pipeline the gate is a blocking manual job, so the pipeline stays "blocked"
-    # (not green) and the valgrind jobs behind it wait until the gate is played.
-    - validation_gate
+    # Valgrind: present in EVERY merge-request pipeline. In a draft pipeline
+    # build-linux-valgrind is a blocking manual job, so the pipeline stays
+    # "blocked" (not green) until it is played.
     - final_validation
     - deploy
     - ingest
@@ -81,9 +81,6 @@ include:
   # - local: '.cicd/jobs/vtune-profile.yml'
     # rules:
     # - if: $MCP_TRIGGER_TAHITI_GPU != "1"
-  - local: '.cicd/jobs/mr-ready-gate.yml'
-    rules:
-      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/upload-wheels.yml'
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
