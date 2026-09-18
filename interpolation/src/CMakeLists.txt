@@ -19,15 +19,11 @@ set(INTERPOLATION_PUBLIC_HEADER_FILES
   ${INTERPOLATION_INCLUDE_DIR}/linear_adaptive_cpu_interpolator.tpp
   ${INTERPOLATION_INCLUDE_DIR}/linear_cpu_interpolator_base.hpp
   ${INTERPOLATION_INCLUDE_DIR}/linear_cpu_interpolator_base.tpp
-  ${INTERPOLATION_INCLUDE_DIR}/linear_static_cpu_interpolator.hpp
-  ${INTERPOLATION_INCLUDE_DIR}/linear_static_cpu_interpolator.tpp
   ${INTERPOLATION_INCLUDE_DIR}/multilinear_adaptive_cpu_interpolator.hpp
   ${INTERPOLATION_INCLUDE_DIR}/multilinear_adaptive_cpu_interpolator.tpp
   ${INTERPOLATION_INCLUDE_DIR}/multilinear_interpolator_base.hpp
   ${INTERPOLATION_INCLUDE_DIR}/multilinear_interpolator_base.tpp
   ${INTERPOLATION_INCLUDE_DIR}/multilinear_interpolator_common.h
-  ${INTERPOLATION_INCLUDE_DIR}/multilinear_static_cpu_interpolator.hpp
-  ${INTERPOLATION_INCLUDE_DIR}/multilinear_static_cpu_interpolator.tpp
 )
 
 # Define the library as OBJECT (same pattern as the old engines_interpolator)
@@ -54,8 +50,6 @@ if (CUDA)
     ${INTERPOLATION_INCLUDE_DIR}/multilinear_gpu_interpolator_base.tpp
     ${INTERPOLATION_INCLUDE_DIR}/multilinear_adaptive_gpu_interpolator.hpp
     ${INTERPOLATION_INCLUDE_DIR}/multilinear_adaptive_gpu_interpolator.tpp
-    ${INTERPOLATION_INCLUDE_DIR}/multilinear_static_gpu_interpolator.hpp
-    ${INTERPOLATION_INCLUDE_DIR}/multilinear_static_gpu_interpolator.tpp
   )
 
   target_link_libraries(darts_interpolation

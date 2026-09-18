@@ -220,7 +220,23 @@ namespace opendarts
       // Get final residual from last solve
       opendarts::config::mat_float get_residual() override;
 
+      /** Truthful outcome of the last solve (the base default fabricates
+       *  iterations=0/converged=false; see linear_solver.hpp). */
+      opendarts::linear_solvers::solver_stats stats() const override
+      {
+        opendarts::linear_solvers::solver_stats st;
+        st.iterations = n_iters_last_;
+        st.residual = residual_last_;
+        st.converged = last_converged_;
+        return st;
+      }
+
     private:
+      // Outcome of the last solve, cached for the const stats() accessor.
+      int n_iters_last_ = 0;
+      opendarts::config::mat_float residual_last_ = 0.0;
+      bool last_converged_ = true;
+
       mgr::LinearSolver mgr_solver;
       bool initialized;
       bool first_solve;

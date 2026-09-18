@@ -18,10 +18,10 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
     if days:
         runtime = days
     else:
-        runtime = m.runtime
+        runtime = m.ts_control.runtime
 
-    mult_dt = m.data_ts.dt_mult
-    max_dt = m.data_ts.dt_max
+    mult_dt = m.ts_control.dt_mult
+    max_dt = m.ts_control.dt_max
     m.e = m.physics.engine
 
     # get current engine time
@@ -84,13 +84,13 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
                 dt = 5.e-4 / 86400 # 500 microseconds
                 max_dt = 5.e-4 / 86400 # 500 microseconds
                 m.solver_phase = 'dynamic'
-                if m.open_source_solvers_available():
+                if m.linear_solver.open_source_solvers_available():
                     # Dynamic (inertial) stage: tighten the live GMRES+FS-CPR
                     # stack in place -- the open-source equivalent of the
                     # proprietary ls_params[1] switch (cpu_gmres_ilu0,
                     # tol 1e-12, 500 iters). update_solver() reconfigures the
                     # injected solver without touching the Jacobian.
-                    m.update_solver(tolerance=1.e-12, max_iterations=500)
+                    m.linear_solver.update_solver(tolerance=1.e-12, max_iterations=500)
                 else:
                     # Proprietary build: legacy engine-side solver bank switch.
                     m.physics.engine.active_linear_solver_id = 1
@@ -107,7 +107,7 @@ def run_python(m, days=0, restart_dt=0, log_3d_body_path=0, init_step = False):
         #         m.ith_step - m.ith_step_ready_for_reinjection > 500:
         #     m.physics.engine.momentum_inertia = 0.0
         #     dt = 0.001
-        #     m.data_ts.dt_max = max_dt = 0.005
+        #     m.ts_control.dt_max = max_dt = 0.005
         #     m.enable_dynamic_mode = False
         #     m.reservoir.wells[0].control = m.physics.new_rate_prod(0.0)
         #     #X = np.array(m.physics.engine.X, copy = False)
@@ -164,7 +164,7 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     # m.physics.engine.t_dim = 1.0
     # m.physics.engine.m_dim = 1.0
 
-    m.data_ts.dt_first = 1.0
+    m.ts_control.dt_first = 1.0
     run_python(m, 1.0, init_step=True)
     m.reinit(zero_conduction=True)
     m.physics.engine.dt1 = 0.0
@@ -184,8 +184,8 @@ def run_and_plot(config: dict, plot_analytics: bool=False, compare_with_ref=Fals
     time = 0
     for ith_step, dt in enumerate(t):
         time += dt
-        m.data_ts.dt_max = dt
-        m.data_ts.dt_mult = 10.0
+        m.ts_control.dt_max = dt
+        m.ts_control.dt_mult = 10.0
         run_python(m, dt)
         ith_step += 1
 
@@ -552,6 +552,8 @@ def run_tests():
               'friction_law': 'static',
               'mesh_file': 'meshes/new_setup_coarse.geo',
               'cache_discretizer': False}
+    # optional: Pardiso (pypardiso / Intel MKL) direct solve instead of the default GMRES + FS-CPR
+    #config['use_pardiso'] = True
     config[0] = config['friction_law']  # to make work arg[0] in for_each_model
     test_args_fault += [config]
     config = {'mode': 'quasi_static',

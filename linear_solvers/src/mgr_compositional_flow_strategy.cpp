@@ -212,7 +212,10 @@ void CompositionalFlowStrategy::setup()
 
   setupPressureAMG();
 
-  std::cout << "Compositional Flow Strategy (physical-role-aware MGR) setup complete" << std::endl;
+  if( m_config.verbose )
+  {
+    std::cout << "Compositional Flow Strategy (physical-role-aware MGR) setup complete" << std::endl;
+  }
 }
 
 bool CompositionalFlowStrategy::hasWellCells() const
@@ -512,8 +515,11 @@ void CompositionalFlowStrategy::setupWellEliminationLevel( int_t level )
   params.labels.resize( reservoirLabelCount() );
   std::iota( params.labels.begin(), params.labels.end(), 0 );
 
-  std::cout << "  Level " << level << ": reduce well block" << std::endl;
-  std::cout << "    keep reservoir labels: 0.." << (reservoirLabelCount() - 1) << std::endl;
+  if( m_config.verbose )
+  {
+    std::cout << "  Level " << level << ": reduce well block" << std::endl;
+    std::cout << "    keep reservoir labels: 0.." << (reservoirLabelCount() - 1) << std::endl;
+  }
   logLevelParameters( params );
 }
 
@@ -522,13 +528,16 @@ void CompositionalFlowStrategy::setupCustomReductionLevel( int_t level, int_t cu
   auto & params = m_levelParams[level];
   params = m_config.customLevels[customLevelIndex];
 
-  std::cout << "  Level " << level << ": custom reduction level " << customLevelIndex << std::endl;
-  std::cout << "    keep labels:";
-  for( const auto label : params.labels )
+  if( m_config.verbose )
   {
-    std::cout << " " << label;
+    std::cout << "  Level " << level << ": custom reduction level " << customLevelIndex << std::endl;
+    std::cout << "    keep labels:";
+    for( const auto label : params.labels )
+    {
+      std::cout << " " << label;
+    }
+    std::cout << std::endl;
   }
-  std::cout << std::endl;
   logLevelParameters( params );
 }
 
@@ -538,13 +547,16 @@ void CompositionalFlowStrategy::setupCompositionReductionLevel( int_t level )
   params = m_config.compositionLevel;
   params.labels = compositionKeepLabels();
 
-  std::cout << "  Level " << level << ": eliminate one reservoir composition variable" << std::endl;
-  std::cout << "    keep reservoir labels:";
-  for( const auto label : params.labels )
+  if( m_config.verbose )
   {
-    std::cout << " " << label;
+    std::cout << "  Level " << level << ": eliminate one reservoir composition variable" << std::endl;
+    std::cout << "    keep reservoir labels:";
+    for( const auto label : params.labels )
+    {
+      std::cout << " " << label;
+    }
+    std::cout << std::endl;
   }
-  std::cout << std::endl;
   logLevelParameters( params );
 }
 
@@ -554,18 +566,27 @@ void CompositionalFlowStrategy::setupPressureReductionLevel( int_t level )
   params = m_config.pressureLevel;
   params.labels = pressureKeepLabels();
 
-  std::cout << "  Level " << level << ": reduce reservoir variables to pressure" << std::endl;
-  std::cout << "    keep pressure labels:";
-  for( const auto label : params.labels )
+  if( m_config.verbose )
   {
-    std::cout << " " << label;
+    std::cout << "  Level " << level << ": reduce reservoir variables to pressure" << std::endl;
+    std::cout << "    keep pressure labels:";
+    for( const auto label : params.labels )
+    {
+      std::cout << " " << label;
+    }
+    std::cout << std::endl;
   }
-  std::cout << std::endl;
   logLevelParameters( params );
 }
 
 void CompositionalFlowStrategy::logLevelParameters( const MGRLevelParameters & params ) const
 {
+  // Per-level parameter dumps are per-strategy-build chatter: a strategy is
+  // rebuilt on every adjoint solve, which is what made MGR flood CI logs.
+  if( !m_config.verbose )
+  {
+    return;
+  }
   std::cout << "    F-relaxation: " << fRelaxName( static_cast<int_t>( params.fRelaxType ) )
             << " (HYPRE type " << static_cast<int_t>( params.fRelaxType ) << "), "
             << params.fRelaxIters << " sweep(s)" << std::endl;
@@ -636,21 +657,24 @@ void CompositionalFlowStrategy::setupPressureAMG()
     HYPRE_BoomerAMGSetMaxLevels( m_coarseSolver, m_config.pressureAmgMaxLevels );
   }
 
-  std::cout << "  Coarse solver: BoomerAMG configured for pressure system (Schur complement)" << std::endl;
-  std::cout << "    AMG coarsen/interp/relax: "
-            << m_config.pressureAmgCoarsenType << "/"
-            << m_config.pressureAmgInterpType << "/"
-            << m_config.pressureAmgRelaxType << std::endl;
-  std::cout << "    AMG aggressive levels/interp/pmax/order: "
-            << m_config.pressureAmgAggNumLevels << "/"
-            << m_config.pressureAmgAggInterpType << "/"
-            << m_config.pressureAmgAggPMaxElmts << "/"
-            << m_config.pressureAmgRelaxOrder << std::endl;
-  std::cout << "    AMG strength/trunc/pmax/max_levels: "
-            << m_config.pressureAmgStrongThreshold << "/"
-            << m_config.pressureAmgTruncFactor << "/"
-            << m_config.pressureAmgPMaxElmts << "/"
-            << m_config.pressureAmgMaxLevels << std::endl;
+  if( m_config.verbose )
+  {
+    std::cout << "  Coarse solver: BoomerAMG configured for pressure system (Schur complement)" << std::endl;
+    std::cout << "    AMG coarsen/interp/relax: "
+              << m_config.pressureAmgCoarsenType << "/"
+              << m_config.pressureAmgInterpType << "/"
+              << m_config.pressureAmgRelaxType << std::endl;
+    std::cout << "    AMG aggressive levels/interp/pmax/order: "
+              << m_config.pressureAmgAggNumLevels << "/"
+              << m_config.pressureAmgAggInterpType << "/"
+              << m_config.pressureAmgAggPMaxElmts << "/"
+              << m_config.pressureAmgRelaxOrder << std::endl;
+    std::cout << "    AMG strength/trunc/pmax/max_levels: "
+              << m_config.pressureAmgStrongThreshold << "/"
+              << m_config.pressureAmgTruncFactor << "/"
+              << m_config.pressureAmgPMaxElmts << "/"
+              << m_config.pressureAmgMaxLevels << std::endl;
+  }
 }
 
 } // namespace strategies

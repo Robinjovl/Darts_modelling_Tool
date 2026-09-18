@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <algorithm>
 #include <time.h>
 #include <functional>
@@ -102,6 +103,8 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 	// create linear solver
 	if (!linear_solver)
 	{
+		// Factory-allocated solvers are engine-owned and deleted in ~engine_base.
+		linear_solver_owned = true;
 		switch (params->linear_type)
 		{
 #ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS solvers; the open-source build injects via the registry
@@ -149,10 +152,10 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		case sim_params::GPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
 			break;
@@ -161,10 +164,10 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		case sim_params::GPU_GMRES_CPR_AIPS:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			int n_terms = 10;
 			bool print_radius = false;
@@ -195,10 +198,10 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			int n_json = 0;
 
@@ -221,6 +224,12 @@ int engine_super_mp_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::vecto
 		default:
 			break;
 		}
+
+		if (!linear_solver)
+			throw std::runtime_error(
+				"engine_super_mp_cpu: linear solver type " +
+				std::to_string(static_cast<int>(params->linear_type)) +
+				" is not available in this build");
 	}
 
 	n_vars = get_n_vars();

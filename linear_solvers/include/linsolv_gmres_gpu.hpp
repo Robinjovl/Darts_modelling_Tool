@@ -86,6 +86,17 @@ namespace opendarts
 
       int get_n_iters() override;
 
+      /** Truthful outcome of the last solve (the base default fabricates
+       *  iterations=0/converged=false; see linear_solver.hpp). */
+      opendarts::linear_solvers::solver_stats stats() const override
+      {
+        opendarts::linear_solvers::solver_stats st;
+        st.iterations = n_iters;
+        st.residual = final_resid;
+        st.converged = last_converged;
+        return st;
+      }
+
       opendarts::config::mat_float get_residual() override;
 
       /** Requested restart length; clamped to [1, max_iters] at init(). */
@@ -102,6 +113,11 @@ namespace opendarts
 
       // Final relative residual of the last solve and the target tolerance.
       double final_resid, tolerance;
+
+      // Whether the last solve reached the tolerance (unified solve()
+      // convention); reported through stats() so callers can distinguish a
+      // converged solve from an accepted inexact one.
+      bool last_converged = true;
 
       cublasHandle_t cub_handle;
 

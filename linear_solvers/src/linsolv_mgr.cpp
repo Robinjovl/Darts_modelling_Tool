@@ -10,6 +10,7 @@
 //*************************************************************************
 
 //--------------------------------------------------------------------------
+#include <cmath>
 #include "linsolv_mgr.hpp"
 #include "csr_matrix_base.hpp"
 #include "mgr_linear_solver.hpp"
@@ -1403,14 +1404,37 @@ namespace opendarts
                   << ", converged=" << (converged ? "YES" : "NO") << std::endl;
       }
 
+      last_converged_ = (iters >= 0);
+      // Take the count the backend recorded, not -iters: on a hard failure the
+      // wrapper returns the -1 sentinel, and negating it would report "1
+      // iteration" where the backend deliberately recorded 0.
+      n_iters_last_ = static_cast<int>(mgr_solver.get_n_iters());
+      residual_last_ = mgr_solver.get_residual();
       if (iters < 0)
       {
-        std::cerr << "[MGR] Warning: Solve did not converge (iters = " << -iters << ")" << std::endl;
-        return iters;  // Return negative iteration count for failure
+        // Unified solve() convention (see linear_solver.hpp). Do NOT infer the
+        // outcome from the sign: a preconditioner setup failure and an
+        // exhausted budget are both negative here. Take the explicit reason the
+        // backend recorded -- only iterationLimit (which the backend grants
+        // solely for a finite, non-regressing residual) leaves a usable iterate
+        // for the nonlinear on_linear_nonconvergence policy to act on.
+        const auto final_res = mgr_solver.get_residual();
+        if (mgr_solver.get_last_stop_reason() == mgr::SolverStopReason::iterationLimit)
+        {
+          std::cerr << "[MGR] Warning: iteration limit reached (iters = " << -iters
+                    << ", final_res = " << final_res << ")" << std::endl;
+          return opendarts::linear_solvers::solve_result::not_converged;
+        }
+        std::cerr << "[MGR] Error: solve failed (iters = " << -iters
+                  << ", final_res = " << final_res << ", reason = "
+                  << (mgr_solver.get_last_stop_reason() == mgr::SolverStopReason::backendError
+                          ? "backend/setup error"
+                          : "breakdown")
+                  << ")" << std::endl;
+        return -1;
       }
 
-      // Return 0 for success (open-darts convention)
-      // Iteration count is available via get_n_iters()
+      // 0 = converged (unified convention); count via get_n_iters()
       return 0;
     }
 

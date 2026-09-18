@@ -17,10 +17,8 @@ class Model(THMCModel):
         super().__init__()
 
     def set_solver(self):
-        super().set_solver()
-
-        # data_ts is used only for linear solver params for PETSc
-        self.data_ts = self.idata.sim.DataTS  # this needed as mech models have their own run_python implementation
+        # ts_control is used only for linear solver params for PETSc
+        self.ts_control = self.idata.sim.TimestepControl  # this needed as mech models have their own run_python implementation
 
         # Open-source FS-CPR by default for BOTH discretizers -- inject the spec;
         # the engine bypasses sim_params.linear_type. FS-CPR is a PRECONDITIONER
@@ -65,24 +63,19 @@ class Model(THMCModel):
                 nc=engine.N_VARS - 3,
             )
         fs_cpr = FSCPRSolverSpec(**fs_cpr_kwargs)
-        # Single solver declaration. The FS-CPR spec drives _apply_solver on the
-        # open-source CPU build. On the proprietary build _apply_solver applies
-        # proprietary_linear_type (bos_fs_cpr) to params.linear_type (mech engine),
-        # while the pm engine keeps its ls_params[-1] = cpu_gmres_fs_cpr stage.
-        self.linear_solver = GMRESSolverSpec(
+
+        if self.discretizer_name == 'mech_discretizer':
+            lin_tol, lin_max_it = 1e-10, 5000
+        else:
+            lin_tol, lin_max_it = 1e-12, 500
+        self.linear_solver.spec = GMRESSolverSpec(
             prec=fs_cpr,
-            # NOTE: 1e-5 / 50 are the values this model has always effectively run with.
-            # Until !280 the engine overwrote a spec's tolerance/max_iterations at init()
-            # with sim_params (defaults 1e-5 / 50, globals.h:117), so the spec's numbers were
-            # decorative. The spec is authoritative now, so state the values the model has
-            # really been running -- keeping behaviour unchanged. FS-CPR does not reach 1e-8 on
-            # these systems anyway: asking for it only burns the iteration budget (on SPE10_mech
-            # 22 of 48 solves exhaust the 200-iteration cap; 99 vs 41 linear iters per Newton).
-            tolerance=1e-5,
-            max_iterations=50,
+            tolerance=lin_tol,
+            max_iterations=lin_max_it,
             restart=50,
             proprietary_linear_type=sim_params.cpu_gmres_fs_cpr,
         )
+        super().set_solver()
 
     def set_reservoir(self):
         self.reservoir = UnstructReservoirCustom(timer=self.timer, idata=self.idata, case=self.case,
@@ -289,10 +282,10 @@ class Model(THMCModel):
 
         # optional: use PETSc / Pardiso linear solver (set in set_solver())
         #   from darts.linear_solvers import PETScSolverSpec, PardisoSolverSpec
-        #   self.linear_solver = PETScSolverSpec(variant="fs")
-        #   self.linear_solver = PardisoSolverSpec()
-        from darts.models.darts_model import DataTS
-        self.idata.sim.DataTS = DataTS(n_vars=0)
+        #   self.linear_solver.spec = PETScSolverSpec(variant="fs")
+        #   self.linear_solver.spec = PardisoSolverSpec()
+        from darts.timestep_control import TimestepControl
+        self.idata.sim.TimestepControl = TimestepControl(n_vars=0)
 
         self.idata.obl.zero = 1e-9
         self.idata.obl.epsilon_z = 1e-10

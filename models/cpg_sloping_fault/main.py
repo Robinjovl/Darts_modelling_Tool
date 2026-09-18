@@ -6,6 +6,7 @@ import os, sys
 from darts.engines import redirect_darts_output
 from darts.tools.plot_darts import *
 from darts.tools.logging import redirect_all_output, abort_redirection
+from darts.tools.cicd_tools import check_performance, save_performance_data
 
 from model_geothermal import ModelGeothermal
 from model_deadoil import ModelDeadOil
@@ -29,7 +30,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
         log_stream = redirect_all_output(log_filename)
 
     if physics_type == 'geothermal':
-        m = ModelGeothermal(iapws_physics=True)
+        m = ModelGeothermal(iapws_physics=True, formulation='PT')
     elif physics_type == 'deadoil':
         m = ModelDeadOil()
     elif physics_type == 'CCS':
@@ -53,7 +54,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     m.init_reservoir(arrays=arrays)
 
     # time stepping and convergence parameters
-    m.set_sim_params_data_ts(data_ts=m.idata.sim.DataTS)
+    m.ts_control = m.idata.sim.TimestepControl
 
     m.timer.node["initialization"].stop()
 
@@ -68,18 +69,7 @@ def run(physics_type : str, case: str, out_dir: str, export_vtk=True, redirect_l
     m.reservoir.save_grdecl(m.get_arrays(), os.path.join(out_dir, 'res_init'))
 
     # ---- run simulation
-    # Reporting loop over idata.sim.time_steps (was DartsModel.run_simulation(),
-    # removed as non-generic model API -- drive it from the script instead).
-    ret = 0
-    time = 0.0
-    for ith_step, dt in enumerate(m.idata.sim.time_steps):
-        m.set_well_controls_idata(time=time)
-        if m.run(dt) != 0:
-            print("run() failed for the step=", ith_step, "dt=", dt)
-            ret = 1
-            break
-        m.do_after_step()
-        time += dt
+    ret = m.run_simulation()
 
     if ret != 0:
         exit(1)
@@ -278,10 +268,10 @@ def check_performance_local(m, case, physics_type):
 
     is_plk_exist = os.path.isfile(file_name)
 
-    failed = m.check_performance(perf_file=file_name, overwrite=overwrite, pkl_suffix=pkl_suffix)
+    failed = check_performance(m, perf_file=file_name, overwrite=overwrite, pkl_suffix=pkl_suffix)
 
     if not is_plk_exist or overwrite == '1':
-        m.save_performance_data(file_name=file_name, pkl_suffix=pkl_suffix)
+        save_performance_data(m, file_name=file_name, pkl_suffix=pkl_suffix)
         return False, 0.0
 
     if is_plk_exist:
@@ -314,8 +304,8 @@ if __name__ == '__main__':
     # physics_list += ['deadoil']
 
     cases_list = []
-    cases_list += ['generate_5x3x4']
-    #cases_list += ['generate_51x51x1']
+    #cases_list += ['generate_5x3x4']
+    cases_list += ['generate_51x51x1']
     #cases_list += ['generate_51x51x1_faultmult']
     #cases_list += ['generate_100x100x100']
     #cases_list += ['40x40x10']
@@ -323,9 +313,9 @@ if __name__ == '__main__':
     #cases_list += ['40x40x10_regions']
 
     well_controls = []
-    well_controls += ['wrate']
+    #well_controls += ['wrate']
     #well_controls += ['wbhp']
-    #well_controls += ['wperiodic']
+    well_controls += ['wperiodic']
 
     for physics_type in physics_list:
         for case_geom in cases_list:

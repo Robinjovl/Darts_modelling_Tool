@@ -1,6 +1,6 @@
 import numpy as np
 from darts.reservoirs.struct_reservoir import StructReservoir
-from darts.models.cicd_model import CICDModel
+from darts.models.darts_model import DartsModel
 
 from darts.physics.base.physics import PhysicsBase
 from darts.physics.eos_physics import EoSPhysics
@@ -14,7 +14,7 @@ from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.nonlinear_solvers import NewtonSolver
 
 
-class Model(CICDModel):
+class Model(DartsModel):
     def __init__(self):
         # Call base class constructor
         super().__init__()
@@ -34,9 +34,11 @@ class Model(CICDModel):
         return
 
     def set_solver(self):
-        self.set_sim_params(first_ts=1e-5, mult_ts=1.5, max_ts=5,
-                            runtime=50, # This runtime will be used when CI test is conducted without the main file
-                            )
+        self.ts_control.dt_first = 1e-5
+        self.ts_control.dt_min = 1e-15
+        self.ts_control.dt_mult = 1.5
+        self.ts_control.dt_max = 5
+        self.ts_control.runtime = 50  # This runtime will be used when CI test is conducted without the main file
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10)
         self.linear_solver.spec.tolerance = 1e-5

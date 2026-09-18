@@ -49,6 +49,34 @@ namespace opendarts
      *                                    consumes refreshed matrix values
      *    solve_transposed()           -- adjoint Newton step (Han et al. 2013)
      */
+    /** Return-code constants of linear_solver::solve() (see its doc).
+     *  Negative codes stay backend-specific; only the sign carries meaning. */
+    namespace solve_result
+    {
+      constexpr int converged = 0;      ///< residual reached the tolerance
+      constexpr int not_converged = 1;  ///< budget exhausted, iterate usable
+
+      /** Relative slack allowed when deciding whether the final residual
+       *  regressed past the one the solve started from. A Krylov method is
+       *  non-increasing only in exact arithmetic, so a few ULPs of growth is
+       *  round-off, not breakdown -- rejecting it would make the classification
+       *  differ between backends purely by floating-point luck. Every backend
+       *  (native C++ and the Python-resident ones) uses this same slack. */
+      constexpr double residual_growth_rtol = 1.0e-12;
+
+      /** True when @p final_residual counts as "no worse" than @p initial_residual
+       *  under residual_growth_rtol. Starting from an exactly zero residual the
+       *  system is already solved, so ANY positive final residual is growth --
+       *  the relative slack has nothing to scale and must not be read as a free
+       *  pass. */
+      inline bool residual_did_not_regress(double final_residual, double initial_residual)
+      {
+        if (!(initial_residual > 0.0))
+          return final_residual <= 0.0;
+        return final_residual <= initial_residual * (1.0 + residual_growth_rtol);
+      }
+    } // namespace solve_result
+
     class linear_solver
     {
     public:
@@ -106,7 +134,27 @@ namespace opendarts
         return this->setup(A_input);
       }
 
-      /** Solve A x = B. */
+      /** Solve A x = B.
+       *
+       *  Unified return convention (signed status, PETSc-style):
+       *    - 0                  : converged to tolerance (a direct solver's
+       *                           exact solve and a preconditioner's single
+       *                           application also report 0);
+       *    - solve_result::not_converged (+1)
+       *                         : iteration budget exhausted but the iterate is
+       *                           USABLE -- the residual is finite and has not
+       *                           risen above its initial value. Whether such a
+       *                           step is applied or the timestep is cut is the
+       *                           NONLINEAR solver's decision
+       *                           (NonlinearSolverSpec.on_linear_nonconvergence),
+       *                           never this solver's;
+       *    - negative           : hard failure -- non-finite residual, residual
+       *                           growth (numerical breakdown), or a backend
+       *                           error. The iterate must not be applied; the
+       *                           engine turns this into a timestep cut.
+       *  Preconditioners applied inside a Krylov solver must return only
+       *  0 / negative: a single application has no convergence to report, and
+       *  the outer solver treats any nonzero as a hard failure. */
       virtual int solve(opendarts::config::mat_float *B,
           opendarts::config::mat_float *X) = 0;
 

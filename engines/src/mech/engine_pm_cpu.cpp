@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -46,6 +47,9 @@ int engine_pm_cpu::init(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	active_linear_solver_id = 0;
 
 	init_base(mesh_, well_list_, acc_flux_op_set_list_, thermal_var_etor_, params_, timer_);
+	// publish the assembled Jacobian to Python (as engine_super_elastic_cpu does),
+	// so the Python-resident solvers (PETSc / Pardiso) can read the block-CSR arrays
+	this->expose_jacobian();
 	return 0;
 }
 
@@ -159,10 +163,10 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	  case sim_params::GPU_GMRES_CPR_AMG:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
-		linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+		linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 		cpr->set_prec(new linsolv_bos_amg<1>);
 		linear_solvers.back()->set_prec(cpr);
 		break;
@@ -171,10 +175,10 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	  case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 	  {
 		linear_solvers.push_back(new linsolv_bos_gmres<N_VARS>(1));
-		linsolv_iface* cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-		((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+		linsolv_iface* cpr = new linsolv_cpr_gpu<N_VARS>;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+		((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 		int n_json = 0;
 
@@ -194,9 +198,21 @@ int engine_pm_cpu::init_base(conn_mesh* mesh_, std::vector<ms_well*>& well_list_
 	  }
 #endif
 	  default:
-		break;
+		// Do not fall through silently: an unserviceable entry would leave
+		// linear_solvers shorter than ls_params, and the init loop below indexes
+		// the bank by the ls_params position -- an out-of-bounds read, or worse a
+		// silent mis-pairing of solver and settings.
+		throw std::runtime_error(
+			"engine_pm_cpu: linear solver type " +
+			std::to_string(static_cast<int>(param.linear_type)) +
+			" is not available in this build; use sim_params::CPU_SUPERLU or inject "
+			"a solver from Python via set_linear_solver().");
 	}
   }
+  if (linear_solvers.size() != ls_params.size())
+	throw std::runtime_error(
+		"engine_pm_cpu: built " + std::to_string(linear_solvers.size()) +
+		" linear solvers for " + std::to_string(ls_params.size()) + " ls_params entries");
 
   n_vars = get_n_vars();
   n_ops = get_n_ops();
@@ -1664,8 +1680,13 @@ int engine_pm_cpu::solve_linear_equation()
 	// DartsModel.update_solver (live reconfigure / re-injection).
 	if (linear_solver_external && active_linear_solver_id == 0)
 	  linear_solver = linear_solver_external.get();
-	else
+	else if (active_linear_solver_id >= 0 &&
+	         static_cast<size_t>(active_linear_solver_id) < linear_solvers.size())
 	  linear_solver = linear_solvers[active_linear_solver_id];
+	else
+	  throw std::runtime_error(
+		  "engine_pm_cpu: active_linear_solver_id=" + std::to_string(active_linear_solver_id) +
+		  " is out of range (" + std::to_string(linear_solvers.size()) + " solvers built)");
 
 	/*if (1) //changed this to write jacobian to file!
 	{
@@ -1766,6 +1787,10 @@ int engine_pm_cpu::solve_linear_equation()
 	  }
 	}*/
 
+	// Unified solve() convention: a POSITIVE code is "budget exhausted, iterate
+	// usable" -- reported as engine status 3 for the nonlinear policy to act on.
+	if (const int nc = classify_linear_solve_status(r_code); nc == 3)
+		return 3;
 	if (r_code)
 	{
 		sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);

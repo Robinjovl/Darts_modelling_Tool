@@ -82,7 +82,20 @@ namespace opendarts
       HYPRE_IJVector x_ij;  // solution vector as HYPRE_IJVector
       HYPRE_ParVector x_par;  // solution vector as HYPRE_ParVector
 
+      /** Declare the matrix as a SYSTEM of @p n coupled unknowns per node
+       *  (BoomerAMG "systems AMG"). The default 1 is scalar AMG.
+       *
+       *  For an elasticity / displacement block this is not optional: with the
+       *  default, coarsening and interpolation treat the ND displacement
+       *  components of a node as unrelated scalars, which degrades convergence
+       *  badly on unstructured (prismatic / wedge) meshes. The block must be
+       *  stored INTERLEAVED (u_x,u_y,u_z per node), which is what HYPRE's
+       *  default dof_func mapping (row % n) assumes. */
+      void set_num_functions(int n) { num_functions_ = n; }
+
     private:
+      int num_functions_ = 1;
+
       void csr_matrix_to_hypre_ij(
         opendarts::linear_solvers::csr_matrix<N_BLOCK_SIZE> &A,
         HYPRE_IJMatrix &A_ij);

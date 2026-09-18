@@ -183,11 +183,28 @@ struct SolverParameters
 /**
  * @brief Solver results
  */
+/// Why a solve ended. Krylov non-convergence is NOT interchangeable with a
+/// breakdown or a backend error: only an explicit iteration-limit exhaustion
+/// leaves a usable iterate (see linear_solver.hpp's solve() convention).
+enum class SolverStopReason
+{
+  unclassified = 0,  ///< statistics are trustworthy; the caller classifies
+  converged,         ///< residual reached the tolerance
+  iterationLimit,    ///< budget exhausted; iterate is the best Krylov step
+  breakdown,         ///< stalled/diverged before the budget, or non-finite
+  backendError       ///< HYPRE/setup error; no usable iterate produced
+};
+
 struct SolverResults
 {
   int_t iterations;           ///< Number of iterations
   real_type finalResidual;    ///< Final residual norm
   bool converged;             ///< Convergence status
+  /// Why the solve ended. Defaults to `unclassified`: a Krylov run that
+  /// produced trustworthy statistics leaves it here for the wrapper to
+  /// classify. Only a genuine backend/setup failure latches `backendError`,
+  /// which the wrapper must not override.
+  SolverStopReason stopReason = SolverStopReason::unclassified;
   real_type relError;         ///< Relative error vs reference (if available)
   double setupTime;           ///< Setup time in seconds
   double solveTime;           ///< Solve time in seconds
@@ -412,6 +429,33 @@ public:
    * The solution is written to the X array.
    */
   int solve(mat_float* B, mat_float* X);
+
+  /** Why the most recent solve() ended. Callers must not infer this from the
+   *  sign of solve()'s return value: a preconditioner setup failure and an
+   *  exhausted iteration budget both surface as a negative code. */
+  SolverStopReason get_last_stop_reason() const { return m_lastResults.stopReason; }
+
+private:
+  /** Record the outcome of a Krylov run defensively.
+   *
+   *  HYPRE reports failures through the return code of every setup/solve/
+   *  statistics call and through a latched global error flag. If any of them
+   *  fires, num_iterations / final_res_norm are meaningless (potentially never
+   *  written at all), so the residual-based classification must not run on
+   *  them: it could otherwise promote a backend failure to
+   *  SolverStopReason::iterationLimit, which the open-darts adapter maps to the
+   *  "usable iterate" status (+1) and the nonlinear solver may then APPLY.
+   *
+   *  On any error this latches backendError with conservative statistics
+   *  (0 iterations, infinite residual, not converged) and returns false.
+   *  @return true when the statistics are trustworthy. */
+  bool recordKrylovOutcome( SolverResults& results,
+                            HYPRE_Int setup_rc, HYPRE_Int solve_rc,
+                            HYPRE_Int iters_rc, HYPRE_Int resid_rc,
+                            int_t num_iterations, real_type final_res_norm,
+                            const char* variant );
+
+public:
 
   /**
    * @brief Get number of iterations from last solve

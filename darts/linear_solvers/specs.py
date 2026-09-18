@@ -47,7 +47,6 @@ class LinearSolverSpec:
     configures the linear solve in one place::
 
         def set_solver(self):
-            self.set_sim_params(first_ts=..., tol_newton=1e-3)  # time-stepping / Newton
             super().set_solver()                                # platform default spec
             self.linear_solver.spec.tolerance = 1e-6                        # linear knobs
             self.linear_solver.spec.max_iterations = 40
@@ -595,7 +594,23 @@ class FSCPRSolverSpec(LinearSolverSpec):
     :param n_fracs: number of fracture cells; **must be 0** (FS_UPG pending).
     :param n_wells: number of well blocks in the partition.
     :param u_amg_max_iters: U-block BoomerAMG V-cycle budget per FS-CPR apply.
-    :param p_amg_max_iters: PPSS BoomerAMG V-cycle budget per FS-CPR apply.
+    :param p_amg_max_iters: V-cycle budget for the flow (PPSS) stage's
+        BoomerAMG per FS-CPR apply -- the stage-1 AMG of the nested CPR when
+        ``NE > 1``.
+    :param stage_growth_cap: divergence guard -- a stage apply whose output
+        exceeds this multiple of its own input in max-norm (or is non-finite)
+        fails the solve, so the nonlinear solver cuts the timestep instead of
+        accepting a useless step. A BoomerAMG V-cycle is only a contraction on
+        a near-M-matrix; on an operator that is not, it diverges *silently*
+        (finite output, no HYPRE error). Default ``1e12`` leaves many orders of
+        headroom over any healthy apply; non-positive disables the check.
+    :param p_stage_type: flow (PPSS) stage when ``NE = N_VARS - 3 > 1``:
+        ``2`` (default) runs a systems BoomerAMG on the block-diagonal-
+        decoupled flow block; ``1`` nests a block CPR (true-IMPES-decoupled
+        BoomerAMG + block ILU(0)), matching the proprietary FS-CPR; ``0``
+        applies a systems BoomerAMG to the *raw* block, which is retained only
+        as a diagnostic -- its point-wise smoother diverges on advection-
+        dominated flow. Ignored when ``NE == 1``.
     :param p_var: explicit pressure-variable block index; ``None`` ->
         engine_super_elastic_cpu default (``0``).
     :param z_var: explicit composition-variable block index; ``None`` ->
@@ -615,6 +630,8 @@ class FSCPRSolverSpec(LinearSolverSpec):
     n_wells: int = 0
     u_amg_max_iters: int = 1
     p_amg_max_iters: int = 1
+    p_stage_type: int = 2
+    stage_growth_cap: float = 1.0e12
     p_var: int | None = None
     z_var: int | None = None
     u_var: int | None = None
@@ -630,6 +647,8 @@ class FSCPRSolverSpec(LinearSolverSpec):
         config.n_wells = self.n_wells
         config.u_amg_max_iters = self.u_amg_max_iters
         config.p_amg_max_iters = self.p_amg_max_iters
+        config.p_stage_type = self.p_stage_type
+        config.stage_growth_cap = self.stage_growth_cap
         # None -> -1 sentinel on the C++ side -> fall back to the
         # engine_super_elastic_cpu convention default derived from block_size
         # inside the factory.
@@ -738,9 +757,9 @@ class SchurEliminationSpec(LinearSolverSpec):
             inner=GMRESSolverSpec(prec=CPRSolverSpec()),
             elim_rows=list(range(K)), elim_cols=list(range(1, K + 1)),
         )
-        spec.tolerance = 1e-6        # set on the WRAPPER: the engine mirrors the
-        spec.max_iterations = 500    # top-level spec into sim_params and passes it
-        self.linear_solver = spec    # down to the inner solver at init
+        spec.tolerance = 1e-6             # set on the WRAPPER: the engine mirrors the
+        spec.max_iterations = 500         # top-level spec into sim_params and passes it
+        self.linear_solver.spec = spec    # down to the inner solver at init
 
     Tolerance/max-iteration semantics: the top-level (wrapper) spec is the
     single owner -- ``_sync_solver_to_sim_params`` mirrors ITS values into
@@ -825,13 +844,13 @@ class GPUSolverSpec(LinearSolverSpec):
     ``params.linear_type`` (``darts.engines.linear_solver_t``) enum, NOT through
     the open-source ``darts.linear_solvers`` registry. A GPUSolverSpec therefore does not
     build a C++ solver -- it names the enum value via :attr:`linear_type_name`, and
-    :meth:`darts.models.darts_model.DartsModel._apply_solver` translates
-    ``self.linear_solver`` to ``params.linear_type`` on the GPU platform. :meth:`build`
-    raises.
+    :meth:`~darts.linear_solvers.LinearSolver._apply_solver` translates
+    ``self.linear_solver.spec`` to ``params.linear_type`` on the GPU platform.
+    :meth:`build` raises.
 
-    This keeps ``self.linear_solver`` the single user-facing API on GPU too:
-    ``self.linear_solver = AMGXCPRSolverSpec()`` selects the GPU solver, mirroring the way
-    a CPU spec selects a registry solver.
+    This keeps ``self.linear_solver.spec`` the single user-facing API on GPU too:
+    ``self.linear_solver.spec = AMGXCPRSolverSpec()`` selects the GPU solver, mirroring
+    the way a CPU spec selects a registry solver.
     """
 
     #: name of the ``darts.engines.sim_params`` ``linear_solver_t`` enum value

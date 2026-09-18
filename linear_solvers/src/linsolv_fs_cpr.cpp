@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <iterator>
 #include <memory>
 #include <vector>
@@ -173,16 +174,20 @@ namespace opendarts
         UP_.ranges.push_back({n_res_, n_rows, {{0, n_rows}}});
         US_.ranges.push_back({0, n_res_, {{0, n_rows}}});
         US_.ranges.push_back({n_res_, n_rows, {{0, n_rows}}});
+        UPS_.ranges.push_back({0, n_res_, {{0, n_rows}}});
+        UPS_.ranges.push_back({n_res_, n_rows, {{0, n_rows}}});
       }
       else
       {
         UU_.ranges.push_back({0, n_res_, {{0, n_res_}}});
         UP_.ranges.push_back({0, n_res_, {{0, n_rows}}});
         US_.ranges.push_back({0, n_res_, {{0, n_rows}}});
+        UPS_.ranges.push_back({0, n_res_, {{0, n_rows}}});
       }
       UU_.init(A);
       UP_.init_structural();
       US_.init_structural();
+      UPS_.init_structural();
 
       PU_.ranges.push_back({0, n_rows, {{0, n_res_}, {n_res_, n_rows}}});
       PP_.ranges.push_back({0, n_rows, {{0, n_rows}}});
@@ -210,6 +215,11 @@ namespace opendarts
       UU_.strides[0] = N_VARS; UU_.strides[1] = 1;
       UP_.strides[0] = N_VARS; UP_.strides[1] = 1;
       US_.strides[0] = N_VARS; US_.strides[1] = 1;
+      // Joint (P, S) columns of the displacement rows, matching PPSS_'s column
+      // convention and P_X_'s stride-NE interleaving. See the UPS_ declaration.
+      UPS_.pos = static_cast<std::uint8_t>(U_VAR_ * N_VARS + P_VAR_);
+      UPS_.sizes[0] = ND;      UPS_.sizes[1] = NE;
+      UPS_.strides[0] = N_VARS; UPS_.strides[1] = 1;
 
       PU_.pos = static_cast<std::uint8_t>(P_VAR_ * N_VARS + U_VAR_);
       PP_.pos = static_cast<std::uint8_t>(P_VAR_ * N_VARS + P_VAR_);
@@ -383,28 +393,43 @@ namespace opendarts
         std::copy_n(a_diag, n_rows, P_diag_ind);
         std::copy_n(a_cols, P_rows_ptr[n_rows], P_cols_ind);
 
-        // Pressure-system preconditioner: 1 V-cycle, tolerance irrelevant
-        // (preconditioner mode). See NE == 1 branch above.
-        //
-        // The default sub-prec (hypre_amg_adapter<1>) is a block-size-1
-        // solver; initialise it on the scalar (nb=1) expansion of the
-        // block-NE structure with unit values (mirrors the NE == 1 branch's
-        // init_rows_cols_to_unit_matrix -- to_nb_1 would copy uninitialised
-        // block values here). setup() refreshes the real values per Newton.
-        P_scalar_ne_->to_nb_1(P_base);
-        fill_scalar_diag_ind(*P_scalar_ne_);
+        // Pressure(-flow)-system preconditioner: 1 V-cycle, tolerance
+        // irrelevant (preconditioner mode). See NE == 1 branch above.
+        if (p_prec_takes_block_)
         {
-          mat_float *sv = P_scalar_ne_->get_values();
-          const index_t n_scalar_nnz =
-              P_scalar_ne_->get_rows_ptr()[P_scalar_ne_->n_rows];
-          std::fill_n(sv, n_scalar_nnz, static_cast<mat_float>(0.0));
-          const index_t *sdiag = P_scalar_ne_->get_diag_ind();
-          for (index_t i = 0; i < P_scalar_ne_->n_rows; ++i)
-            sv[sdiag[i]] = static_cast<mat_float>(1.0);
+          // Nested block CPR (linsolv_cpr<NE>): consumes the block-NE matrix
+          // directly, so there is nothing to scalar-expand. Its own init() is
+          // a pure parameter store; the pressure-subsystem extraction, the
+          // BoomerAMG hierarchy and the block-ILU(0) factor are all built in
+          // its setup(), which runs from setup_p_prec_from_block_ once the
+          // PPSS values exist. Mirrors the proprietary FS-CPR wiring
+          // (linsolv_bos_fs_cpr::set_prec(new linsolv_bos_cpr<NE>, ...)).
+          p_system_preconditioner_->init(P_base,
+              static_cast<index_t>(p_amg_max_iters_),
+              static_cast<mat_float>(0.0));
         }
-        p_system_preconditioner_->init(P_scalar_ne_.get(),
-            static_cast<index_t>(p_amg_max_iters_),
-            static_cast<mat_float>(0.0));
+        else
+        {
+          // The scalar sub-prec (hypre_amg_adapter<1>) is a block-size-1
+          // solver; initialise it on the scalar (nb=1) expansion of the
+          // block-NE structure with unit values (mirrors the NE == 1 branch's
+          // init_rows_cols_to_unit_matrix -- to_nb_1 would copy uninitialised
+          // block values here). setup() refreshes the real values per Newton.
+          P_scalar_ne_->to_nb_1(P_base);
+          fill_scalar_diag_ind(*P_scalar_ne_);
+          {
+            mat_float *sv = P_scalar_ne_->get_values();
+            const index_t n_scalar_nnz =
+                P_scalar_ne_->get_rows_ptr()[P_scalar_ne_->n_rows];
+            std::fill_n(sv, n_scalar_nnz, static_cast<mat_float>(0.0));
+            const index_t *sdiag = P_scalar_ne_->get_diag_ind();
+            for (index_t i = 0; i < P_scalar_ne_->n_rows; ++i)
+              sv[sdiag[i]] = static_cast<mat_float>(1.0);
+          }
+          p_system_preconditioner_->init(P_scalar_ne_.get(),
+              static_cast<index_t>(p_amg_max_iters_),
+              static_cast<mat_float>(0.0));
+        }
       }
 
       if (this->timer_setup && p_system_preconditioner_)
@@ -456,14 +481,12 @@ namespace opendarts
       U_X_.assign(static_cast<std::size_t>(UU_.sizes[0]) * UU_.n_rows, 0.0);
       if (NE > 1)
       {
-        UP_B_.assign(static_cast<std::size_t>(UU_.sizes[0]) * UU_.n_rows, 0.0);
-        US_B_.assign(static_cast<std::size_t>(UU_.sizes[0]) * UU_.n_rows, 0.0);
+        UPS_B_.assign(static_cast<std::size_t>(UU_.sizes[0]) * UU_.n_rows, 0.0);
       }
       else
       {
         // Single-buffer path: U_B accumulates UP * P_X directly.
-        UP_B_.clear();
-        US_B_.clear();
+        UPS_B_.clear();
       }
     }
 
@@ -606,6 +629,8 @@ namespace opendarts
               ps_rhs_mults_.data());
           apply_ps_relaxation<2>(*P_block_2_, x_sch_p_.data(),
               x_sch_s_.data(), ps_rhs_mults_.data());
+          if (p_decouple_block_diag_)
+            decouple_ppss_block_<2>(*P_block_2_);
           setup_p_prec_from_block_(P_block_2_.get());
         }
         else if (NE == 3)
@@ -614,6 +639,8 @@ namespace opendarts
               ps_rhs_mults_.data());
           apply_ps_relaxation<3>(*P_block_3_, x_sch_p_.data(),
               x_sch_s_.data(), ps_rhs_mults_.data());
+          if (p_decouple_block_diag_)
+            decouple_ppss_block_<3>(*P_block_3_);
           setup_p_prec_from_block_(P_block_3_.get());
         }
         else if (NE == 4)
@@ -622,6 +649,8 @@ namespace opendarts
               ps_rhs_mults_.data());
           apply_ps_relaxation<4>(*P_block_4_, x_sch_p_.data(),
               x_sch_s_.data(), ps_rhs_mults_.data());
+          if (p_decouple_block_diag_)
+            decouple_ppss_block_<4>(*P_block_4_);
           setup_p_prec_from_block_(P_block_4_.get());
         }
         else if (NE == 5)
@@ -630,6 +659,8 @@ namespace opendarts
               ps_rhs_mults_.data());
           apply_ps_relaxation<5>(*P_block_5_, x_sch_p_.data(),
               x_sch_s_.data(), ps_rhs_mults_.data());
+          if (p_decouple_block_diag_)
+            decouple_ppss_block_<5>(*P_block_5_);
           setup_p_prec_from_block_(P_block_5_.get());
         }
       }
@@ -748,18 +779,146 @@ namespace opendarts
       return u_system_preconditioner_->refresh(U_.get());
     }
 
+    // ====================================================================
+    // Block-diagonal (ABF / quasi-IMPES) decoupling of the PPSS subsystem
+    // ====================================================================
+    // The NE > 1 flow block holds the NC component mass balances (plus the
+    // energy balance when thermal), NOT a pressure equation. Its per-cell
+    // diagonal block is strongly off-diagonal-dominant whenever a composition
+    // unknown is present: d(R_mass)/dz is the accumulation term while
+    // d(R_mass)/dp is only compressibility-small, a ratio of ~700 on
+    // SPE10_mech dead_oil, and the oil balance's own diagonal is negative.
+    // A point-wise smoother (BoomerAMG's hybrid Gauss-Seidel) therefore
+    // AMPLIFIES the error -- measured Gauss-Seidel spectral radius ~400 -- and
+    // no amount of interpolation tuning (NumFunctions included) can repair a
+    // divergent smoother.
+    //
+    // Left-multiplying each block row by the inverse of its own diagonal block
+    // (Behie & Vinsome's Alternate Block Factorization; the same decoupling
+    // idea CPR applies to extract a pressure equation) makes every diagonal
+    // block the identity and drops that spectral radius to ~0.998, without
+    // discarding the multigrid treatment of the diffusive rows the way a
+    // nested CPR's ILU(0) second stage would. It is a similarity-preserving
+    // left preconditioner: the RHS is scaled by the same factors in
+    // run_FS_UP_solve_, so the stage still approximates PPSS^{-1}.
+    template <std::uint8_t N_BLOCK_SIZE>
+    template <std::uint8_t NE_T>
+    void linsolv_fs_cpr<N_BLOCK_SIZE>::decouple_ppss_block_(
+        opendarts::linear_solvers::csr_matrix<NE_T> &P)
+    {
+      constexpr int NE_I = static_cast<int>(NE_T);
+      constexpr int NB = NE_I * NE_I;
+      const index_t n_rows = P.n_rows;
+      const index_t *rows = P.get_rows_ptr();
+      const index_t *diag = P.get_diag_ind();
+      mat_float *vals = P.get_values();
+
+      ps_decouple_inv_.assign(static_cast<std::size_t>(n_rows) * NB, 0.0);
+
+      // Gauss-Jordan with partial pivoting on [D | I]; NE_T <= 5 so the dense
+      // work is negligible next to one AMG setup.
+      mat_float aug[NE_I][2 * NE_I];
+      for (index_t i = 0; i < n_rows; ++i)
+      {
+        mat_float *inv = &ps_decouple_inv_[static_cast<std::size_t>(i) * NB];
+        const mat_float *D = &vals[static_cast<std::size_t>(diag[i]) * NB];
+
+        for (int r = 0; r < NE_I; ++r)
+        {
+          for (int c = 0; c < NE_I; ++c)
+          {
+            aug[r][c] = D[r * NE_I + c];
+            aug[r][NE_I + c] = (r == c) ? 1.0 : 0.0;
+          }
+        }
+
+        bool singular = false;
+        for (int c = 0; c < NE_I && !singular; ++c)
+        {
+          int piv = c;
+          for (int r = c + 1; r < NE_I; ++r)
+            if (std::fabs(aug[r][c]) > std::fabs(aug[piv][c])) piv = r;
+          if (!(std::fabs(aug[piv][c]) > 0.0) || !std::isfinite(aug[piv][c]))
+          {
+            singular = true;
+            break;
+          }
+          if (piv != c)
+            for (int k = 0; k < 2 * NE_I; ++k) std::swap(aug[c][k], aug[piv][k]);
+          const mat_float inv_p = 1.0 / aug[c][c];
+          for (int k = 0; k < 2 * NE_I; ++k) aug[c][k] *= inv_p;
+          for (int r = 0; r < NE_I; ++r)
+          {
+            if (r == c) continue;
+            const mat_float f = aug[r][c];
+            if (f == 0.0) continue;
+            for (int k = 0; k < 2 * NE_I; ++k) aug[r][k] -= f * aug[c][k];
+          }
+        }
+
+        // A finite pivot at every step still does not guarantee a finite
+        // inverse -- an ill-conditioned block can overflow during the
+        // elimination. Check the result before it is allowed anywhere near the
+        // preconditioner: a single NaN here would propagate through the AMG
+        // setup and come back as a non-finite residual, i.e. a hard linear
+        // failure, rather than the graceful fall-back this row deserves.
+        if (!singular)
+        {
+          for (int k = 0; k < NE_I * NE_I && !singular; ++k)
+            if (!std::isfinite(aug[k / NE_I][NE_I + (k % NE_I)])) singular = true;
+        }
+
+        if (singular)
+        {
+          // Leave this row alone: identity factor, matrix row unchanged. The
+          // stage is then simply un-decoupled here, which is what the
+          // pre-decoupling code did for every row.
+          for (int r = 0; r < NE_I; ++r) inv[r * NE_I + r] = 1.0;
+          continue;
+        }
+        for (int r = 0; r < NE_I; ++r)
+          for (int c = 0; c < NE_I; ++c) inv[r * NE_I + c] = aug[r][NE_I + c];
+
+        // Scale every block in this row: B <- D^{-1} B. The diagonal block
+        // becomes the identity by construction.
+        for (index_t k = rows[i]; k < rows[i + 1]; ++k)
+        {
+          mat_float *B = &vals[static_cast<std::size_t>(k) * NB];
+          mat_float tmp[NB];
+          for (int r = 0; r < NE_I; ++r)
+          {
+            for (int c = 0; c < NE_I; ++c)
+            {
+              mat_float acc = 0.0;
+              for (int m = 0; m < NE_I; ++m)
+                acc += inv[r * NE_I + m] * B[m * NE_I + c];
+              tmp[r * NE_I + c] = acc;
+            }
+          }
+          std::copy_n(tmp, NB, B);
+        }
+      }
+    }
+
     template <std::uint8_t N_BLOCK_SIZE>
     int linsolv_fs_cpr<N_BLOCK_SIZE>::setup_p_prec_from_block_(
         opendarts::linear_solvers::csr_matrix_base *P_block)
     {
-      // Scalar-expand the block-NE PPSS subsystem for the block-size-1
-      // pressure sub-preconditioner (hypre_amg_adapter<1>): same scalar DOF
-      // count, memory-correct -- the former direct setup(P_block_N) was a
-      // misread of the block layout through a bare static_cast (caught by
-      // the checked linsolv_iface_bos down-cast). Matches the NE == 1 path's
-      // diag-first column convention for the HYPRE IJ build; P_scalar_ne_ is
-      // regenerated from the block matrix every setup, so no
-      // set_diag_in_order restore is needed.
+      // Nested block CPR (linsolv_cpr<NE>) consumes the block-NE PPSS matrix
+      // as-is: it does its own true-IMPES pressure decoupling internally and
+      // needs the natural (not diag-first) column order that
+      // extract_sub_block_to_block_csr produces. No scalar expansion.
+      if (p_prec_takes_block_)
+        return p_system_preconditioner_->setup(P_block);
+
+      // Otherwise scalar-expand the block-NE PPSS subsystem for the
+      // block-size-1 pressure sub-preconditioner (hypre_amg_adapter<1>): same
+      // scalar DOF count, memory-correct -- the former direct
+      // setup(P_block_N) was a misread of the block layout through a bare
+      // static_cast (caught by the checked linsolv_iface_bos down-cast).
+      // Matches the NE == 1 path's diag-first column convention for the HYPRE
+      // IJ build; P_scalar_ne_ is regenerated from the block matrix every
+      // setup, so no set_diag_in_order restore is needed.
       P_scalar_ne_->to_nb_1(P_block);
       fill_scalar_diag_ind(*P_scalar_ne_);
       set_diag_first<1>(*P_scalar_ne_);
@@ -795,6 +954,66 @@ namespace opendarts
       if (this->timer_solve)
         this->timer_solve->node["FS-CPR"].stop();
       return res;
+    }
+
+    // ====================================================================
+    // Stage divergence guard
+    // ====================================================================
+    // FS-CPR's stages are single BoomerAMG V-cycles. A V-cycle is only a
+    // contraction when the operator is close enough to an M-matrix for its
+    // point smoother to converge; when it is not -- e.g. an MPFA pressure
+    // block on a strongly heterogeneous full-tensor field, where the row can
+    // carry positive off-diagonals large enough to destroy diagonal dominance
+    // -- the V-cycle DIVERGES. Crucially it does so quietly: HYPRE reports no
+    // error and the returned vector is finite, just enormous. The outer Krylov
+    // then stalls at a relative residual of 1, classifies that as "budget
+    // exhausted, residual did not regress" (solve_result::not_converged), and
+    // the default on_linear_nonconvergence = 'accept' policy applies the
+    // useless step -- so the run burns minutes per Newton iteration forever
+    // instead of cutting the timestep. Catching it here turns an unbounded
+    // silent stall into one diagnosable line plus a timestep cut.
+    template <std::uint8_t N_BLOCK_SIZE>
+    bool linsolv_fs_cpr<N_BLOCK_SIZE>::stage_diverged_(const char *stage,
+        const std::vector<mat_float> &in,
+        const std::vector<mat_float> &out) const
+    {
+      mat_float max_out = 0.0;
+      for (const mat_float v : out)
+      {
+        if (!std::isfinite(v))
+        {
+          std::cerr << "linsolv_fs_cpr: " << stage
+                    << " stage returned a non-finite value" << std::endl;
+          return true;
+        }
+        const mat_float a = std::fabs(v);
+        if (a > max_out) max_out = a;
+      }
+      if (!(stage_growth_cap_ > 0.0))
+        return false;
+
+      mat_float max_in = 0.0;
+      for (const mat_float v : in)
+      {
+        const mat_float a = std::fabs(v);
+        if (a > max_in) max_in = a;
+      }
+      // An all-zero RHS must produce an all-zero correction; scaling by a
+      // vanishing max_in would otherwise make the ratio meaningless.
+      const mat_float ref = std::max(max_in, std::numeric_limits<mat_float>::min());
+      if (max_out > stage_growth_cap_ * ref)
+      {
+        std::cerr << "linsolv_fs_cpr: " << stage
+                  << " stage diverged -- max|in|=" << max_in
+                  << " max|out|=" << max_out
+                  << " (amplification " << (max_out / ref)
+                  << " exceeds cap " << stage_growth_cap_
+                  << "). The sub-preconditioner is not a contraction on this "
+                       "operator; failing the solve so the timestep is cut."
+                  << std::endl;
+        return true;
+      }
+      return false;
     }
 
     template <std::uint8_t N_BLOCK_SIZE>
@@ -848,6 +1067,27 @@ namespace opendarts
             P_B_[i_loc] = ps_rhs_mults_[i_loc] * B[i];
             ++i_loc;
           }
+          // Match the left scaling applied to the matrix in
+          // decouple_ppss_block_: b_i <- D_i^{-1} b_i, per cell.
+          if (p_decouple_block_diag_ && !ps_decouple_inv_.empty())
+          {
+            const int ne = static_cast<int>(NE);
+            const std::size_t nb = static_cast<std::size_t>(ne) * ne;
+            const std::size_t n_cells = P_B_.size() / static_cast<std::size_t>(ne);
+            std::vector<mat_float> tmp(static_cast<std::size_t>(ne));
+            for (std::size_t c = 0; c < n_cells; ++c)
+            {
+              const mat_float *inv = &ps_decouple_inv_[c * nb];
+              const mat_float *b = &P_B_[c * static_cast<std::size_t>(ne)];
+              for (int r = 0; r < ne; ++r)
+              {
+                mat_float acc = 0.0;
+                for (int m = 0; m < ne; ++m) acc += inv[r * ne + m] * b[m];
+                tmp[static_cast<std::size_t>(r)] = acc;
+              }
+              std::copy_n(tmp.data(), ne, &P_B_[c * static_cast<std::size_t>(ne)]);
+            }
+          }
         }
         else
         {
@@ -873,6 +1113,8 @@ namespace opendarts
         set_diag_in_order<1>(*P_scalar_);
       }
       if (res) return res;
+      if (stage_diverged_("pressure", P_B_, P_X_))
+        return -8;
 
       if (dbg_print_this_call)
       {
@@ -888,16 +1130,21 @@ namespace opendarts
       // ----- assemble displacement RHS ------
       if (NE > 1)
       {
-        std::fill(UP_B_.begin(), UP_B_.end(), 0.0);
-        std::fill(US_B_.begin(), US_B_.end(), 0.0);
-        block_vector_product(A, UP_, P_X_.data(), UP_B_.data());
-        block_vector_product(A, US_, P_X_.data(), US_B_.data());
+        // A_U,flow * P_X in ONE product over the joint (P, S) column block.
+        // P_X_ is the joint PPSS correction interleaved at stride NE (see the
+        // scatter below, which walks PPSS_.global_to_local_rows), so the
+        // source stride must be NE. Splitting this into UP_ (column stride 1)
+        // and US_ (column stride NE - 1) products read the wrong entries of
+        // P_X_ -- for NE == 2 both landed on P_X_[j] and the second half of
+        // the vector was never read at all -- which left the displacement
+        // stage correcting a residual that was not the true one.
+        std::fill(UPS_B_.begin(), UPS_B_.end(), 0.0);
+        block_vector_product(A, UPS_, P_X_.data(), UPS_B_.data());
 
         std::size_t i_loc = 0;
         for (const auto &i : UU_.global_to_local_rows)
         {
-          U_B_[i_loc] = u_rhs_mults_[i_loc]
-                        * (B[i] - UP_B_[i_loc] - US_B_[i_loc]);
+          U_B_[i_loc] = u_rhs_mults_[i_loc] * (B[i] - UPS_B_[i_loc]);
           ++i_loc;
         }
       }
@@ -928,6 +1175,8 @@ namespace opendarts
       std::fill(U_X_.begin(), U_X_.end(), 0.0);
       res = u_system_preconditioner_->solve(U_B_.data(), U_X_.data());
       if (res) return res;
+      if (stage_diverged_("displacement", U_B_, U_X_))
+        return -8;
 
       if (dbg_print_this_call)
       {

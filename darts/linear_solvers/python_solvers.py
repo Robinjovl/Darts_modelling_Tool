@@ -103,6 +103,23 @@ class _BlockToScalarExpander:
         return self.scalar_vals
 
 
+# Mirror of ``opendarts::linear_solvers::solve_result`` in linear_solver.hpp --
+# the residual-regression rule must be identical in every backend, native or
+# Python-resident, or the same solve would be classified differently depending
+# on which one ran it. Keep the value in sync with the C++ constant.
+RESIDUAL_GROWTH_RTOL = 1.0e-12
+
+
+def _residual_did_not_regress(final_residual: float, initial_residual: float) -> bool:
+    """True when the final residual is no worse than the initial one, allowing
+    ``RESIDUAL_GROWTH_RTOL`` of round-off growth. Starting from an exactly zero
+    residual the system is already solved, so any positive final residual is
+    growth -- the relative slack has nothing to scale."""
+    if not initial_residual > 0.0:
+        return final_residual <= 0.0
+    return final_residual <= initial_residual * (1.0 + RESIDUAL_GROWTH_RTOL)
+
+
 class PythonLinearSolver:
     """Base class for a Python-resident linear solver.
 
@@ -326,6 +343,18 @@ class PETScSolver(PythonLinearSolver):
         petsc_sol = PETSc.Vec().createWithArray(sol, sol.size)
         if self.print_level >= 4:
             ksp.view()
+        # Residual this solve starts from, captured BEFORE ksp.solve overwrites
+        # petsc_sol with the solution. It is the reference for the residual-
+        # safety rule of the unified convention below. PETSc's default zero
+        # initial guess makes it ||b||; a nonzero guess needs ||b - A x0||.
+        if ksp.getInitialGuessNonzero():
+            _r0_vec = petsc_rhs.duplicate()
+            self._mat.mult(petsc_sol, _r0_vec)
+            _r0_vec.aypx(-1.0, petsc_rhs)  # r0 = b - A x0
+            r0 = float(_r0_vec.norm())
+            _r0_vec.destroy()
+        else:
+            r0 = float(np.linalg.norm(rhs))
         ksp.solve(petsc_rhs, petsc_sol)
         n_iters = int(ksp.getIterationNumber())
         residual = float(ksp.getResidualNorm())
@@ -339,13 +368,34 @@ class PETScSolver(PythonLinearSolver):
         petsc_rhs.destroy()
         petsc_sol.destroy()
 
-        # Report only a HARD failure (non-finite solution: breakdown / PC
-        # failure / NaN-or-Inf). A mere max-iters / rtol miss leaves a finite
-        # iterate and returns 0, matching the C++ inexact-Newton parity; the
-        # Newton residual gate then decides whether to accept or cut. Without
-        # this a diverged NaN solve would drive newton_residual to NaN, whose
-        # comparisons are all false, and be silently accepted as converged.
-        rc = 0 if np.isfinite(sol).all() else 2
+        # Unified return convention (mirrors the C++ linear_solver::solve()):
+        #   2 -- hard failure: non-finite iterate (breakdown / PC failure /
+        #        NaN-or-Inf) or any PETSc divergence other than the iteration
+        #        cap. Without this a diverged NaN solve would drive
+        #        newton_residual to NaN, whose comparisons are all false, and
+        #        be silently accepted as converged.
+        #   3 -- iteration cap hit on a finite iterate ('not converged,
+        #        usable'); NonlinearSolverSpec.on_linear_nonconvergence decides.
+        #   0 -- converged.
+        from petsc4py import PETSc
+
+        reason = int(ksp.getConvergedReason())
+        max_it = int(getattr(PETSc.KSP.ConvergedReason, "DIVERGED_MAX_IT", -3))
+        # Residual-safety rule of the unified convention: an exhausted budget
+        # only yields a USABLE iterate when the solution AND the residual are
+        # finite and the residual did not regress past the one this solve
+        # started from (r0, captured before the solve).
+        usable = (
+            np.isfinite(sol).all()
+            and np.isfinite(residual)
+            and _residual_did_not_regress(residual, r0)
+        )
+        if not usable:
+            rc = 2
+        elif reason < 0:
+            rc = 3 if reason == max_it else 2
+        else:
+            rc = 0
         return rc, n_iters, residual
 
 

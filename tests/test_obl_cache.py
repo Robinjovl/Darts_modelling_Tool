@@ -7,12 +7,12 @@ arena-capable .so isn't built.
 Run:  PYTHONPATH=<repo> python -m pytest tests/test_obl_cache.py -q
 """
 
-import multiprocessing
 import os
 
 import numpy as np
 import pytest
 
+from darts.physics.base.history_extension import HistoryStateSupport
 from darts.physics.base.physics import PhysicsBase
 from darts.tools.obl_cache import OblCacheCodec
 
@@ -22,11 +22,9 @@ ND, NO = 8, 8
 def _itor_cls():
     import darts.interpolators as it
 
-    # Letterless naming (index-type template parameter dropped); legacy _l_ name
-    # kept as fallback for older compiled modules.
-    cls = getattr(it, f"multilinear_adaptive_cpu_interpolator_d_{ND}_{NO}", None)
-    if cls is None:
-        cls = getattr(it, f"multilinear_adaptive_cpu_interpolator_l_d_{ND}_{NO}", None)
+    # Exposed names carry neither the "adaptive" token (static interpolation is gone)
+    # nor an index-type letter (that template parameter was dropped).
+    cls = getattr(it, f"multilinear_cpu_interpolator_d_{ND}_{NO}", None)
     if cls is None or not hasattr(cls, "build_arena_file"):
         pytest.skip("arena-capable interpolator template not built")
     return cls
@@ -83,36 +81,14 @@ def _pd(itor):
     }
 
 
-def _new_physics(itor, path, live=False):
+def _new_physics(itor, path):
     p = PhysicsBase.__new__(PhysicsBase)
     p.created_itors = [(itor, str(path))]
     p._last_flushed_sizes = {}
     p._flushed_point_keys = {}
-    p._cache_read_offsets = {}
-    p._cache_read_inodes = {}
     p.cache = True
-    p.cache_live_reload = live
     p._cache_owner_pid = os.getpid()
-    if os.path.exists(path):
-        p._cache_read_offsets[id(itor)] = os.path.getsize(path)
-        p._cache_read_inodes[id(itor)] = os.stat(path).st_ino
     return p
-
-
-def _locked_append_worker(path, first_key):
-    codec = OblCacheCodec()
-    keys = np.arange(first_key, first_key + ND, dtype=np.int32).reshape(1, ND)
-    vals = np.full((1, NO), float(first_key), dtype=np.float64)
-    with codec.cache_lock(path, exclusive=True):
-        codec._append_frame(path, codec._KIND_DELTA, keys, vals)
-
-
-@pytest.mark.parametrize("exclusive", [False, True])
-def test_cache_lock_roundtrip(tmp_path, exclusive):
-    path = str(tmp_path / "obl_point_data_test.pkl")
-
-    with OblCacheCodec().cache_lock(path, exclusive=exclusive):
-        assert os.path.exists(path + ".lock")
 
 
 def test_cache_write_reload_roundtrip(tmp_path):
@@ -311,58 +287,90 @@ def test_cache_epochs_survive_compaction(tmp_path, monkeypatch):
     assert _pd(itor2) == _pd(itor)
 
 
-def test_live_reload_shares_peer_deltas(tmp_path):
-    cls = _itor_cls()
+def _cache_physics(tmp_path):
+    """A PhysicsBase carrying just enough state to drive create_interpolator()."""
+    from darts.engines import timer_node
+
+    p = PhysicsBase.__new__(PhysicsBase)
+    p.axes_step = [1.0] * ND
+    p.axes_origin = [0.0] * ND
+    # The default "no history state" case (has_history False).
+    p.history = HistoryStateSupport([])
+    p.cache = True
+    p.cache_dir = str(tmp_path)
+    p.created_itors = []
+    p._last_flushed_sizes = {}
+    p._flushed_point_keys = {}
+    p._cache_owner_pid = os.getpid()
+    p.timer = timer_node()
+    return p
+
+
+def _signature_name(evaluator, tmp_path, itor_token):
+    """Reproduce create_interpolator's cache file name for one identity token.
+
+    ``itor_token`` is ``'_'`` for the current signature and ``'_adaptive_'`` for the one
+    written by versions that still carried the token in the interpolator names.
+    """
+    import hashlib
+
+    signature = f"{type(evaluator).__name__}{itor_token}d_{ND:d}_{NO:d}_"
+    for _ in range(ND):
+        signature += f"_origin={0.0:e}_step={1.0:e}"
+    signature += "_fmtv2"
+    md5 = hashlib.md5(signature.encode()).hexdigest()
+    return os.path.join(str(tmp_path), "obl_point_data_" + md5 + ".pkl")
+
+
+def test_cache_filename_drops_adaptive_token(tmp_path):
+    """New caches are written under the simplified (no '_adaptive_') signature."""
+    _itor_cls()  # skip unless the (ND, NO) template is built
     ev = _make_evaluator()
-    rng = np.random.default_rng(31)
-    path = tmp_path / "obl_point_data_test.pkl"
+    p = _cache_physics(tmp_path)
+    itor, _ = p.create_interpolator(ev, "test_itor", NO)
 
-    itor1 = _new_itor(cls, ev)
-    _materialize(itor1, rng, 100)
-    p1 = _new_physics(itor1, path, live=True)
-    p1.write_cache()
-    p1._cache_read_offsets[id(itor1)] = os.path.getsize(path)
-    p1._cache_read_inodes[id(itor1)] = os.stat(path).st_ino
+    fname = p.created_itors[-1][1]
+    assert fname == _signature_name(ev, tmp_path, "_")
+    assert fname != _signature_name(ev, tmp_path, "_adaptive_")
 
-    itor2 = _new_itor(cls, ev)
-    p2 = _new_physics(itor2, path, live=True)
-    assert p2._load_cache(itor2, str(path)) == itor1.point_data_size()
-    itor2.clear_point_data_delta()
-    p2._last_flushed_sizes[id(itor2)] = itor2.point_data_size()
-
-    _materialize(itor1, rng, 100)
-    p1.write_cache()
-    imported = p2.reload_cache_deltas()
-
-    assert imported > 0
-    assert _pd(itor2) == _pd(itor1)
-    dkeys, _ = p2._cache_codec._point_data_delta_arrays(itor2)
-    assert dkeys is None or len(dkeys) == 0
-
-
-def test_interprocess_locked_appends_are_complete(tmp_path):
-    cls = _itor_cls()
-    ev = _make_evaluator()
-    path = tmp_path / "obl_point_data_test.pkl"
-    itor = _new_itor(cls, ev)
-    _materialize(itor, np.random.default_rng(32), 20)
-    p = _new_physics(itor, path)
+    _materialize(itor, np.random.default_rng(3), 150)
     p.write_cache()
+    assert os.path.exists(fname)
 
-    workers = [
-        multiprocessing.Process(
-            target=_locked_append_worker, args=(str(path), 1000 + i * ND)
-        )
-        for i in range(4)
-    ]
-    for worker in workers:
-        worker.start()
-    for worker in workers:
-        worker.join(10)
-        assert worker.exitcode == 0
 
-    itor2 = _new_itor(cls, ev)
-    assert p._load_cache(itor2, str(path)) == itor.point_data_size() + 4
+def test_legacy_cache_signature_is_recognized(tmp_path):
+    """A cache left by an older version keeps being used, in place, for this run."""
+    _itor_cls()  # skip unless the (ND, NO) template is built
+    ev = _make_evaluator()
+    rng = np.random.default_rng(4)
+
+    # Write a cache, then rename it to the file name the old '_adaptive_' signature
+    # would have hashed to -- i.e. a cache written before the token was dropped.
+    p = _cache_physics(tmp_path)
+    itor, _ = p.create_interpolator(ev, "test_itor", NO)
+    _materialize(itor, rng, 150)
+    p.write_cache()
+    expected = _pd(itor)
+    legacy_name = _signature_name(ev, tmp_path, "_adaptive_")
+    os.rename(p.created_itors[-1][1], legacy_name)
+
+    # A fresh run picks the legacy file up and keeps writing to it (not to a second
+    # file under the new name).
+    p2 = _cache_physics(tmp_path)
+    itor2, _ = p2.create_interpolator(ev, "test_itor", NO)
+    assert p2.created_itors[-1][1] == legacy_name
+    assert _pd(itor2) == expected
+    assert not os.path.exists(_signature_name(ev, tmp_path, "_"))
+
+    # With a cache under the current name present, that one wins.
+    p3 = _cache_physics(tmp_path)
+    itor3, _ = p3.create_interpolator(ev, "test_itor", NO)
+    _materialize(itor3, rng, 50)
+    p3.created_itors[-1] = (itor3, _signature_name(ev, tmp_path, "_"))
+    p3.write_cache()
+    p4 = _cache_physics(tmp_path)
+    p4.create_interpolator(ev, "test_itor", NO)
+    assert p4.created_itors[-1][1] == _signature_name(ev, tmp_path, "_")
 
 
 if __name__ == "__main__":

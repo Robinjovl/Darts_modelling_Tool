@@ -47,7 +47,7 @@ using namespace opendarts::linear_solvers;
 #ifdef OPENDARTS_LINEAR_SOLVERS
 // Open-source GPU solver wrappers. aips has no open-source counterpart and
 // is intentionally not included here.
-#include "linsolv_bos_cpr_gpu.hpp"
+#include "linsolv_cpr_gpu.hpp"
 #include "linsolv_cusparse_ilu.hpp"
 #include "linsolv_cusolv.hpp"
 #include "linsolv_bicgstab.hpp"
@@ -55,7 +55,7 @@ using namespace opendarts::linear_solvers;
 #include "linsolv_amgx.hpp"
 #endif
 #else
-#include "linsolv_bos_cpr_gpu.h"
+#include "linsolv_cpr_gpu.h"
 #include "linsolv_aips.h"
 #include "linsolv_amgx.h"
 #include "linsolv_cusparse_ilu.h"
@@ -577,6 +577,28 @@ public:
 	index_t get_last_linear_iters() const { return last_linear_iters; }
 	value_t get_last_linear_residual() const { return last_linear_residual; }
 
+	/// @brief Translate a linear_solver::solve() status into the engine status
+	/// every solve_linear_equation() override reports to the Python nonlinear
+	/// solver. Single point of truth for the mapping, shared by all engines:
+	///   0  -> 0  converged
+	///  >0  -> 3  budget exhausted on a usable iterate; the nonlinear
+	///            on_linear_nonconvergence policy decides accept-vs-cut
+	///  <0  -> 2  hard failure; never apply the iterate
+	/// In a proprietary (BOS) build the solvers do not implement the unified
+	/// convention, so any nonzero stays a conservative hard failure.
+	int classify_linear_solve_status(int r_code)
+	{
+#ifdef OPENDARTS_LINEAR_SOLVERS
+		if (r_code > 0)
+		{
+			last_linear_iters = linear_solver->get_n_iters();
+			last_linear_residual = linear_solver->get_residual();
+			return 3;
+		}
+#endif // OPENDARTS_LINEAR_SOLVERS
+		return r_code ? 2 : 0;
+	}
+
 	value_t newton_update_coefficient; // Newton update coefficient for line search
 
 	// nonlinear update controls, owned by the Python nonlinear solver spec
@@ -884,19 +906,22 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 	// Check if external solver was provided (from Python) - if so, use it instead of creating new one
 	if (!linear_solver && !linear_solver_external)
 	{
+		// Everything the factory allocates below is engine-owned and deleted in
+		// ~engine_base; re-establish the flag that set_linear_solver() clears.
+		linear_solver_owned = true;
 #ifdef OPENDARTS_LINEAR_SOLVERS
 		// Open-source build: the enum-driven factory below builds the
 		// proprietary bos solvers, which are not available here. The linear
-		// solver must be injected from Python -- built from a LinearSolverSpec
-		// via the open-source registry; see darts_model._apply_linear_solver_spec().
+		// solver must be injected from Python, built from a LinearSolverSpec
+		// via the open-source registry; see LinearSolver._apply_solver().
 		// Throw instead of exit(1): engine init is entered through pybind11,
 		// which translates the exception into a Python RuntimeError -- the
 		// previous exit killed the host process (including Jupyter kernels).
 		throw std::runtime_error(
 		    "no linear solver was provided for " + engine_name +
 		    ". The open-source build requires a linear solver injected via "
-		    "set_linear_solver() (a LinearSolverSpec built through the "
-		    "darts.solvers registry).");
+		    "set_solver() (a LinearSolverSpec built through the "
+		    "darts.linear_solvers registry).");
 #else
 		switch (params->linear_type)
 		{
@@ -960,10 +985,10 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			if constexpr (N_VARS > 1)
 			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
 			linear_solver_type_str = "GPU_GMRES_CPR_AMG";
@@ -983,10 +1008,10 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			if constexpr (N_VARS > 1)
 			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			int n_terms = 10;
 			bool print_radius = false;
@@ -1021,10 +1046,10 @@ int engine_base::init_base(conn_mesh *mesh_, std::vector<ms_well *> &well_list_,
 			if constexpr (N_VARS > 1)
 			{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			cpr->set_p_system_prec(new linsolv_amgx<1>(device_num));
 			// set full system prec

@@ -127,7 +127,6 @@ class ElementBasedReactiveFlow(PhysicsBase):
         self,
         platform='cpu',
         itor_type='multilinear',
-        itor_mode='adaptive',
         itor_precision='d',
         is_barycentric: bool = False,
         parallel_evaluation: bool = False,
@@ -145,8 +144,6 @@ class ElementBasedReactiveFlow(PhysicsBase):
         :type platform: str (cpu or gpu)
         :param itor_type: Interpolator type
         :type itor_type: str (multilinear or linear)
-        :param itor_mode: Interpolator mode
-        :type itor_mode: str (adaptive or static)
         :param itor_precision: Interpolator precision
         :type itor_precision: str
         :param is_barycentric: Flag which turn on barycentric interpolation on Delaunay simplices
@@ -179,7 +176,6 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 n_ops=self.n_ops,
                 platform=platform,
                 algorithm=itor_type,
-                mode=itor_mode,
                 precision=itor_precision,
                 is_barycentric=is_barycentric,
             )
@@ -192,7 +188,6 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 n_ops=len(self.initial_operators[region].props_name),
                 platform=platform,
                 algorithm=itor_type,
-                mode=itor_mode,
                 precision=itor_precision,
                 is_barycentric=is_barycentric,
             )
@@ -206,7 +201,6 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 n_ops=len(self.property_operators[region].props_name),
                 platform=platform,
                 algorithm=itor_type,
-                mode=itor_mode,
                 precision=itor_precision,
                 is_barycentric=is_barycentric,
             )
@@ -219,7 +213,6 @@ class ElementBasedReactiveFlow(PhysicsBase):
             timer_name='well controls interpolation',
             platform=platform,
             algorithm=itor_type,
-            mode=itor_mode,
             precision=itor_precision,
         )
         self.n_well_ctrl_itor_ops = n_well_ctrl_ops
@@ -229,7 +222,6 @@ class ElementBasedReactiveFlow(PhysicsBase):
             timer_name='well initialization',
             platform=platform,
             algorithm=itor_type,
-            mode=itor_mode,
             precision=itor_precision,
         )
         self.n_thermal_var_ops = n_thermal_var_ops

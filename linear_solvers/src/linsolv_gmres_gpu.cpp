@@ -166,6 +166,8 @@ namespace opendarts
 
       int total_iters = 0;
       double res_norm = 0.0;
+      double res0 = 0.0; // true initial residual ||b - A x0||, for the
+                         // regression check of the unified solve() convention
       int rc = 0;
 
       for (;;)
@@ -188,6 +190,7 @@ namespace opendarts
           // ||r0|| for a vanishing RHS).
           const double den = (b_norm > 1e-16) ? b_norm : (beta > 1e-16 ? beta : 1.0);
           res_norm = beta;
+          res0 = beta;
           final_resid = beta / den;
           if (beta <= tolerance * den)
             break;
@@ -337,6 +340,30 @@ namespace opendarts
         final_resid = res_norm / den2;
       }
 
+      // Unified solve() convention (linear_solver.hpp). Only classify when no
+      // hard failure was already latched above (e.g. rc = -3 from a failed
+      // preconditioner apply): exhausting the budget on a finite, non-regressing
+      // iterate is solve_result::not_converged (+1), and the nonlinear policy
+      // decides accept-vs-cut. Regression is measured against the TRUE initial
+      // residual ||b - A x0||, not ||b|| -- they differ for a nonzero guess.
+      if (rc == 0)
+      {
+        const double den_conv =
+            (b_norm > 1e-16) ? b_norm : (res0 > 1e-16 ? res0 : 1.0);
+        last_converged = (res_norm <= tolerance * den_conv);
+        if (!std::isfinite(res_norm))
+          rc = -4;
+        else if (!opendarts::linear_solvers::solve_result::residual_did_not_regress(
+                     res_norm, res0))
+          rc = -6;
+        else if (!last_converged)
+          rc = opendarts::linear_solvers::solve_result::not_converged;
+      }
+      else
+      {
+        last_converged = false;
+      }
+
       if (tsolve)
         tsolve->stop();
       return rc;
@@ -393,6 +420,8 @@ namespace opendarts
 
       int total_iters = 0;
       double res_norm = 0.0;
+      double res0 = 0.0; // true initial residual ||b - A x0||, for the
+                         // regression check of the unified solve() convention
       int rc = 0;
 
       for (;;)
@@ -418,6 +447,7 @@ namespace opendarts
         {
           const double den = (b_norm > 1e-16) ? b_norm : (beta > 1e-16 ? beta : 1.0);
           res_norm = beta;
+          res0 = beta;
           final_resid = beta / den;
           if (beta <= tolerance * den)
             break;
@@ -562,6 +592,30 @@ namespace opendarts
       {
         const double den2 = (b_norm > 1e-16) ? b_norm : 1.0;
         final_resid = res_norm / den2;
+      }
+
+      // Unified solve() convention (linear_solver.hpp). Only classify when no
+      // hard failure was already latched above (e.g. rc = -3 from a failed
+      // preconditioner apply): exhausting the budget on a finite, non-regressing
+      // iterate is solve_result::not_converged (+1), and the nonlinear policy
+      // decides accept-vs-cut. Regression is measured against the TRUE initial
+      // residual ||b - A x0||, not ||b|| -- they differ for a nonzero guess.
+      if (rc == 0)
+      {
+        const double den_conv =
+            (b_norm > 1e-16) ? b_norm : (res0 > 1e-16 ? res0 : 1.0);
+        last_converged = (res_norm <= tolerance * den_conv);
+        if (!std::isfinite(res_norm))
+          rc = -4;
+        else if (!opendarts::linear_solvers::solve_result::residual_did_not_regress(
+                     res_norm, res0))
+          rc = -6;
+        else if (!last_converged)
+          rc = opendarts::linear_solvers::solve_result::not_converged;
+      }
+      else
+      {
+        last_converged = false;
       }
 
       cudaMemcpy(X, X_d, sizeof(double) * n, cudaMemcpyDeviceToHost);

@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <algorithm>
 #include <time.h>
 #include <functional>
@@ -118,6 +119,8 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 	// create linear solver
 	if (!linear_solver)
 	{
+		// Factory-allocated solvers are engine-owned and deleted in ~engine_base.
+		linear_solver_owned = true;
 		switch (params->linear_type)
 		{
 #ifndef OPENDARTS_LINEAR_SOLVERS  // proprietary BOS solvers; the open-source build injects via the registry
@@ -183,10 +186,10 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		case sim_params::GPU_GMRES_CPR_AMG:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 0;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 1;
 			cpr->set_prec(new linsolv_bos_amg<1>);
 			linear_solver->set_prec(cpr);
 			break;
@@ -195,10 +198,10 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		case sim_params::GPU_GMRES_CPR_AIPS:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			int n_terms = 10;
 			bool print_radius = false;
@@ -229,10 +232,10 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		case sim_params::GPU_GMRES_CPR_AMGX_ILU:
 		{
 			linear_solver = new linsolv_bos_gmres<N_VARS>(1);
-			linsolv_iface *cpr = new linsolv_bos_cpr_gpu<N_VARS>;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
-			((linsolv_bos_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
+			linsolv_iface *cpr = new linsolv_cpr_gpu<N_VARS>;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_setup_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_solve_gpu = 1;
+			((linsolv_cpr_gpu<N_VARS> *)cpr)->p_solver_requires_diag_first = 0;
 
 			int n_json = 0;
 
@@ -255,6 +258,15 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::init_base(conn_mesh *mesh_, std::
 		default:
 			break;
 		}
+		// A compiled-out case leaves linear_solver at nullptr (engine_base.h
+		// initialises it there), and the caller dereferences it immediately.
+		// Fail with a diagnostic instead of a null deref.
+		if (!linear_solver)
+			throw std::runtime_error(
+				"engine_super_elastic_cpu: linear solver type " +
+				std::to_string(static_cast<int>(params->linear_type)) +
+				" is not available in this build; use sim_params::CPU_SUPERLU or inject "
+				"a solver from Python via set_linear_solver().");
 	}
 
 	n_vars = get_n_vars();
@@ -1542,6 +1554,10 @@ int engine_super_elastic_cpu<NC, NP, THERMAL>::solve_linear_equation()
 		//return 0;
 	}
 
+	// Unified solve() convention: a POSITIVE code is "budget exhausted, iterate
+	// usable" -- reported as engine status 3 for the nonlinear policy to act on.
+	if (const int nc = classify_linear_solve_status(r_code); nc == 3)
+		return 3;
 	if (r_code)
 	{
 		sprintf(buffer, "ERROR: Linear solver solve returned %d \n", r_code);

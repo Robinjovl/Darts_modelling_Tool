@@ -54,7 +54,8 @@ REM The in-tree open-source build now supports OpenMP: the engines assemble the
 REM block_csr_matrix Jacobian in parallel over a real multi-threaded row partition
 REM (linear_solvers\include\omp_partition.hpp), the interpolators evaluate in parallel,
 REM and the in-tree GMRES Krylov kernels (solvers\src\linsolv_gmres.cpp) run in
-REM parallel. The HYPRE preconditioner stages (CPR/MGR) still run sequentially.
+REM parallel. The HYPRE preconditioner stages (CPR/MGR) are threaded too, unless
+REM the build opted out with HYPRE_OPENMP=0.
 REM GPU builds default to the in-tree open-source solvers darts.linear_solvers,
 REM including the GPU wrappers; pass -b ^<path^> to build against bos_solvers.
 if %iter_solvers%==false (
@@ -91,9 +92,10 @@ del /s /q darts\*.dll 2>NUL
 rmdir /s /q dist 2>NUL
 
 if %clean_mode%==true (
-  echo - Cleaning up ^(darts build + thirdparty HYPRE; -c forces a complete rebuild^)
+  echo - Cleaning up ^(darts build + thirdparty HYPRE/SuperLU; -c forces a complete rebuild^)
   rmdir /s /q build 2>NUL
-  rmdir /s /q thirdparty\hypre\src\cmbuild 2>NUL
+  rmdir /s /q thirdparty\hypre\build 2>NUL
+  rmdir /s /q thirdparty\build 2>NUL
   rmdir /s /q thirdparty\install 2>NUL
   REM goto :eof
 )
@@ -145,15 +147,16 @@ if %skip_req%==false (
   rem entirely; safe for a one-shot CI configure.
   rem NOTE: this branch pins a newer HYPRE (thirdparty/hypre 341f9089) whose
   rem CMake option is HYPRE_ENABLE_MPI (development's older pin used HYPRE_WITH_MPI).
-  rem Optionally build HYPRE with its own OpenMP threading (parallel BoomerAMG /
-  rem HYPRE_ILU smoothers + SpMV) via HYPRE_OPENMP=1. Opt-in for MT builds; it
-  rem changes solver numerics (HYPRE's hybrid smoothers go processor-local).
-  rem See SOLVER_REFACTORING_PLAN.md.
-  set hypre_omp_flag=
-  if /i "%HYPRE_OPENMP%"=="1" set hypre_omp_flag=-D HYPRE_ENABLE_OPENMP=ON
-  if /i "%HYPRE_OPENMP%"=="true" set hypre_omp_flag=-D HYPRE_ENABLE_OPENMP=ON
-  if /i "%HYPRE_OPENMP%"=="on" set hypre_omp_flag=-D HYPRE_ENABLE_OPENMP=ON
+  rem Build HYPRE with its own OpenMP threading (parallel BoomerAMG / HYPRE_ILU
+  rem smoothers + SpMV). ON by default. Note it changes solver numerics
+  rem (HYPRE's hybrid smoothers go processor-local, so results are not identical
+  rem to a sequential HYPRE and iteration counts may shift). HYPRE_OPENMP=0 opts out.
+  set hypre_omp_flag=-D HYPRE_ENABLE_OPENMP=ON
+  if /i "%HYPRE_OPENMP%"=="0" set hypre_omp_flag=
+  if /i "%HYPRE_OPENMP%"=="false" set hypre_omp_flag=
+  if /i "%HYPRE_OPENMP%"=="off" set hypre_omp_flag=
   if defined hypre_omp_flag echo -- HYPRE OpenMP enabled ^(HYPRE_ENABLE_OPENMP=ON^)
+  if not defined hypre_omp_flag echo -- HYPRE OpenMP disabled ^(HYPRE_OPENMP=%HYPRE_OPENMP%^)
   cmake -D HYPRE_TIMING=OFF ^
         -D HYPRE_BUILD_TESTS=OFF ^
         -D HYPRE_BUILD_EXAMPLES=OFF ^
@@ -161,8 +164,8 @@ if %skip_req%==false (
         -D CMAKE_SUPPRESS_REGENERATION=ON ^
         %hypre_omp_flag% ^
         -D CMAKE_INSTALL_PREFIX=..\..\install ^
-        -D HYPRE_SEQUENTIAL=ON ../src > ..\..\..\make_hypre.log || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\make_hypre.log || goto :error
+        -D HYPRE_SEQUENTIAL=ON ../src > ..\..\..\make_hypre.log 2>&1 || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:8 >> ..\..\..\make_hypre.log 2>&1 || goto :error
   cd ..\..\
   rem -- Install SuperLU (pinned git submodule thirdparty\superlu, built with its
   rem own CMake + MSVC generator into thirdparty\install, mirroring HYPRE). Double
@@ -184,8 +187,8 @@ if %skip_req%==false (
         -D BUILD_SHARED_LIBS=OFF ^
         -D CMAKE_POSITION_INDEPENDENT_CODE=ON ^
         -D CMAKE_INSTALL_PREFIX=..\..\install ^
-        ..\..\superlu > ..\..\..\make_superlu.log || goto :error
-  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% >> ..\..\..\make_superlu.log || goto :error
+        ..\..\superlu > ..\..\..\make_superlu.log 2>&1 || goto :error
+  msbuild INSTALL.vcxproj /p:Configuration=%config% /p:Platform=x64 -maxCpuCount:%NT% >> ..\..\..\make_superlu.log 2>&1 || goto :error
   cd ..\..\..
 
   if %phreeqc%==true (
@@ -242,8 +245,8 @@ echo CMake options: %cmake_options%
 cmake %cmake_options% ..
 
 REM build and install
-cmake --build . --config %config% --parallel %NT% > ..\make_darts.log || goto :error
-cmake --build . --config %config% --target INSTALL --parallel %NT% >> ..\make_darts.log || goto :error
+cmake --build . --config %config% --parallel %NT% > ..\make_darts.log 2>&1 || goto :error
+cmake --build . --config %config% --target INSTALL --parallel %NT% >> ..\make_darts.log 2>&1 || goto :error
 
 if %testing%==true ctest -C %config%  || goto :error
 
@@ -375,7 +378,7 @@ echo    -b SPATH         : Path to bos_solvers (instead of openDARTS solvers), e
 echo    -d MODE          : Configuration for C++ code [Release, Debug, RelWithDebInfo]. RelWithDebInfo = -O2 -g (optimized + debug symbols). Example: -d RelWithDebInfo
 echo    -j N             : Set number of threads (N) for compilation. Default: 8. Example: -j 4
 echo    -p               : Enable Phreeqc + Reaktoro (requires Conda). Default: false
-echo    HYPRE_OPENMP env : Build HYPRE with OpenMP (parallel BoomerAMG/ILU in CPR/MGR). Opt-in, for MT builds; changes solver numerics. Default: false. Requires -c to (re)build HYPRE.
+echo    HYPRE_OPENMP env : Build HYPRE with OpenMP (parallel BoomerAMG/ILU in CPR/MGR). Default: true; set HYPRE_OPENMP=0 to build HYPRE sequentially. Changes solver numerics. Requires -c to (re)build HYPRE.
 goto :eof
 REM ----------------------------------------------------------------
 
