@@ -467,11 +467,11 @@ cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 #      compiled interpolator objects; no large recompiles happen there.
 # Also pass -l so make backs off if the system load average climbs (extra safety
 # when the runner is shared).
-if [[ "$valgrind" == true ]]; then
+if [[ "$valgrind" == true || "$tsan" == true ]]; then
     HEAVY_NT=2
     if [[ "$NT" -lt "$HEAVY_NT" ]]; then HEAVY_NT="$NT"; fi
     LOAD_LIMIT=$(( NT / 2 > 0 ? NT / 2 : 1 ))
-    echo "-- Pre-building interpolators target with -j $HEAVY_NT -l $LOAD_LIMIT (valgrind OOM mitigation)"
+    echo "-- Pre-building interpolators target with -j $HEAVY_NT -l $LOAD_LIMIT (valgrind/tsan OOM mitigation)"
     make interpolators -j "$HEAVY_NT" -l "$LOAD_LIMIT" 2>&1 | tee -a ../make_darts.log
 fi
 cmake --build . --target install --parallel "$NT" 2>&1 | tee -a ../make_darts.log
