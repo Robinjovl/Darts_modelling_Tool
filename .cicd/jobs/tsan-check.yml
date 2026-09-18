@@ -1,0 +1,36 @@
+include:
+  - local: '.cicd/jobs/valgrind-check.yml'
+
+tsan-check:
+    extends: .linux-profiler-base
+    rules:
+        # Skip on .pkl reference-upload runs (build-linux-tsan is also
+        # skipped there, and this job needs it): matches valgrind-check.
+        - if: $UPLOAD_PKL == "1"
+          when: never
+        - if: $CHECK_DATA_RACES == "1"
+    needs:
+        - build-linux-tsan
+    script:
+        # Package name isn't stable across Debian releases (libtsan0,
+        # libtsan2, ... track GCC's sanitizer-runtime SONAME bumps), so
+        # resolve it from apt-cache instead of hardcoding one -- matches
+        # tsan_check.py's resolve_libtsan(), which doesn't hardcode the .so
+        # path either.
+        - apt-get update -qq
+        - |
+          TSAN_PKG="$(apt-cache search --names-only '^libtsan[0-9]*$' | sort -V | tail -n1 | cut -d' ' -f1)"
+          if [ -z "$TSAN_PKG" ]; then
+            echo "ERROR: no libtsan* package found in apt repositories" >&2
+            exit 1
+          fi
+          echo "Installing TSan runtime package: $TSAN_PKG"
+          apt-get install -y -qq "$TSAN_PKG"
+        - echo ">>> Running ThreadSanitizer data-race check <<<"
+        - python helper_scripts/tsan_check.py
+    artifacts:
+      paths:
+        - models/_tsan_logs/*.log
+        - models/_tsan_logs/*.summary.txt
+      when: always
+      expire_in: 1 week

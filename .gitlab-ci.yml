@@ -15,6 +15,10 @@ variables:
   #   "1" -> enable all four BOS twins for an explicitly opted-in pipeline
   # Set RUN_BOS_JOBS=1 in a manual or scheduled pipeline to run them.
   RUN_BOS_JOBS: "0"
+  # TEMPORARY: force-enable build-linux-tsan / tsan-check for testing.
+  # TODO: revert before merging -- these are opt-in-only by design (see
+  # build-linux-tsan.yml / tsan-check.yml), not meant to run by default.
+  CHECK_DATA_RACES: "1"
 
 stages:
     - pre_commit
@@ -52,6 +56,12 @@ include:
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   - local: '.cicd/jobs/valgrind-check.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
+  - local: '.cicd/jobs/build-linux-tsan.yml'
+    rules:
+      - if: $MCP_TRIGGER_TAHITI_GPU != "1"
+  - local: '.cicd/jobs/tsan-check.yml'
     rules:
       - if: $MCP_TRIGGER_TAHITI_GPU != "1"
   # - local: '.cicd/jobs/vtune-profile.yml'

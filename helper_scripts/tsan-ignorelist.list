@@ -1,0 +1,12 @@
+# Clang -fsanitize-ignorelist for ThreadSanitizer builds (ENABLE_TSAN, see
+# CMakeLists.txt). No effect under GCC, which has no equivalent flag -- the
+# CI build uses GCC, so the same functions are covered there via the runtime
+# suppressions file instead (helper_scripts/tsan.supp). Kept in sync with
+# that file's GMRES entries; see there for the justification.
+#
+# Format: https://clang.llvm.org/docs/SanitizerSpecialCaseList.html
+[thread]
+fun:*opendarts*linear_solvers*dot*
+fun:*opendarts*linear_solvers*axpy*
+fun:*opendarts*linear_solvers*scale*
+fun:*opendarts*linear_solvers*block_csr_spmv*

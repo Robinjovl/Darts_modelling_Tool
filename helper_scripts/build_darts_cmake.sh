@@ -11,7 +11,7 @@ set -o pipefail
 ################################################################################
 Help_Info()
 {
-  echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13] [-p] [-v]"
+  echo "$(basename "$0") [-h] [-c] [-t] [-w] [-m] [-r] [-a] [-b BOS_SOLVER_DIRECTORY] [-d INSTALL CONFIGURATION] [-j NUM THREADS] [-g g++-13] [-p] [-v] [-T]"
   echo "   Script to install opendarts on unix (linux and macOS)."
   echo "USAGE: "
   echo "   -h               : displays this help menu."
@@ -28,6 +28,7 @@ Help_Info()
   echo "   -g g++VER        : Specify a compiler (g++) version. Example: -g g++-13"
   echo "   -p               : Enable building & installing IPhreeqc and Reaktoro (OFF by default, requires active Conda env)"
   echo "   -v               : Enable build with valgrind support (OFF by default)"
+  echo "   -T               : Enable build with ThreadSanitizer support (-fsanitize=thread, OFF by default). Forces -d RelWithDebInfo unless overridden."
   echo "   CUDA_ARCH env var: Specify CUDA architecture(s), e.g. \"70\" or \"70;80\""
   echo "   HYPRE_OPENMP env : Build HYPRE with OpenMP (parallel BoomerAMG/ILU in CPR/MGR). Default: true; set HYPRE_OPENMP=0 to build HYPRE sequentially. Slightly changes solver numerics. Requires -c to (re)build HYPRE."
 }
@@ -96,10 +97,11 @@ NT=8              # Number of threads by default 8
 gpp_version=g++   # Version of g++
 special_gpp=false # Whether a special compiler version (g++) is specified.
 valgrind=false    # Whether support valgrind profiling or not
+tsan=false        # Whether to build with ThreadSanitizer support (-fsanitize=thread)
 CUDA_ARCH="${CUDA_ARCH:-}"
 HYPRE_OPENMP="${HYPRE_OPENMP:-true}" # Build HYPRE with its own OpenMP threading (on by default; HYPRE_OPENMP=0 opts out)
 
-while getopts ":chtwmrab:d:j:g:Gpv" option; do
+while getopts ":chtwmrab:d:j:g:GpvT" option; do
     case "$option" in
         h) # Display help
            Help_Info
@@ -134,6 +136,8 @@ while getopts ":chtwmrab:d:j:g:Gpv" option; do
            phreeqc=true;;
         v) # Valgrind build => Debug + symbols
            valgrind=true;;
+        T) # ThreadSanitizer build => RelWithDebInfo + -fsanitize=thread
+           tsan=true;;
     esac
 done
 
@@ -161,6 +165,21 @@ fi
 # If valgrind requested, force Debug early (affects thirdparty builds)
 if [[ "$valgrind" = true ]]; then
     config="Debug"
+fi
+
+# If TSan requested, force RelWithDebInfo early. -O0 (Debug) is avoidable
+# overhead on top of TSan's own 5-15x slowdown; -g here still gives usable
+# stack traces. Deliberately does NOT add -fsanitize=thread to thirdparty
+# (HYPRE/SuperLU): linking TSan-instrumented open-DARTS code against a
+# plain, un-instrumented HYPRE/SuperLU works fine (TSan just can't see races
+# fully internal to that library) and lets the thirdparty build be reused
+# from a normal build's cache rather than rebuilt -- matching the current
+# understanding that HYPRE's own internals are, on investigation, mostly the
+# same ThreadSanitizer+OpenMP artifact rather than a confirmed bug (see
+# helper_scripts/tsan.supp's HYPRE section for the reasoning), so CI signal
+# is better spent on open-DARTS's own code.
+if [[ "$tsan" = true ]]; then
+    config="RelWithDebInfo"
 fi
 
 if [ "$iter_solvers" == false ]; then
@@ -390,6 +409,9 @@ cmake_options="-D CMAKE_BUILD_TYPE=${config}"
 if [[ "$valgrind" = true ]]; then
     cmake_options+=" -D ENABLE_VALGRIND=ON"
 fi
+if [[ "$tsan" = true ]]; then
+    cmake_options+=" -D ENABLE_TSAN=ON"
+fi
 if [[ "$testing" == true ]]; then
     cmake_options+=" -D ENABLE_TESTING=ON"
 fi
@@ -445,11 +467,11 @@ cmake $cmake_options .. 2>&1 | tee ../make_darts.log
 #      compiled interpolator objects; no large recompiles happen there.
 # Also pass -l so make backs off if the system load average climbs (extra safety
 # when the runner is shared).
-if [[ "$valgrind" == true ]]; then
+if [[ "$valgrind" == true || "$tsan" == true ]]; then
     HEAVY_NT=2
     if [[ "$NT" -lt "$HEAVY_NT" ]]; then HEAVY_NT="$NT"; fi
     LOAD_LIMIT=$(( NT / 2 > 0 ? NT / 2 : 1 ))
-    echo "-- Pre-building interpolators target with -j $HEAVY_NT -l $LOAD_LIMIT (valgrind OOM mitigation)"
+    echo "-- Pre-building interpolators target with -j $HEAVY_NT -l $LOAD_LIMIT (valgrind/tsan OOM mitigation)"
     make interpolators -j "$HEAVY_NT" -l "$LOAD_LIMIT" 2>&1 | tee -a ../make_darts.log
 fi
 cmake --build . --target install --parallel "$NT" 2>&1 | tee -a ../make_darts.log
