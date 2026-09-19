@@ -541,6 +541,9 @@ report_build_summary()
   # make_darts.log is shared by three sets of diagnostics -- AMGX, other
   # thirdparty headers compiled into our TUs, and open-DARTS itself -- so it is
   # classified by the regexes above rather than counted as a whole.
+  # Every count below ends in `|| true`: grep exits 1 when nothing matches (a
+  # clean CPU build has no AMGX lines at all), which under `set -e -o pipefail`
+  # would abort the whole build script here, after a successful build.
   local darts_warnings=0 darts_errors=0
   local amgx_warnings=0 amgx_errors=0 amgx_unique=0
   local other_tp_warnings=0 other_tp_errors=0
@@ -549,7 +552,7 @@ report_build_summary()
     darts_errors=$(grep -E "$err_pattern" make_darts.log 2>/dev/null | grep -Ecv "$nonproject_re" || true)
     amgx_warnings=$(grep -E "$warn_pattern" make_darts.log 2>/dev/null | grep -Ec "$amgx_re" || true)
     amgx_errors=$(grep -E "$err_pattern" make_darts.log 2>/dev/null | grep -Ec "$amgx_re" || true)
-    amgx_unique=$(grep -E "$warn_pattern" make_darts.log 2>/dev/null | grep -E "$amgx_re" | sort -u | wc -l | tr -d ' ')
+    amgx_unique=$(grep -E "$warn_pattern" make_darts.log 2>/dev/null | grep -E "$amgx_re" | sort -u | wc -l | tr -d ' ' || true)
     # thirdparty but not AMGX -- counted so that no diagnostic in make_darts.log
     # falls between the open-DARTS and AMGX rows and goes unnoticed.
     other_tp_warnings=$(grep -E "$warn_pattern" make_darts.log 2>/dev/null | grep -E "$nonproject_re" | grep -Ecv "$amgx_re" || true)
