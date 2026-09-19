@@ -98,7 +98,8 @@ class PhysicsBase:
         extrapolation_flag: bool = True,
         state_spec: 'PhysicsBase.StateSpecification' = None,
         cache: bool = False,
-        history_fields: Iterable[HistoryField] | None = None,
+        history_fields: Iterable['HistoryField'] | None = None,
+        cache_live_reload: bool = False,
     ) -> None:
         """
         Configure the OBL grid and physics state for a compositional simulation.
@@ -250,12 +251,15 @@ class PhysicsBase:
         # Initialize timer for simulation and caching
         self.timer = timer.node["simulation"]
         self.cache = cache
+        self.cache_live_reload = cache_live_reload
         # list of created interpolators
         # is used on destruction to save cache data
         if self.cache:
             self.created_itors = []
             self._cache_finalized = False
             self._last_flushed_sizes = {}
+            self._cache_read_offsets = {}
+            self._cache_read_inodes = {}
             # Fallback key set for interpolators without native dirty-point tracking.
             self._flushed_point_keys = {}
             # PID of the process that owns this cache. Cache file writes must only happen

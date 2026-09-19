@@ -56,6 +56,166 @@ class Fenghour1998(Viscosity):
         return n
 
 
+class LBC(Viscosity):
+    """
+    Condensate / liquid viscosity – Lohrenz, Bray & Clark (1964)
+
+    References:
+        SPE915 - Calculating viscosities of Reservoir Fluids from Their Compositions
+        https://courses.ems.psu.edu/png520/m19_p4.html
+
+    """
+
+    def __init__(self, comp_data, property_container, heptane_plus=False, a=None):
+        """
+        comp_data : comp_data class, contains critical pressure/temperature, critical volumes, and molecular weights
+        a : list, LBC coefficients
+        pahse : str, phase name to reference in the property_container
+        pc : DartsModel.property_container
+
+        """
+        # super().__init__()
+
+        self.pc = property_container
+        self.comp_data = comp_data
+
+        if 'wat' in self.pc.phases_name:
+            self.nc = len(comp_data.components) - 1
+        else:
+            self.nc = len(comp_data.components)
+
+        # lump heptane plus fraction
+        self.heptane_plus = heptane_plus
+
+        # LBC coefficients
+        if a is None:
+            self.a0, self.a1, self.a2, self.a3, self.a4, self.a5 = (
+                0.1023,
+                0.023364,
+                0.058533,
+                -0.040758,
+                0.0093724,
+                -1e-4,
+            )
+        else:
+            self.a0, self.a1, self.a2, self.a3, self.a4, self.a5 = (
+                a[0],
+                a[1],
+                a[2],
+                a[3],
+                a[4],
+                a[5],
+            )
+
+        # conversion factors
+        self.bar2psia = 14.5037738
+        self.K2Rankine = 1.8
+        self.kgm3_2_lbmft3 = 6.243e-2
+
+        self.Pc = np.array(comp_data.Pc) * self.bar2psia  # critical pressure
+        self.Tc = np.array(comp_data.Tc) * self.K2Rankine  # crotocal temperature
+        if self.heptane_plus:
+            self.SG = np.array(comp_data.SG)  # specific gravity
+        else:
+            pass
+        self.Mw = np.array(comp_data.Mw)
+        # self.Vc = np.array(comp_data.Vc) # critical volumes
+
+        # Pure-component critical molar volumes Vc in ft^3/lbmol
+        if hasattr(comp_data, "Vc"):
+            self.Vc = np.array(comp_data.Vc)  # critical volumes
+            # assume m^3/kmol -> ft^3/lbmol
+            self.Vc_ft3lbmol = np.asarray(self.Vc, dtype=float) * (
+                35.3146667 / 2.20462262185
+            )
+        else:
+            ValueError(
+                'Missing pure-component critical molar volumes Vc in comp_data().'
+            )
+
+    def evaluate(self, pressure, temperature, x, rho):
+        rhoL_si = rho
+        temperature *= self.K2Rankine
+
+        # ---- Breakup of the heptane plus fraction
+        if self.heptane_plus:
+            C7plus_idx = self.Mw > 100
+            x_C7plus = np.sum(x[C7plus_idx])
+            if 1:
+                M_C7plus = (
+                    np.sum(x[C7plus_idx] * self.Mw[C7plus_idx]) / x_C7plus
+                )  # weighted average
+                SG_C7plus = np.sum(x[C7plus_idx] * self.SG[C7plus_idx]) / x_C7plus
+            else:
+                M_C7plus = 138.9024
+                SG_C7plus = 0.727
+            Vc_C7plus = (
+                21.573
+                + 0.015122 * M_C7plus
+                - 27.656 * SG_C7plus
+                + 0.070615 * M_C7plus * SG_C7plus
+            )
+
+        # ---- Calculation of the low-pressure pure components gas viscosities
+        XI = (5.4402 * self.Tc ** (1 / 6)) / (
+            np.sqrt(self.Mw) * self.Pc ** (2 / 3)
+        )  # viscosity reduction parameter, eq. 19.27
+        Trj = temperature / self.Tc  # reduced temperature
+        mu_j = np.empty(self.nc, dtype=float)
+        for i in range(self.nc):
+            if Trj[i] < 1.5:
+                mu_j[i] = (34e-5 * (Trj[i] ** 0.94)) / XI[i]
+            else:
+                mu_j[i] = (17.78e-5 * (4.58 * Trj[i] - 1.67) ** 0.625) / XI[i]
+
+        # ---- Calculation of the low pressure mixture gas viscosity (Herning & Zipperer)
+        mu_ = np.sum(x * mu_j * np.sqrt(self.Mw)) / np.sum(
+            x * np.sqrt(self.Mw)
+        )  # eq. 19.27
+
+        # ---- Mixture pseudo-properties (Kay’s mixing rules)
+        Tpc = np.sum(x * self.Tc)
+        Ppc = np.sum(x * self.Pc)
+        # Vpc = np.sum(x * self.Vc)
+
+        # ---- Reduced density of the mixture
+        # rhoL_si = self.pc.dens[pc.phases_name.index(self.phase)]
+        rhoL_lbmft3 = rhoL_si * self.kgm3_2_lbmft3
+        MW_mix = float(np.sum(x * self.Mw))  # lbm/lbmol
+
+        if self.heptane_plus:
+            rho_r = (
+                rhoL_lbmft3
+                * (
+                    np.sum(x[~C7plus_idx] * self.Vc_ft3lbmol[~C7plus_idx])
+                    + x_C7plus * Vc_C7plus
+                )
+                / MW_mix
+            )
+        else:
+            rho_r = rhoL_lbmft3 * np.sum(x * self.Vc_ft3lbmol) / MW_mix
+
+        XI_m = (5.4402 * Tpc ** (1 / 6)) / (
+            np.sqrt(MW_mix) * Ppc ** (2 / 3)
+        )  # eq. 19.28
+
+        # ---- Calculation of the viscosity, Jossi, Stiel & Thodos (1962)
+        dense = (
+            (
+                self.a0
+                + self.a1 * rho_r
+                + self.a2 * (rho_r**2)
+                + self.a3 * (rho_r**3)
+                + self.a4 * (rho_r**4)
+            )
+            ** 4
+            + self.a5
+        ) / XI_m
+        mu = mu_ + dense  # 19.26
+
+        return mu
+
+
 class Lee1966(Viscosity):
     """
     Correlation for gas mixture viscosity: Lee et al. (1966) - The Viscosity of Natural Gases

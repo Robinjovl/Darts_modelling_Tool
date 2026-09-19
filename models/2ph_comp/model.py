@@ -95,6 +95,7 @@ class Model(DartsModel):
                                      axes_step=[p_step, z_step, z_step],
                                      axes_origin=[1.0, epsilon, epsilon],
                                      epsilon_z=epsilon,
+                                     cache = True,
                                      extrapolation_flag=True)
         # property_container.output_props = {
         #     "sat0": lambda: property_container.sat[0],

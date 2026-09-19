@@ -7,11 +7,11 @@
     variables:
         CONDA_ENV: "darts-win"
         CONDA_BIN_PATH: 'D:\miniconda3\condabin'
-        # MINIMAL drops the linear adaptive interpolator from the compile set,
-        # cutting cc1plus / cl.exe memory enough that the windows CI runners do
-        # not OOM on the heavy py_operator_set_interpolator_*_part*.cpp TUs.
+        # Compile linear interpolators and support up to 12 engine components.
+        # build_darts_cmake.bat serializes the build below, while /MP1 in the
+        # top-level CMake configuration also limits cl.exe parallelism.
         # build_darts_cmake.bat forwards OD_CMAKE_ARGS to cmake.
-        OD_CMAKE_ARGS: "-D OPENDARTS_INTERPOLATOR_PROFILE=MINIMAL"
+        OD_CMAKE_ARGS: "-DOPENDARTS_INTERPOLATOR_PROFILE=FULL -DOPENDARTS_MAX_DIMS=12"
     script:
         # Load MS Build Tools environment to the powershell
         - D:\BuildTools\build_vars.ps1
@@ -30,7 +30,9 @@
         - copy $env:VCToolsRedistDir\x64\Microsoft.VC143.OpenMP\vcomp140.dll .\darts
         - echo "ODLS:" $env:ODLS
         # Compile and make the wheel
-        - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 8 -p
+        - .\helper_scripts\build_darts_cmake.bat $env:ODLS -c -w -t -j 1 -p
+        - if (-not (Select-String -Path build\CMakeCache.txt -Pattern '^OPENDARTS_INTERPOLATOR_PROFILE:STRING=FULL$' -Quiet)) { throw "Interpolator profile is not FULL" }
+        - if (-not (Select-String -Path build\CMakeCache.txt -Pattern '^OPENDARTS_MAX_DIMS:STRING=12$' -Quiet)) { throw "Maximum NC is not 12" }
         # Check for warnings
         - |
           $match = Select-String -Path make_darts.log -Pattern 'OPENDARTS_WARNING_COUNT=(\d+)' | Select-Object -Last 1

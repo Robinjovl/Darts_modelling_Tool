@@ -140,15 +140,17 @@ def frac_preprocessing(
         print('START calculating initial intersections raw input fracture network')
         print('\tNOTE: unoptimized!, can take long for very large networks')
         # First find all intersections:
-        system_out_par, frac_order_vec_par, partition_lines = (
-            calc_intersections_segm_parallel(
-                frac_data_raw,
-                apertures_raw,
-                tolerance_intersect,
-                tolerance_zero,
-                num_partition_x,
-                num_partition_y,
-            )
+        (
+            system_out_par,
+            frac_order_vec_par,
+            partition_lines,
+        ) = calc_intersections_segm_parallel(
+            frac_data_raw,
+            apertures_raw,
+            tolerance_intersect,
+            tolerance_zero,
+            num_partition_x,
+            num_partition_y,
         )
 
         # Stack output from all domain together:
@@ -247,15 +249,17 @@ def frac_preprocessing(
         num_part_x = 1
         num_part_y = 1
         num_part_tot = num_part_x * num_part_y
-        system_out_par, frac_order_vec_par, partition_lines = (
-            calc_intersections_segm_parallel(
-                act_frac_sys_cln,
-                apertures_cln,
-                tolerance_intersect,
-                tolerance_zero,
-                number_partitions_x=num_part_x,
-                number_partitions_y=num_part_y,
-            )
+        (
+            system_out_par,
+            frac_order_vec_par,
+            partition_lines,
+        ) = calc_intersections_segm_parallel(
+            act_frac_sys_cln,
+            apertures_cln,
+            tolerance_intersect,
+            tolerance_zero,
+            number_partitions_x=num_part_x,
+            number_partitions_y=num_part_y,
         )
 
         # Stack output from all domain together:

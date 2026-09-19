@@ -393,6 +393,8 @@ class PropertyContainer:
         # Composition vector and pressure from state:
         pressure, state_spec_2, zc = self.get_state(state)
 
+        # print(pressure, state_spec_2, zc)
+
         self.clean_arrays()
 
         # Run flash

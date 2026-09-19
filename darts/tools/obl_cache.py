@@ -46,9 +46,73 @@ import pickle
 import struct
 import tempfile
 import zlib
+from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
+
+if os.name == "nt":
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    class _Overlapped(ctypes.Structure):
+        _fields_ = [
+            ("Internal", ctypes.c_size_t),
+            ("InternalHigh", ctypes.c_size_t),
+            ("Offset", wintypes.DWORD),
+            ("OffsetHigh", wintypes.DWORD),
+            ("hEvent", wintypes.HANDLE),
+        ]
+
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _lock_file_ex = _kernel32.LockFileEx
+    _lock_file_ex.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(_Overlapped),
+    ]
+    _lock_file_ex.restype = wintypes.BOOL
+    _unlock_file_ex = _kernel32.UnlockFileEx
+    _unlock_file_ex.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(_Overlapped),
+    ]
+    _unlock_file_ex.restype = wintypes.BOOL
+else:
+    import fcntl
+
+
+def _lock_cache_file(lock_fp, exclusive: bool):
+    """Acquire a blocking one-byte advisory lock and return its platform token."""
+    if os.name == "nt":
+        overlapped = _Overlapped()
+        flags = 0x00000002 if exclusive else 0  # LOCKFILE_EXCLUSIVE_LOCK
+        handle = wintypes.HANDLE(msvcrt.get_osfhandle(lock_fp.fileno()))
+        if not _lock_file_ex(handle, flags, 0, 1, 0, ctypes.byref(overlapped)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return overlapped
+
+    mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+    fcntl.flock(lock_fp.fileno(), mode)
+    return None
+
+
+def _unlock_cache_file(lock_fp, token) -> None:
+    """Release a lock acquired by :func:`_lock_cache_file`."""
+    if os.name == "nt":
+        handle = wintypes.HANDLE(msvcrt.get_osfhandle(lock_fp.fileno()))
+        if not _unlock_file_ex(handle, 0, 1, 0, ctypes.byref(token)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return
+
+    fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
 
 
 class OblCacheCodec:
@@ -65,6 +129,18 @@ class OblCacheCodec:
     # Recompact (rebuild a single consolidated arena) once the trailing un-compacted DELTA
     # region exceeds max(this, arena_bytes/4), folding the deltas back into the arena.
     _COMPACT_TRAILING_BYTES = 1 << 30  # 1 GiB
+
+    @contextmanager
+    def cache_lock(self, path: str, exclusive: bool = True):
+        """Serialize cache readers/writers across independent simulations."""
+        lock_path = path + '.lock'
+        os.makedirs(os.path.dirname(lock_path) or '.', exist_ok=True)
+        with open(lock_path, 'a+b') as lock_fp:
+            lock_token = _lock_cache_file(lock_fp, exclusive)
+            try:
+                yield
+            finally:
+                _unlock_cache_file(lock_fp, lock_token)
 
     @staticmethod
     def _point_data_size(itor) -> int:
@@ -436,6 +512,7 @@ class OblCacheCodec:
         the overlay via add_point_data_arrays (crc-checked; torn final frame ignored)."""
         filesize = os.path.getsize(path)
         offset = start_offset
+        imported = 0
         hdr_size = self._FRAME_HDR.size
         while offset + hdr_size <= filesize:
             with open(path, 'rb') as fp:
@@ -479,8 +556,27 @@ class OblCacheCodec:
                     del vals
                     break
             itor.add_point_data_arrays(keys, vals)
+            if kind == self._KIND_DELTA:
+                imported += n_rows
             del vals
             offset = payload_off + payload_len
+        return offset, imported
+
+    def merge_trailing_frames(self, itor, path, start_offset):
+        """Import complete frames at or after start_offset incrementally.
+
+        Returns (next_offset, imported_rows). An incomplete final frame leaves
+        next_offset at its header so a later live reload can retry it.
+        """
+        meta = self._read_header(path)
+        if meta is None:
+            return start_offset, 0
+        arena_end = int(meta['arena_end'])
+        if start_offset < arena_end:
+            start_offset = arena_end
+        return self._merge_trailing_frames(
+            itor, path, start_offset, int(meta['n_dims']), int(meta['n_ops'])
+        )
 
     def _scan_occupied_into_overlay(self, itor, path, meta):
         """ABI-mismatch recovery: read the arena's occupied slots (bitmap-driven,

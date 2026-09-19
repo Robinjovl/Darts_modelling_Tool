@@ -176,7 +176,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 
   message(STATUS "  Setting MSVC compiler and linker flags")
   # Compiler flags
-  set(opendarts_cxx_compiler_flags "/MP;/std:c++20;/utf-8")
+  set(opendarts_cxx_compiler_flags "/MP1;/std:c++20")
 
   # for VS Sanitizer usage:
   # 1. copy files clang_rt.asan*.dll from the VS folder, for example: C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.42.34433\bin\Hostx64\x64

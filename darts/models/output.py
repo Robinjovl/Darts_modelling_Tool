@@ -17,6 +17,28 @@ from darts.engines import (
 from darts.physics.base.operator_evaluator import PropertyOperators
 from darts.physics.base.physics import PhysicsBase
 from darts.tools.hdf5_tools import load_hdf5_to_dict
+from darts.tools.production_accounting import (
+    _containers,
+    _evaluate_standard_phase_state,
+    _fluid_definition,
+    _initial_states,
+    _pore_volumes,
+    _region_ids,
+    _resolve_well_regions,
+    _standard_phase_state,
+    _well_names,
+    calculate,
+    calculate_compositional_recovery_factor,
+    calculate_compositional_stoiip,
+    calculate_field_totals,
+    calculate_gor,
+    calculate_initial_inventory,
+    calculate_injected_pore_volumes,
+    calculate_volume_recovery_factors,
+    compute_component_rf,
+    convert_rates_to_standard_conditions,
+    resolve_well_roles,
+)
 from darts.tools.vtk_io import write_lines_vtp, write_pvd
 
 # ── Picklable accessors for output-property dicts ─────────────────────────────
@@ -158,6 +180,27 @@ class Output:
     * The key naming formats for the rates stored in the ``time_data`` dictionary can be
       found `here <https://open-darts.gitlab.io/open-darts/technical_reference/wells.html>`_.
     """
+
+    _containers = _containers
+    _fluid_definition = _fluid_definition
+    _well_names = _well_names
+    _pore_volumes = _pore_volumes
+    _region_ids = _region_ids
+    _resolve_well_regions = _resolve_well_regions
+    _standard_phase_state = staticmethod(_standard_phase_state)
+    _evaluate_standard_phase_state = staticmethod(_evaluate_standard_phase_state)
+    _initial_states = _initial_states
+    resolve_well_roles = resolve_well_roles
+    convert_rates_to_standard_conditions = convert_rates_to_standard_conditions
+    calculate_field_totals = calculate_field_totals
+    calculate_injected_pore_volumes = calculate_injected_pore_volumes
+    calculate_volume_recovery_factors = calculate_volume_recovery_factors
+    calculate_initial_inventory = calculate_initial_inventory
+    calculate_compositional_stoiip = calculate_compositional_stoiip
+    calculate_compositional_recovery_factor = calculate_compositional_recovery_factor
+    calculate_gor = calculate_gor
+    compute_component_rf = compute_component_rf
+    calculate = calculate
 
     def __init__(
         self,
@@ -1168,6 +1211,81 @@ class Output:
             raise FileNotFoundError(f"File not found: {sol_filepath}.") from err
 
         return time, cell_id, X, var_names
+
+    def get_mass_components(self, property_array):
+        component_names = self.physics.property_containers[0].components_name
+        Mw = np.array(self.physics.property_containers[0].Mw).reshape(-1, 1)
+
+        # Extract properties from property_array
+        sg = property_array["sat_g"][0]
+        so = property_array['sat_o'][0]
+
+        rhoV = property_array["dens_g"][0]
+        rho_m_o = property_array["densm_o"][0]
+        try:
+            rho_m_w = property_array["densm_w"][0]
+        except:
+            pass
+
+        self.x_components, self.y_components, self.w_components = [], [], []
+        # for phase_name in self.physics.phases:
+        for component_name in self.physics.components:
+            self.x_components.append(property_array[f"x{component_name}"][0])  # oil
+            self.y_components.append(property_array[f"y{component_name}"][0])  # gas
+
+            try:
+                self.w_components.append(property_array[f"w{component_name}"][0])
+            except:
+                pass
+
+        self.x_components, self.y_components = (
+            np.array(self.x_components),
+            np.array(self.y_components),
+        )
+
+        # Compute molecular weight of the aqueous phase
+        MWo = (
+            np.sum(self.y_components[1:, :] * Mw[1:], axis=0)
+            + (1 - np.sum(self.y_components[1:, :], axis=0)) * Mw[0]
+        )
+
+        # Mass fractions in oil phase
+        w_components_vapor = (self.y_components * Mw) / MWo
+
+        # Pore volume
+        V = np.array(self.reservoir.mesh.volume, copy=False)[: self.reservoir.n]
+        phi = np.array(self.reservoir.mesh.poro, copy=False)[: self.reservoir.n]
+
+        # Calculate total mass for each component
+        mass_components = {}
+        mass_oil = {}
+        mass_vapor = {}
+        mass_water = {}
+        for i, component_name in enumerate(component_names):
+            # gas phase mass contribution
+            mass_vapor[component_name] = phi * V * w_components_vapor[i] * sg * rhoV
+
+            # oil phase mass contribution
+            mass_oil[component_name] = (
+                phi * V * so * self.x_components[i] * rho_m_o * Mw[i]
+            )
+
+            # water phase mass conribution
+            try:
+                mass_water[component_name] = (
+                    phi * V * (1 - so - sg) * self.w_components[i] * rho_m_w * Mw[i]
+                )
+            except:
+                mass_water[component_name] = 0
+
+            # Total mass
+            mass_components[component_name] = (
+                mass_vapor[component_name]
+                + mass_oil[component_name]
+                + mass_water[component_name]
+            )
+
+        return mass_components, mass_vapor, mass_oil, mass_water
 
     def output_properties(
         self,

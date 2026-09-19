@@ -949,10 +949,11 @@ class Graph:
                 # Parallel:
                 old_edge_id = self.vertex_to_edge[vertex_from][ii]
                 new_edge_id = edge_id_after_merge[ii]
-                eff_aperture, eff_heat_transfer = (
-                    self.calc_effective_aperture_and_heat_transfer_parallel(
-                        old_edge_id, new_edge_id
-                    )
+                (
+                    eff_aperture,
+                    eff_heat_transfer,
+                ) = self.calc_effective_aperture_and_heat_transfer_parallel(
+                    old_edge_id, new_edge_id
                 )
                 self.apertures[new_edge_id] = eff_aperture
                 self.heat_transfer_mult[new_edge_id] = eff_heat_transfer
@@ -964,15 +965,16 @@ class Graph:
                     self.vertex_to_edge[vertex_from], self.vertex_to_edge[vertex_to]
                 )
                 extended_edge_id = self.vertex_to_edge[vertex_from][ii]
-                eff_aperture, eff_heat_transfer = (
-                    self.calc_effective_aperture_and_heat_transfer_sequential(
-                        new_edge,
-                        collapsed_edge_id,
-                        extended_edge_id,
-                        resistance,
-                        vertex_from,
-                        vertex_to,
-                    )
+                (
+                    eff_aperture,
+                    eff_heat_transfer,
+                ) = self.calc_effective_aperture_and_heat_transfer_sequential(
+                    new_edge,
+                    collapsed_edge_id,
+                    extended_edge_id,
+                    resistance,
+                    vertex_from,
+                    vertex_to,
                 )
                 self.apertures[extended_edge_id] = eff_aperture
                 self.heat_transfer_mult[extended_edge_id] = eff_heat_transfer
