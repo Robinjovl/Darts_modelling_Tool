@@ -51,6 +51,11 @@ void pybind_engine_super_cpu(py::module &m)
 
   recursive_exposer_nc_np_t<engine_super_exposer, py::module, 2, MAX_NC, 3, true> re5;
   re5.expose(m);
+
+  // necessary for models containing 4 phases, e.g., liquid CO2 injection in
+  // depleted reservoirs (vapor CO2, liquid CO2, aqueous, and hydrate or ice)
+  recursive_exposer_nc_np_t<engine_super_exposer, py::module, 2, 3, 4, true> re6;
+  re6.expose(m);
 }
 
 #endif //PYBIND11_ENABLED
