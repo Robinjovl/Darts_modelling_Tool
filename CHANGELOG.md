@@ -1,4 +1,5 @@
 # #.#.# [Future]
+- **PT evaluation for saturation initialization is now inferred automatically.** `PropertyContainer.compute_saturation(state_pt=None, evaluate_PT_from_PHflash=False)` is now `compute_saturation(state_pt=None)`. When `state_pt` is supplied, PH/PS flash objects automatically use their direct PT evaluation path. **Migration:** `compute_saturation(state, evaluate_PT_from_PHflash=True)` → `compute_saturation(state)`.
 
 # 2.0.0 [10-09-2026]
 - Bumped `open-darts-flash` dependency to 0.14.0 (from 0.13.0). The new darts-flash release adds kinetic (solid) phases (`DARTSFlash.set_kinetic_phase()`, `kinetic=True` in `Mixture.set_ice_eos()`/`set_salt_eos()`/`set_h_eos()`), the `lnK_theta` split variable set and the `component_specific_reference_phase` `FlashParams` option; see the [darts-flash changelog](https://gitlab.com/open-darts/darts-flash/-/blob/main/CHANGELOG.md).

@@ -83,8 +83,8 @@ class PropertyContainer:
             self.thermal = True
             self.temperature = None
 
-        # In case of PH-formulation, PT flashes are required for calculating initial distribution (Initialize class)
-        self.evaluate_PT_bool = False  # set to True when PH-formulation but PT-flash needs to be calculated (Initialize)
+        # Set to True during PT-parametrized initialization of PH/PS formulations.
+        self.evaluate_PT_bool = False
 
         # Allocate (empty) evaluators for functions
         self.density_ev = {}
@@ -275,7 +275,7 @@ class PropertyContainer:
             self.x[j][:] = 0
             self.x_mass[j][:] = 0
 
-    def compute_saturation(self, state_pt=None, evaluate_PT_from_PHflash: bool = False):
+    def compute_saturation(self, state_pt=None):
         """
         Compute phase saturations from molar phase fractions and phase densities.
 
@@ -287,18 +287,16 @@ class PropertyContainer:
           separate ``compute_saturation_full()`` method). Runs the flash for the given
           PT-state and computes phase densities before computing saturations.
 
-        :param state_pt: State (pressure, [temperature], compositions) to flash; if
-                          ``None``, uses the already-computed ``self.ph``/``self.dens_m``
-        :param evaluate_PT_from_PHflash: Passed to :meth:`run_flash` when ``state_pt`` is
-                                          given, to evaluate PT-state from a PH-flash object
+        :param state_pt: PT state ``[pressure, compositions..., temperature]`` to flash;
+                         if ``None``, uses the already-computed ``self.ph``/``self.dens_m``
         :returns: Saturation of the first phase, ``self.sat[0]``
         """
         if state_pt is not None:
             pressure, temperature, zc = self.get_state(state_pt)
             self.clean_arrays()
-            self.ph = self.run_flash(
-                pressure, temperature, zc, evaluate_PT=evaluate_PT_from_PHflash
-            )
+            flash_type = getattr(self.flash_ev, "flash_type", 0)
+            evaluate_PT = getattr(flash_type, "value", flash_type) > 0
+            self.ph = self.run_flash(pressure, temperature, zc, evaluate_PT=evaluate_PT)
 
             for j in self.ph:
                 M = np.sum(self.Mw * self.x[j][:])
@@ -346,7 +344,7 @@ class PropertyContainer:
 
         # Evaluates flash, then uses getter for nu and x - for compatibility with DARTS-flash
         if evaluate_PT:
-            # In case of PH-formulation, PT flashes are required for calculating initial distribution
+            # PH/PS initialization supplies temperature, so use the PX object's PT path.
             error_output = self.flash_ev.evaluate(
                 pressure, state_spec_2, zc_norm, evaluate_PT=True
             )
