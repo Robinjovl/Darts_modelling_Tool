@@ -117,9 +117,27 @@ build-linux-tahiti-image-gpu:
                 source /opt/conda/etc/profile.d/conda.sh && \
                 # activate your env
                 conda activate ${CONDA_ENV} && \
+                # open-source build only
+                unset GSELINSOLVERSPATH && \
+                export OD_CMAKE_ARGS='-D ENABLE_BOS_SOLVERS=OFF' && \
                 # _this_ is your real build (--no-cudss: cuDSS not built in CI)
                 ./helper_scripts/build_install_darts_gpu.sh -c -p --no-cudss -j 16
             "
+        - |
+          # Guard: this job must ship an open-source-solver wheel. CMakeCache is
+          # what the build actually configured with, so assert on it rather than
+          # on the flags we passed.
+          if ! grep -qx 'ENABLE_BOS_SOLVERS:BOOL=OFF' build/CMakeCache.txt; then
+            echo "FAILED: apptainer GPU build did not disable the proprietary BOS solvers"
+            grep -n 'ENABLE_BOS_SOLVERS\|BOS_SOLVERS_DIR' build/CMakeCache.txt || true
+            exit 1
+          fi
+          if grep -q '^BOS_SOLVERS_DIR' build/CMakeCache.txt; then
+            echo "FAILED: BOS_SOLVERS_DIR is set for the apptainer GPU build"
+            grep -n '^BOS_SOLVERS_DIR' build/CMakeCache.txt
+            exit 1
+          fi
+          echo "OK: built against the in-tree open-source solvers (no bos / darts-linear-solvers)"
         - |
           WARN_COUNT=$(grep -oP 'OPENDARTS_WARNING_COUNT=\K[0-9]+' make_darts.log 2>/dev/null | tail -1)
           WARN_COUNT=${WARN_COUNT:-0}
