@@ -6,14 +6,12 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
 
 %arguments
     ENABLE_AGENT_TOOLS=0
-    ENABLE_DLS=1
     PY_VER=3.12
     CUDA_ARCH=70
 
 %environment
     source /opt/rh/gcc-toolset-13/enable
     source /opt/conda/etc/profile.d/conda.sh
-    export GSELINSOLVERSPATH=/opt/darts-linear-solvers/build
 
 %post
     # exiting pipeline with a non-zero exit code if any command in a pipeline fails
@@ -58,30 +56,6 @@ From:      nvidia/cuda:12.8.1-devel-rockylinux8
     jq --arg gv "$GCC_VERSION" --arg bd "$BUILD_DATE" --arg cv "$CUDA_VERSION" \
     '.GCC=$gv | .BUILT_AT=$bd | .CUDA=$cv' \
     "$LBL" > "$TMP" && mv "$TMP" "$LBL"
-
-    # install darts-linear-solvers
-    if [ "{{ENABLE_DLS}}" == "1" ]; then
-        # Expect CI to pass:
-        #   DLS_TOKEN  – read-only personal/deploy token (protected variable)
-        DLS_URL="https://oauth2:{{DLS_TOKEN}}@gitlab.tudelft.nl/dvoskov/darts-linear-solvers.git"
-        mkdir -p /opt
-        git clone "${DLS_URL}" /opt/darts-linear-solvers
-        cd /opt/darts-linear-solvers
-        export CUDA_ARCH={{CUDA_ARCH}}
-        ./helper_scripts/build_gpu.sh
-
-        # Place library/include in standart folders and clean up rest
-        mkdir -p build/lib build/include
-        mv *.a ./lib/AMGX/build/*.so ./build/lib/
-        cp -r ./include/* ./lib/bos_linear_solver_lib/include/* ./build/include/ || true
-        find . -mindepth 1 -maxdepth 1 ! -name build -exec rm -rf {} +
-        cd build
-        find . -mindepth 1 -maxdepth 1 ! -name lib ! -name include -exec rm -rf {} +
-        cd ..
-
-        # Ensure path is exported at runtime
-        export GSELINSOLVERSPATH=/opt/darts-linear-solvers/build >> /environment
-    fi
 
     # GitLab and agentic tools
     if [ "{{ENABLE_AGENT_TOOLS}}" == "1" ]; then

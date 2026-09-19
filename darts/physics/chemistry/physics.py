@@ -166,17 +166,26 @@ class ElementBasedReactiveFlow(PhysicsBase):
             )
 
         # Create actual accumulation and flux interpolator:
+        # NOTE: every create_interpolator call passes region=str(region), exactly as
+        # Compositional.set_interpolators does. The on-disk supporting-point cache
+        # name is built from the evaluator CLASS name plus the shape parameters and
+        # this tag, so without it the regions of a multi-region model -- whose
+        # evaluators are all ReservoirOperators/ConversionOperators/PropertyOperators
+        # of identical shape -- hash to ONE cache file and silently serve each other's
+        # points. Regions differ precisely in their property container (kinetics,
+        # rel perm, ...), so those points are not interchangeable.
         self.acc_flux_itor = {}
         self.comp_itor = {}
         self.property_itor = {}
         for region in self.regions:
             self.acc_flux_itor[region], _ = self.create_interpolator(
                 evaluator=self.reservoir_operators[region],
-                timer_name='reservoir interpolation',
+                timer_name=f'reservoir {region} interpolation',
                 n_ops=self.n_ops,
                 platform=platform,
                 algorithm=itor_type,
                 precision=itor_precision,
+                region=str(region),
                 is_barycentric=is_barycentric,
             )
 
@@ -189,6 +198,7 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 platform=platform,
                 algorithm=itor_type,
                 precision=itor_precision,
+                region=str(region),
                 is_barycentric=is_barycentric,
             )
             self.n_comp_itor_ops = n_comp_ops
@@ -202,6 +212,7 @@ class ElementBasedReactiveFlow(PhysicsBase):
                 platform=platform,
                 algorithm=itor_type,
                 precision=itor_precision,
+                region=str(region),
                 is_barycentric=is_barycentric,
             )
             self.n_property_itor_ops = n_property_ops
