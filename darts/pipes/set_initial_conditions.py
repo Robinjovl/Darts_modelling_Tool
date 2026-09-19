@@ -3,9 +3,65 @@ from scipy.integrate import solve_ivp
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.units import *
-from darts.tools.interpolation import linear_interp_extrapolate
 
 g = 9.80665 * meter() / second() ** 2  # Gravitational acceleration
+
+
+def _integrate_hydrostatic_pressure(
+    dpdz,
+    reference_depth: float,
+    reference_pressure: float,
+    target_depths,
+) -> np.ndarray:
+    """
+    Integrate hydrostatic pressure from one reference depth to arbitrary depths.
+
+    Target depths may be unordered, repeated, or non-monotonic along measured
+    depth. This is required for U-shaped pipes, where the same true vertical
+    depth occurs on both the descending and ascending legs.
+
+    :param dpdz: Pressure-gradient callback accepted by ``scipy.solve_ivp``.
+    :param reference_depth: True vertical depth at the pressure reference [m].
+    :param reference_pressure: Pressure at ``reference_depth`` [bar].
+    :param target_depths: True vertical depths at which pressure is requested [m].
+    :return: Pressure at every target depth, in the original target order [bar].
+    """
+    target_depths = np.asarray(target_depths, dtype=float)
+    if target_depths.ndim != 1 or target_depths.size == 0:
+        raise ValueError("target_depths must be a non-empty one-dimensional array")
+    if not np.all(np.isfinite(target_depths)):
+        raise ValueError("target_depths must contain only finite values")
+
+    pressures = np.full(target_depths.shape, float(reference_pressure))
+
+    def integrate(mask: np.ndarray, descending: bool = False) -> None:
+        if not np.any(mask):
+            return
+
+        unique_depths = np.unique(target_depths[mask])
+        integration_depths = unique_depths[::-1] if descending else unique_depths
+        solution = solve_ivp(
+            dpdz,
+            [reference_depth, integration_depths[-1]],
+            [reference_pressure],
+            t_eval=integration_depths,
+        )
+        if not solution.success:
+            raise RuntimeError(
+                f"Hydrostatic pressure integration failed: {solution.message}"
+            )
+
+        solution_pressures = solution.y[0]
+        if descending:
+            integration_depths = integration_depths[::-1]
+            solution_pressures = solution_pressures[::-1]
+        pressures[mask] = np.interp(
+            target_depths[mask], integration_depths, solution_pressures
+        )
+
+    integrate(target_depths > reference_depth)
+    integrate(target_depths < reference_depth, descending=True)
+    return pressures
 
 
 class SingleAmbientTemperature:
@@ -124,40 +180,14 @@ class SingleAmbientTemperature:
 
             return g * density * 1e-5  # Convert Pascal to bar
 
-        p_head1 = self.pipe_head_pressure  # Initial solution for the ODE
-        if (
-            self.pipe_head_segment_index == 0
-        ):  # This is used when the pipe-head pressure is the pressure of the top head
-            TVD_head1 = self.pipe_geom.TVD_segments[
-                0
-            ]  # TVD of the initial solution p_head1
-            TVD_head2 = self.pipe_geom.TVD_segments[-1]
-            TVD_seg_interfaces = self.pipe_geom.TVD_seg_interfaces
-
-            temp = self.ambient_temperature
-            # Seg and face together
-            sol_seg_interfaces = solve_ivp(
-                dpdz, [TVD_head1, TVD_head2], [p_head1], t_eval=TVD_seg_interfaces
-            )
-            p_seg_interfaces = sol_seg_interfaces.y[0]
-
-        elif (
-            self.pipe_head_segment_index == self.pipe_geom.num_segments - 1
-        ):  # This is used when the pipe-head pressure is the pressure of the bottom head
-            TVD_head1 = self.pipe_geom.TVD_segments[
-                -1
-            ]  # TVD of the initial solution (p_head1)
-            TVD_head2 = self.pipe_geom.TVD_segments[0]
-            TVD_seg_interfaces = self.pipe_geom.TVD_seg_interfaces[::-1]
-
-            temp = self.ambient_temperature
-            # Seg and face together
-            sol_seg_interfaces = solve_ivp(
-                dpdz, [TVD_head1, TVD_head2], [p_head1], t_eval=TVD_seg_interfaces
-            )
-            p_seg_interfaces = sol_seg_interfaces.y[0]
-
-            p_seg_interfaces = p_seg_interfaces[::-1]
+        temp = self.ambient_temperature
+        reference_depth = self.pipe_geom.TVD_segments[self.pipe_head_segment_index]
+        p_seg_interfaces = _integrate_hydrostatic_pressure(
+            dpdz,
+            reference_depth,
+            self.pipe_head_pressure,
+            self.pipe_geom.TVD_seg_interfaces,
+        )
 
         self.p_init_segments = p_seg_interfaces[0::2]
         # Pressures at interfaces are calculated. Maybe, they'll be used later.
@@ -304,15 +334,14 @@ class LinearAmbientTemperature:
             "Pipe head temperature is assumed to be the lowest temperature for the initial temperature calculation. "
             "If it's the opposite, change the sign of the temperature gradient."
         )
+        reference_depth = self.pipe_geom.TVD_segments[self.pipe_head_segment_index]
         self.temp_init_segments = np.array(
             self.pipe_head_temperature
-            + self.temp_grad
-            * (self.pipe_geom.TVD_segments - self.pipe_geom.TVD_segments[0])
+            + self.temp_grad * (self.pipe_geom.TVD_segments - reference_depth)
         )
         self.temp_init_interfaces = np.array(
             self.pipe_head_temperature
-            + self.temp_grad
-            * (self.pipe_geom.TVD_interfaces - self.pipe_geom.TVD_segments[0])
+            + self.temp_grad * (self.pipe_geom.TVD_interfaces - reference_depth)
         )  # Temperatures at interfaces are calculated even though they're not used in any part of the code.
 
         temp_init_seg_interfaces = np.zeros(
@@ -342,46 +371,17 @@ class LinearAmbientTemperature:
 
             return g * density * 1e-5  # Convert Pas to bar
 
-        p_head1 = self.pipe_head_pressure  # Initial solution for the ODE
-        if self.pipe_head_segment_index == 0:
-            TVD_head1 = self.pipe_geom.TVD_segments[
-                0
-            ]  # TVD of the initial solution p_head1
-            TVD_head2 = self.pipe_geom.TVD_segments[-1]
-            TVD_seg_interfaces = self.pipe_geom.TVD_seg_interfaces
+        reference_depth = self.pipe_geom.TVD_segments[self.pipe_head_segment_index]
 
-            def temp_func(tvd):
-                return linear_interp_extrapolate(
-                    tvd, TVD_seg_interfaces, self.temp_init_seg_interfaces
-                )
+        def temp_func(tvd):
+            return self.pipe_head_temperature + self.temp_grad * (tvd - reference_depth)
 
-            # Seg and face together
-            sol_seg_interfaces = solve_ivp(
-                dpdz, [TVD_head1, TVD_head2], [p_head1], t_eval=TVD_seg_interfaces
-            )
-            p_seg_interfaces = sol_seg_interfaces.y[0]
-
-        elif self.pipe_head_segment_index == self.pipe_geom.num_segments - 1:
-            TVD_head1 = self.pipe_geom.TVD_segments[-1]
-            TVD_head2 = self.pipe_geom.TVD_segments[
-                0
-            ]  # TVD of the initial solution (p_head1)
-            TVD_seg_interfaces = self.pipe_geom.TVD_seg_interfaces[::-1]
-
-            temp_init_seg_interfaces = self.temp_init_seg_interfaces[::-1]
-
-            def temp_func(tvd):
-                return linear_interp_extrapolate(
-                    tvd, TVD_seg_interfaces, temp_init_seg_interfaces
-                )
-
-            # Seg and face together
-            sol_seg_interfaces = solve_ivp(
-                dpdz, [TVD_head1, TVD_head2], [p_head1], t_eval=TVD_seg_interfaces
-            )
-            p_seg_interfaces = sol_seg_interfaces.y[0]
-
-            p_seg_interfaces = p_seg_interfaces[::-1]
+        p_seg_interfaces = _integrate_hydrostatic_pressure(
+            dpdz,
+            reference_depth,
+            self.pipe_head_pressure,
+            self.pipe_geom.TVD_seg_interfaces,
+        )
 
         self.p_init_segments = p_seg_interfaces[0::2]
         # Pressures at interfaces are calculated. Maybe, they'll be used later.

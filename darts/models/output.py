@@ -1849,23 +1849,9 @@ class Output:
 
         # Store well primary and seconday props in vtp files
         for w_name in self.wells.keys():
-            # If the well has n segments, so n+1 nodes
-            z_nodes = np.concatenate(
-                (
-                    [0],
-                    self.wells[w_name].geometry.TVD_interfaces,
-                    [self.wells[w_name].geometry.pipe_length],
-                )
-            )
-            # Flip depth sign for VTP (positive z in DARTS is downward, while negative z in ParaView is downward)
-            z_nodes = -z_nodes
-            x_nodes = np.zeros_like(
-                z_nodes
-            )  # x is zero since the well is located at the center of the cylindrical grid
-            y_nodes = np.zeros_like(
-                z_nodes
-            )  # y is zero since the well is located at the center of the cylindrical grid
-            nodes_coords = np.column_stack((x_nodes, y_nodes, z_nodes))
+            geometry = self.wells[w_name].geometry
+            nodes_coords = np.array(geometry.xyz_nodes, dtype=float, copy=True)
+            nodes_coords[:, 2] *= -1
 
             self.write_well_output_properties_to_vtp(
                 well_name=w_name,

@@ -37,14 +37,16 @@ class PipeGeometry:
 
         self.pipe_name = pipe_name
 
-        if isinstance(segment_lengths, list):
-            self.segment_lengths = np.array(segment_lengths)
-        elif isinstance(segment_lengths, np.ndarray):
-            self.segment_lengths = segment_lengths
-        else:
+        if not isinstance(segment_lengths, list | np.ndarray):
             raise TypeError(
                 f"segment_lengths of the pipe {pipe_name} is neither a list nor a numpy array!"
             )
+        segment_lengths = np.array(segment_lengths, dtype=float, copy=True)
+        if segment_lengths.ndim != 1 or segment_lengths.size < 2:
+            raise ValueError("A pipe must contain at least two segments")
+        if not np.all(np.isfinite(segment_lengths)) or np.any(segment_lengths <= 0):
+            raise ValueError("All pipe segment lengths must be finite and positive")
+        self.segment_lengths = segment_lengths
 
         if isinstance(inclination_angle, list):
             self.inclination_angle = np.array(inclination_angle)
@@ -54,15 +56,21 @@ class PipeGeometry:
             raise TypeError(
                 f"inclination_angle of the pipe {pipe_name} is neither a list nor a numpy array nor a float!"
             )
+        if not np.all(np.isfinite(self.inclination_angle)):
+            raise ValueError("All pipe inclination angles must be finite")
 
         self.inclination_angle_degree = (
-            inclination_angle  # 0 for a vertical pipe, 90 for a horizontal pipe for now
+            inclination_angle  # 0 for a vertical pipe, 90 for a horizontal pipe
         )
-        self.pipe_ID = pipe_ID
-        self.wall_roughness = wall_roughness
+        self.pipe_ID = float(pipe_ID)
+        self.wall_roughness = float(wall_roughness)
+        if not np.isfinite(self.pipe_ID) or self.pipe_ID <= 0:
+            raise ValueError("pipe_ID must be finite and positive")
+        if not np.isfinite(self.wall_roughness) or self.wall_roughness < 0:
+            raise ValueError("wall_roughness must be finite and non-negative")
 
         # Calculate additional geometry properties
-        self.pipe_length = sum(segment_lengths)
+        self.pipe_length = np.sum(self.segment_lengths)
         self.pipe_IR = self.pipe_ID / 2
         self.pipe_internal_A = math.pi * self.pipe_IR**2
         self.perimeter = 2 * math.pi * self.pipe_IR
@@ -103,14 +111,28 @@ class PipeGeometry:
         self.z_seg_interfaces[1::2] = self.z_interfaces
 
         if isinstance(self.inclination_angle_radian, float):
-            self.TVD_segments = self.z * np.cos(self.inclination_angle_radian)
-            self.TVD_interfaces = self.z_interfaces * np.cos(
+            measured_depth_faces = np.concatenate(
+                ([0.0], np.cumsum(self.segment_lengths))
+            )
+            self.TVD_faces = measured_depth_faces * np.cos(
                 self.inclination_angle_radian
+            )
+            self.TVD_segments = 0.5 * (self.TVD_faces[:-1] + self.TVD_faces[1:])
+            self.TVD_interfaces = self.TVD_faces[1:-1]
+            self.xyz_nodes = np.column_stack(
+                (
+                    measured_depth_faces * np.sin(self.inclination_angle_radian),
+                    np.zeros_like(measured_depth_faces),
+                    self.TVD_faces,
+                )
             )
         elif isinstance(self.inclination_angle_radian, numpy.ndarray):
             # This condition is satisfied when class PETREL_PipeGeometry is used where we could have multiple
             # inclination angles and these variables are evaluated in the constructor of that class.
-            pass
+            if self.inclination_angle_radian.shape != (self.num_interfaces,):
+                raise ValueError(
+                    "An inclination-angle array must contain one value per internal interface"
+                )
 
         self.TVD_seg_interfaces = np.zeros(self.num_segments + self.num_interfaces)
         self.TVD_seg_interfaces[0::2] = self.TVD_segments
@@ -149,7 +171,24 @@ class PETREL_PipeGeometry(PipeGeometry):
         :param verbose: Whether to display extra info about PipeGeometry
         :type verbose: boolean
         """
+        if not isinstance(num_segments, int) or num_segments < 2:
+            raise ValueError("num_segments must be an integer greater than one")
+
         df = pd.read_csv(well_traj_file_name, sep=r"\s+", comment="#")
+        required_columns = {"MD", "X", "Y", "Z"}
+        missing_columns = required_columns - set(df.columns)
+        if missing_columns:
+            raise ValueError(
+                f"Trajectory file is missing columns: {sorted(missing_columns)}"
+            )
+        if len(df) < 2 or not np.all(
+            np.isfinite(df[list(required_columns)].to_numpy(dtype=float))
+        ):
+            raise ValueError(
+                "Trajectory must contain at least two finite survey points"
+            )
+        if np.any(np.diff(df["MD"].to_numpy(dtype=float)) <= 0):
+            raise ValueError("Trajectory MD values must be strictly increasing")
 
         # Get min and max MDs
         min_MD = df["MD"].min()
@@ -158,6 +197,15 @@ class PETREL_PipeGeometry(PipeGeometry):
         # Compute segment length
         segments_length = np.abs(max_MD - min_MD) / num_segments
         segment_lengths = segments_length * np.ones(num_segments)
+
+        face_MDs = np.linspace(min_MD, max_MD, num_segments + 1)
+        face_points = np.array(
+            [
+                [point["X"], point["Y"], point["Z"]]
+                for point in (self._interpolate_point(df, md) for md in face_MDs)
+            ],
+            dtype=float,
+        )
 
         # Initialize list for inclination angles
         inclination_angles_deg = []
@@ -200,6 +248,7 @@ class PETREL_PipeGeometry(PipeGeometry):
         # TVD at each interface: cumulative sum starting from the top
         TVD_faces = np.zeros(num_segments + 1)
         TVD_faces[1:] = np.cumsum(vertical_lengths_segments)
+        self.TVD_faces = TVD_faces
         # Only internal faces: exclude top (0) and bottom (-1)
         self.TVD_interfaces = TVD_faces[1:-1]
 
@@ -225,6 +274,10 @@ class PETREL_PipeGeometry(PipeGeometry):
             wall_roughness,
             verbose,
         )
+
+        # Store the sampled trajectory relative to the first survey point. The
+        # simulator uses positive Z/TVD downward; VTP output flips that sign.
+        self.xyz_nodes = face_points - face_points[0]
 
     def _interpolate_point(self, df, target_MD):
         lower = df[df["MD"] <= target_MD].tail(1)
