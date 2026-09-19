@@ -125,13 +125,11 @@ docker-image-builder:
           echo "Cached image is corrupted, rebuilding: $IMG"
           rm -f -- "$IMG"
           apptainer build --fakeroot \
-            --build-arg CUDA_ARCH="${CUDA_ARCH:-70}" \
             --build-arg ENABLE_AGENT_TOOLS="${ENABLE_AGENT_TOOLS:-0}" \
             "$IMG" .cicd/build-linux/singularity.def;
         fi
       else
         apptainer build --fakeroot \
-          --build-arg CUDA_ARCH="${CUDA_ARCH:-70}" \
           --build-arg ENABLE_AGENT_TOOLS="${ENABLE_AGENT_TOOLS:-0}" \
           "$IMG" .cicd/build-linux/singularity.def;
       fi
