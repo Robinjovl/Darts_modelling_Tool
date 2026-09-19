@@ -61,6 +61,9 @@ class Model(DartsModel):
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
             chop=ChopSpec(mode='local'),
             coupled_well_res_norm_method=2)
+
+        from darts.linear_solvers import SuperLUSolverSpec
+        self.linear_solver.spec = SuperLUSolverSpec()
         self.linear_solver.spec.tolerance = 1e-4
         self.linear_solver.spec.max_iterations = 10
 
