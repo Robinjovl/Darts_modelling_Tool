@@ -274,6 +274,18 @@ class Pipe:
             )
         self.drift_flux_model = drift_flux_model
 
+        inclination_angles = np.asarray(
+            pipe_geometry.inclination_angle_radian, dtype=float
+        )
+        if self.drift_flux_model == "shi_t2well" and np.any(
+            np.cos(inclination_angles) < 0.0
+        ):
+            raise ValueError(
+                "drift_flux_model='shi_t2well' does not support upward-directed "
+                "pipe connections (inclination greater than 90 degrees); use an "
+                "all-inclination closure such as 'tang_2019'"
+            )
+
         if friction_model is None:
             friction_model = (
                 "wang_2014"

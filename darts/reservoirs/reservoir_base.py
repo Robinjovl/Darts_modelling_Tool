@@ -212,9 +212,14 @@ class ReservoirBase:
         - initialize specific potential energy
         """
         for w in self.wells:
-            assert len(w.perforations) > 0, (
-                f"Well {w.name} does not perforate any active reservoir blocks"
-            )
+            if w.ms_type == ms_well.MS_Type.EPM:
+                assert len(w.perforations) > 0, (
+                    f"EPM well {w.name} does not perforate any active reservoir blocks"
+                )
+            elif w.ms_type == ms_well.MS_Type.DFM:
+                assert w.num_segments >= 2, (
+                    f"DFM well {w.name} must contain at least two segments"
+                )
         self.mesh.add_wells(ms_well_vector(self.wells))
 
         # connect perforations of wells (for example, for closed loop geothermal)
