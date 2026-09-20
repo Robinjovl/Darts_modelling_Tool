@@ -233,7 +233,7 @@ class Model(DartsModel):
             # assign initial condition with evaluated initialized properties
             self.physics.set_initial_conditions_from_depth_table(mesh=self.reservoir.mesh, input_depth=init.depths,
                                                                  input_distribution={var: X[:, i] for i, var in
-                                                                                     enumerate(self.physics.vars)})
+                                                                                     enumerate(init.vars)})
         else:
             input_distribution = {self.physics.vars[0]: 100.,
                                   self.physics.vars[1]: 0.99995,
