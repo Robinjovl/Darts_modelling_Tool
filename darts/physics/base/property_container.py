@@ -274,6 +274,37 @@ class PropertyContainer:
         for j in range(self.np_fl):
             self.x[j][:] = 0
 
+    def _evaluate_property(
+        self,
+        evaluator: Any,
+        *args: Any,
+        evaluate_pt: bool | None = None,
+    ) -> Any:
+        """
+        Evaluate a property against the active PT or PH/PS flash result.
+
+        Flash-backed property evaluators keep their own ``evaluate_PT_bool`` flag.
+        Keep it synchronized with the container for PT-parametrized PH/PS
+        initialization, while leaving evaluators without that flag unchanged.
+
+        :param evaluator: Property evaluator to call.
+        :param args: Positional arguments forwarded to ``evaluator.evaluate``.
+        :param evaluate_pt: Explicit flash-result mode, or the container mode when
+                            omitted.
+        :return: Value returned by the property evaluator.
+        """
+        if not hasattr(evaluator, "evaluate_PT_bool"):
+            return evaluator.evaluate(*args)
+
+        previous_mode = evaluator.evaluate_PT_bool
+        evaluator.evaluate_PT_bool = (
+            self.evaluate_PT_bool if evaluate_pt is None else evaluate_pt
+        )
+        try:
+            return evaluator.evaluate(*args)
+        finally:
+            evaluator.evaluate_PT_bool = previous_mode
+
     def compute_saturation(self, state_pt=None, evaluate_PT_from_PHflash: bool = False):
         """
         Compute phase saturations from molar phase fractions and phase densities.
@@ -302,8 +333,12 @@ class PropertyContainer:
             for j in self.ph:
                 M = np.sum(self.Mw * self.x[j][:])
                 self.dens_m[j] = (
-                    self.density_ev[self.phases_name[j]].evaluate(
-                        pressure, temperature, self.x[j, :]
+                    self._evaluate_property(
+                        self.density_ev[self.phases_name[j]],
+                        pressure,
+                        temperature,
+                        self.x[j, :],
+                        evaluate_pt=evaluate_PT_from_PHflash,
                     )
                     / M
                 )
@@ -329,11 +364,13 @@ class PropertyContainer:
         # Compute molar enthalpy of multiphase mixture
         enthalpy = 0.0
         for j in ph:
-            self.enthalpy_ev[self.phases_name[j]].evaluate_PT_bool = True
-            enthalpy += self.nu[j] * self.enthalpy_ev[self.phases_name[j]].evaluate(
-                pressure, temperature, self.x[j, :]
+            enthalpy += self.nu[j] * self._evaluate_property(
+                self.enthalpy_ev[self.phases_name[j]],
+                pressure,
+                temperature,
+                self.x[j, :],
+                evaluate_pt=True,
             )  # kJ/kmol
-            self.enthalpy_ev[self.phases_name[j]].evaluate_PT_bool = False
 
         return enthalpy
 
@@ -414,8 +451,11 @@ class PropertyContainer:
         for j in self.ph:
             M = np.sum(self.Mw[: self.nc_fl] * self.x[j][: self.nc_fl])
 
-            self.dens[j] = self.density_ev[self.phases_name[j]].evaluate(
-                self.pressure, self.temperature, self.x[j, :]
+            self.dens[j] = self._evaluate_property(
+                self.density_ev[self.phases_name[j]],
+                self.pressure,
+                self.temperature,
+                self.x[j, :],
             )  # output in [kg/m3]
             self.dens_m[j] = (
                 self.dens[j] / M
@@ -470,8 +510,10 @@ class PropertyContainer:
         for j in range(self.ns):
             idx = self.np_fl + j
             self.sat[idx] = zc[self.nc_fl + j]
-            self.dens[idx] = self.density_ev[self.phases_name[idx]].evaluate(
-                self.pressure, self.temperature
+            self.dens[idx] = self._evaluate_property(
+                self.density_ev[self.phases_name[idx]],
+                self.pressure,
+                self.temperature,
             )
             self.dens_m[idx] = self.dens[idx] / self.Mw[self.nc_fl + j]
 
@@ -489,8 +531,11 @@ class PropertyContainer:
         :type state: value_vector
         """
         for j in self.ph:
-            self.enthalpy[j] = self.enthalpy_ev[self.phases_name[j]].evaluate(
-                self.pressure, self.temperature, self.x[j, :]
+            self.enthalpy[j] = self._evaluate_property(
+                self.enthalpy_ev[self.phases_name[j]],
+                self.pressure,
+                self.temperature,
+                self.x[j, :],
             )  # kJ/kmol
             self.cond[j] = self.conductivity_ev[self.phases_name[j]].evaluate(
                 self.pressure, self.temperature, self.x[j, :], self.dens[j]
@@ -498,8 +543,11 @@ class PropertyContainer:
 
         for j in range(self.ns):
             idx = self.np_fl + j
-            self.enthalpy[idx] = self.enthalpy_ev[self.phases_name[idx]].evaluate(
-                self.pressure, self.temperature, self.x[0, :]
+            self.enthalpy[idx] = self._evaluate_property(
+                self.enthalpy_ev[self.phases_name[idx]],
+                self.pressure,
+                self.temperature,
+                self.x[0, :],
             )
             self.cond[idx] = self.conductivity_ev[self.phases_name[idx]].evaluate()
 
