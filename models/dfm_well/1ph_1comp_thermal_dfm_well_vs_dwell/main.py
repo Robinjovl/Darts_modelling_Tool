@@ -1,5 +1,5 @@
 """
-Injection of gaseous CO₂ at a constant mass injection rate with a constant specific enthalpy into a well containing
+Injection of gaseous CO₂ at a constant mass rate with a constant specific enthalpy into a well containing
 gaseous CO₂ using a standalone well model to compare its results with those in DWell for a thermal single-phase scenario.
 
 Lessons learned:
@@ -37,21 +37,26 @@ coupled_model.reservoir.grav_acceleration_for_spe = 9.80665
 coupled_model.init()
 coupled_model.set_output()
 
-if 1:
-    output_props = coupled_model.physics.vars + coupled_model.output.properties
-    coupled_model.output.well_output_to_vtp(ith_step=0, output_properties=output_props)  # saves initial well conditions
+output_props = coupled_model.physics.vars + coupled_model.output.properties
+coupled_model.output.well_output_to_vtp(ith_step=0, output_properties=output_props)  # saves initial well conditions
 
-    time_steps = [
-        10 / 24 / 60,   # 10 minutes
-                 ]
+time_steps = [
+    10 / 24 / 60,   # 10 minutes
+             ]
 
-    for i, dt in enumerate(time_steps):
-        coupled_model.run(dt)
-        coupled_model.output.well_output_to_vtp(ith_step=i + 1, output_properties=output_props)
+for i, dt in enumerate(time_steps):
+    coupled_model.run(dt)
+    coupled_model.output.well_output_to_vtp(ith_step=i + 1, output_properties=output_props)
 
-    coupled_model.print_timers()
-else:
-    save_dfm_well_props('I1', coupled_model)
+coupled_model.print_timers()
 
-    plot_heat_map_pcolormesh('I1', coupled_model)
-    plot_heat_map_contourf('I1', coupled_model)
+save_dfm_well_props(
+    'I1',
+    coupled_model,
+    include_overall_composition=True,
+    include_phase_velocities=True,
+    include_phase_rates=True,
+)
+
+# plot_heat_map_pcolormesh('I1', coupled_model, show_plot=False)
+plot_heat_map_contourf('I1', coupled_model, show_plot=False)

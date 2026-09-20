@@ -20,7 +20,10 @@ When the planned work leads to build, install, test, debug, docs, or lint comman
   run tools with the intent of changing EOL style unless the user explicitly
   requests an EOL change.
 - Write Python docstrings with the opening and closing triple quotation marks on separate lines.
-- Document Python input and output arguments with `:param name:`, `:type name:`, `:return:`, and `:rtype:` fields.
+- Put Python argument and return types in function signatures. In docstrings,
+  document behavior, units, constraints, and return meaning with `:param name:`
+  and `:return:` fields only; do not duplicate signature types with `:type` or
+  `:rtype:` fields.
 
 ## Output
 

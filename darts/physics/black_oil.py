@@ -12,7 +12,7 @@ class BlackOil(PhysicsBase):
             else PhysicsBase.StateSpecification.P
         )
         # Build axes_step / axes_origin from idata.obl. The grid is uniform: same z_step
-        # across all composition axes. (idata.obl.* now carries axes_step / axes_origin
+        # across all composition axes. (idata.obl.* carries axes_step / axes_origin
         # — see darts.input.input_data.)
         nc = len(idata.fluid.components)
         nz = nc - 1

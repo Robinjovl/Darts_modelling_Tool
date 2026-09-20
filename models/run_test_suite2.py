@@ -89,12 +89,18 @@ def run_testing(platform, overwrite, heavy_models, test_all_models):
 
         # Tests for drift-flux well model (DFM) (implemented only for CPU)
         accepted_dirs += [
-            # Coupled well-reservoir modeling using DFM wells is
+            # Coupled well-reservoir modeling using a DFM well
             os.path.join('dfm_well', '2ph_1comp_coupled_dfm_well_reservoir'),
-            # Single-phase thermal well flow in a DFM well
+            # Single-phase thermal well flow in a DFM well to benchmark against DWell well simulator
             os.path.join('dfm_well', '1ph_1comp_thermal_dfm_well_vs_dwell'),
-            # Two-phase isothermal well flow in a DFM well
+            # Single-phase thermal well flow in a DFM well to benchmark against OLGA well simulator
+            os.path.join('dfm_well', '1ph_1comp_thermal_dfm_well_vs_olga'),
+            # Two-phase isothermal well flow in a DFM well to benchmark against DWell well simulator
             os.path.join('dfm_well', '2ph_2comp_isothermal_dfm_vertical_well_vs_dwell'),
+            # Two-phase isothermal vertical well flow in a DFM well to benchmark against OLGA well simulator
+            os.path.join('dfm_well', '2ph_2comp_isothermal_dfm_vertical_well_vs_olga'),
+            # Two-phase isothermal inclined well flow in a DFM well to benchmark against OLGA well simulator
+            os.path.join('dfm_well', '2ph_2comp_isothermal_dfm_inclined_well_vs_olga'),
         ]
 
     # Poromechanics. Every case runs the in-tree FS-CPR on the open-source

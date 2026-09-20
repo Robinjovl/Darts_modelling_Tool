@@ -41,7 +41,8 @@ class LivePlotConfig:
 
     # Flag to enable live plotting of well-reservoir property profiles
     enable_well_res_profiles: bool = False
-    # For coupled well-(1D)reservoir, plot reservoir property profile until this reservoir cell
+    # For coupled well-(1D)reservoir, number of reservoir cells in the radial profile.
+    # For grids with multiple layers, the profile is taken from the bottom layer.
     plot_till_this_res_cell: int = 50
 
     # Whether to plot for every Newton iteration or not (i.e., for every time step)
@@ -606,13 +607,24 @@ class DartsModelWithLivePlots(DartsModel):
                 dens_well[i - n_res_blocks, :] = pc.dens[: len(phase_names)]
                 mu_well[i - n_res_blocks, :] = pc.mu[: len(mobile_phase_names)]
 
-            # Plot till this reservoir cell index
+            # Select the radial profile. Structured-grid cells are ordered with
+            # x varying fastest and z slowest, so the final nx*ny cells belong
+            # to the bottom layer when nz > 1.
             till_this_res_cell = self.live_plot_config.plot_till_this_res_cell
-            assert till_this_res_cell <= n_res_blocks
-            p_res = X_np[:i_start_well, p_idx][:till_this_res_cell]
-            x_res = np.cumsum(
-                self.reservoir.global_data['dx'].reshape(-1)[:till_this_res_cell]
+            nx = getattr(self.reservoir, "nx", n_res_blocks)
+            ny = getattr(self.reservoir, "ny", 1)
+            nz = getattr(self.reservoir, "nz", 1)
+            layer_size = nx * ny if nz > 1 else n_res_blocks
+            assert till_this_res_cell <= layer_size, (
+                "Requested number of reservoir cells must not exceed the number of cells in the x direction!"
             )
+            first_res_cell = (nz - 1) * nx * ny if nz > 1 else 0
+            res_cell_indices = np.arange(
+                first_res_cell, first_res_cell + till_this_res_cell
+            )
+            p_res = X_np[res_cell_indices, p_idx]
+            dx = np.asarray(self.reservoir.global_data['dx']).flatten(order='F')
+            x_res = np.cumsum(dx[res_cell_indices])
 
             # Preallocate phase props arrays
             T_res = np.zeros(till_this_res_cell)
@@ -620,15 +632,17 @@ class DartsModelWithLivePlots(DartsModel):
             dens_res = np.zeros((till_this_res_cell, len(phase_names)))
             mu_res = np.zeros((till_this_res_cell, len(mobile_phase_names)))
 
-            for i in range(till_this_res_cell):
-                state = np.asarray(self.physics.engine.X)[i * n_vars : (i + 1) * n_vars]
+            for profile_idx, res_cell_idx in enumerate(res_cell_indices):
+                state = np.asarray(self.physics.engine.X)[
+                    res_cell_idx * n_vars : (res_cell_idx + 1) * n_vars
+                ]
                 pc.evaluate(state)
                 if self.physics.thermal:
                     pc.evaluate_thermal(state)
-                T_res[i] = pc.temperature - 273.15
-                sat_res[i, :] = pc.sat[: len(phase_names)]
-                dens_res[i, :] = pc.dens[: len(phase_names)]
-                mu_res[i, :] = pc.mu[: len(mobile_phase_names)]
+                T_res[profile_idx] = pc.temperature - 273.15
+                sat_res[profile_idx, :] = pc.sat[: len(phase_names)]
+                dens_res[profile_idx, :] = pc.dens[: len(phase_names)]
+                mu_res[profile_idx, :] = pc.mu[: len(mobile_phase_names)]
 
             # Do not show the phase properties if the phases still don't exist
             dens_well[dens_well <= 0.0] = np.nan

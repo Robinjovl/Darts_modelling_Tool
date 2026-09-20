@@ -227,11 +227,15 @@ class StructReservoir(ReservoirBase):
         segment_direction: str = "z_axis",
         skin: float = 0.0,
         ms_epm: bool = None,
-        with_peaceman_for_coupled_well_reservoir: bool = False,
+        with_peaceman_for_dfm_well: bool = False,
         verbose: bool = False,
     ):
         """
         Function to add a perforation to the well
+
+        :param with_peaceman_for_dfm_well: If True and the well is of type DFM, it uses the modified Darcy's law based
+                                           on the Peaceman model. Otherwise, it uses the Darcy's law without modification.
+        :type with_peaceman_for_dfm_well: bool
         """
         well = self.get_well(well_name)
 
@@ -241,8 +245,8 @@ class StructReservoir(ReservoirBase):
             assert well_seg_idx is None, (
                 "If the well is of the EPM type, well_seg_idx must not be specified!"
             )
-            assert with_peaceman_for_coupled_well_reservoir is False, (
-                "Coupled well-reservoir can be used only if the well type if DFM!"
+            assert with_peaceman_for_dfm_well is False, (
+                "with_peaceman_for_dfm_well can be True only if the well type is DFM!"
             )
             res_block_local, wi, wid = self.discretizer.calc_well_index(
                 i,
@@ -259,16 +263,14 @@ class StructReservoir(ReservoirBase):
             assert ms_epm is None, (
                 "If the well is of the DFM type, ms_epm must not be specified!"
             )
-            res_block_local, wi, wid = (
-                self.discretizer.calc_well_index_for_coupled_well_reservoir(
-                    i,
-                    j,
-                    k,
-                    well_diameter=well_diameter,
-                    segment_direction=segment_direction,
-                    with_peaceman=with_peaceman_for_coupled_well_reservoir,
-                    skin=skin,
-                )
+            res_block_local, wi, wid = self.discretizer.calc_well_index_for_dfm_well(
+                i,
+                j,
+                k,
+                well_diameter=well_diameter,
+                segment_direction=segment_direction,
+                with_peaceman=with_peaceman_for_dfm_well,
+                skin=skin,
             )
 
         if well_index is None:
@@ -284,6 +286,7 @@ class StructReservoir(ReservoirBase):
             else:
                 well_block = 0
         elif well.ms_type == ms_well.MS_Type.DFM:
+            # Subtract 2 from the specified well_seg_idx because the index is 1-based here and DFM wells don't have the ghost cell.
             well_block = well_seg_idx - 2
 
         # add completion only if target block is active
@@ -324,9 +327,11 @@ class StructReservoir(ReservoirBase):
                         f'Neglected duplicate perforation for well {well.name} to block [{i:d}, {j:d}, {k:d}]'
                     )
                     return
+
             well.perforations = well.perforations + [
                 (well_block, res_block_local, well_index, well_indexD)
             ]
+
             if verbose:
                 print(
                     f'Added perforation for well {well.name} to block {res_block_local:d} '

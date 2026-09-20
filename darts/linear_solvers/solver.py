@@ -751,8 +751,8 @@ class LinearSolver:
         indices = np.asarray(model.physics.engine.jac_cols)
         data = np.asarray(model.physics.engine.jac_vals)
 
-        rhs = np.array(model.physics.engine.RHS, copy=False)
-        sol = np.array(model.physics.engine.dX, copy=False)
+        rhs = np.asarray(model.physics.engine.RHS)
+        sol = np.asarray(model.physics.engine.dX)
 
         nonzeros = indices.size
 

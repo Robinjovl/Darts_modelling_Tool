@@ -2,7 +2,7 @@ import numpy as np
 
 from darts.models.darts_model import DartsModel
 from darts.pipes.viz.plot_live import DartsModelWithLivePlots
-from darts.engines import sim_params, ms_well, value_vector, well_control_iface
+from darts.engines import ms_well, value_vector, well_control_iface
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
@@ -75,6 +75,9 @@ class Model(DartsModel):
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
             chop=ChopSpec(mode='local'),
             coupled_well_res_norm_method=2)
+
+        from darts.linear_solvers import SuperLUSolverSpec
+        self.linear_solver.spec = SuperLUSolverSpec()
         self.linear_solver.spec.tolerance = 1e-4
         self.linear_solver.spec.max_iterations = 10
 
@@ -181,7 +184,7 @@ class Model(DartsModel):
         for j, ph in enumerate(phases_names):
             property_container.output_props['s' + ph] = lambda jj=j: property_container.sat[jj]
             property_container.output_props['rho' + ph] = lambda jj=j: property_container.dens[jj]
-            property_container.output_props['miu' + ph] = lambda jj=j: property_container.mu[jj]
+            property_container.output_props['mu' + ph] = lambda jj=j: property_container.mu[jj]
             for i, comp in enumerate(components_names):
                 property_container.output_props[f'x{comp}_in_{ph}_mass'] = lambda jj=j, ii=i: property_container.x_mass[jj, ii]
 

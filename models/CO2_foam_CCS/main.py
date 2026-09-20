@@ -4,7 +4,7 @@ import os
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 
-redirect_darts_output('binary.log')
+redirect_darts_output('run.log')
 
 n = Model()
 n.init(discr_type="tpfa")

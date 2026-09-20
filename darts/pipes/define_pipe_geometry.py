@@ -12,7 +12,7 @@ class PipeGeometry:
         pipe_name: str,
         segment_lengths,
         pipe_ID: float,
-        inclination_angle=0,
+        inclination_angle=0.0,
         wall_roughness: float = 5e-5 * meter(),
         verbose: bool = False,
     ):

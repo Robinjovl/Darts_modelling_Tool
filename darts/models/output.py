@@ -15,7 +15,6 @@ from darts.engines import (
     well_control_iface,
 )
 from darts.physics.base.operator_evaluator import PropertyOperators
-from darts.physics.base.physics import PhysicsBase
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 from darts.tools.vtk_io import write_lines_vtp, write_pvd
 
@@ -227,7 +226,7 @@ class Output:
         self.compression_level = compression_level
         self.precision_map = {"d": np.float64, "s": np.float32}
 
-        self.thermal = self.physics.state_spec >= PhysicsBase.StateSpecification.PT
+        self.thermal = self.physics.state_spec >= self.physics.StateSpecification.PT
         self.properties = list(self.physics.property_containers[0].output_props.keys())
         if len(self.properties) < self.physics.n_ops:
             self.n_ops = self.physics.n_ops
@@ -297,7 +296,7 @@ class Output:
           also benefit from parallel batch evaluation.
         """
 
-        if not isinstance(self.physics, PhysicsBase):
+        if not hasattr(self.physics, "property_containers"):
             return
 
         descriptor = OutputPropertyDescriptor(

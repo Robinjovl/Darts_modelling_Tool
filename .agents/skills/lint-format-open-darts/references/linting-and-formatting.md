@@ -140,8 +140,10 @@ pre-commit autoupdate
    "preserve"`).
 5. Write Python docstrings with opening and closing triple quotation marks on
    separate lines.
-6. Document Python input and output arguments with `:param name:`, `:type name:`,
-   `:return:`, and `:rtype:` fields.
+6. Put Python argument and return types in function signatures. In docstrings,
+   document behavior, units, constraints, and return meaning with `:param name:`
+   and `:return:` fields only; do not duplicate signature types with `:type` or
+   `:rtype:` fields.
 7. New Python directories added to the project must be included in the `files`
    glob in `.pre-commit-config.yaml`.
 8. Preserve existing file line endings. Do not manually normalize CRLF/LF style,

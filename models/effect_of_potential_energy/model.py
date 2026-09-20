@@ -13,6 +13,10 @@ from darts.physics.properties.viscosity import Fenghour1998, Islam2012
 from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
 from darts.nonlinear_solvers import NewtonSolver
 
+from dartsflash.libflash import EoSParams, EoS
+from dartsflash.components import CompData
+from dartsflash.mixtures import DARTSFlash, Mixture
+
 
 class Model(DartsModel):
     def __init__(self):
@@ -64,9 +68,6 @@ class Model(DartsModel):
 
     def set_physics(self):
         """Physical properties"""
-        from dartsflash.libflash import EoSParams, EoS
-        from dartsflash.components import CompData
-        from dartsflash.mixtures import DARTSFlash, Mixture
         # Fluid components, ions and solid
         components = ["H2O", "CO2"]
         self.components = components

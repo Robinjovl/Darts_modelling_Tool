@@ -2,7 +2,6 @@ import numpy as np
 
 from darts.engines import index_vector, value_vector
 from darts.physics.base.operator_evaluator import PropertyOperators
-from darts.physics.base.physics import PhysicsBase
 
 
 class Initialize:
@@ -106,8 +105,8 @@ class Initialize:
         self.primary_specs = {}
         self.secondary_specs = {}
 
-        # If PH-formulation, evaluate_PT method must be called in the evaluate() during Initialize
-        self.evaluate_PT_bool = physics.state_spec > PhysicsBase.StateSpecification.PT
+        # PH/PS initialization is PT-parametrized, so request PT evaluation.
+        self.evaluate_PT_bool = physics.state_spec > physics.StateSpecification.PT
 
         # Create PropertyOperators and interpolators
         self.etor = PropertyOperators(
@@ -147,7 +146,7 @@ class Initialize:
         :returns: property_array
         :rtype: np.ndarray
         """
-        # Set flag to evaluate_PT in case of PH/PS-formulation
+        # Use direct PT evaluation on the PX-flash for PH/PS formulations.
         pc = self.physics.property_containers[region_idx]
         pc.evaluate_PT_bool = self.evaluate_PT_bool
 
@@ -160,7 +159,7 @@ class Initialize:
             value_vector(Xi), state_idxs, values, derivs
         )
 
-        # Switch evaluate_PT boolean off to flash.evaluate() during simulation again
+        # Restore native PH/PS evaluation for the simulation operators.
         pc.evaluate_PT_bool = False
 
         return values, derivs

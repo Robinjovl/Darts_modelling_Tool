@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 
 from darts.models.darts_model import DartsModel
-from darts.pipes.save_results import save_dfm_well_props
 from darts.tools.hdf5_tools import load_hdf5_to_dict
 
 
@@ -77,7 +76,6 @@ def plot_well_1d_reservoir_line_graphs(
     phase_labels = phase_labels or {}
     property_labels = property_labels or {}
 
-    save_dfm_well_props(well_name, coupled_model)
     well_props_file_path = os.path.join(
         coupled_model.output_folder, f"dfm_well_props_{well_name}.pkl"
     )
@@ -254,7 +252,7 @@ def _plot_property_profile(
     ax.grid(True, which="both", linestyle=":", linewidth=0.6, alpha=0.6)
 
     ax.legend(
-        fontsize=6,
+        fontsize=7,
         loc=legend_loc,
         title="Report steps",
         title_fontsize=10,
@@ -421,8 +419,8 @@ def _get_property_axis_label(prop_name, phase_labels, property_labels):
     if prop_name.startswith("rho") and len(prop_name) > 3:
         phase = prop_name[3:]
         return rf"{_get_phase_label(phase, phase_labels)} density [kg/m$^3$]"
-    if prop_name.startswith("miu") and len(prop_name) > 3:
-        phase = prop_name[3:]
+    if prop_name.startswith("mu") and len(prop_name) > 2:
+        phase = prop_name[2:]
         return f"{_get_phase_label(phase, phase_labels)} viscosity [cP]"
     if prop_name.startswith("s") and len(prop_name) > 1:
         phase = prop_name[1:]

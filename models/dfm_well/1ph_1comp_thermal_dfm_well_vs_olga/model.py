@@ -1,7 +1,7 @@
 import numpy as np
 
 from darts.models.darts_model import DartsModel
-from darts.engines import sim_params, ms_well, value_vector, well_control_iface
+from darts.engines import ms_well, value_vector, well_control_iface
 from darts.nonlinear_solvers import NewtonSolver, ChopSpec
 
 from darts.reservoirs.struct_radial_reservoir import StructRadialReservoir
@@ -11,14 +11,18 @@ from darts.physics.eos_physics import EoSPhysics
 from darts.physics.base.property_container import PropertyContainer
 
 from darts.physics.properties.basic import PhaseRelPerm, ConstFunc
-from darts.physics.properties.viscosity import Fenghour1998, Islam2012
-from darts.physics.properties.eos_properties import EoSDensity, EoSEnthalpy
+from darts.physics.properties.viscosity import Fenghour1998
+from darts.physics.properties.eos_properties import EoSDensity
 
 from darts.pipes.define_pipe_geometry import PipeGeometry
 from darts.pipes.set_initial_conditions import LinearAmbientTemperature
-from darts.pipes.ramp_up_rate import RampUpRate
 from darts.pipes.pipe import Pipe
 from darts.pipes.interfacial_tension import IFT_multicomponent_MCM
+from darts.pipes.linear_dfm_well_ipr import (
+    LinearDFMWellIPRHook,
+    LinearDFMWellIPRConnection,
+    PI_Type,
+)
 
 
 class Model(DartsModel):
@@ -34,7 +38,7 @@ class Model(DartsModel):
         self.zero = 1e-10
         self.set_physics()
 
-        self.ts_control.dt_first = 0.0001/(24*60*60)
+        self.ts_control.dt_first = 1/(24*60*60)
         self.ts_control.dt_min = 1e-15
         self.ts_control.dt_mult = 2
         self.ts_control.dt_max = 2/(24*60*60)
@@ -48,6 +52,9 @@ class Model(DartsModel):
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3, max_iterations=10,
             chop=ChopSpec(mode='local'),
             coupled_well_res_norm_method=2)
+
+        from darts.linear_solvers import SuperLUSolverSpec
+        self.linear_solver.spec = SuperLUSolverSpec()
         self.linear_solver.spec.tolerance = 1e-4
         self.linear_solver.spec.max_iterations = 10
 
@@ -139,7 +146,7 @@ class Model(DartsModel):
         for j, ph in enumerate(phases_names):
             property_container.output_props['s' + ph] = lambda jj=j: property_container.sat[jj]
             property_container.output_props['rho' + ph] = lambda jj=j: property_container.dens[jj]
-            property_container.output_props['miu' + ph] = lambda jj=j: property_container.mu[jj]
+            property_container.output_props['mu' + ph] = lambda jj=j: property_container.mu[jj]
             for i, comp in enumerate(components_names):
                 property_container.output_props[f'x{comp}_in_{ph}_mass'] = lambda jj=j, ii=i: property_container.x_mass[jj, ii]
 
@@ -181,16 +188,48 @@ class Model(DartsModel):
         # Well with a single perforation
         well_1_perforated_segment = well_1_geometry.num_segments
 
-        # Reservoir cell sizes for the Peaceman model
-        self.reservoir.discretizer.len_cell_xdir[0, 0, 0] = 50.0
-        self.reservoir.discretizer.len_cell_ydir[0, 0, 0] = 50.0
-        self.reservoir.discretizer.len_cell_zdir[0, 0, 0] = 50.0
-        well_index = 0.0  # Zero well index since perforation is treated with a well injectivity/productivity index instead
         self.reservoir.add_perforation(well_1_name, res_cell_idx=(1, 1, 1), well_seg_idx=well_1_perforated_segment,
-                                       well_diameter=well_1_geometry.pipe_ID, with_peaceman_for_coupled_well_reservoir=True,
-                                       well_index=well_index)
+                                       well_diameter=well_1_geometry.pipe_ID,
+                                       well_index=0.0,
+                                       well_indexD=0.0,
+                                       )
+
+        self.rhs_flux_hooks.append(
+            LinearDFMWellIPRHook(
+                self,
+                [
+                    LinearDFMWellIPRConnection(
+                        well_name=well_1_name,
+                        perforation_index=len(
+                            self.reservoir.get_well(well_1_name).perforations
+                        )
+                        - 1,
+                        pi=1e5,
+                        pi_type=PI_Type.MASS,
+                        ipr_pressure_offset=0.0,
+                    )
+                ],
+            )
+        )
 
     def set_well_controls(self):
+        """
+        For the DFM well, the mass-rate control is imposed through the top DFM connection velocity:
+        R = rate_ctrl_operator * phase_velocity * pipe_area - target_rate
+        When dt is extremely small, the momentum accumulation term makes the phase velocity almost fixed by the
+        previous state. Its sensitivity to pressure is very small, so Newton needs a huge wellhead pressure update
+        to force the requested rate.
+
+        In this example:
+        target_inj_rate = 2 * 24 * 3600  # 172800 kg/day
+        If first_ts = 0.0001 / (24 * 60 * 60)  # 0.0001 s
+        At the initial state, the DFM velocity gives only about 0.0566 kg/day, but the control asks for 172800 kg/day.
+        With dt = 0.0001 s, the linearized pressure jump needed is around 1267 bar, so the Newton update shoots outside
+        max_p=500. Then timestep cutting makes the problem worse, because smaller dt reduces velocity sensitivity even more.
+
+        The fix in this example is to avoid starting the rate-control case with such a tiny timestep. For example,
+        use a first timestep on the order of 1 second instead.
+        """
         inj_composition = []
         w = self.reservoir.wells[0]
 

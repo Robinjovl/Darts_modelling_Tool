@@ -46,6 +46,7 @@ def plot_line_graphs(
     # Get well geometry info
     well_geom = coupled_model.wells[well_name].geometry
     num_segments = well_geom.num_segments
+    num_interfaces = well_geom.num_interfaces
 
     # Get physics info
     pc = coupled_model.physics.property_containers[0]
@@ -111,69 +112,73 @@ def plot_line_graphs(
 
     # %% Component/components overall mole fraction profile
 
-    for comp_idx in range(num_components):
-        # Update figure counter for name of the saved figure
-        figure_counter += 1
-        # Initialize the plot
-        plt.figure(figsize=(12, 6))
+    if "z" in data_frame.columns:
+        for comp_idx in range(num_components):
+            # Update figure counter for name of the saved figure
+            figure_counter += 1
+            # Initialize the plot
+            plt.figure(figsize=(12, 6))
 
-        for ts_counter in list_of_time_steps:
-            z_profile = data_frame["z"][
-                ts_counter * num_segments : (ts_counter + 1) * num_segments
-            ]
-            z_profile = z_profile.tolist()
-            z_c_profile = np.zeros(num_segments)
-            for segment_idx in range(num_segments):
-                try:
-                    z_c_profile[segment_idx] = z_profile[segment_idx][comp_idx]
-                except:
-                    z_c_profile[segment_idx] = 1 - sum(z_profile[segment_idx])
-            plt.plot(z_c_profile, list(range(num_segments)), color=colors[ts_counter])
+            for ts_counter in list_of_time_steps:
+                z_profile = data_frame["z"][
+                    ts_counter * num_segments : (ts_counter + 1) * num_segments
+                ]
+                z_profile = z_profile.tolist()
+                z_c_profile = np.zeros(num_segments)
+                for segment_idx in range(num_segments):
+                    try:
+                        z_c_profile[segment_idx] = z_profile[segment_idx][comp_idx]
+                    except:
+                        z_c_profile[segment_idx] = 1 - sum(z_profile[segment_idx])
+                plt.plot(
+                    z_c_profile, list(range(num_segments)), color=colors[ts_counter]
+                )
 
-        # Reverse the y-axis
-        plt.gca().invert_yaxis()
-        plt.ylim(num_segments - 1, 0)
+            # Reverse the y-axis
+            plt.gca().invert_yaxis()
+            plt.ylim(num_segments - 1, 0)
 
-        # Set the y-axis ticks
-        plt.gca().yaxis.set_major_locator(MultipleLocator(1))
-        # Set the x-axis ticks
-        # plt.gca().xaxis.set_major_locator(MultipleLocator(0.1))
+            # Set the y-axis ticks
+            plt.gca().yaxis.set_major_locator(MultipleLocator(1))
+            # Set the x-axis ticks
+            # plt.gca().xaxis.set_major_locator(MultipleLocator(0.1))
 
-        # Set x-axis limits
-        # plt.xlim(4, 12)
+            # Set x-axis limits
+            # plt.xlim(4, 12)
 
-        # Add labels and legend
-        plt.xlabel(
-            components_names[comp_idx] + " overall mole fraction [-]", fontsize=14
-        )
-        plt.ylabel("Segment index", fontsize=14)
-        plt.title(
-            components_names[comp_idx]
-            + " overall mole fraction profile/profiles along the wellbore",
-            fontsize=14,
-            fontweight="bold",
-        )
-        # plt.legend(loc='upper left', bbox_to_anchor=(1, 1), ncol=2)
-        # plt.tight_layout(rect=[0, 0, 0.99, 1])  # Adjust the size of the axes to make space for the legend
-        # plt.legend(loc='upper right')
+            # Add labels and legend
+            plt.xlabel(
+                components_names[comp_idx] + " overall mole fraction [-]", fontsize=14
+            )
+            plt.ylabel("Segment index", fontsize=14)
+            plt.title(
+                components_names[comp_idx]
+                + " overall mole fraction profile/profiles along the wellbore",
+                fontsize=14,
+                fontweight="bold",
+            )
+            # plt.legend(loc='upper left', bbox_to_anchor=(1, 1), ncol=2)
+            # plt.tight_layout(rect=[0, 0, 0.99, 1])  # Adjust the size of the axes to make space for the legend
+            # plt.legend(loc='upper right')
 
-        plt.tight_layout()
-        file_address = os.path.join(
-            main_dir,
-            f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.png",
-        )
-        plt.savefig(file_address)
-        if show_plot:
-            plt.show()
+            plt.tight_layout()
+            file_address = os.path.join(
+                main_dir,
+                f"{figure_counter}- {components_names[comp_idx]} overall mole fraction.png",
+            )
+            plt.savefig(file_address)
+            if show_plot:
+                plt.show()
 
-        plt.close()
+            plt.close()
 
     # %% Temperature profile
 
-    # Update figure counter for name of the saved figure
-    figure_counter += 1
     # Temperature profile is plotted if the system is non-isothermal.
     if coupled_model.physics.property_containers[0].thermal:
+        # Update figure counter for name of the saved figure
+        figure_counter += 1
+
         # Initialize the plot
         plt.figure(figsize=(12, 6))
 
@@ -411,18 +416,16 @@ def plot_line_graphs(
     plt.figure(figsize=(12, 6))
 
     for ts_counter in list_of_time_steps:
-        miuG_profile = data_frame["miuG"][
+        muG_profile = data_frame["muG"][
             ts_counter * num_segments : (ts_counter + 1) * num_segments
         ]
 
         # Apply a mask to hide values equal to zero
         threshold = 0  # Set your threshold here
-        miuG_profile_masked = np.ma.masked_where(
-            miuG_profile == threshold, miuG_profile
-        )
+        muG_profile_masked = np.ma.masked_where(muG_profile == threshold, muG_profile)
 
         plt.plot(
-            miuG_profile_masked, list(range(num_segments)), color=colors[ts_counter]
+            muG_profile_masked, list(range(num_segments)), color=colors[ts_counter]
         )
 
     # Reverse the y-axis
@@ -457,18 +460,16 @@ def plot_line_graphs(
     plt.figure(figsize=(12, 6))
 
     for ts_counter in list_of_time_steps:
-        miuL_profile = data_frame["miuL"][
+        muL_profile = data_frame["muL"][
             ts_counter * num_segments : (ts_counter + 1) * num_segments
         ]
 
         # Apply a mask to hide values equal to zero
         threshold = 0  # Set your threshold here
-        miuL_profile_masked = np.ma.masked_where(
-            miuL_profile == threshold, miuL_profile
-        )
+        muL_profile_masked = np.ma.masked_where(muL_profile == threshold, muL_profile)
 
         plt.plot(
-            miuL_profile_masked, list(range(num_segments)), color=colors[ts_counter]
+            muL_profile_masked, list(range(num_segments)), color=colors[ts_counter]
         )
 
     # Reverse the y-axis
@@ -494,3 +495,72 @@ def plot_line_graphs(
         plt.show()
 
     plt.close()
+
+    def plot_interface_profile(prop_name, x_label, title, file_name):
+        nonlocal figure_counter
+        if prop_name not in data_frame.columns:
+            return
+
+        figure_counter += 1
+        plt.figure(figsize=(12, 6))
+
+        for ts_counter in list_of_time_steps:
+            profile = data_frame[prop_name][
+                ts_counter * num_segments : (ts_counter + 1) * num_segments
+            ].to_numpy(dtype=float)
+            profile = profile[:-1] / (24 * 60 * 60)
+            plt.plot(profile, list(range(num_interfaces)), color=colors[ts_counter])
+
+        plt.gca().invert_yaxis()
+        plt.ylim(num_interfaces - 1, 0)
+        plt.gca().yaxis.set_major_locator(MultipleLocator(1))
+
+        plt.xlabel(x_label, fontsize=14)
+        plt.ylabel("Interface index", fontsize=14)
+        plt.title(title, fontsize=14, fontweight="bold")
+
+        plt.tight_layout()
+        file_address = os.path.join(main_dir, f"{figure_counter}- {file_name}.png")
+        plt.savefig(file_address)
+        if show_plot:
+            plt.show()
+
+        plt.close()
+
+    # %% Phase velocity profiles
+
+    plot_interface_profile(
+        "vG",
+        "Gas velocity [m/s]",
+        "Gas velocity profile/profiles along the wellbore",
+        "Gas velocity",
+    )
+    plot_interface_profile(
+        "vL",
+        "Liquid velocity [m/s]",
+        "Liquid velocity profile/profiles along the wellbore",
+        "Liquid velocity",
+    )
+
+    # %% Phase rate profiles
+
+    PHASE_RATE_PLOT_SPECS = (
+        ("molar", "molar", "kmol/s"),
+        ("mass", "mass", "kg/s"),
+        ("volumetric", "volumetric", "m$^3$/s"),
+    )
+    for rate_type, rate_label, unit in PHASE_RATE_PLOT_SPECS:
+        for phase_name in pc.phases_name:
+            prop_name = f"phase_{rate_type}_rate_{phase_name}"
+            if phase_name == "G":
+                phase_display = "Gas"
+            elif phase_name == "L":
+                phase_display = "Liquid"
+            else:
+                phase_display = phase_name
+            plot_interface_profile(
+                prop_name,
+                f"{phase_display} {rate_label} rate [{unit}]",
+                f"{phase_display} {rate_label} rate profile/profiles along the wellbore",
+                f"{phase_display} {rate_label} rate",
+            )

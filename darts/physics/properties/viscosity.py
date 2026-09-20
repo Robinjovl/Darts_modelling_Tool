@@ -183,3 +183,54 @@ class Islam2012(MaoDuan2009):
             mu_brine *= 1.0 + 4.65 * x[self.CO2_idx] ** 1.0134
 
         return mu_brine
+
+
+class AirViscositySutherland(Viscosity):
+    """
+    Air viscosity from Sutherland's law.
+
+    Sutherland's law is an empirical relation for dilute gas viscosity. It is
+    used here with constants for air and is therefore an air-specific
+    viscosity evaluator. It is appropriate for ideal or near-ideal air at low
+    to moderate pressures. It should not be used for liquids, dense gases, or
+    near-critical conditions without validation.
+
+    The evaluator uses
+
+        mu = mu_ref * (T / T_ref)**1.5 * (T_ref + S) / (T + S)
+
+    with air constants mu_ref = 1.716e-5 Pa.s, T_ref = 273 K, and S = 111 K.
+
+    References:
+    Sutherland, W. (1893). The viscosity of gases and molecular force.
+    Philosophical Magazine Series 5, 36(223), 507-531.
+
+    COMSOL CFD Module User's Guide, Sutherland's Law, Table 6-2:
+    https://doc.comsol.com/5.5/doc/com.comsol.help.cfd/cfd_ug_fluidflow_high_mach.08.27.html
+
+    White, F. M. (2006). Viscous Fluid Flow, 3rd ed. McGraw-Hill.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.mu_ref_pa_s = 1.716e-5
+        self.t_ref_k = 273.0
+        self.sutherland_k = 111.0
+
+    def evaluate(self, pressure, temperature, x, rho):
+        """
+        Evaluate air viscosity.
+
+        :param pressure: Pressure [bar]. Sutherland's law used here is independent of pressure.
+        :param temperature: Temperature [K].
+        :param x: Phase composition. This air-specific evaluator ignores composition.
+        :param rho: Phase density [kg/m3]. This evaluator ignores density.
+        :returns: Dynamic viscosity [cP].
+        """
+        mu_pa_s = (
+            self.mu_ref_pa_s
+            * (temperature / self.t_ref_k) ** 1.5
+            * (self.t_ref_k + self.sutherland_k)
+            / (temperature + self.sutherland_k)
+        )
+        return mu_pa_s * 1000.0

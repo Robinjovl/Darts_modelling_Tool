@@ -1023,7 +1023,7 @@ class StructDiscretizer:
 
         return self.global_to_local[res_block], well_index, well_indexD
 
-    def calc_well_index_for_coupled_well_reservoir(
+    def calc_well_index_for_dfm_well(
         self,
         i,
         j,
@@ -1034,12 +1034,12 @@ class StructDiscretizer:
         skin=None,
     ):
         """
-        Calculate the perforation transmissibility for perforations in coupled well-reservoir models.
+        Calculate the well index for the perforation (geometric part of perforation transmissibility) for a DFM well.
         The difference between this function and the function `calc_well_index` is that this function has two methods
         for perforation transmissibility calculation:
             1- The modified form of the Darcy's law using the Peaceman model
             2- The Darcy's law without any modification (used if the reservoir block connected to the perforation is
-            small.
+               small.
 
         :param i: "human" counting of x-location coordinate of perforation
         :type i: int
@@ -1086,9 +1086,7 @@ class StructDiscretizer:
                 dy = self.len_cell_ydir[i, j, k]
                 dz = self.len_cell_zdir[i, j, k]
             else:
-                raise Exception(
-                    "Coupled well-reservoir model does not support CPG reservoirs!"
-                )
+                raise Exception("The DFM well model does not support CPG reservoirs!")
             kx = self.perm_x_cell[i, j, k]
             ky = self.perm_y_cell[i, j, k]
             _kz = self.perm_z_cell[i, j, k]
@@ -1132,7 +1130,7 @@ class StructDiscretizer:
                     well_indexD = geom_coef
             else:
                 raise Exception(
-                    "Coupled well-reservoir model does not support non-z-axis segments!"
+                    "The DFM well model does not support non-z-axis segments!"
                 )
 
             well_index = well_index * StructDiscretizer.darcy_constant

@@ -143,7 +143,7 @@ def run_case(config: CaseConfig, platform: str = "cpu") -> Model:
     output_dir = Path(config.output_folder)
     output_dir.mkdir(parents=True, exist_ok=True)
     figure_dir = output_dir / "figure"
-    redirect_darts_output(str(output_dir / "binary.log"))
+    redirect_darts_output(str(output_dir / "run.log"))
 
     model = build_model(config, platform=platform)
     print(f"Pore volume = {model.pore_volume()}")

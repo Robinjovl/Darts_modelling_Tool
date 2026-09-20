@@ -26,6 +26,14 @@ def _append_unique(items, new_items):
             items.append(item)
 
 
+def _get_phase_rate_prop_names(phase_names):
+    return [
+        f"phase_{rate_type}_rate_{phase_name}"
+        for rate_type in ("molar", "mass", "volumetric")
+        for phase_name in phase_names
+    ]
+
+
 def _flatten_property_values(values):
     flattened_values = values.reshape(-1)
     try:
@@ -39,10 +47,12 @@ def _get_requested_well_properties(
     output_properties,
     include_overall_composition,
     include_phase_velocities,
+    include_phase_rates,
 ):
     pc = coupled_model.physics.property_containers[0]
     primary_prop_names = list(coupled_model.physics.vars)
     secondary_prop_names = list(pc.output_props)
+    phase_rate_prop_names = _get_phase_rate_prop_names(pc.phases_name)
 
     if output_properties is None:
         requested_props = []
@@ -59,14 +69,10 @@ def _get_requested_well_properties(
     if output_properties is None and "temperature" not in requested_props:
         requested_props.append("temperature")
 
-    include_overall_composition = include_overall_composition or "z" in requested_props
-    include_phase_velocities = include_phase_velocities or any(
-        prop in requested_props for prop in ("vG", "vL")
-    )
-
     known_props = set(primary_prop_names)
     known_props.update(secondary_prop_names)
     known_props.update(["temperature", "z", "vG", "vL"])
+    known_props.update(phase_rate_prop_names)
     unknown_props = [prop for prop in requested_props if prop not in known_props]
     if unknown_props:
         raise KeyError("Unknown well output properties: " + ", ".join(unknown_props))
@@ -87,7 +93,88 @@ def _get_requested_well_properties(
         requested_secondary_props,
         include_overall_composition,
         include_phase_velocities,
+        include_phase_rates,
     )
+
+
+def _pad_interface_values(interface_values, num_segments):
+    segment_values = np.full(num_segments, np.nan, dtype=float)
+    segment_values[: len(interface_values)] = interface_values
+    return segment_values
+
+
+def _get_upstream_interface_phase_props(segment_props, phase_velocity_matrix):
+    num_interfaces, num_phases = phase_velocity_matrix.shape
+    interface_props = np.zeros((num_interfaces, num_phases), dtype=float)
+
+    for i in range(num_interfaces):
+        for j in range(num_phases):
+            if phase_velocity_matrix[i, j] >= 0:
+                interface_props[i, j] = segment_props[i, j]
+            else:
+                interface_props[i, j] = segment_props[i + 1, j]
+
+    return interface_props
+
+
+def _evaluate_segment_phase_props(states, pc):
+    num_segments = states.shape[0]
+    saturations = np.zeros((num_segments, pc.nph), dtype=float)
+    mass_densities = np.zeros((num_segments, pc.nph), dtype=float)
+    molar_densities = np.zeros((num_segments, pc.nph), dtype=float)
+
+    for i, state in enumerate(states):
+        pc.evaluate(state)
+        saturations[i, :] = pc.sat
+        mass_densities[i, :] = pc.dens
+        molar_densities[i, :] = pc.dens_m
+
+    return saturations, mass_densities, molar_densities
+
+
+def _get_phase_velocity_matrix(pipe, phase_velocities):
+    num_interfaces = pipe.geometry.num_interfaces
+    nph = pipe.physics.nph
+    phase_velocity_matrix = np.zeros((num_interfaces, nph), dtype=float)
+
+    vG = phase_velocities[:num_interfaces]
+    vL = phase_velocities[num_interfaces:]
+    phase_velocity_matrix[:, pipe.g_idx] = vG
+    if pipe.n_mobile_phases == 2:
+        phase_velocity_matrix[:, pipe.l_idx] = vL
+    elif pipe.n_mobile_phases == 3:
+        phase_velocity_matrix[:, pipe.la_idx] = vL
+        phase_velocity_matrix[:, pipe.lb_idx] = vL
+
+    return phase_velocity_matrix
+
+
+def _get_phase_rates(pipe, states, phase_velocities, pc):
+    saturations, mass_densities, molar_densities = _evaluate_segment_phase_props(
+        states, pc
+    )
+    phase_velocity_matrix = _get_phase_velocity_matrix(pipe, phase_velocities)
+    interface_saturations = _get_upstream_interface_phase_props(
+        saturations, phase_velocity_matrix
+    )
+    interface_mass_densities = _get_upstream_interface_phase_props(
+        mass_densities, phase_velocity_matrix
+    )
+    interface_molar_densities = _get_upstream_interface_phase_props(
+        molar_densities, phase_velocity_matrix
+    )
+
+    volumetric_rates = (
+        pipe.geometry.pipe_internal_A * interface_saturations * phase_velocity_matrix
+    )
+    mass_rates = volumetric_rates * interface_mass_densities
+    molar_rates = volumetric_rates * interface_molar_densities
+
+    return {
+        "molar": molar_rates,
+        "mass": mass_rates,
+        "volumetric": volumetric_rates,
+    }
 
 
 def save_dfm_well_props(
@@ -97,6 +184,7 @@ def save_dfm_well_props(
     *,
     include_overall_composition: bool = False,
     include_phase_velocities: bool = False,
+    include_phase_rates: bool = False,
 ):
     """
     Store selected primary variables and phase properties of the well segments of the specified DFM well in a pickle
@@ -110,7 +198,11 @@ def save_dfm_well_props(
                               variables and PropertyContainer.output_props are saved.
     :param include_overall_composition: If True, save the full overall composition
                                         vector in column "z".
-    :param include_phase_velocities: If True, evaluate and save vG and vL.
+    :param include_phase_velocities: If True, evaluate and save vG and vL
+                                     [m/day].
+    :param include_phase_rates: If True, evaluate and save phase molar rates
+                                [kmol/day], phase mass rates [kg/day], and phase
+                                volumetric rates [m3/day].
 
     """
     # Find the index of the well in the cpp well list
@@ -147,11 +239,13 @@ def save_dfm_well_props(
         output_prop_names,
         include_overall_composition,
         include_phase_velocities,
+        include_phase_rates,
     ) = _get_requested_well_properties(
         coupled_model,
         output_properties,
         include_overall_composition,
         include_phase_velocities,
+        include_phase_rates,
     )
 
     data = {
@@ -189,14 +283,21 @@ def save_dfm_well_props(
         for prop_name, prop_values in output_prop_data.items():
             data[prop_name] = _flatten_property_values(prop_values)
 
-    if include_phase_velocities:
-        coupled_model.wells[well_name].is_first_first_iter = True
+    if include_phase_velocities or include_phase_rates:
+        pipe = coupled_model.wells[well_name]
+        pipe.reset_pipe_state()
         iter_counter = 0
         flag = 1
         time_from_zero = np.insert(time, 0, 0.0)
         time_step_sizes = np.diff(time_from_zero)
-        vG_data = np.empty((num_timesteps, num_segments), dtype=float)
-        vL_data = np.empty((num_timesteps, num_segments), dtype=float)
+        if include_phase_velocities:
+            vG_data = np.empty((num_timesteps, num_segments), dtype=float)
+            vL_data = np.empty((num_timesteps, num_segments), dtype=float)
+        if include_phase_rates:
+            phase_rate_data = {
+                prop_name: np.empty((num_timesteps, num_segments), dtype=float)
+                for prop_name in _get_phase_rate_prop_names(pc.phases_name)
+            }
 
         for i, dt in enumerate(time_step_sizes):
             if i == 0:
@@ -207,15 +308,35 @@ def save_dfm_well_props(
                 Xn_ms_well = X_well_segments[i - 1, :, :].flatten()
             X_ms_well = X_well_segments[i, :, :].flatten()
 
-            phase_velocities = coupled_model.wells[well_name].eval_phase_vels(
+            phase_velocities = pipe.eval_phase_vels(
                 Xn_ms_well, X_ms_well, dt, time_from_zero[i], iter_counter, flag
             )
-            mid = int(len(phase_velocities) / 2)
-            vG_data[i, :] = np.append(phase_velocities[:mid], np.nan)
-            vL_data[i, :] = np.append(phase_velocities[mid:], np.nan)
+            num_interfaces = pipe.geometry.num_interfaces
+            if include_phase_velocities:
+                vG_data[i, :] = _pad_interface_values(
+                    phase_velocities[:num_interfaces], num_segments
+                )
+                vL_data[i, :] = _pad_interface_values(
+                    phase_velocities[num_interfaces:], num_segments
+                )
+            if include_phase_rates:
+                phase_rates = _get_phase_rates(
+                    pipe, X_well_segments[i, :, :], phase_velocities, pc
+                )
+                for rate_type, rates in phase_rates.items():
+                    for phase_idx, phase_name in enumerate(pc.phases_name):
+                        prop_name = f"phase_{rate_type}_rate_{phase_name}"
+                        phase_rate_data[prop_name][i, :] = _pad_interface_values(
+                            rates[:, phase_idx], num_segments
+                        )
+            pipe.accept_pipe_state()
 
-        data["vG"] = vG_data.reshape(-1)
-        data["vL"] = vL_data.reshape(-1)
+        if include_phase_velocities:
+            data["vG"] = vG_data.reshape(-1)
+            data["vL"] = vL_data.reshape(-1)
+        if include_phase_rates:
+            for prop_name, prop_values in phase_rate_data.items():
+                data[prop_name] = prop_values.reshape(-1)
 
     data_frame = pd.DataFrame(data)
 

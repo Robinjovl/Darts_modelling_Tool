@@ -5,7 +5,7 @@ from darts.engines import redirect_darts_output
 from model import Model
 
 
-redirect_darts_output('binary.log')
+redirect_darts_output('run.log')
 
 m = Model(logspace=True)
 m.init()

@@ -1,4 +1,5 @@
 # #.#.# [Future]
+- **PT evaluation for saturation initialization is now inferred automatically.** `PropertyContainer.compute_saturation(state_pt=None, evaluate_PT_from_PHflash=False)` is now `compute_saturation(state_pt=None)`. When `state_pt` is supplied, PH/PS flash objects automatically use their direct PT evaluation path. **Migration:** `compute_saturation(state, evaluate_PT_from_PHflash=True)` → `compute_saturation(state)`.
 
 # 2.0.0 [10-09-2026]
 - Bumped `open-darts-flash` dependency to 0.14.0 (from 0.13.0). The new darts-flash release adds kinetic (solid) phases (`DARTSFlash.set_kinetic_phase()`, `kinetic=True` in `Mixture.set_ice_eos()`/`set_salt_eos()`/`set_h_eos()`), the `lnK_theta` split variable set and the `component_specific_reference_phase` `FlashParams` option; see the [darts-flash changelog](https://gitlab.com/open-darts/darts-flash/-/blob/main/CHANGELOG.md).
@@ -185,9 +186,12 @@
 - Output:
   - output which was using `vtk` module, has been changed to use `meshio` (struct reservoir, cpg reservoir) and darts/tools/vtk_io.py (writing vtp files with dynamic results along well trajectories)
 - Package:
-  - removed `vtk` dependency ([!314](https://gitlab.com/open-darts/open-darts/-/merge_requests/314))
-  - added "viz" option to install `vtk` and `pyvista`; added "all" option to install "viz" and "solvers" groups. Usage pip install open-darts[viz].
+  - remove `vtk` dependency ([!314](https://gitlab.com/open-darts/open-darts/-/merge_requests/314))
+  - add "viz" option to install `vtk` and `pyvista`; added "all" option to install "viz" and "solvers" groups. Usage pip install open-darts[viz].
 - Switched to Python 3.11 by default (CI/CD pipelines, ReadTheDocs build, `ruff` lint target, and the recommended developer environment); Python 3.10–3.13 remain supported and tested.
+- Add OLGA-style linear IPR support for controlling injectivity/productivity of DFM wells ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
+- Add `IdealGasDensity` to `darts/physics/properties/density.py` ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
+- Add `AirViscositySutherland` to `darts/physics/properties/viscosity.py` ([!305](https://gitlab.com/open-darts/open-darts/-/merge_requests/305))
 - OBL, interpolation and supporting-point cache ([!313](https://gitlab.com/open-darts/open-darts/-/merge_requests/313)):
   - The adaptive OBL interpolators are now **unbounded**: hypercubes are keyed on a signed multi-index instead of a packed integer bounded by `(axes_min, axes_max)`, so the grid is defined only by a per-axis origin and step and grows on demand wherever the solver lands. Out-of-window queries return bit-exact linear extrapolation with no clamping. The engines correspondingly drop OBL-window state clipping; Newton now clips only to the physical simplex `[0, 1] ± sim_eps`. (Requires recompiling the C++/pybind interpolators and engines.)
   - Rewrote the boundary-extrapolation support-point selection for robustness (rank-revealing modified-Gram–Schmidt selection with an `np.linalg.lstsq` fallback and a warning on singular supports, instead of silently least-squaring a singular system). `OperatorsBase.dz` may now be a scalar or a per-axis vector (stored as a NumPy array); uniform grids reproduce prior results exactly.
