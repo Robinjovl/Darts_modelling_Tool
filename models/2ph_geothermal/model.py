@@ -1,4 +1,5 @@
 from darts.reservoirs.struct_reservoir import StructReservoir
+from darts.reservoirs.cpg_reservoir import read_float_array, read_int_array
 from darts.models.darts_model import DartsModel
 from darts.engines import value_vector, ms_well
 from darts.nonlinear_solvers import NewtonSolver
@@ -31,23 +32,105 @@ class Model(DartsModel):
         self.ts_control.dt_first = 0.0001
         self.ts_control.dt_min = 1e-15
         self.ts_control.dt_mult = 2
-        self.ts_control.dt_max = 5
-        self.ts_control.runtime = 1000
+        self.ts_control.dt_max = 50
+        self.ts_control.runtime = 5000
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
         self.linear_solver.spec.tolerance = 1e-6
 
     def set_reservoir(self):
-        nx = 500
-        self.reservoir = StructReservoir(self.timer, nx=nx, ny=1, nz=1, dx=10.0, dy=10.0, dz=1, permx=300, permy=300,
-                                         permz=300, hcap=2200, rcond=181.44, poro=0.2, depth=100)
+        full_shape = (242, 264, 41)
+        grid_start = (0, 0, 0)
+        nx, ny, nz = (60, 100, 40)
+        n_cells = np.prod(full_shape)
+        assert all(index >= 0 for index in grid_start)
+        assert all(
+            start + size <= limit
+            for start, size, limit in zip(grid_start, (nx, ny, nz), full_shape)
+        ), f'Grid section {grid_start} + {(nx, ny, nz)} exceeds {full_shape}'
+
+        facies_file = r'C:\Users\Acer\OneDrive\Documenten\GEIP\Facies_model.GRDECL'
+        permeability_file = r'C:\Users\Acer\OneDrive\Documenten\GEIP\Permeability.GRDECL'
+        porosity_file = r'C:\Users\Acer\OneDrive\Documenten\GEIP\Porosity_effective.GRDECL'
+
+        def read_property(filename, keyword, dtype=float):
+            if dtype is int:
+                values = read_int_array(filename, keyword)
+            else:
+                values = read_float_array(filename, keyword)
+            assert values.size == n_cells, (
+                f'{keyword}: expected {n_cells} values, got {values.size}'
+            )
+            full_values = values.reshape(full_shape, order='F')
+            i_start, j_start, k_start = grid_start
+            return full_values[
+                i_start:i_start + nx,
+                j_start:j_start + ny,
+                k_start:k_start + nz,
+            ]
+
+        self.facies = read_property(facies_file, 'FACIES', dtype=int)
+        permeability = read_property(
+            permeability_file,
+            'COPY_OF_COPY_OF_PERMEABILITY',
+        )
+        poro = read_property(
+            porosity_file,
+            'COPY_OF_COPY_(2)_OF_EFF_POROSITY',
+        ) /100
+        depth = 100.0 + np.broadcast_to(
+            np.arange(nz, dtype=float)[None, None, :],
+            (nx, ny, nz),
+        ).copy().flatten(order='F')
+        actnum = (
+            (self.facies > 0)
+            & (poro > 0.0)
+            & (permeability > 0.0)
+        ).astype(np.int32)
+
+        self.reservoir = StructReservoir(
+            self.timer,
+            nx=nx,
+            ny=ny,
+            nz=nz,
+            dx=10.0,
+            dy=10.0,
+            dz=1.0,
+            permx=permeability,
+            permy=permeability,
+            permz=0.1 * permeability,
+            hcap=2200,
+            rcond=181.44,
+            poro=poro,
+            depth=depth,
+            actnum=actnum,
+        )
+        self.reservoir.global_data['facies'] = self.facies
         return
 
     def set_wells(self):
-        self.reservoir.add_well("I1")
-        self.reservoir.add_perforation("I1", res_cell_idx=(1, 1, 1))
-        self.reservoir.add_well("P1")
-        self.reservoir.add_perforation("P1", res_cell_idx=(self.reservoir.nx, 1, 1))
+        active_cells = np.argwhere(self.reservoir.actnum > 0)
+        assert active_cells.size > 0, 'The selected grid contains no active cells'
+
+        def nearest_active_cell(target):
+            distances = np.sum((active_cells - np.asarray(target)) ** 2, axis=1)
+            cell = active_cells[np.argmin(distances)]
+            return tuple((cell + 1).tolist())
+
+        def add_vertical_completion(well_name, target_i, target_j):
+            perforated = set()
+            for layer in range(self.reservoir.nz):
+                cell = nearest_active_cell((target_i, target_j, layer))
+                if cell not in perforated:
+                    self.reservoir.add_perforation(well_name, res_cell_idx=cell)
+                    perforated.add(cell)
+            return sorted(perforated, key=lambda cell: cell[2])
+
+        self.reservoir.add_well("I")
+        injector_cells = add_vertical_completion("I", 19, 29)
+        self.reservoir.add_well("P")
+        producer_cells = add_vertical_completion("P", 19, 79)
+        self.well_paths = {"I": injector_cells, "P": producer_cells}
 
     def set_physics(self):
         """Physical properties"""
@@ -95,12 +178,23 @@ class Model(DartsModel):
         from darts.engines import well_control_iface
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
-                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.MOLAR_RATE,
-                                               is_inj=True, target=5., phase_name='wat', inj_composition=self.inj[:-1],
-                                               inj_temp=self.inj[-1])
+                self.physics.set_well_controls(
+                    wctrl=w.control,
+                    control_type=well_control_iface.VOLUMETRIC_RATE,
+                    is_inj=True,
+                    target=20.0,
+                    phase_name='wat',
+                    inj_composition=self.inj[:-1],
+                    inj_temp=self.inj[-1],
+                )
             else:
-                self.physics.set_well_controls(wctrl=w.control, control_type=well_control_iface.BHP,
-                                               is_inj=False, target=180.)
+                self.physics.set_well_controls(
+                    wctrl=w.control,
+                    control_type=well_control_iface.VOLUMETRIC_RATE,
+                    is_inj=False,
+                    target=-20.0,
+                    phase_name='wat',
+                )
 
 
 class ModelProperties(PropertyContainer):

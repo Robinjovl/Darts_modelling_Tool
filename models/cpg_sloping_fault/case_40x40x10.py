@@ -36,3 +36,4 @@ def input_data_case_40x40x10_regions(idata: InputData, case: str):
     idata.perm_geo_units = [0.01, 0.2, 0.1, 0.15]  # mD
     idata.rcond_geo_units = [190, 280, 210, 250]  # kJ/m/day/K
     idata.hcap_geo_units = [2100, 2400, 2200, 2350]  # kJ/m3/K
+
