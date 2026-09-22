@@ -1,10 +1,13 @@
 import numpy as np
 import pandas as pd
 import os
+import shutil
+from datetime import datetime
 
 from model import Model
 from darts.engines import value_vector, redirect_darts_output
 import matplotlib.pyplot as plt
+from darts.tools.vtk_io import write_lines_vtp
 from darts.physics.base.operator_evaluator import PropertyOperators as props
 
 def plot_sol(n):
@@ -53,11 +56,25 @@ if __name__ == '__main__':
     n = Model()
     # n.params.linear_type = n.params.linear_solver_t.cpu_superlu
     n.init()
-    n.set_output()
+    output_folder = os.path.join(
+        'output', f'run_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+    )
+    print(f'Writing simulation output to {output_folder}')
+    n.set_output(output_folder=output_folder)
+    vtk_dir = os.path.join(n.output_folder, 'vtk_files')
+    if os.path.isdir(vtk_dir):
+        try:
+            shutil.rmtree(vtk_dir)
+        except PermissionError as error:
+            print(f'Previous VTK files are locked; keeping them: {error}')
     time_data_filename = n.output_folder + "/darts_time_data.pkl"
 
     if True:
-        n.run(1000)
+        report_step = 50.0
+        for _ in range(100):
+            pressure_fraction = min(n.physics.engine.t / 5000.0, 1.0)
+            n.set_well_controls(pressure_fraction=pressure_fraction)
+            n.run(report_step, save_reservoir_data=True)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run_python(300, restart_dt=1e-3)
         n.print_timers()
@@ -93,7 +110,94 @@ if __name__ == '__main__':
         for i in range(nc if nc < 3 else 3):
             plt.subplot(330 + (i + 1))
             plt.plot(Xn[i:nb*nc:nc])
-        plt.savefig('out.png')
+        plt.savefig(os.path.join(n.output_folder, 'out.png'))
+
+        pressure = Xn[0:nb * nc:nc]
+        temperature = Xn[1:nb * nc:nc]
+        nx, ny, nz = n.reservoir.nx, n.reservoir.ny, n.reservoir.nz
+        global_to_local = np.asarray(n.reservoir.discretizer.global_to_local)
+        pressure_global = np.full(nx * ny * nz, np.nan)
+        active_global = np.flatnonzero(global_to_local >= 0)
+        pressure_global[active_global] = pressure[global_to_local[active_global]]
+        pressure_grid = pressure_global.reshape((nx, ny, nz), order='F')
+        temperature_global = np.full(nx * ny * nz, np.nan)
+        temperature_global[active_global] = temperature[global_to_local[active_global]]
+        temperature_grid = temperature_global.reshape((nx, ny, nz), order='F')
+        layer = nz // 2
+        pressure_slice = pressure_grid[:, :, layer].T
+        temperature_slice = temperature_grid[:, :, layer].T
+        pressure_change_slice = pressure_slice - 200.0
+        temperature_difference_slice = temperature_slice - 350.0
+        well_markers = {
+            well_name: (
+                np.mean([cell[0] for cell in cells]) - 1,
+                np.mean([cell[1] for cell in cells]) - 1,
+            )
+            for well_name, cells in n.well_paths.items()
+            if cells
+        }
+
+        pressure_limit = np.nanmax(np.abs(pressure_change_slice))
+        fig, axes = plt.subplots(1, 3, figsize=(20, 6), constrained_layout=True)
+        pressure_plot = axes[0].imshow(pressure_slice, origin='lower', aspect='auto')
+        axes[0].set_title(f'Pressure at layer {layer + 1} [bar]')
+        axes[0].set_xlabel('X cell')
+        axes[0].set_ylabel('Y cell')
+        fig.colorbar(pressure_plot, ax=axes[0], label='Pressure [bar]')
+        pressure_change_plot = axes[1].imshow(
+            pressure_change_slice,
+            origin='lower',
+            aspect='auto',
+            cmap='coolwarm',
+            vmin=-pressure_limit,
+            vmax=pressure_limit,
+        )
+        axes[1].set_title(f'Pressure change at layer {layer + 1} [bar]')
+        axes[1].set_xlabel('X cell')
+        axes[1].set_ylabel('Y cell')
+        fig.colorbar(pressure_change_plot, ax=axes[1], label='Change from 200 bar')
+        temperature_plot = axes[2].imshow(
+            temperature_difference_slice,
+            origin='lower',
+            aspect='auto',
+            cmap='coolwarm',
+            vmin=-50.0,
+            vmax=0.0,
+        )
+        axes[2].set_title(f'Temperature difference at layer {layer + 1} [K]')
+        axes[2].set_xlabel('X cell')
+        axes[2].set_ylabel('Y cell')
+        fig.colorbar(temperature_plot, ax=axes[2], label='Change from 350 K')
+        for axis in axes:
+            for well_name, (x_cell, y_cell) in well_markers.items():
+                axis.plot(x_cell, y_cell, 'wo', markeredgecolor='black')
+                axis.text(x_cell + 1, y_cell + 1, well_name, color='black', weight='bold')
+        fig.savefig(os.path.join(n.output_folder, 'pressure_map.png'), dpi=150)
+        plt.close(fig)
+
+        try:
+            vtk_times, vtk_data = n.output.output_properties(n.sol_filepath)
+            pressure_name = n.physics.vars[0]
+            vtk_data['pressure_change_x10'] = 10.0 * (
+                vtk_data[pressure_name] - 200.0
+            )
+            n.output.output_to_vtk(output_data=[vtk_times, vtk_data])
+        except (MemoryError, PermissionError, ValueError) as error:
+            print(f'VTK export skipped: {error}')
+
+        os.makedirs(vtk_dir, exist_ok=True)
+        for well_name, cells in n.well_paths.items():
+            nodes = np.array([
+                ((cell[0] - 0.5) * n.reservoir.global_data['dx'][cell[0] - 1, cell[1] - 1, cell[2] - 1],
+                 (cell[1] - 0.5) * n.reservoir.global_data['dy'][cell[0] - 1, cell[1] - 1, cell[2] - 1],
+                 -cell[2])
+                for cell in cells
+            ])
+            if len(nodes) > 1:
+                write_lines_vtp(
+                    os.path.join(vtk_dir, f'{well_name}.vtp'),
+                    nodes,
+                )
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')

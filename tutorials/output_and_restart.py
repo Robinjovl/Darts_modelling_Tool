@@ -231,3 +231,5 @@ for mdir in accepted_dirs:
         # assert np.isclose(X, X_restarted, rtol=0, atol=0.1).all()
 
     os.chdir(models_dir)
+
+# %%
