@@ -32,8 +32,8 @@ class Model(DartsModel):
         self.ts_control.dt_first = 0.0001
         self.ts_control.dt_min = 1e-15
         self.ts_control.dt_mult = 2
-        self.ts_control.dt_max = 50
-        self.ts_control.runtime = 5000
+        self.ts_control.dt_max = 10
+        self.ts_control.runtime = 1000
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
         self.linear_solver.spec.tolerance = 1e-6
@@ -78,6 +78,8 @@ class Model(DartsModel):
             porosity_file,
             'COPY_OF_COPY_(2)_OF_EFF_POROSITY',
         ) /100
+        self.permeability = permeability
+        self.poro = poro
         depth = 100.0 + np.broadcast_to(
             np.arange(nz, dtype=float)[None, None, :],
             (nx, ny, nz),
@@ -98,7 +100,7 @@ class Model(DartsModel):
             dz=1.0,
             permx=permeability,
             permy=permeability,
-            permz=0.1 * permeability,
+            permz=permeability,
             hcap=2200,
             rcond=181.44,
             poro=poro,
@@ -126,10 +128,26 @@ class Model(DartsModel):
                     perforated.add(cell)
             return sorted(perforated, key=lambda cell: cell[2])
 
+        def highest_quality_cell(target_i, target_j, radius=8):
+            target = np.array([target_i, target_j, 0])
+            distances = np.linalg.norm(active_cells[:, :2] - target[:2], axis=1)
+            nearby = active_cells[distances <= radius]
+            if nearby.size == 0:
+                nearby = active_cells
+            quality = (
+                self.poro[nearby[:, 0], nearby[:, 1], nearby[:, 2]]
+                * self.permeability[nearby[:, 0], nearby[:, 1], nearby[:, 2]]
+            )
+            cell = nearby[np.argmax(quality)]
+            return tuple((cell + 1).tolist())
+
         self.reservoir.add_well("I")
-        injector_cells = add_vertical_completion("I", 19, 29)
+        injector_cells = add_vertical_completion("I", 30, 45)
         self.reservoir.add_well("P")
-        producer_cells = add_vertical_completion("P", 19, 79)
+        producer_anchor = highest_quality_cell(30, 55)
+        producer_cells = add_vertical_completion(
+            "P", producer_anchor[0] - 1, producer_anchor[1] - 1
+        )
         self.well_paths = {"I": injector_cells, "P": producer_cells}
 
     def set_physics(self):
@@ -160,7 +178,7 @@ class Model(DartsModel):
         thermal = True
         state_spec = PhysicsBase.StateSpecification.PT if thermal else PhysicsBase.StateSpecification.P
         self.physics = PhysicsBase(components, phases, self.timer, state_spec=state_spec,
-                                     axes_step=[2.5, 0.5],  # p [bar], T [K]
+                                     axes_step=[5.0, 1.0],  # p [bar], T [K]
                                      axes_origin=[0.0, 273.15],
                                      epsilon_z=epsilon, extrapolation_flag=True)
         self.physics.add_property_region(property_container)
@@ -174,26 +192,26 @@ class Model(DartsModel):
         return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
                                                               input_distribution=input_distribution)
 
-    def set_well_controls(self):
+    def set_well_controls(self, pressure_fraction=1.0):
         from darts.engines import well_control_iface
+        injector_bhp = 200.0 + 50.0 * pressure_fraction
+        producer_bhp = 200.0 - 50.0 * pressure_fraction
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(
                     wctrl=w.control,
-                    control_type=well_control_iface.VOLUMETRIC_RATE,
+                    control_type=well_control_iface.BHP,
                     is_inj=True,
-                    target=20.0,
-                    phase_name='wat',
+                    target=injector_bhp,
                     inj_composition=self.inj[:-1],
                     inj_temp=self.inj[-1],
                 )
             else:
                 self.physics.set_well_controls(
                     wctrl=w.control,
-                    control_type=well_control_iface.VOLUMETRIC_RATE,
+                    control_type=well_control_iface.BHP,
                     is_inj=False,
-                    target=-20.0,
-                    phase_name='wat',
+                    target=producer_bhp,
                 )
 
 
