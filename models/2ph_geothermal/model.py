@@ -41,13 +41,19 @@ class Model(DartsModel):
     def set_reservoir(self):
         full_shape = (242, 264, 41)
         grid_start = (0, 0, 0)
-        nx, ny, nz = (60, 100, 40)
+        nx, ny, reservoir_nz = (60, 100, 40)
+        burden_layers = 5
+        burden_layer_dz = 20.0
+        reservoir_dz = 1.0
+        nz = reservoir_nz + 2 * burden_layers
         n_cells = np.prod(full_shape)
         assert all(index >= 0 for index in grid_start)
         assert all(
             start + size <= limit
-            for start, size, limit in zip(grid_start, (nx, ny, nz), full_shape)
-        ), f'Grid section {grid_start} + {(nx, ny, nz)} exceeds {full_shape}'
+            for start, size, limit in zip(
+                grid_start, (nx, ny, reservoir_nz), full_shape
+            )
+        ), f'Grid section {grid_start} + {(nx, ny, reservoir_nz)} exceeds {full_shape}'
 
         facies_file = r'C:\Users\Acer\OneDrive\Documenten\GEIP\Facies_model.GRDECL'
         permeability_file = r'C:\Users\Acer\OneDrive\Documenten\GEIP\Permeability.GRDECL'
@@ -66,7 +72,7 @@ class Model(DartsModel):
             return full_values[
                 i_start:i_start + nx,
                 j_start:j_start + ny,
-                k_start:k_start + nz,
+                k_start:k_start + reservoir_nz,
             ]
 
         self.facies = read_property(facies_file, 'FACIES', dtype=int)
@@ -78,10 +84,57 @@ class Model(DartsModel):
             porosity_file,
             'COPY_OF_COPY_(2)_OF_EFF_POROSITY',
         ) /100
+        burden_poro = 1e-5
+        burden_perm = 1e-5
+        permeability = np.concatenate(
+            [
+                np.full((nx, ny, burden_layers), burden_perm),
+                permeability,
+                np.full((nx, ny, burden_layers), burden_perm),
+            ],
+            axis=2,
+        )
+        poro = np.concatenate(
+            [
+                np.full((nx, ny, burden_layers), burden_poro),
+                poro,
+                np.full((nx, ny, burden_layers), burden_poro),
+            ],
+            axis=2,
+        )
+        self.facies = np.concatenate(
+            [
+                np.ones((nx, ny, burden_layers), dtype=self.facies.dtype),
+                self.facies,
+                np.ones((nx, ny, burden_layers), dtype=self.facies.dtype),
+            ],
+            axis=2,
+        )
+        self.burden_layers = burden_layers
+        self.reservoir_nz = reservoir_nz
         self.permeability = permeability
         self.poro = poro
-        depth = 100.0 + np.broadcast_to(
-            np.arange(nz, dtype=float)[None, None, :],
+        dz = np.concatenate(
+            [
+                np.full((nx, ny, burden_layers), burden_layer_dz),
+                np.full((nx, ny, reservoir_nz), reservoir_dz),
+                np.full((nx, ny, burden_layers), burden_layer_dz),
+            ],
+            axis=2,
+        )
+        depth_layers = np.concatenate(
+            [
+                burden_layer_dz / 2.0
+                + np.arange(burden_layers, dtype=float) * burden_layer_dz,
+                100.0 + np.arange(reservoir_nz, dtype=float) * reservoir_dz,
+                100.0
+                + reservoir_nz * reservoir_dz
+                + burden_layer_dz / 2.0
+                + np.arange(burden_layers, dtype=float) * burden_layer_dz,
+            ]
+        )
+        depth = np.broadcast_to(
+            depth_layers[None, None, :],
             (nx, ny, nz),
         ).copy().flatten(order='F')
         actnum = (
@@ -97,7 +150,7 @@ class Model(DartsModel):
             nz=nz,
             dx=10.0,
             dy=10.0,
-            dz=1.0,
+            dz=dz,
             permx=permeability,
             permy=permeability,
             permz=permeability,
@@ -121,7 +174,10 @@ class Model(DartsModel):
 
         def add_vertical_completion(well_name, target_i, target_j):
             perforated = set()
-            for layer in range(self.reservoir.nz):
+            for layer in range(
+                self.burden_layers,
+                self.burden_layers + self.reservoir_nz,
+            ):
                 cell = nearest_active_cell((target_i, target_j, layer))
                 if cell not in perforated:
                     self.reservoir.add_perforation(well_name, res_cell_idx=cell)
