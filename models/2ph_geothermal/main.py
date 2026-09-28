@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import os
-import shutil
 from datetime import datetime
 
 from model import Model
@@ -61,20 +60,17 @@ if __name__ == '__main__':
     )
     print(f'Writing simulation output to {output_folder}')
     n.set_output(output_folder=output_folder)
-    vtk_dir = os.path.join(n.output_folder, 'vtk_files')
-    if os.path.isdir(vtk_dir):
-        try:
-            shutil.rmtree(vtk_dir)
-        except PermissionError as error:
-            print(f'Previous VTK files are locked; keeping them: {error}')
     time_data_filename = n.output_folder + "/darts_time_data.pkl"
 
     if True:
+        simulation_years = 3.0
         report_step = 50.0
-        for _ in range(100):
+        simulation_end_days = simulation_years * 365.25
+        while n.physics.engine.t < simulation_end_days - 1e-8:
             pressure_fraction = min(n.physics.engine.t / 5000.0, 1.0)
             n.set_well_controls(pressure_fraction=pressure_fraction)
-            n.run(report_step, save_reservoir_data=True)
+            step = min(report_step, simulation_end_days - n.physics.engine.t)
+            n.run(step, save_reservoir_data=True)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run_python(300, restart_dt=1e-3)
         n.print_timers()
@@ -82,18 +78,33 @@ if __name__ == '__main__':
 
         # compute and save well time data
         time_data_dict = n.output.store_well_time_data(save_output_files=True)
-
-        # plot well time data
-        # time_data_df = pd.DataFrame.from_dict(time_data_dict)
-        # time_data_df['well_I1_molar_rate_wat_at_wh'] = time_data_df['well_I1_molar_rate_wat_at_wh'].round(2)
-        # time_data_df.plot(x='time', y=['well_I1_molar_rate_wat_at_wh'], style='-o')\
-        #     .get_figure().savefig(n.output_folder + '/inj_molar_rates_water.png', dpi=100, bbox_inches='tight')
-        #
-        # time_data_df.plot(x='time', y=['well_P1_BHP'], style='-o')\
-        #     .get_figure().savefig(n.output_folder + '/prd_bhp.png', dpi=100, bbox_inches='tight')
-        #
-        # time_data_df.plot(x='time', y=['well_P1_volumetric_rate_wat_at_wh', 'well_P1_volumetric_rate_wat_by_sum_perfs'], ylim=(-1, 0))\
-        #     .get_figure().savefig(n.output_folder + '/prd_volumetric_rates.png', dpi=100, bbox_inches='tight')
+        time_data_df = pd.DataFrame.from_dict(time_data_dict)
+        time_data_df['time_years'] = time_data_df['time'] / 365.25
+        time_figure, time_axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+        for well in n.reservoir.wells:
+            time_axes[0].plot(
+                time_data_df['time_years'],
+                time_data_df[f'well_{well.name}_BHP'],
+                label=well.name,
+            )
+            time_axes[1].plot(
+                time_data_df['time_years'],
+                time_data_df[f'well_{well.name}_BHT'],
+                label=well.name,
+            )
+        time_axes[0].set_ylabel('Bottom-hole pressure [bar]')
+        time_axes[1].set_ylabel('Bottom-hole temperature [K]')
+        time_axes[1].set_xlabel('Time [years]')
+        for axis in time_axes:
+            axis.grid(True, alpha=0.3)
+            axis.legend(title='Borehole')
+        time_figure.tight_layout()
+        for plot_name in ('out.png', 'borehole_pressure_temperature.png'):
+            time_figure.savefig(
+                os.path.join(n.output_folder, plot_name),
+                dpi=150,
+            )
+        plt.close(time_figure)
 
     else:
         # n.load_restart_data()
@@ -106,12 +117,6 @@ if __name__ == '__main__':
         nc = n.physics.nc + n.physics.thermal
         nb = n.reservoir.mesh.n_res_blocks
 
-        plt.figure(num=1, figsize=(12, 8), dpi=100)
-        for i in range(nc if nc < 3 else 3):
-            plt.subplot(330 + (i + 1))
-            plt.plot(Xn[i:nb*nc:nc])
-        plt.savefig(os.path.join(n.output_folder, 'out.png'))
-
         pressure = Xn[0:nb * nc:nc]
         temperature = Xn[1:nb * nc:nc]
         nx, ny, nz = n.reservoir.nx, n.reservoir.ny, n.reservoir.nz
@@ -123,12 +128,18 @@ if __name__ == '__main__':
         temperature_global = np.full(nx * ny * nz, np.nan)
         temperature_global[active_global] = temperature[global_to_local[active_global]]
         temperature_grid = temperature_global.reshape((nx, ny, nz), order='F')
-        layer = nz // 2
-        pressure_slice = pressure_grid[:, :, layer].T
-        temperature_slice = temperature_grid[:, :, layer].T
-        pressure_change_slice = pressure_slice - 200.0
-        temperature_difference_slice = temperature_slice - 350.0
-        well_markers = {
+        well_y_positions = [cell[1] - 1 for cells in n.well_paths.values() for cell in cells]
+        y_slice = int(np.clip(round(np.mean(well_y_positions)), 0, ny - 1))
+        reservoir_layer = n.burden_layers + n.reservoir_nz // 2
+        pressure_plan = pressure_grid[:, :, reservoir_layer].T
+        temperature_plan = temperature_grid[:, :, reservoir_layer].T
+        pressure_change_plan = pressure_plan - 200.0
+        temperature_change_plan = temperature_plan - 350.0
+        pressure_section = pressure_grid[:, y_slice, :].T
+        temperature_section = temperature_grid[:, y_slice, :].T
+        pressure_change_section = pressure_section - 200.0
+        temperature_difference_section = temperature_section - 350.0
+        plan_well_markers = {
             well_name: (
                 np.mean([cell[0] for cell in cells]) - 1,
                 np.mean([cell[1] for cell in cells]) - 1,
@@ -136,55 +147,126 @@ if __name__ == '__main__':
             for well_name, cells in n.well_paths.items()
             if cells
         }
+        section_well_markers = {
+            well_name: (
+                np.mean([cell[0] for cell in cells]) - 1,
+                np.mean([cell[2] for cell in cells]) - 1,
+            )
+            for well_name, cells in n.well_paths.items()
+            if cells
+        }
 
-        pressure_limit = np.nanmax(np.abs(pressure_change_slice))
-        fig, axes = plt.subplots(1, 3, figsize=(20, 6), constrained_layout=True)
-        pressure_plot = axes[0].imshow(pressure_slice, origin='lower', aspect='auto')
-        axes[0].set_title(f'Pressure at layer {layer + 1} [bar]')
-        axes[0].set_xlabel('X cell')
-        axes[0].set_ylabel('Y cell')
-        fig.colorbar(pressure_plot, ax=axes[0], label='Pressure [bar]')
-        pressure_change_plot = axes[1].imshow(
-            pressure_change_slice,
+        pressure_limit = max(
+            np.nanmax(np.abs(pressure_change_plan)),
+            np.nanmax(np.abs(pressure_change_section)),
+            1e-6,
+        )
+        temperature_limit = max(
+            np.nanmax(np.abs(temperature_change_plan)),
+            np.nanmax(np.abs(temperature_difference_section)),
+            1e-6,
+        )
+        fig, axes = plt.subplots(2, 3, figsize=(20, 11), constrained_layout=True)
+        pressure_plot = axes[0, 0].imshow(
+            pressure_plan, origin='lower', aspect='auto'
+        )
+        axes[0, 0].set_title(f'Pressure at layer {reservoir_layer + 1} [bar]')
+        axes[0, 0].set_xlabel('X cell')
+        axes[0, 0].set_ylabel('Y cell')
+        fig.colorbar(pressure_plot, ax=axes[0, 0], label='Pressure [bar]')
+        pressure_change_plot = axes[0, 1].imshow(
+            pressure_change_plan,
             origin='lower',
             aspect='auto',
             cmap='coolwarm',
             vmin=-pressure_limit,
             vmax=pressure_limit,
         )
-        axes[1].set_title(f'Pressure change at layer {layer + 1} [bar]')
-        axes[1].set_xlabel('X cell')
-        axes[1].set_ylabel('Y cell')
-        fig.colorbar(pressure_change_plot, ax=axes[1], label='Change from 200 bar')
-        temperature_plot = axes[2].imshow(
-            temperature_difference_slice,
+        axes[0, 1].set_title(f'Pressure change at layer {reservoir_layer + 1} [bar]')
+        axes[0, 1].set_xlabel('X cell')
+        axes[0, 1].set_ylabel('Y cell')
+        fig.colorbar(pressure_change_plot, ax=axes[0, 1], label='Change from 200 bar')
+        temperature_plot = axes[0, 2].imshow(
+            temperature_change_plan,
             origin='lower',
             aspect='auto',
             cmap='coolwarm',
-            vmin=-50.0,
-            vmax=0.0,
+            vmin=-temperature_limit,
+            vmax=temperature_limit,
         )
-        axes[2].set_title(f'Temperature difference at layer {layer + 1} [K]')
-        axes[2].set_xlabel('X cell')
-        axes[2].set_ylabel('Y cell')
-        fig.colorbar(temperature_plot, ax=axes[2], label='Change from 350 K')
-        for axis in axes:
-            for well_name, (x_cell, y_cell) in well_markers.items():
+        axes[0, 2].set_title(f'Temperature change at layer {reservoir_layer + 1} [K]')
+        axes[0, 2].set_xlabel('X cell')
+        axes[0, 2].set_ylabel('Y cell')
+        fig.colorbar(temperature_plot, ax=axes[0, 2], label='Change from 350 K')
+
+        section_images = (
+            (pressure_section, 'Pressure'),
+            (pressure_change_section, 'Pressure change'),
+            (temperature_difference_section, 'Temperature change'),
+        )
+        for column, (section, title) in enumerate(section_images):
+            image = axes[1, column].imshow(
+                section,
+                origin='upper',
+                aspect='auto',
+                cmap='coolwarm' if column else None,
+                vmin=(-pressure_limit if column == 1 else -temperature_limit)
+                if column
+                else None,
+                vmax=(pressure_limit if column == 1 else temperature_limit)
+                if column
+                else None,
+            )
+            axes[1, column].set_title(
+                f'{title} at Y section {y_slice + 1}'
+                + (' [K]' if column == 2 else ' [bar]' if column else ' [bar]')
+            )
+            axes[1, column].set_xlabel('X cell')
+            axes[1, column].set_ylabel('Layer, top to bottom')
+            fig.colorbar(image, ax=axes[1, column])
+
+        for axis in axes[0, :]:
+            for well_name, (x_cell, y_cell) in plan_well_markers.items():
                 axis.plot(x_cell, y_cell, 'wo', markeredgecolor='black')
                 axis.text(x_cell + 1, y_cell + 1, well_name, color='black', weight='bold')
+        for axis in axes[1, :]:
+            axis.axhline(n.burden_layers - 0.5, color='white', linestyle='--')
+            axis.axhline(
+                n.burden_layers + n.reservoir_nz - 0.5,
+                color='white',
+                linestyle='--',
+            )
+            for well_name, (x_cell, y_cell) in section_well_markers.items():
+                axis.plot(x_cell, y_cell, 'wo', markeredgecolor='black')
+                axis.text(
+                    x_cell + 1,
+                    y_cell + 1,
+                    well_name,
+                    color='black',
+                    weight='bold',
+                )
         fig.savefig(os.path.join(n.output_folder, 'pressure_map.png'), dpi=150)
         plt.close(fig)
 
-        try:
-            vtk_times, vtk_data = n.output.output_properties(n.sol_filepath)
-            pressure_name = n.physics.vars[0]
-            vtk_data['pressure_change_x10'] = 10.0 * (
-                vtk_data[pressure_name] - 200.0
-            )
-            n.output.output_to_vtk(output_data=[vtk_times, vtk_data])
-        except (MemoryError, PermissionError, ValueError) as error:
-            print(f'VTK export skipped: {error}')
+        vtk_times, vtk_data = n.output.output_properties(n.sol_filepath)
+        annual_targets = np.arange(1, int(simulation_years) + 1) * 365.25
+        annual_indices = np.array(
+            [np.argmin(np.abs(vtk_times - target)) for target in annual_targets],
+            dtype=int,
+        )
+        annual_data = {
+            name: np.asarray(values)[annual_indices]
+            for name, values in vtk_data.items()
+        }
+        pressure_name = n.physics.vars[0]
+        annual_data['pressure_change_x10'] = 10.0 * (
+            annual_data[pressure_name] - 200.0
+        )
+        n.output.output_to_vtk(
+            output_data=[vtk_times[annual_indices], annual_data]
+        )
 
+        vtk_dir = os.path.join(n.output_folder, 'vtk_files')
         os.makedirs(vtk_dir, exist_ok=True)
         for well_name, cells in n.well_paths.items():
             nodes = np.array([
@@ -198,6 +280,7 @@ if __name__ == '__main__':
                     os.path.join(vtk_dir, f'{well_name}.vtp'),
                     nodes,
                 )
+
     else:
         #plot_sol(n)
         n.print_and_plot('sim_data')

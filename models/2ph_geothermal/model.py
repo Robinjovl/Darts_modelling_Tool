@@ -32,7 +32,7 @@ class Model(DartsModel):
         self.ts_control.dt_first = 0.0001
         self.ts_control.dt_min = 1e-15
         self.ts_control.dt_mult = 2
-        self.ts_control.dt_max = 10
+        self.ts_control.dt_max = 200
         self.ts_control.runtime = 1000
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
@@ -41,7 +41,11 @@ class Model(DartsModel):
     def set_reservoir(self):
         full_shape = (242, 264, 41)
         grid_start = (0, 0, 0)
-        nx, ny, reservoir_nz = (60, 100, 40)
+        interior_nx, interior_ny, reservoir_nz = (60, 100, 40)
+        flow_boundary_layers = 1
+        flow_boundary_storage_multiplier = 1e3
+        nx = interior_nx + 2 * flow_boundary_layers
+        ny = interior_ny + 2 * flow_boundary_layers
         burden_layers = 5
         burden_layer_dz = 20.0
         reservoir_dz = 1.0
@@ -51,13 +55,13 @@ class Model(DartsModel):
         assert all(
             start + size <= limit
             for start, size, limit in zip(
-                grid_start, (nx, ny, reservoir_nz), full_shape
+                grid_start, (interior_nx, interior_ny, reservoir_nz), full_shape
             )
-        ), f'Grid section {grid_start} + {(nx, ny, reservoir_nz)} exceeds {full_shape}'
+        ), f'Grid section {grid_start} + {(interior_nx, interior_ny, reservoir_nz)} exceeds {full_shape}'
 
-        facies_file = r'C:\Users\Acer\OneDrive\Documenten\GEIP\Facies_model.GRDECL'
-        permeability_file = r'C:\Users\Acer\OneDrive\Documenten\GEIP\Permeability.GRDECL'
-        porosity_file = r'C:\Users\Acer\OneDrive\Documenten\GEIP\Porosity_effective.GRDECL'
+        facies_file = r"C:\Users\Acer\Documents\GEIP\Facies_model.GRDECL"
+        permeability_file = r"C:\Users\Acer\Documents\GEIP\Permeability.GRDECL"
+        porosity_file = r"C:\Users\Acer\Documents\GEIP\Porosity_effective.GRDECL"
 
         def read_property(filename, keyword, dtype=float):
             if dtype is int:
@@ -70,8 +74,8 @@ class Model(DartsModel):
             full_values = values.reshape(full_shape, order='F')
             i_start, j_start, k_start = grid_start
             return full_values[
-                i_start:i_start + nx,
-                j_start:j_start + ny,
+                i_start:i_start + interior_nx,
+                j_start:j_start + interior_ny,
                 k_start:k_start + reservoir_nz,
             ]
 
@@ -84,44 +88,79 @@ class Model(DartsModel):
             porosity_file,
             'COPY_OF_COPY_(2)_OF_EFF_POROSITY',
         ) /100
-        burden_poro = 1e-5
-        burden_perm = 1e-5
+        shale_porosity = 1e-5
+        shale_permeability = 1e-5
+        shale_facies_id = 1
+        shale_mask = (
+            (self.facies <= 0)
+            | ~np.isfinite(poro)
+            | (poro <= 0.0)
+            | ~np.isfinite(permeability)
+            | (permeability <= 0.0)
+        )
+        self.facies[shale_mask] = shale_facies_id
+        poro[shale_mask] = shale_porosity
+        permeability[shale_mask] = shale_permeability
         permeability = np.concatenate(
             [
-                np.full((nx, ny, burden_layers), burden_perm),
+                np.full(
+                    (interior_nx, interior_ny, burden_layers), shale_permeability
+                ),
                 permeability,
-                np.full((nx, ny, burden_layers), burden_perm),
+                np.full(
+                    (interior_nx, interior_ny, burden_layers), shale_permeability
+                ),
             ],
             axis=2,
         )
         poro = np.concatenate(
             [
-                np.full((nx, ny, burden_layers), burden_poro),
+                np.full((interior_nx, interior_ny, burden_layers), shale_porosity),
                 poro,
-                np.full((nx, ny, burden_layers), burden_poro),
+                np.full((interior_nx, interior_ny, burden_layers), shale_porosity),
             ],
             axis=2,
         )
         self.facies = np.concatenate(
             [
-                np.ones((nx, ny, burden_layers), dtype=self.facies.dtype),
+                np.full(
+                    (interior_nx, interior_ny, burden_layers),
+                    shale_facies_id,
+                    dtype=self.facies.dtype,
+                ),
                 self.facies,
-                np.ones((nx, ny, burden_layers), dtype=self.facies.dtype),
+                np.full(
+                    (interior_nx, interior_ny, burden_layers),
+                    shale_facies_id,
+                    dtype=self.facies.dtype,
+                ),
             ],
             axis=2,
         )
         self.burden_layers = burden_layers
         self.reservoir_nz = reservoir_nz
-        self.permeability = permeability
-        self.poro = poro
         dz = np.concatenate(
             [
-                np.full((nx, ny, burden_layers), burden_layer_dz),
-                np.full((nx, ny, reservoir_nz), reservoir_dz),
-                np.full((nx, ny, burden_layers), burden_layer_dz),
+                np.full((interior_nx, interior_ny, burden_layers), burden_layer_dz),
+                np.full((interior_nx, interior_ny, reservoir_nz), reservoir_dz),
+                np.full((interior_nx, interior_ny, burden_layers), burden_layer_dz),
             ],
             axis=2,
         )
+        lateral_padding = (
+            (flow_boundary_layers, flow_boundary_layers),
+            (flow_boundary_layers, flow_boundary_layers),
+            (0, 0),
+        )
+        permeability = np.pad(permeability, lateral_padding, mode='edge')
+        poro = np.pad(poro, lateral_padding, mode='edge')
+        self.facies = np.pad(self.facies, lateral_padding, mode='edge')
+        dz = np.pad(dz, lateral_padding, mode='edge')
+        nx, ny = permeability.shape[:2]
+        self.flow_boundary_layers = flow_boundary_layers
+        self.flow_boundary_storage_multiplier = flow_boundary_storage_multiplier
+        self.permeability = permeability
+        self.poro = poro
         depth_layers = np.concatenate(
             [
                 burden_layer_dz / 2.0
@@ -160,12 +199,22 @@ class Model(DartsModel):
             depth=depth,
             actnum=actnum,
         )
+        cell_volumes = 10.0 * 10.0 * dz
+        self.reservoir.boundary_volumes = {
+            'xy_minus': None,
+            'xy_plus': None,
+            'yz_minus': flow_boundary_storage_multiplier * cell_volumes[0, :, :],
+            'yz_plus': flow_boundary_storage_multiplier * cell_volumes[-1, :, :],
+            'xz_minus': flow_boundary_storage_multiplier * cell_volumes[:, 0, :],
+            'xz_plus': flow_boundary_storage_multiplier * cell_volumes[:, -1, :],
+        }
         self.reservoir.global_data['facies'] = self.facies
         return
 
     def set_wells(self):
         active_cells = np.argwhere(self.reservoir.actnum > 0)
         assert active_cells.size > 0, 'The selected grid contains no active cells'
+        boundary_offset = self.flow_boundary_layers
 
         def nearest_active_cell(target):
             distances = np.sum((active_cells - np.asarray(target)) ** 2, axis=1)
@@ -178,14 +227,18 @@ class Model(DartsModel):
                 self.burden_layers,
                 self.burden_layers + self.reservoir_nz,
             ):
-                cell = nearest_active_cell((target_i, target_j, layer))
+                cell = nearest_active_cell(
+                    (target_i + boundary_offset, target_j + boundary_offset, layer)
+                )
                 if cell not in perforated:
                     self.reservoir.add_perforation(well_name, res_cell_idx=cell)
                     perforated.add(cell)
             return sorted(perforated, key=lambda cell: cell[2])
 
         def highest_quality_cell(target_i, target_j, radius=8):
-            target = np.array([target_i, target_j, 0])
+            target = np.array(
+                [target_i + boundary_offset, target_j + boundary_offset, 0]
+            )
             distances = np.linalg.norm(active_cells[:, :2] - target[:2], axis=1)
             nearby = active_cells[distances <= radius]
             if nearby.size == 0:
@@ -202,7 +255,9 @@ class Model(DartsModel):
         self.reservoir.add_well("P")
         producer_anchor = highest_quality_cell(30, 55)
         producer_cells = add_vertical_completion(
-            "P", producer_anchor[0] - 1, producer_anchor[1] - 1
+            "P",
+            producer_anchor[0] - 1 - boundary_offset,
+            producer_anchor[1] - 1 - boundary_offset,
         )
         self.well_paths = {"I": injector_cells, "P": producer_cells}
 
