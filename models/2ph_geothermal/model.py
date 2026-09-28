@@ -31,7 +31,7 @@ class Model(DartsModel):
     def set_solver(self):
         self.ts_control.dt_first = 0.0001
         self.ts_control.dt_min = 1e-15
-        self.ts_control.dt_mult = 2
+        self.ts_control.dt_mult = 1.2
         self.ts_control.dt_max = 200
         self.ts_control.runtime = 1000
         super().set_solver()  # platform default nonlinear + linear solvers
@@ -216,50 +216,46 @@ class Model(DartsModel):
         assert active_cells.size > 0, 'The selected grid contains no active cells'
         boundary_offset = self.flow_boundary_layers
 
-        def nearest_active_cell(target):
-            distances = np.sum((active_cells - np.asarray(target)) ** 2, axis=1)
-            cell = active_cells[np.argmin(distances)]
-            return tuple((cell + 1).tolist())
-
-        def add_vertical_completion(well_name, target_i, target_j):
-            perforated = set()
-            for layer in range(
-                self.burden_layers,
-                self.burden_layers + self.reservoir_nz,
-            ):
-                cell = nearest_active_cell(
-                    (target_i + boundary_offset, target_j + boundary_offset, layer)
+        def highest_quality_sand_cell(target_i, target_j, radius=8):
+            reservoir_cells = active_cells[
+                (active_cells[:, 2] >= self.burden_layers)
+                & (
+                    active_cells[:, 2]
+                    < self.burden_layers + self.reservoir_nz
                 )
-                if cell not in perforated:
-                    self.reservoir.add_perforation(well_name, res_cell_idx=cell)
-                    perforated.add(cell)
-            return sorted(perforated, key=lambda cell: cell[2])
-
-        def highest_quality_cell(target_i, target_j, radius=8):
+            ]
             target = np.array(
-                [target_i + boundary_offset, target_j + boundary_offset, 0]
+                [target_i + boundary_offset, target_j + boundary_offset]
             )
-            distances = np.linalg.norm(active_cells[:, :2] - target[:2], axis=1)
-            nearby = active_cells[distances <= radius]
-            if nearby.size == 0:
-                nearby = active_cells
+            distances = np.linalg.norm(reservoir_cells[:, :2] - target, axis=1)
+            nearby = reservoir_cells[distances <= radius]
+            high_porosity = nearby[
+                self.poro[nearby[:, 0], nearby[:, 1], nearby[:, 2]] >= 0.05
+            ]
+            if high_porosity.size == 0:
+                raise ValueError(
+                    f'No active sand cell with porosity >= 5% within {radius} '
+                    f'cells of well target ({target_i}, {target_j})'
+                )
             quality = (
-                self.poro[nearby[:, 0], nearby[:, 1], nearby[:, 2]]
-                * self.permeability[nearby[:, 0], nearby[:, 1], nearby[:, 2]]
+                self.poro[high_porosity[:, 0], high_porosity[:, 1], high_porosity[:, 2]]
+                * self.permeability[
+                    high_porosity[:, 0], high_porosity[:, 1], high_porosity[:, 2]
+                ]
             )
-            cell = nearby[np.argmax(quality)]
+            cell = high_porosity[np.argmax(quality)]
             return tuple((cell + 1).tolist())
 
+        well_i = 30
+        injector_j = 15
+        producer_j = 85
         self.reservoir.add_well("I")
-        injector_cells = add_vertical_completion("I", 30, 45)
+        injector_cell = highest_quality_sand_cell(well_i, injector_j)
+        self.reservoir.add_perforation("I", res_cell_idx=injector_cell)
         self.reservoir.add_well("P")
-        producer_anchor = highest_quality_cell(30, 55)
-        producer_cells = add_vertical_completion(
-            "P",
-            producer_anchor[0] - 1 - boundary_offset,
-            producer_anchor[1] - 1 - boundary_offset,
-        )
-        self.well_paths = {"I": injector_cells, "P": producer_cells}
+        producer_cell = highest_quality_sand_cell(well_i, producer_j)
+        self.reservoir.add_perforation("P", res_cell_idx=producer_cell)
+        self.well_paths = {"I": [injector_cell], "P": [producer_cell]}
 
     def set_physics(self):
         """Physical properties"""
@@ -303,26 +299,28 @@ class Model(DartsModel):
         return self.physics.set_initial_conditions_from_array(mesh=self.reservoir.mesh,
                                                               input_distribution=input_distribution)
 
-    def set_well_controls(self, pressure_fraction=1.0):
+    def set_well_controls(self):
         from darts.engines import well_control_iface
-        injector_bhp = 200.0 + 50.0 * pressure_fraction
-        producer_bhp = 200.0 - 50.0 * pressure_fraction
+        water_rate_m3_per_hour = 80.0
+        water_rate = water_rate_m3_per_hour * 24.0  # DARTS rate units are m^3/day
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
                 self.physics.set_well_controls(
                     wctrl=w.control,
-                    control_type=well_control_iface.BHP,
+                    control_type=well_control_iface.VOLUMETRIC_RATE,
                     is_inj=True,
-                    target=injector_bhp,
+                    target=water_rate,
+                    phase_name='wat',
                     inj_composition=self.inj[:-1],
                     inj_temp=self.inj[-1],
                 )
             else:
                 self.physics.set_well_controls(
                     wctrl=w.control,
-                    control_type=well_control_iface.BHP,
+                    control_type=well_control_iface.VOLUMETRIC_RATE,
                     is_inj=False,
-                    target=producer_bhp,
+                    target=water_rate,
+                    phase_name='wat',
                 )
 
 

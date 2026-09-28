@@ -63,13 +63,12 @@ if __name__ == '__main__':
     time_data_filename = n.output_folder + "/darts_time_data.pkl"
 
     if True:
-        simulation_years = 3.0
+        simulation_years = 30.0
         report_step = 50.0
         simulation_end_days = simulation_years * 365.25
         while n.physics.engine.t < simulation_end_days - 1e-8:
-            pressure_fraction = min(n.physics.engine.t / 5000.0, 1.0)
-            n.set_well_controls(pressure_fraction=pressure_fraction)
             step = min(report_step, simulation_end_days - n.physics.engine.t)
+            n.set_well_controls()
             n.run(step, save_reservoir_data=True)
         # n.reservoir.wells[0].control = n.physics.new_bhp_inj(100, 3*[n.zero])
         # n.run_python(300, restart_dt=1e-3)
@@ -80,24 +79,26 @@ if __name__ == '__main__':
         time_data_dict = n.output.store_well_time_data(save_output_files=True)
         time_data_df = pd.DataFrame.from_dict(time_data_dict)
         time_data_df['time_years'] = time_data_df['time'] / 365.25
-        time_figure, time_axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-        for well in n.reservoir.wells:
-            time_axes[0].plot(
+        time_figure, time_axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True)
+        for row, well in enumerate(n.reservoir.wells):
+            time_axes[row, 0].plot(
                 time_data_df['time_years'],
                 time_data_df[f'well_{well.name}_BHP'],
-                label=well.name,
             )
-            time_axes[1].plot(
+            time_axes[row, 1].plot(
                 time_data_df['time_years'],
                 time_data_df[f'well_{well.name}_BHT'],
-                label=well.name,
             )
-        time_axes[0].set_ylabel('Bottom-hole pressure [bar]')
-        time_axes[1].set_ylabel('Bottom-hole temperature [K]')
-        time_axes[1].set_xlabel('Time [years]')
-        for axis in time_axes:
+            time_axes[row, 0].set_title(f'{well.name} bottom-hole pressure')
+            time_axes[row, 1].set_title(f'{well.name} bottom-hole temperature')
+        for axis in time_axes[:, 0]:
+            axis.set_ylabel('Pressure [bar]')
+        for axis in time_axes[:, 1]:
+            axis.set_ylabel('Temperature [K]')
+        for axis in time_axes[-1, :]:
+            axis.set_xlabel('Time [years]')
+        for axis in time_axes.flat:
             axis.grid(True, alpha=0.3)
-            axis.legend(title='Borehole')
         time_figure.tight_layout()
         for plot_name in ('out.png', 'borehole_pressure_temperature.png'):
             time_figure.savefig(
