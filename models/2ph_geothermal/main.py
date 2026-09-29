@@ -64,7 +64,7 @@ if __name__ == '__main__':
 
     if True:
         simulation_years = 30.0
-        report_step = 50.0
+        report_step = 365.25
         simulation_end_days = simulation_years * 365.25
         while n.physics.engine.t < simulation_end_days - 1e-8:
             step = min(report_step, simulation_end_days - n.physics.engine.t)
@@ -79,11 +79,12 @@ if __name__ == '__main__':
         time_data_dict = n.output.store_well_time_data(save_output_files=True)
         time_data_df = pd.DataFrame.from_dict(time_data_dict)
         time_data_df['time_years'] = time_data_df['time'] / 365.25
+        bhp_plot_data_df = time_data_df.iloc[1:]
         time_figure, time_axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True)
         for row, well in enumerate(n.reservoir.wells):
             time_axes[row, 0].plot(
-                time_data_df['time_years'],
-                time_data_df[f'well_{well.name}_BHP'],
+                bhp_plot_data_df['time_years'],
+                bhp_plot_data_df[f'well_{well.name}_BHP'],
             )
             time_axes[row, 1].plot(
                 time_data_df['time_years'],
@@ -131,7 +132,8 @@ if __name__ == '__main__':
         temperature_grid = temperature_global.reshape((nx, ny, nz), order='F')
         well_y_positions = [cell[1] - 1 for cells in n.well_paths.values() for cell in cells]
         y_slice = int(np.clip(round(np.mean(well_y_positions)), 0, ny - 1))
-        reservoir_layer = n.burden_layers + n.reservoir_nz // 2
+        pressure_map_layer = 33
+        reservoir_layer = pressure_map_layer - 1
         pressure_plan = pressure_grid[:, :, reservoir_layer].T
         temperature_plan = temperature_grid[:, :, reservoir_layer].T
         pressure_change_plan = pressure_plan - 200.0
@@ -171,7 +173,7 @@ if __name__ == '__main__':
         pressure_plot = axes[0, 0].imshow(
             pressure_plan, origin='lower', aspect='auto'
         )
-        axes[0, 0].set_title(f'Pressure at layer {reservoir_layer + 1} [bar]')
+        axes[0, 0].set_title(f'Pressure at layer {pressure_map_layer} [bar]')
         axes[0, 0].set_xlabel('X cell')
         axes[0, 0].set_ylabel('Y cell')
         fig.colorbar(pressure_plot, ax=axes[0, 0], label='Pressure [bar]')
@@ -183,7 +185,7 @@ if __name__ == '__main__':
             vmin=-pressure_limit,
             vmax=pressure_limit,
         )
-        axes[0, 1].set_title(f'Pressure change at layer {reservoir_layer + 1} [bar]')
+        axes[0, 1].set_title(f'Pressure change at layer {pressure_map_layer} [bar]')
         axes[0, 1].set_xlabel('X cell')
         axes[0, 1].set_ylabel('Y cell')
         fig.colorbar(pressure_change_plot, ax=axes[0, 1], label='Change from 200 bar')
@@ -195,7 +197,7 @@ if __name__ == '__main__':
             vmin=-temperature_limit,
             vmax=temperature_limit,
         )
-        axes[0, 2].set_title(f'Temperature change at layer {reservoir_layer + 1} [K]')
+        axes[0, 2].set_title(f'Temperature change at layer {pressure_map_layer} [K]')
         axes[0, 2].set_xlabel('X cell')
         axes[0, 2].set_ylabel('Y cell')
         fig.colorbar(temperature_plot, ax=axes[0, 2], label='Change from 350 K')

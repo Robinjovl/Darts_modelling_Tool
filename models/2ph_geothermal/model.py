@@ -33,7 +33,7 @@ class Model(DartsModel):
         self.ts_control.dt_min = 1e-15
         self.ts_control.dt_mult = 1.2
         self.ts_control.dt_max = 200
-        self.ts_control.runtime = 1000
+        self.ts_control.runtime = 30 *365
         super().set_solver()  # platform default nonlinear + linear solvers
         self.nonlinear_solver = NewtonSolver(tolerance=1e-3)
         self.linear_solver.spec.tolerance = 1e-6
@@ -43,12 +43,14 @@ class Model(DartsModel):
         grid_start = (0, 0, 0)
         interior_nx, interior_ny, reservoir_nz = (60, 100, 40)
         flow_boundary_layers = 1
-        flow_boundary_storage_multiplier = 1e3
+        flow_boundary_storage_multiplier = 1.0
+        model_x_extent = 12464.0
+        model_y_extent = 13189.0
         nx = interior_nx + 2 * flow_boundary_layers
         ny = interior_ny + 2 * flow_boundary_layers
         burden_layers = 5
         burden_layer_dz = 20.0
-        reservoir_dz = 1.0
+        reservoir_dz = 100.0 / reservoir_nz
         nz = reservoir_nz + 2 * burden_layers
         n_cells = np.prod(full_shape)
         assert all(index >= 0 for index in grid_start)
@@ -59,9 +61,9 @@ class Model(DartsModel):
             )
         ), f'Grid section {grid_start} + {(interior_nx, interior_ny, reservoir_nz)} exceeds {full_shape}'
 
-        facies_file = r"C:\Users\Acer\Documents\GEIP\Facies_model.GRDECL"
-        permeability_file = r"C:\Users\Acer\Documents\GEIP\Permeability.GRDECL"
-        porosity_file = r"C:\Users\Acer\Documents\GEIP\Porosity_effective.GRDECL"
+        facies_file = r"C:\Users\Acer\Documents\GEIP\facies_70%.GRDECL"
+        permeability_file = r"C:\Users\Acer\Documents\GEIP\perm_70%.GRDECL"
+        porosity_file = r"C:\Users\Acer\Documents\GEIP\eff_por_70%.GRDECL"
 
         def read_property(filename, keyword, dtype=float):
             if dtype is int:
@@ -82,11 +84,11 @@ class Model(DartsModel):
         self.facies = read_property(facies_file, 'FACIES', dtype=int)
         permeability = read_property(
             permeability_file,
-            'COPY_OF_COPY_OF_PERMEABILITY',
+            'MODEL_PERM_70%',
         )
         poro = read_property(
             porosity_file,
-            'COPY_OF_COPY_(2)_OF_EFF_POROSITY',
+            'EFF_POR_MODEL_70%',
         ) /100
         shale_porosity = 1e-5
         shale_permeability = 1e-5
@@ -157,6 +159,8 @@ class Model(DartsModel):
         self.facies = np.pad(self.facies, lateral_padding, mode='edge')
         dz = np.pad(dz, lateral_padding, mode='edge')
         nx, ny = permeability.shape[:2]
+        dx = model_x_extent / full_shape[0]
+        dy = model_y_extent / full_shape[1]
         self.flow_boundary_layers = flow_boundary_layers
         self.flow_boundary_storage_multiplier = flow_boundary_storage_multiplier
         self.permeability = permeability
@@ -187,8 +191,8 @@ class Model(DartsModel):
             nx=nx,
             ny=ny,
             nz=nz,
-            dx=10.0,
-            dy=10.0,
+            dx=dx,
+            dy=dy,
             dz=dz,
             permx=permeability,
             permy=permeability,
@@ -199,7 +203,7 @@ class Model(DartsModel):
             depth=depth,
             actnum=actnum,
         )
-        cell_volumes = 10.0 * 10.0 * dz
+        cell_volumes = dx * dy * dz
         self.reservoir.boundary_volumes = {
             'xy_minus': None,
             'xy_plus': None,
@@ -216,13 +220,14 @@ class Model(DartsModel):
         assert active_cells.size > 0, 'The selected grid contains no active cells'
         boundary_offset = self.flow_boundary_layers
 
-        def highest_quality_sand_cell(target_i, target_j, radius=8):
+        def highest_quality_sand_cell(target_i, target_j, target_k, radius=4):
             reservoir_cells = active_cells[
                 (active_cells[:, 2] >= self.burden_layers)
                 & (
                     active_cells[:, 2]
                     < self.burden_layers + self.reservoir_nz
                 )
+                & (active_cells[:, 2] == target_k)
             ]
             target = np.array(
                 [target_i + boundary_offset, target_j + boundary_offset]
@@ -247,13 +252,15 @@ class Model(DartsModel):
             return tuple((cell + 1).tolist())
 
         well_i = 30
-        injector_j = 15
-        producer_j = 85
+        injector_j = 44
+        producer_j = 53
+        target_reservoir_layer = 28
+        target_k = self.burden_layers + target_reservoir_layer - 1
         self.reservoir.add_well("I")
-        injector_cell = highest_quality_sand_cell(well_i, injector_j)
+        injector_cell = highest_quality_sand_cell(well_i, injector_j, target_k)
         self.reservoir.add_perforation("I", res_cell_idx=injector_cell)
         self.reservoir.add_well("P")
-        producer_cell = highest_quality_sand_cell(well_i, producer_j)
+        producer_cell = highest_quality_sand_cell(well_i, producer_j, target_k)
         self.reservoir.add_perforation("P", res_cell_idx=producer_cell)
         self.well_paths = {"I": [injector_cell], "P": [producer_cell]}
 
@@ -357,7 +364,7 @@ class ModelProperties(PropertyContainer):
 
         self.nu[0] = 1
         self.compute_saturation()
-
+        
         for j in self.ph:
             self.kr[j] = self.rel_perm_ev[self.phases_name[j]].evaluate(self.sat[j])
             self.pc[j] = 0
