@@ -220,7 +220,7 @@ class Model(DartsModel):
         assert active_cells.size > 0, 'The selected grid contains no active cells'
         boundary_offset = self.flow_boundary_layers
 
-        def highest_quality_sand_cell(target_i, target_j, target_k, radius=4):
+        def highest_quality_sand_cell(target_i, target_j, target_k, radius=2):
             reservoir_cells = active_cells[
                 (active_cells[:, 2] >= self.burden_layers)
                 & (
@@ -251,7 +251,7 @@ class Model(DartsModel):
             cell = high_porosity[np.argmax(quality)]
             return tuple((cell + 1).tolist())
 
-        well_i = 30
+        well_i = 35
         injector_j = 44
         producer_j = 53
         target_reservoir_layer = 28
