@@ -63,7 +63,7 @@ if __name__ == '__main__':
     time_data_filename = n.output_folder + "/darts_time_data.pkl"
 
     if True:
-        simulation_years = 30.0
+        simulation_years = 60.0
         report_step = 365.25
         simulation_end_days = simulation_years * 365.25
         while n.physics.engine.t < simulation_end_days - 1e-8:

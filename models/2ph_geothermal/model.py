@@ -251,16 +251,20 @@ class Model(DartsModel):
             cell = high_porosity[np.argmax(quality)]
             return tuple((cell + 1).tolist())
 
-        well_i = 35
+        well_i = 20
         injector_j = 44
-        producer_j = 53
-        target_reservoir_layer = 28
-        target_k = self.burden_layers + target_reservoir_layer - 1
+        producer_j = 51
+        injector_reservoir_layer = 15  # E.g., deeper injection layer
+        producer_reservoir_layer = 40  # E.g., shallower production layer
+
+# 2. Calculate separate target_k values
+        injector_k = self.burden_layers + injector_reservoir_layer - 1
+        producer_k = self.burden_layers + producer_reservoir_layer - 1
         self.reservoir.add_well("I")
-        injector_cell = highest_quality_sand_cell(well_i, injector_j, target_k)
+        injector_cell = highest_quality_sand_cell(well_i, injector_j, injector_k)
         self.reservoir.add_perforation("I", res_cell_idx=injector_cell)
         self.reservoir.add_well("P")
-        producer_cell = highest_quality_sand_cell(well_i, producer_j, target_k)
+        producer_cell = highest_quality_sand_cell(well_i, producer_j, producer_k)
         self.reservoir.add_perforation("P", res_cell_idx=producer_cell)
         self.well_paths = {"I": [injector_cell], "P": [producer_cell]}
 
