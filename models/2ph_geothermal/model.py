@@ -40,8 +40,11 @@ class Model(DartsModel):
 
     def set_reservoir(self):
         full_shape = (242, 264, 41)
-        grid_start = (0, 0, 0)
-        interior_nx, interior_ny, reservoir_nz = (60, 100, 40)
+        grid_start = (40, 80, 0)
+        interior_nx = 100 - 40 + 1
+        interior_ny = 180 - 80 + 1
+        reservoir_nz = 41 - 0
+        self.grid_start = grid_start
         flow_boundary_layers = 1
         flow_boundary_storage_multiplier = 1.0
         model_x_extent = 12464.0
@@ -221,26 +224,31 @@ class Model(DartsModel):
         boundary_offset = self.flow_boundary_layers
 
         def highest_quality_sand_cell(target_i, target_j, target_k, radius=2):
+            # Convert 1-based reservoir coordinates to 0-based full-grid indices.
+            target = np.array(
+                [
+                    target_i - 1 + boundary_offset,
+                    target_j - 1 + boundary_offset,
+                    target_k - 1 + self.burden_layers,
+                ]
+            )
             reservoir_cells = active_cells[
                 (active_cells[:, 2] >= self.burden_layers)
                 & (
                     active_cells[:, 2]
                     < self.burden_layers + self.reservoir_nz
                 )
-                & (active_cells[:, 2] == target_k)
             ]
-            target = np.array(
-                [target_i + boundary_offset, target_j + boundary_offset]
-            )
-            distances = np.linalg.norm(reservoir_cells[:, :2] - target, axis=1)
-            nearby = reservoir_cells[distances <= radius]
+            nearby = reservoir_cells[
+                np.all(np.abs(reservoir_cells - target) <= radius, axis=1)
+            ]
             high_porosity = nearby[
                 self.poro[nearby[:, 0], nearby[:, 1], nearby[:, 2]] >= 0.05
             ]
             if high_porosity.size == 0:
                 raise ValueError(
                     f'No active sand cell with porosity >= 5% within {radius} '
-                    f'cells of well target ({target_i}, {target_j})'
+                    f'cells of well target ({target_i}, {target_j}, {target_k})'
                 )
             quality = (
                 self.poro[high_porosity[:, 0], high_porosity[:, 1], high_porosity[:, 2]]
@@ -251,20 +259,19 @@ class Model(DartsModel):
             cell = high_porosity[np.argmax(quality)]
             return tuple((cell + 1).tolist())
 
-        well_i = 20
-        injector_j = 44
-        producer_j = 51
-        injector_reservoir_layer = 15  # E.g., deeper injection layer
-        producer_reservoir_layer = 40  # E.g., shallower production layer
-
-# 2. Calculate separate target_k values
-        injector_k = self.burden_layers + injector_reservoir_layer - 1
-        producer_k = self.burden_layers + producer_reservoir_layer - 1
+        injector_target = tuple(
+            coord - start + 1
+            for coord, start in zip((78, 133, 15), self.grid_start)
+        )
+        producer_target = tuple(
+            coord - start + 1
+            for coord, start in zip((63, 128, 40), self.grid_start)
+        )
         self.reservoir.add_well("I")
-        injector_cell = highest_quality_sand_cell(well_i, injector_j, injector_k)
+        injector_cell = highest_quality_sand_cell(*injector_target)
         self.reservoir.add_perforation("I", res_cell_idx=injector_cell)
         self.reservoir.add_well("P")
-        producer_cell = highest_quality_sand_cell(well_i, producer_j, producer_k)
+        producer_cell = highest_quality_sand_cell(*producer_target)
         self.reservoir.add_perforation("P", res_cell_idx=producer_cell)
         self.well_paths = {"I": [injector_cell], "P": [producer_cell]}
 
@@ -330,7 +337,7 @@ class Model(DartsModel):
                     wctrl=w.control,
                     control_type=well_control_iface.VOLUMETRIC_RATE,
                     is_inj=False,
-                    target=water_rate,
+                    target=-water_rate,
                     phase_name='wat',
                 )
 
