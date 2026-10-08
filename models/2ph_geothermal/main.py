@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
+import h5py
 from datetime import datetime
 
 from model import Model
@@ -79,18 +80,58 @@ if __name__ == '__main__':
         time_data_dict = n.output.store_well_time_data(save_output_files=True)
         time_data_df = pd.DataFrame.from_dict(time_data_dict)
         time_data_df['time_years'] = time_data_df['time'] / 365.25
-        bhp_plot_data_df = time_data_df.iloc[1:]
+        with h5py.File(n.sol_filepath, 'r') as solution_file:
+            solution_data = solution_file['dynamic']
+            solution_times = solution_data['time'][:]
+            cell_ids = solution_data['cell_id'][:]
+            variable_names = [
+                name.decode() if isinstance(name, bytes) else name
+                for name in solution_data['variable_names'][:]
+            ]
+            pressure_index = variable_names.index('pressure')
+            cell_positions = {
+                int(cell_id): position
+                for position, cell_id in enumerate(cell_ids)
+            }
+            average_perforation_pressures = {}
+            for well in n.reservoir.wells:
+                perforation_ids = sorted(
+                    {int(perf[1]) for perf in well.perforations}
+                )
+                if not perforation_ids:
+                    raise ValueError(
+                        f'Well {well.name} has no active perforations'
+                    )
+                try:
+                    positions = [
+                        cell_positions[cell_id] for cell_id in perforation_ids
+                    ]
+                except KeyError as error:
+                    raise ValueError(
+                        f'No saved reservoir pressure for perforation cell '
+                        f'{error.args[0]} of well {well.name}'
+                    ) from error
+                pressure_by_perforation = solution_data['X'][
+                    :, positions, pressure_index
+                ]
+                average_perforation_pressures[well.name] = np.mean(
+                    pressure_by_perforation,
+                    axis=1,
+                )
+
         time_figure, time_axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True)
         for row, well in enumerate(n.reservoir.wells):
             time_axes[row, 0].plot(
-                bhp_plot_data_df['time_years'],
-                bhp_plot_data_df[f'well_{well.name}_BHP'],
+                solution_times / 365.25,
+                average_perforation_pressures[well.name],
             )
             time_axes[row, 1].plot(
                 time_data_df['time_years'],
                 time_data_df[f'well_{well.name}_BHT'],
             )
-            time_axes[row, 0].set_title(f'{well.name} bottom-hole pressure')
+            time_axes[row, 0].set_title(
+                f'{well.name} average perforation pressure'
+            )
             time_axes[row, 1].set_title(f'{well.name} bottom-hole temperature')
         for axis in time_axes[:, 0]:
             axis.set_ylabel('Pressure [bar]')

@@ -269,11 +269,19 @@ class Model(DartsModel):
         )
         self.reservoir.add_well("I")
         injector_cell = highest_quality_sand_cell(*injector_target)
-        self.reservoir.add_perforation("I", res_cell_idx=injector_cell)
+        injector_cells = [
+            (injector_cell[0], injector_cell[1], k + 1)
+            for k in range(
+                self.burden_layers,
+                self.burden_layers + self.reservoir_nz,
+            )
+        ]
+        for cell in injector_cells:
+            self.reservoir.add_perforation("I", res_cell_idx=cell)
         self.reservoir.add_well("P")
         producer_cell = highest_quality_sand_cell(*producer_target)
         self.reservoir.add_perforation("P", res_cell_idx=producer_cell)
-        self.well_paths = {"I": [injector_cell], "P": [producer_cell]}
+        self.well_paths = {"I": injector_cells, "P": [producer_cell]}
 
     def set_physics(self):
         """Physical properties"""
@@ -319,7 +327,7 @@ class Model(DartsModel):
 
     def set_well_controls(self):
         from darts.engines import well_control_iface
-        water_rate_m3_per_hour = 80.0
+        water_rate_m3_per_hour = 80.0*3
         water_rate = water_rate_m3_per_hour * 24.0  # DARTS rate units are m^3/day
         for i, w in enumerate(self.reservoir.wells):
             if i == 0:
@@ -337,7 +345,7 @@ class Model(DartsModel):
                     wctrl=w.control,
                     control_type=well_control_iface.VOLUMETRIC_RATE,
                     is_inj=False,
-                    target=-water_rate,
+                    target=water_rate,
                     phase_name='wat',
                 )
 
